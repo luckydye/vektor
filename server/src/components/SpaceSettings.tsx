@@ -1,7 +1,6 @@
 import { Show } from "solid-js";
 import { Permission } from "#acl/permissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { AgentSettings } from "./AgentSettings.tsx";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
 import { ExtensionSettings } from "./ExtensionSettings.tsx";
 import { JobsSettings } from "./JobsSettings.tsx";
@@ -12,7 +11,6 @@ import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
 const tabs = [
   { id: "general", label: "General" },
   { id: "integrations", label: "Integrations" },
-  { id: "agent", label: "Agent" },
   { id: "jobs", label: "Workflows" },
   { id: "archive", label: "Archive" },
 ] as const;
@@ -70,11 +68,6 @@ export function SpaceSettings() {
               </Show>
             </section>
           </>
-        ),
-        agent: () => (
-          <section>
-            <AgentSettings />
-          </section>
         ),
         jobs: () => (
           <section>

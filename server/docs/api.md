@@ -232,7 +232,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET/DELETE | `/spaces/:spaceId/uploads/*path` | Serve (with transforms/range) / delete an uploaded file |
 | GET/POST | `/spaces/:spaceId/secrets` | List secret names / create a secret |
 | GET/PUT/DELETE/HEAD | `/spaces/:spaceId/secrets/:name` | Read / upsert / delete / check existence of a secret |
-| GET/PUT/DELETE | `/spaces/:spaceId/settings/ai-provider` | Read / set / clear the space's AI provider config |
+| GET/PUT | `/spaces/:spaceId/settings/ai-limit` | Read weekly estimated token usage and set a space limit |
 | GET | `/spaces/:spaceId/integrations` | List OAuth integration connection states |
 | GET/DELETE | `/spaces/:spaceId/integrations/:provider` | Read / disconnect a single integration |
 | POST | `/spaces/:spaceId/integrations/:provider/connect` | Start OAuth authorization flow |
@@ -321,7 +321,7 @@ data: [DONE]
 - **Headers**: `X-Space-Id` (required).
 - **Body**: passthrough OpenAI-style chat completion request; the server injects
   `model` for OpenAI-compatible providers.
-- **Behavior**: looks up the space's configured AI provider
+- **Behavior**: uses the instance's AI provider configured by environment variables
   (`anthropic`/`ollama`/OpenAI-compatible) and proxies the request, streaming the
   upstream response back verbatim (SSE or JSON depending on upstream). Logs (but does
   not alter) upstream error bodies.
@@ -1422,69 +1422,29 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/secrets/GITHUB_TOKEN"
 curl -sS -I -b "$COOKIE" "$VEKTOR/spaces/$SPACE/secrets/GITHUB_TOKEN"
 ```
 
-## Settings — AI provider
+## Settings — AI usage
 
-### `GET /spaces/:spaceId/settings/ai-provider`
+The instance operator configures the provider for every space with
+`VEKTOR_AI_PROVIDER` (`anthropic`, `openai`, `openrouter`, `opencode-zen`, or
+`ollama`), `VEKTOR_AI_MODEL`, and either `VEKTOR_AI_API_KEY` or
+`VEKTOR_AI_BASE_URL` for Ollama. `VEKTOR_AI_WEEKLY_MAX_TOKENS` caps each
+space's weekly budget; it defaults to 1,000,000 estimated tokens.
+For a private Ollama host, set `VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1` as well.
 
-- **Auth**: session; `editor` on the space.
-- **Returns**: `200 { aiProvider: meta }` — metadata only (never the raw API key).
-
-```bash
-curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/settings/ai-provider"
-```
-
-```json
-{
-  "aiProvider": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "hasApiKey": true,
-    "baseUrl": null,
-    "updatedAt": "2026-08-10T11:20:00.000Z"
-  }
-}
-```
-
-### `PUT /spaces/:spaceId/settings/ai-provider`
+### `GET /spaces/:spaceId/settings/ai-limit`
 
 - **Auth**: session; `owner` on the space.
-- **Body**: `provider` (required — `"ollama"` | `"anthropic"` | `"openai"` |
-  `"openrouter"` | `"opencode-zen"`), `model` (non-empty string, required).
-  For `ollama`: `baseUrl` (non-empty string, required; trailing slash stripped, and
-  validated against the SSRF policy for the URL that will actually be requested). For
-  the others: `apiKey` (non-empty string, required).
-- **Returns**: `200 { aiProvider: meta }`. `400` for missing/unknown provider fields or
-  a base URL the server may not call.
+- **Returns**: `200 { weekStart, used, limit, maxLimit }`. Weeks begin Monday at
+  00:00 UTC. Input and output usage are estimated from roughly four characters
+  per token. The default `limit` is the instance maximum.
 
-```bash
-curl -sS -X PUT -b "$COOKIE" -H "Content-Type: application/json" \
-  -d '{ "provider": "anthropic", "model": "claude-opus-5", "apiKey": "sk-ant-…" }' \
-  "$VEKTOR/spaces/$SPACE/settings/ai-provider"
-```
-
-```json
-{
-  "aiProvider": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "hasApiKey": true,
-    "updatedAt": "2026-08-17T09:50:00.000Z"
-  }
-}
-```
-
-### `DELETE /spaces/:spaceId/settings/ai-provider`
+### `PUT /spaces/:spaceId/settings/ai-limit`
 
 - **Auth**: session; `owner` on the space.
-- **Returns**: `200 { success: true }`.
-
-```bash
-curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/settings/ai-provider"
-```
-
-```json
-{ "success": true }
-```
+- **Body**: `{ "limit": 100000 }`, a positive integer no greater than
+  `maxLimit`.
+- **Returns**: the same usage object as `GET`. Once the budget is exhausted,
+  the completion proxy returns `429` and the ACP agent reports an error in its stream.
 
 ## Integrations (OAuth)
 

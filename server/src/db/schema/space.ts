@@ -347,6 +347,12 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
   lastMessageRole: text("last_message_role"),
 });
 
+/** Estimated AI tokens charged to a space for a UTC week (Monday to Monday). */
+export const aiWeeklyUsage = sqliteTable("ai_weekly_usage", {
+  weekStart: text("week_start").primaryKey(),
+  tokens: integer("tokens").notNull().default(0),
+});
+
 /** Ephemeral full-text index of uploaded files. Fully rebuildable by scanning the uploads directory. */
 export const file = sqliteTable("file", {
   /** Content-addressable storage key under uploads/{spaceId}/, e.g. "{hash[0:2]}/{hash}.{ext}" */

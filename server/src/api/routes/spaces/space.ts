@@ -12,6 +12,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { maxWeeklyAITokens } from "#db/space/aiConfig.ts";
 import {
   deleteSpace,
   getSpace,
@@ -89,6 +90,12 @@ export const PATCH: ApiRouteHandler = (context) =>
 
       const validated = validateSpacePreferences(preferences);
       if ("error" in validated) throw badRequestResponse(validated.error);
+      const requestedLimit = validated.preferences?.aiWeeklyTokenLimit;
+      if (requestedLimit && Number(requestedLimit) > maxWeeklyAITokens()) {
+        throw badRequestResponse(
+          `aiWeeklyTokenLimit cannot exceed ${maxWeeklyAITokens()}`,
+        );
+      }
 
       // Preferences are open, so the role follows what is being written rather
       // than the fact that something is: a preference in a namespace that decides

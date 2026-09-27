@@ -208,6 +208,14 @@ export function config() {
 
       SECRETS_ENCRYPTION_KEY: process.env.VEKTOR_SECRETS_ENCRYPTION_KEY,
 
+      /** One provider and model shared by every space. */
+      AI_PROVIDER: process.env.VEKTOR_AI_PROVIDER,
+      AI_MODEL: process.env.VEKTOR_AI_MODEL,
+      AI_API_KEY: process.env.VEKTOR_AI_API_KEY,
+      AI_BASE_URL: process.env.VEKTOR_AI_BASE_URL,
+      /** Maximum estimated tokens each space may use in a UTC week. */
+      AI_WEEKLY_MAX_TOKENS: process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS,
+
       /**
        * Which runtime executes extension jobs and workflow scripts. Only "boa"
        * ships today; the setting names the choice so another executor can be
@@ -272,6 +280,7 @@ export function config() {
     GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
     MARKETPLACE_ENABLED: publicEnv.VEKTOR_MARKETPLACE_ENABLED,
+    AI_ENABLED: publicEnv.VEKTOR_AI_ENABLED,
   } as const;
 }
 
@@ -337,6 +346,15 @@ export function getPublicEnv(): App.PublicEnv {
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
     VEKTOR_PEERS_ENABLED: appConfig.PEERS?.trim() ? "1" : undefined,
+    VEKTOR_AI_ENABLED:
+      appConfig.AI_MODEL?.trim() &&
+      ((appConfig.AI_PROVIDER === "ollama" && appConfig.AI_BASE_URL?.trim()) ||
+        (["anthropic", "openai", "openrouter", "opencode-zen"].includes(
+          appConfig.AI_PROVIDER ?? "",
+        ) &&
+          appConfig.AI_API_KEY?.trim()))
+        ? "1"
+        : undefined,
     // Never expose the client secret; only a boolean flag reaches the browser.
     GOOGLE_AUTH_ENABLED:
       appConfig.GOOGLE_CLIENT_ID?.trim() && appConfig.GOOGLE_CLIENT_SECRET?.trim()

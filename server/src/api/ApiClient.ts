@@ -450,15 +450,12 @@ export interface SpaceSecret {
   lastUsedAt: Date | string | null;
 }
 
-export type AIConfigMeta =
-  | { configured: false }
-  | {
-      configured: true;
-      provider: string;
-      model: string;
-      baseUrl?: string;
-      hasApiKey: boolean;
-    };
+export interface AIUsage {
+  weekStart: string;
+  used: number;
+  limit: number;
+  maxLimit: number;
+}
 
 /** Provider ids are declared by installed extensions, not by the app. */
 export type OAuthIntegrationProvider = string;
@@ -2107,35 +2104,18 @@ export class ApiClient {
     },
   };
 
-  agentSettings = {
+  aiLimit = {
     get: async (spaceId: string) => {
-      return await this.apiGet<{ aiProvider: AIConfigMeta }>(
+      return await this.apiGet<AIUsage>(
         this.baseUrl,
-        `/api/v1/spaces/${spaceId}/settings/ai-provider`,
+        `/api/v1/spaces/${spaceId}/settings/ai-limit`,
       );
     },
-
-    put: async (
-      spaceId: string,
-      body:
-        | {
-            provider: "anthropic" | "openai" | "openrouter" | "opencode-zen";
-            model: string;
-            apiKey: string;
-          }
-        | { provider: "ollama"; model: string; baseUrl: string },
-    ) => {
-      return await this.apiPut<{ aiProvider: AIConfigMeta }>(
+    put: async (spaceId: string, limit: number) => {
+      return await this.apiPut<AIUsage>(
         this.baseUrl,
-        `/api/v1/spaces/${spaceId}/settings/ai-provider`,
-        body,
-      );
-    },
-
-    delete: async (spaceId: string) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/settings/ai-provider`,
+        `/api/v1/spaces/${spaceId}/settings/ai-limit`,
+        { limit },
       );
     },
   };

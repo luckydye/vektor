@@ -15,13 +15,18 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
+import {
+  AIWeeklyLimitError,
+  estimateProxyInput,
+  reserveAITokens,
+} from "#db/space/aiUsage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { SsrfError } from "#utils/ssrf.ts";
 
 /**
- * Proxy a chat completion to the space's AI provider
+ * Proxy a chat completion to the instance's AI provider
  *
- * Takes an OpenAI-shaped completion request and forwards it with the space's configured provider and credentials. The space is named by the `X-Space-Id` header, and the caller needs viewer permission on it.
+ * Takes an OpenAI-shaped completion request and forwards it with instance credentials. The space is named by the `X-Space-Id` header for access control and weekly usage accounting.
  *
  * @tag AI
  * @jobToken
@@ -46,55 +51,97 @@ export const POST: ApiRouteHandler = (context) =>
         Permission.VIEWER,
       );
 
-      const provider = await getAIProvider(await openSpaceStore(spaceId));
+      const provider = getAIProvider();
       const bodyJson = await parseJsonBody(context.req.raw);
+      const inputTokens = estimateProxyInput(bodyJson);
+      const settle = await reserveAITokens(await openSpaceStore(spaceId), inputTokens);
 
-      if (provider.provider === "anthropic") {
-        return proxyToAnthropic(
-          provider.apiKey,
-          provider.model,
-          bodyJson,
-          context.req.raw.signal,
-        );
+      try {
+        let response: Response;
+
+        if (provider.provider === "anthropic") {
+          response = await proxyToAnthropic(
+            provider.apiKey,
+            provider.model,
+            bodyJson,
+            context.req.raw.signal,
+          );
+        } else if (provider.provider === "ollama") {
+          response = await proxyToOllama(
+            provider.baseUrl,
+            provider.model,
+            bodyJson,
+            context.req.raw.signal,
+          );
+        } else {
+          bodyJson.model = provider.model;
+          response = await fetch(getOpenAICompatibleChatCompletionsUrl(provider), {
+            method: "POST",
+            headers: getOpenAICompatibleHeaders(provider),
+            body: JSON.stringify(bodyJson),
+            signal: context.req.raw.signal,
+          });
+
+          await logChatCompletionUpstreamFailure(
+            provider.provider,
+            provider.model,
+            response,
+          );
+        }
+
+        if (!response.ok || !response.body) {
+          await settle(0);
+          return response;
+        }
+        let outputCharacters = 0;
+        const reader = response.body.getReader();
+        const meter = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const { done, value } = await reader.read();
+              if (done) {
+                await settle(inputTokens + Math.ceil(outputCharacters / 4));
+                controller.close();
+              } else {
+                outputCharacters += value.byteLength;
+                controller.enqueue(value);
+              }
+            } catch (error) {
+              await settle(inputTokens + Math.ceil(outputCharacters / 4));
+              controller.error(error);
+            }
+          },
+          async cancel(reason) {
+            try {
+              await reader.cancel(reason);
+            } finally {
+              await settle(inputTokens + Math.ceil(outputCharacters / 4));
+            }
+          },
+        });
+        return new Response(meter, {
+          status: response.status,
+          headers: {
+            "Content-Type": response.headers.get("Content-Type") ?? "application/json",
+            "Cache-Control": "no-cache",
+          },
+        });
+      } catch (error) {
+        await settle(0);
+        throw error;
       }
-      if (provider.provider === "ollama") {
-        return proxyToOllama(
-          provider.baseUrl,
-          provider.model,
-          bodyJson,
-          context.req.raw.signal,
-        );
-      }
-
-      bodyJson.model = provider.model;
-      const response = await fetch(getOpenAICompatibleChatCompletionsUrl(provider), {
-        method: "POST",
-        headers: getOpenAICompatibleHeaders(provider),
-        body: JSON.stringify(bodyJson),
-        signal: context.req.raw.signal,
-      });
-
-      await logChatCompletionUpstreamFailure(provider.provider, provider.model, response);
-
-      return new Response(response.body, {
-        status: response.status,
-        headers: {
-          "Content-Type": response.headers.get("Content-Type") ?? "application/json",
-          "Cache-Control": "no-cache",
-        },
-      });
     },
     {
       fallbackMessage: "Proxy request failed",
       onError: (error) => {
+        if (error instanceof AIWeeklyLimitError) return errorResponse(error.message, 429);
         appLogger.error("Chat completions proxy failed", {
           error,
         });
-        // Stored configuration, not an upstream failure — and the settings page
-        // still reports the baseUrl as configured, so a generic 500 strands them.
+        // The operator controls the instance URL through the environment.
         if (error instanceof SsrfError) {
           return errorResponse(
-            `AI provider base URL is not allowed: ${error.message}. Update it in space settings, or start the server with VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1 to reach a private host.`,
+            `AI provider base URL is not allowed: ${error.message}. Update VEKTOR_AI_BASE_URL, or start the server with VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1 to reach a private host.`,
             502,
           );
         }

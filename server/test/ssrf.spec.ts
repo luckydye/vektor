@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { callOllama, ollamaChatUrl, proxyToOllama } from "#api/provider/ollama.ts";
 import { buildIntegrationApiUrl } from "#api/routes/spaces/integration-proxy.ts";
-import { normalizeOllamaBaseUrl } from "#api/routes/spaces/settings-ai-provider.ts";
 import type { OAuthProviderConfiguration } from "#integrations/oauthProviders.ts";
 import { assertEgressAllowed } from "#jobs/runtime/capabilities.ts";
 import {
@@ -519,58 +518,7 @@ describe("ollamaChatUrl", () => {
   });
 });
 
-// Audit 037: stored on a "non-empty string" check and then fetched, so an owner
-// could aim the server at loopback and any viewer could read the reply.
-describe("AI provider base URL on write", () => {
-  it.each([
-    "http://127.0.0.1:9097",
-    "http://localhost:11434",
-    "http://10.1.2.3:11434",
-    "http://192.168.1.5:11434",
-    "http://169.254.169.254/latest/meta-data/",
-    "http://[fd00::1]:11434",
-    "http://[::ffff:127.0.0.1]:11434",
-    "http://ollama.internal:11434",
-    "file:///etc/passwd",
-    "not a url",
-    "",
-    undefined,
-  ])("rejects %j with 400", async (baseUrl) => {
-    let thrown: unknown;
-    try {
-      await normalizeOllamaBaseUrl(baseUrl);
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown, `accepted ${JSON.stringify(baseUrl)}`).toBeInstanceOf(Response);
-    expect((thrown as Response).status).toBe(400);
-  });
-
-  it("accepts a public base URL and normalises it", async () => {
-    await expect(
-      normalizeOllamaBaseUrl("  http://93.184.216.34:11434//  "),
-    ).resolves.toBe("http://93.184.216.34:11434");
-  });
-
-  // The counterpart to the bracketed cases above: refusing them by address policy
-  // rather than by lookup failure is what keeps a public IPv6 Ollama configurable.
-  it("accepts a public IPv6 literal base URL", async () => {
-    await expect(
-      normalizeOllamaBaseUrl("http://[2606:4700:4700::1111]:11434/"),
-    ).resolves.toBe("http://[2606:4700:4700::1111]:11434");
-  });
-
-  it("accepts a private base URL under the private-egress opt-in", async () => {
-    await withPrivateEgress(async () => {
-      await expect(normalizeOllamaBaseUrl("http://127.0.0.1:11434/")).resolves.toBe(
-        "http://127.0.0.1:11434",
-      );
-    });
-  });
-});
-
-// Write-time validation cannot vouch for the value at request time: it may predate
-// the check, and the name may resolve somewhere else by now.
+// An operator-supplied name may resolve somewhere else by request time.
 describe("AI provider base URL at fetch time", () => {
   const signal = () => new AbortController().signal;
 

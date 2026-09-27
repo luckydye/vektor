@@ -98,8 +98,8 @@ describe("validateSpacePreferences", () => {
 
   it("stores a namespaced key for any namespace", () => {
     expect(
-      validated({ "acme:layout": "grid", "notes:sort": "created", "ai:model": "llama3" }),
-    ).toEqual({ "acme:layout": "grid", "notes:sort": "created", "ai:model": "llama3" });
+      validated({ "acme:layout": "grid", "notes:sort": "created" }),
+    ).toEqual({ "acme:layout": "grid", "notes:sort": "created" });
   });
 
   it("stores a member's own preference, separators in the name and all", () => {
@@ -117,11 +117,9 @@ describe("validateSpacePreferences", () => {
     });
   });
 
-  it("stores the namespaced keys another settings page also writes", () => {
-    expect(validated({ "ai:provider": "ollama", "ai:model": "llama3" })).toEqual({
-      "ai:provider": "ollama",
-      "ai:model": "llama3",
-    });
+  it("rejects former per-space AI provider settings", () => {
+    expect(refused({ "ai:provider": "ollama" })).toContain("instance operator");
+    expect(refused({ "ai:model": "llama3" })).toContain("instance operator");
   });
   it("refuses a brandColor that is not a hex color", () => {
     // The sink is a CSS `background`, which resolves `url()`.
@@ -201,7 +199,7 @@ describe("preferenceScope", () => {
     expect(preferenceScope("user:sidebar")).toBe("user");
     expect(preferenceScope("user:space_muted")).toBe("user");
     expect(preferenceScope("brandColor")).toBe("space");
-    expect(preferenceScope("ai:model")).toBe("space");
+    expect(preferenceScope("ai:custom")).toBe("space");
     expect(preferenceScope("acme:layout")).toBe("space");
   });
 });
@@ -233,13 +231,7 @@ describe("preferenceKey", () => {
 
 describe("requiredPreferenceWriteRole", () => {
   it("takes the namespace's role for a namespace that decides something space-wide", () => {
-    // Whoever sets `ai:baseUrl` picks the host every member's prompts go to, and
-    // the AI settings page gates that at OWNER — writing it as a preference must
-    // not be the cheaper way in.
-    expect(requiredPreferenceWriteRole({ "ai:baseUrl": "http://x" })).toBe(
-      Permission.OWNER,
-    );
-    expect(requiredPreferenceWriteRole({ "ai:provider": "ollama" })).toBe(
+    expect(requiredPreferenceWriteRole({ "ai:custom": "value" })).toBe(
       Permission.OWNER,
     );
     expect(requiredPreferenceWriteRole({ workflowCreationEnabled: "false" })).toBe(
@@ -249,7 +241,7 @@ describe("requiredPreferenceWriteRole", () => {
       Permission.OWNER,
     );
     // The highest role any one key asks for.
-    expect(requiredPreferenceWriteRole({ brandColor: "#fff", "ai:model": "x" })).toBe(
+    expect(requiredPreferenceWriteRole({ brandColor: "#fff", "ai:custom": "x" })).toBe(
       Permission.OWNER,
     );
   });

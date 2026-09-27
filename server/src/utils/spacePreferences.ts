@@ -25,6 +25,7 @@ import { isSafeUploadedImageUrl } from "#utils/html.ts";
  * hold — the store is open — just the ones this codebase names.
  */
 export const spacePreferenceKeys = {
+  aiWeeklyTokenLimit: "aiWeeklyTokenLimit",
   brandColor: "brandColor",
   description: "description",
   logoSvg: "logoSvg",
@@ -73,6 +74,15 @@ type PreferenceRule = (value: string) => { value: string } | { error: string };
  * `"__proto__"` is a lookup an object would answer with something truthy.
  */
 const PREFERENCE_RULES = new Map<string, PreferenceRule>([
+  [
+    spacePreferenceKeys.aiWeeklyTokenLimit,
+    (value) => {
+      const limit = Number(value);
+      return Number.isSafeInteger(limit) && limit > 0
+        ? { value: String(limit) }
+        : { error: "aiWeeklyTokenLimit must be a positive integer" };
+    },
+  ],
   [
     spacePreferenceKeys.brandColor,
     (value) =>
@@ -195,11 +205,9 @@ interface PreferenceNamespaceRules {
  */
 const PREFERENCE_NAMESPACES = new Map<string, PreferenceNamespaceRules>([
   [
-    // The space's AI provider, also written by `settings-ai-provider.ts`, which
-    // gates it at OWNER: whoever sets `ai:baseUrl` picks the host every member's
-    // prompts are sent to. The *value* is not re-checked here — that route
-    // validates it against the SSRF policy, and `safeFetch` validates it again on
-    // read, which is the check that holds for a value already stored.
+    // Internal AI preferences, such as per-user profiles, remain reserved to
+    // owners when written through the generic preference API. Provider settings
+    // are supplied by the instance operator and rejected below.
     spacePreferenceNamespaces.ai,
     { scope: "space", writeRole: Permission.OWNER },
   ],
@@ -215,6 +223,7 @@ const PREFERENCE_NAMESPACES = new Map<string, PreferenceNamespaceRules>([
 
 /** Core preferences that decide something for the space rather than a member. */
 const OWNER_ONLY_CORE_PREFERENCES = new Set<string>([
+  spacePreferenceKeys.aiWeeklyTokenLimit,
   spacePreferenceKeys.repositoryCreationEnabled,
   spacePreferenceKeys.workflowCreationEnabled,
 ]);
@@ -316,6 +325,9 @@ export function validateSpacePreferences(
   const validated: Record<string, string> = Object.create(null);
 
   for (const [key, raw] of Object.entries(preferences)) {
+    if (key === "ai:provider" || key === "ai:model" || key === "ai:baseUrl") {
+      return { error: `${key} is configured by the instance operator` };
+    }
     if (!parsePreferenceKey(key)) {
       return {
         error: `"${key}" is not a usable preference key: a name, or "namespace:name"`,

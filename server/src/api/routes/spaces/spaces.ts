@@ -12,6 +12,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { maxWeeklyAITokens } from "#db/space/aiConfig.ts";
 import { findSpaceForToken } from "#db/space/accessTokens.ts";
 import {
   createSpace,
@@ -79,6 +80,12 @@ export const POST: ApiRouteHandler = (context) =>
 
       const validated = validateSpacePreferences(preferences);
       if ("error" in validated) throw badRequestResponse(validated.error);
+      const requestedLimit = validated.preferences?.aiWeeklyTokenLimit;
+      if (requestedLimit && Number(requestedLimit) > maxWeeklyAITokens()) {
+        throw badRequestResponse(
+          `aiWeeklyTokenLimit cannot exceed ${maxWeeklyAITokens()}`,
+        );
+      }
 
       // The two halves go to different stores, here as on the update path: the
       // space's preferences are the space's, a `user:` one is the creator's own.

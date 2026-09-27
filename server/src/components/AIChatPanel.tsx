@@ -11,6 +11,7 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
+import { config } from "#config";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
 import { AIChatMessages, type AIChatMessagesHandle } from "./AIChatMessages.tsx";
@@ -227,8 +228,7 @@ export function AIChatPanel(props: Props) {
   }
 
   const isAgentConfigured = createMemo(() => {
-    const preferences = currentSpace()?.preferences;
-    return !!preferences?.["ai:provider"] && !!preferences?.["ai:model"];
+    return !!currentSpace() && config().AI_ENABLED === "1";
   });
 
   createEffect(

@@ -49,7 +49,7 @@ async function runProfileUpdate(options: {
   sessionMessages: unknown[];
 }): Promise<void> {
   const store = await openSpaceStore(options.spaceId);
-  const provider = await getAIProvider(store);
+  const provider = getAIProvider();
   const currentProfile = await getUserProfile(store, options.userId);
 
   type DisplayMsg = { role: string; content?: string | null };
@@ -74,6 +74,7 @@ async function runProfileUpdate(options: {
     `- Return only the updated profile markdown, no commentary or wrapper text`;
 
   const { message } = await callModel({
+    spaceId: options.spaceId,
     provider,
     messages: [{ role: "user", content: prompt }],
     tools: [],

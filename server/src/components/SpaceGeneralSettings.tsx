@@ -1,5 +1,6 @@
-import { createEffect, createSignal, Show } from "solid-js";
-import { api } from "#api/client.ts";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { type AIUsage, api } from "#api/client.ts";
+import { Permission } from "#acl/permissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { imageFileAsDataUrl } from "#utils/image.ts";
@@ -21,6 +22,18 @@ interface Props {
 
 const VEKTOR_VERSION = import.meta.env.VEKTOR_VERSION;
 
+function formatAIUsage(usage: AIUsage) {
+  const percent = Math.round((usage.used / usage.limit) * 100);
+  return {
+    used: usage.used.toLocaleString(),
+    limit: usage.limit.toLocaleString(),
+    maxLimit: usage.maxLimit.toLocaleString(),
+    remaining: Math.max(0, usage.limit - usage.used).toLocaleString(),
+    percent,
+    progressWidth: `${Math.min(100, (usage.used / usage.limit) * 100)}%`,
+  };
+}
+
 export function SpaceGeneralSettings(props: Props) {
   const { currentSpace, updateSpace } = useSpace();
   const toast = useToast();
@@ -37,6 +50,64 @@ export function SpaceGeneralSettings(props: Props) {
   /** The preference key being written, so its own toggle is the one disabled. */
   const [savingFeature, setSavingFeature] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
+  const [aiUsage, setAIUsage] = createSignal<AIUsage | null>(null);
+  const [weeklyLimit, setWeeklyLimit] = createSignal("");
+  const [savingAILimit, setSavingAILimit] = createSignal(false);
+  const [aiLimitError, setAILimitError] = createSignal<string | null>(null);
+  const aiUsageDisplay = createMemo(() => {
+    const usage = aiUsage();
+    return usage ? formatAIUsage(usage) : null;
+  });
+
+  createEffect(() => {
+    const space = currentSpace();
+    setAIUsage(null);
+    setAILimitError(null);
+    if (!space || space.userRole !== Permission.OWNER) return;
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+    });
+    void api.aiLimit
+      .get(space.id)
+      .then((usage) => {
+        if (cancelled) return;
+        setAIUsage(usage);
+        setWeeklyLimit(String(usage.limit));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAILimitError(err instanceof Error ? err.message : "Failed to load AI usage");
+        }
+      });
+  });
+
+  async function saveAILimit(event: Event) {
+    event.preventDefault();
+    const space = currentSpace();
+    if (!space) return;
+    const limit = Number(weeklyLimit());
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > (aiUsage()?.maxLimit ?? 0)) {
+      setAILimitError(
+        `Enter a limit between 1 and ${aiUsage()?.maxLimit.toLocaleString() ?? "the instance maximum"}.`,
+      );
+      return;
+    }
+    setSavingAILimit(true);
+    setAILimitError(null);
+    try {
+      const usage = await api.aiLimit.put(space.id, limit);
+      if (currentSpace()?.id === space.id) {
+        setAIUsage(usage);
+        setWeeklyLimit(String(usage.limit));
+      }
+      toast.success("Weekly AI limit saved");
+    } catch (err) {
+      setAILimitError(err instanceof Error ? err.message : "Failed to save AI limit");
+    } finally {
+      setSavingAILimit(false);
+    }
+  }
 
   /** A feature toggle saves on its own, rather than waiting for Save Changes. */
   async function saveFeature(
@@ -236,6 +307,109 @@ export function SpaceGeneralSettings(props: Props) {
             />
           </div>
         </section>
+
+        <Show when={currentSpace()?.userRole === Permission.OWNER}>
+          <section class="mt-10">
+            <h2 class="font-semibold text-neutral-900 text-size-large">AI usage</h2>
+            <p class="mt-1 text-neutral-500 text-size-small">
+              Track this space's estimated AI token usage and set its weekly budget.
+            </p>
+            <Show
+              when={aiUsageDisplay()}
+              fallback={
+                <div class="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-neutral-500 text-size-small">
+                  {aiLimitError() ? "Usage is unavailable." : "Loading AI usage…"}
+                </div>
+              }
+            >
+              {(display) => (
+                <div class="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-background shadow-sm">
+                  <div class="p-5 sm:p-6">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p class="font-medium text-neutral-500 text-size-small">
+                          This week
+                        </p>
+                        <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span class="font-semibold text-neutral-900 text-size-display">
+                            {display().used}
+                          </span>
+                          <span class="text-neutral-500 text-size-medium">
+                            / {display().limit} estimated tokens
+                          </span>
+                        </div>
+                      </div>
+                      <span class="rounded-full bg-primary-50 px-3 py-1 font-medium text-primary-700 text-size-small">
+                        {display().percent}% used
+                      </span>
+                    </div>
+
+                    <div
+                      class="mt-5 h-2 w-full overflow-hidden rounded-full bg-neutral-100"
+                      role="progressbar"
+                      aria-label="Weekly AI token usage"
+                      aria-valuemin="0"
+                      aria-valuemax={aiUsage()?.limit ?? 0}
+                      aria-valuenow={Math.min(
+                        aiUsage()?.used ?? 0,
+                        aiUsage()?.limit ?? 0,
+                      )}
+                      aria-valuetext={`${display().used} of ${display().limit} tokens used`}
+                    >
+                      <div
+                        class="h-full rounded-full bg-primary-500 transition-[width] duration-300"
+                        style={{ width: display().progressWidth }}
+                      />
+                    </div>
+                    <div class="mt-2 flex flex-wrap justify-between gap-x-4 text-neutral-500 text-size-small">
+                      <span>{display().remaining} tokens remaining</span>
+                      <span>Resets Monday at 00:00 UTC</span>
+                    </div>
+                  </div>
+
+                  <form
+                    class="flex flex-wrap items-end justify-between gap-4 border-neutral-200 border-t bg-neutral-50 px-5 py-4 sm:px-6"
+                    onSubmit={(event) => void saveAILimit(event)}
+                  >
+                    <div class="min-w-0 flex-1">
+                      <label
+                        for="ai-weekly-limit"
+                        class="block font-medium text-neutral-900 text-size-medium"
+                      >
+                        Weekly token limit
+                      </label>
+                      <p class="mt-0.5 text-neutral-500 text-size-small">
+                        Set up to {display().maxLimit} tokens per week for this space.
+                      </p>
+                    </div>
+                    <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                      <input
+                        id="ai-weekly-limit"
+                        type="number"
+                        min="1"
+                        max={aiUsage()?.maxLimit}
+                        required
+                        value={weeklyLimit()}
+                        onInput={(event) => setWeeklyLimit(event.currentTarget.value)}
+                        class="focus-ring min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-3 py-1.5 text-size-medium sm:w-40 sm:flex-none"
+                      />
+                      <Button
+                        type="submit"
+                        disabled={
+                          savingAILimit() || weeklyLimit() === String(aiUsage()?.limit)
+                        }
+                        text={savingAILimit() ? "Saving…" : "Save limit"}
+                      />
+                    </div>
+                  </form>
+                </div>
+              )}
+            </Show>
+            <Show when={aiLimitError()}>
+              <p class="mt-2 text-red-600 text-size-small">{aiLimitError()}</p>
+            </Show>
+          </section>
+        </Show>
 
         <div class="mt-10">
           <SpaceMembers />

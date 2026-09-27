@@ -1,193 +1,37 @@
-import { eq, inArray } from "drizzle-orm";
 import type { AIProvider } from "#api/provider/types.ts";
-import { many, one } from "#db/client/query.ts";
-import type { SpaceStore } from "#db/client/store.ts";
-import { createId } from "#db/ids.ts";
-import { preference, spaceSecret } from "#db/schema/space.ts";
-import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
-import { spaceSecretKey, spaceSecretNamespaces } from "./spaceSecrets.ts";
 
-/**
- * Space preference keys holding the AI provider config. The provider config is
- * editor-only, but the agent itself is usable by viewers, so the client also
- * checks `ai:provider` / `ai:model` on the space payload it already has
- * (`Space.preferences`) — see `AIChatPanel.tsx`. Keep the literals in sync;
- * they cannot be shared from here without pulling the space DB into the bundle.
- */
-const AI_PROVIDER_KEY = "ai:provider";
-const AI_MODEL_KEY = "ai:model";
-const AI_BASE_URL_KEY = "ai:baseUrl";
-
-const AI_PREF_KEYS = [AI_PROVIDER_KEY, AI_MODEL_KEY, AI_BASE_URL_KEY];
-
-const AI_API_KEY_SECRET = spaceSecretKey(spaceSecretNamespaces.secrets, "ai_api_key");
-
-export async function getAIProvider(s: SpaceStore): Promise<AIProvider> {
-  const prefs = await many(
-    s.db.select().from(preference).where(inArray(preference.key, AI_PREF_KEYS)),
-  );
-
-  const prefMap = Object.fromEntries(prefs.map((p) => [p.key, p.value]));
-  const provider = prefMap[AI_PROVIDER_KEY];
-  const model = prefMap[AI_MODEL_KEY];
-
+/** Provider credentials are supplied once by the instance operator. */
+export function getAIProvider(): AIProvider {
+  const provider = process.env.VEKTOR_AI_PROVIDER?.trim();
+  const model = process.env.VEKTOR_AI_MODEL?.trim();
   if (!provider || !model) {
-    throw new Error(
-      `AI provider not configured for space "${s.spaceId}". Configure it in space settings.`,
-    );
+    throw new Error("AI provider is not configured for this instance.");
   }
-
   if (provider === "ollama") {
-    const baseUrl = prefMap[AI_BASE_URL_KEY];
-    if (!baseUrl) throw new Error("AI config: missing baseUrl for ollama provider");
-    return { provider: "ollama", baseUrl, model };
+    const baseUrl = process.env.VEKTOR_AI_BASE_URL?.trim().replace(/\/+$/, "");
+    if (!baseUrl) throw new Error("VEKTOR_AI_BASE_URL is required for Ollama.");
+    return { provider, model, baseUrl };
   }
-
   if (
     provider === "anthropic" ||
     provider === "openai" ||
     provider === "openrouter" ||
     provider === "opencode-zen"
   ) {
-    const secretRow = await one(
-      s.db
-        .select()
-        .from(spaceSecret)
-        .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
-        .limit(1),
-    );
-
-    if (!secretRow) {
-      throw new Error(
-        `AI config: missing API key for space "${s.spaceId}". Configure it in space settings.`,
-      );
-    }
-
-    const apiKey = decryptSecret({
-      ciphertext: secretRow.ciphertext,
-      iv: secretRow.iv,
-      authTag: secretRow.authTag,
-    });
-
-    return { provider, apiKey, model };
+    const apiKey = process.env.VEKTOR_AI_API_KEY?.trim();
+    if (!apiKey) throw new Error("VEKTOR_AI_API_KEY is required for this AI provider.");
+    return { provider, model, apiKey };
   }
-
-  throw new Error(`AI config: unknown provider "${provider}"`);
+  throw new Error(`Unknown VEKTOR_AI_PROVIDER: ${provider}`);
 }
 
-export async function setAIConfig(
-  s: SpaceStore,
-  config: AIProvider,
-  userId: string,
-): Promise<void> {
-  const now = new Date();
-
-  async function upsertPref(key: string, value: string) {
-    const existing = await one(
-      s.db.select().from(preference).where(eq(preference.key, key)).limit(1),
-    );
-    if (existing) {
-      await s.db
-        .update(preference)
-        .set({ value, updatedAt: now })
-        .where(eq(preference.id, existing.id));
-    } else {
-      await s.db.insert(preference).values({
-        id: createId("preference"),
-        key,
-        value,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
+/** A missing cap defaults to one million estimated tokens per space per week. */
+export function maxWeeklyAITokens(): number {
+  const raw = process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS;
+  if (raw === undefined || raw === "") return 1_000_000;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("VEKTOR_AI_WEEKLY_MAX_TOKENS must be a positive integer.");
   }
-
-  await upsertPref(AI_PROVIDER_KEY, config.provider);
-  await upsertPref(AI_MODEL_KEY, config.model);
-
-  if (config.provider === "ollama") {
-    await upsertPref(AI_BASE_URL_KEY, config.baseUrl);
-    await s.db.delete(spaceSecret).where(eq(spaceSecret.name, AI_API_KEY_SECRET));
-  } else {
-    await s.db.delete(preference).where(eq(preference.key, AI_BASE_URL_KEY));
-
-    const encrypted = encryptSecret(config.apiKey);
-    const existing = await one(
-      s.db
-        .select()
-        .from(spaceSecret)
-        .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
-        .limit(1),
-    );
-
-    if (existing) {
-      await s.db
-        .update(spaceSecret)
-        .set({
-          ciphertext: encrypted.ciphertext,
-          iv: encrypted.iv,
-          authTag: encrypted.authTag,
-          updatedAt: now,
-        })
-        .where(eq(spaceSecret.id, existing.id));
-    } else {
-      await s.db.insert(spaceSecret).values({
-        id: createId("secret"),
-        name: AI_API_KEY_SECRET,
-        description: "AI provider API key",
-        ciphertext: encrypted.ciphertext,
-        iv: encrypted.iv,
-        authTag: encrypted.authTag,
-        createdBy: userId,
-        createdAt: now,
-        updatedAt: now,
-        lastUsedAt: null,
-      });
-    }
-  }
-}
-
-export async function deleteAIConfig(s: SpaceStore): Promise<void> {
-  await s.db.delete(preference).where(inArray(preference.key, AI_PREF_KEYS));
-  await s.db.delete(spaceSecret).where(eq(spaceSecret.name, AI_API_KEY_SECRET));
-}
-
-export type AIConfigMeta =
-  | {
-      configured: false;
-    }
-  | {
-      configured: true;
-      provider: string;
-      model: string;
-      baseUrl?: string;
-      hasApiKey: boolean;
-    };
-
-export async function getAIConfigMeta(s: SpaceStore): Promise<AIConfigMeta> {
-  const prefs = await many(
-    s.db.select().from(preference).where(inArray(preference.key, AI_PREF_KEYS)),
-  );
-
-  const prefMap = Object.fromEntries(prefs.map((p) => [p.key, p.value]));
-
-  if (!prefMap[AI_PROVIDER_KEY] || !prefMap[AI_MODEL_KEY]) {
-    return { configured: false };
-  }
-
-  const secretRow = await one(
-    s.db
-      .select({ name: spaceSecret.name })
-      .from(spaceSecret)
-      .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
-      .limit(1),
-  );
-
-  return {
-    configured: true,
-    provider: prefMap[AI_PROVIDER_KEY],
-    model: prefMap[AI_MODEL_KEY],
-    ...(prefMap[AI_BASE_URL_KEY] ? { baseUrl: prefMap[AI_BASE_URL_KEY] } : {}),
-    hasApiKey: !!secretRow,
-  };
+  return value;
 }

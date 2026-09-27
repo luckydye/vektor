@@ -77,6 +77,7 @@ async function baseline(db: SpaceDb): Promise<void> {
     spaceSchema.auditLog,
     spaceSchema.emailNotificationOutbox,
     spaceSchema.aiChatSession,
+    spaceSchema.aiWeeklyUsage,
     spaceSchema.workflowSchedule,
     spaceSchema.spaceSecret,
     spaceSchema.oauthIntegration,
@@ -166,7 +167,10 @@ async function documentChangeSeq(db: SpaceDb): Promise<void> {
  * index each lookup is a full scan of every document in the space.
  */
 async function documentSlugIndex(db: SpaceDb): Promise<void> {
-  await exec(db, sql.raw("CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)"));
+  await exec(
+    db,
+    sql.raw("CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)"),
+  );
 }
 
 /**
@@ -174,7 +178,18 @@ async function documentSlugIndex(db: SpaceDb): Promise<void> {
  * the table and its history go away.
  */
 async function dropJobRuns(db: SpaceDb): Promise<void> {
-  await run(db, ["DROP INDEX IF EXISTS job_run_queued_at_idx", "DROP TABLE IF EXISTS job_run"]);
+  await run(db, [
+    "DROP INDEX IF EXISTS job_run_queued_at_idx",
+    "DROP TABLE IF EXISTS job_run",
+  ]);
+}
+
+async function aiWeeklyUsage(db: SpaceDb): Promise<void> {
+  await createTables(db, [spaceSchema.aiWeeklyUsage]);
+  await run(db, [
+    "DELETE FROM preference WHERE key IN ('ai:provider', 'ai:model', 'ai:baseUrl')",
+    "DELETE FROM space_secret WHERE name = 'secrets:ai_api_key'",
+  ]);
 }
 
 export const spaceMigrations: Migration[] = [
@@ -182,4 +197,5 @@ export const spaceMigrations: Migration[] = [
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
   { id: 3, name: "document-slug-index", up: documentSlugIndex },
   { id: 4, name: "drop-job-runs", up: dropJobRuns },
+  { id: 5, name: "ai-weekly-usage", up: aiWeeklyUsage },
 ];

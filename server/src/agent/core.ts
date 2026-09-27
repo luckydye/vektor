@@ -13,6 +13,11 @@ import {
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
+import {
+  estimateModelInput,
+  estimateTokens,
+  reserveAITokens,
+} from "#db/space/aiUsage.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
@@ -128,6 +133,7 @@ ${
 }
 
 export async function callModel(options: {
+  spaceId: string;
   provider: AIProvider;
   messages: ChatMessage[];
   tools: unknown[];
@@ -135,6 +141,43 @@ export async function callModel(options: {
   onText?: (text: string) => void | Promise<void>;
   onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
+  const inputTokens = estimateModelInput(options.messages, options.tools);
+  const settle = await reserveAITokens(
+    await openSpaceStore(options.spaceId),
+    inputTokens,
+  );
+  let output = "";
+  let thinking = "";
+  const trackedOptions = {
+    ...options,
+    onText: async (text: string) => {
+      output += text;
+      await options.onText?.(text);
+    },
+    onThinking: async (text: string) => {
+      thinking += text;
+      await options.onThinking?.(text);
+    },
+  };
+  try {
+    const result = await callModelProvider(trackedOptions);
+    await settle(
+      inputTokens +
+        estimateTokens(result.message) +
+        (result.message.thinking ? 0 : estimateTokens(thinking)),
+    );
+    return result;
+  } catch (error) {
+    await settle(
+      output || thinking ? inputTokens + estimateTokens(output + thinking) : 0,
+    );
+    throw error;
+  }
+}
+
+async function callModelProvider(
+  options: Parameters<typeof callModel>[0],
+): ReturnType<typeof callModel> {
   const provider = options.provider;
   if (
     provider.provider === "anthropic" ||
@@ -301,8 +344,7 @@ export async function runAgentPrompt(options: {
     onEvent,
   } = options;
 
-  const provider =
-    options.provider ?? (await getAIProvider(await openSpaceStore(spaceId)));
+  const provider = options.provider ?? getAIProvider();
   const modelCaller = options.modelCaller ?? callModel;
 
   // Resolve document metadata so the system prompt can inline the right
@@ -479,6 +521,7 @@ export async function runAgentPrompt(options: {
 
   while (true) {
     const { message, finishReason } = await modelCaller({
+      spaceId,
       provider,
       messages: agentMessages,
       tools,

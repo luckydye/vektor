@@ -54,7 +54,7 @@ import * as search from "./routes/spaces/search.ts";
 import * as searchRebuild from "./routes/spaces/search-rebuild.ts";
 import * as secret from "./routes/spaces/secret.ts";
 import * as secrets from "./routes/spaces/secrets.ts";
-import * as settingsAiProvider from "./routes/spaces/settings-ai-provider.ts";
+import * as settingsAiLimit from "./routes/spaces/settings-ai-limit.ts";
 import * as shareLink from "./routes/spaces/share-link.ts";
 import * as shareLinks from "./routes/spaces/share-links.ts";
 import * as space from "./routes/spaces/space.ts";
@@ -211,8 +211,8 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/secrets/[name]", module: secret },
 
   {
-    pattern: "/api/v1/spaces/[spaceId]/settings/ai-provider",
-    module: settingsAiProvider,
+    pattern: "/api/v1/spaces/[spaceId]/settings/ai-limit",
+    module: settingsAiLimit,
   },
 
   { pattern: "/api/v1/spaces/[spaceId]/shares", module: shareLinks },
