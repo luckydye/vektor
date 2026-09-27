@@ -215,7 +215,7 @@ export function DatabaseDocumentView(props: Props) {
 
   return (
     <div class="flex h-full min-h-0 flex-1 flex-col">
-      <div class="flex shrink-0 items-center overflow-x-auto px-3xs py-2xs lg:px-s">
+      <div class="flex shrink-0 items-center overflow-x-auto page-spacing py-2xs">
         <div
           role="tablist"
           class="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-neutral-100/75 px-1 py-0.5"
@@ -318,7 +318,7 @@ export function DatabaseDocumentView(props: Props) {
       <div
         ref={panelRef}
         role="tabpanel"
-        class="flex min-h-0 flex-1 flex-col px-3xs lg:px-s"
+        class="flex min-h-0 flex-1 flex-col page-spacing"
       >
         <Show
           when={selectedExtensionView()}

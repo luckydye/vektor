@@ -326,34 +326,30 @@ export function UserPreferencesPanel(props: Props) {
                     {t("Choose how Vektor looks on this device.")}
                   </p>
                 </div>
-                <div class="rounded-lg border border-neutral-200 bg-background p-3">
-                  <fieldset class="mt-3 grid grid-cols-3 gap-3">
-                    <legend class="sr-only">{t("Theme")}</legend>
-                    <For each={themeOptions}>
-                      {(option) => (
-                        <button
-                          type="button"
-                          aria-pressed={themePreference() === option.value}
-                          onClick={() => chooseThemePreference(option.value)}
-                          class="group flex flex-col items-center gap-1.5 rounded-md px-2 py-1 font-medium text-neutral-500 text-size-small transition-colors hover:text-neutral-900"
-                        >
-                          <span
-                            class="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 p-0.5 transition-transform group-hover:scale-105"
-                            classList={{
-                              "ring-2 ring-primary-500 ring-offset-2":
-                                themePreference() === option.value,
-                            }}
-                          >
-                            <span
-                              class={`h-full w-full rounded-full ${option.swatchClass}`}
-                            />
-                          </span>
-                          <span>{t(option.label)}</span>
-                        </button>
-                      )}
-                    </For>
-                  </fieldset>
-                </div>
+                <fieldset class="grid grid-cols-3 gap-2">
+                  <legend class="sr-only">{t("Theme")}</legend>
+                  <For each={themeOptions}>
+                    {(option) => (
+                      <button
+                        type="button"
+                        aria-pressed={themePreference() === option.value}
+                        onClick={() => chooseThemePreference(option.value)}
+                        class="flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 font-medium text-size-small transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        classList={{
+                          "border-neutral-200 bg-background text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900":
+                            themePreference() !== option.value,
+                          "border-primary-500 bg-primary-50 text-foreground":
+                            themePreference() === option.value,
+                        }}
+                      >
+                        <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-neutral-200 p-0.5">
+                          <span class={`h-full w-full rounded-full ${option.swatchClass}`} />
+                        </span>
+                        <span>{t(option.label)}</span>
+                      </button>
+                    )}
+                  </For>
+                </fieldset>
               </section>
 
               <section class="mt-6">
@@ -365,14 +361,11 @@ export function UserPreferencesPanel(props: Props) {
                     {t("Personalize how you appear to collaborators.")}
                   </p>
                 </div>
-                <div class="rounded-lg border border-neutral-200 bg-background p-3">
+                <div class="rounded-lg border border-neutral-200 bg-background p-3 flex justify-start gap-5 items-center">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="font-medium text-foreground text-size-small">
                         {t("Cursor color")}
-                      </p>
-                      <p class="mt-0.5 text-label text-neutral-500">
-                        {t("Used for your presence in shared documents and canvases.")}
                       </p>
                     </div>
                     <Show when={!isAutomaticCursorColor()}>
@@ -389,7 +382,7 @@ export function UserPreferencesPanel(props: Props) {
                     <button
                       slot="trigger"
                       type="button"
-                      class="mt-3 flex w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-background px-3 py-2 text-foreground text-size-medium transition-colors hover:bg-neutral-50"
+                      class="flex w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-background px-3 py-2 text-foreground text-size-medium transition-colors hover:bg-neutral-50"
                       attr:aria-label={t("Cursor color")}
                     >
                       <span class="flex items-center gap-2">

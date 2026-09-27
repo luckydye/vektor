@@ -503,7 +503,7 @@ export function DocumentContent(props: Props) {
 
   return (
     <>
-      <main class="relative mb-30">
+      <main class="relative mb-30 px-3">
         <Show when={supportsRichTextDocument()}>
           <div classList={{ "h-full": editing() }}>
             <document-view

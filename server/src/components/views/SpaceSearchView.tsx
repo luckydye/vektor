@@ -12,7 +12,7 @@ export function SpaceSearchView() {
   return (
     <Show when={currentSpace()}>
       {(space) => (
-        <inset-view class="block h-full px-xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:px-m lg:pb-8 print:px-0">
+        <inset-view class="block h-full page-spacing pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:pb-8">
           <Search spaceId={space().id} />
         </inset-view>
       )}

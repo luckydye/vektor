@@ -487,7 +487,7 @@ export function DocumentPageView(props: Props) {
       class={twMerge(
         // Above the details block below it, which raises itself to z-20 for
         // its popovers and would otherwise scroll over this sticky bar.
-        "sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 px-3xs py-3xs md:px-s",
+        "sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 py-3xs page-spacing",
         !transparent && "border-neutral-50 border-b bg-neutral-10",
       )}
     >
@@ -518,7 +518,7 @@ export function DocumentPageView(props: Props) {
       >
         <inset-view
           class={twMerge(
-            "flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-s print:px-0",
+            "flex flex-row justify-between gap-6 page-spacing py-3xs md:gap-4",
             !transparent && "bg-neutral-10",
           )}
         >
@@ -526,7 +526,7 @@ export function DocumentPageView(props: Props) {
         </inset-view>
         <inset-view
           id="document-properties"
-          class="mb-xl block px-3xs md:px-s print:px-0"
+          class="mb-xl block page-spacing"
         >
           {documentPropertiesBlock(layout)}
         </inset-view>
@@ -701,7 +701,7 @@ export function DocumentPageView(props: Props) {
                         isFullHeightView()
                           ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                           : "h-full overflow-x-auto",
-                        isPaddedDocument() && "px-3xs md:px-s print:px-0",
+                        isPaddedDocument() && "page-spacing",
                       )}
                     >
                       <Show
@@ -737,7 +737,7 @@ export function DocumentPageView(props: Props) {
                     </div>
 
                     <Show when={!isDraft() && !editing() && isRegularDocument()}>
-                      <inset-view class="mt-2xs flex items-center justify-end px-3xs md:px-s print:px-0">
+                      <inset-view class="mt-2xs flex items-center justify-end page-spacing">
                         <Show when={doc()?.updatedAt}>
                           <div class="flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
                             <Show when={hasMounted() && updatedAtStr()}>
