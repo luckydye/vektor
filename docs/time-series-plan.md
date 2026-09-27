@@ -23,7 +23,8 @@ holds lives under one prefix in the S3 or local-filesystem adapter behind
 `#files/storage.ts`, in immutable objects whose key names carry what an index
 would otherwise have said. There is no chunk index and no point rows.
 
-One table describes what series exist. The line it draws:
+One table describes what series exist, and a second records which were deleted.
+The line they draw:
 
 > The database may hold what a series **is**. It may never hold what a series
 > **contains**.
@@ -52,7 +53,9 @@ exchange:
 - Nothing can drift. A chunk index in SQLite is a second copy of a fact that
   the storage layout already states, and every crash between the two writes is
   a reconciliation path to design, test and get wrong.
-- Retention is a prefix delete, not a million row deletes plus object deletes.
+- Retention is a listing and a per-key `delete` over a bounded, known set of
+  window prefixes, not a million row deletes plus object deletes. The adapter
+  has no prefix delete; `deleteAll` is space-wide.
 - A space's purge already works: `deleteAll` removes every prefix a space stores
   under, and `purgeExpiredSpaces` calls it.
 
@@ -80,7 +83,7 @@ have said.
 
 A GPS fix, a workflow log line and a device reading are all the same thing on
 the way in — an event — and they only become different things when the sink
-decides which series each belongs to. `app/src/events/bus.ts` is that middle,
+decides which series each belongs to. `server/src/events/bus.ts` is that middle,
 and it is about a hundred lines:
 
 ```ts
@@ -131,22 +134,27 @@ unbounded series names, and here that means unbounded prefixes. A producer
 chooses what it is saying, not where it is stored.
 
 **The bus is in-process, and it is not durable.** It is the same shape as
-`#realtime/events.ts` — a `Set` of listeners, fanned out synchronously — for the
-same reason: the durable copy is somewhere else, so losing this costs a resync
-and never a fact. An event is acknowledged to its writer when the **sink has
-appended it**, not when it reached the bus, which is what keeps "the stream is
-lossy" from ever meaning "a point was lost". A subscriber that cannot keep up is
-dropped rather than allowed to block ingest, and it says so in the log.
+`#realtime/events.ts` — a `Set` of listeners — for the same reason: the durable
+copy is somewhere else. An event is **durable when the sink has appended it**,
+and not before: `POST /events` returns once the batch is on the bus, so a crash
+loses at most one flush interval. A producer that needs an acknowledgement of
+durability posts to `points` instead.
+
+Delivery is synchronous into each subscriber's own bounded buffer, which the
+subscriber drains asynchronously, so a publish never waits on a subscriber's
+work. A full buffer unsubscribes that subscriber and logs it — except the
+sink's, which refuses the publish instead (`POST /events` answers 503), because
+dropping the sink would drop points silently.
 
 **Nothing subscribes in order to write to a second place.** The sink is the only
-subscriber that persists anything. Everything else — realtime fan-out, and
-whatever monitoring wants next — is read-only on the stream. Two writers on one
+subscriber that persists anything. Everything else — whatever monitoring wants
+next — is read-only on the stream. Two writers on one
 bus is how a bus turns into an orchestrator that has to guarantee ordering
 between them, and that is a much larger design than this one.
 
 ### The sink
 
-`app/src/events/sink.ts` is the only thing that turns events into points. It
+`server/src/events/sink.ts` is the only thing that turns events into points. It
 subscribes with an empty filter, groups a flush by series, and calls
 `appendPoints` once per series — so a batch spanning three series is three
 appends and a batch spanning one is one, which is the batching the storage layer
@@ -155,7 +163,10 @@ comes first.
 
 The sink is where two facts that were previously spread across every producer
 now live exactly once: the flush interval is the durability window for
-*everything*, and the append is the acknowledgement. A producer that needs a
+*everything*, and the append is the moment of durability. After each append
+returns, the sink publishes the `{ kind: "series" }` realtime change from its
+`{ latestTs, count }` — after, so a client refetching on the notification finds
+the points already there. A producer that needs a
 stronger guarantee than "at most one interval" calls the append route directly
 and takes the round trip; nothing does today.
 
@@ -177,8 +188,8 @@ as an occasional log line would make every one of them worse.
 
 ## The module boundary
 
-Two modules, stacked, each with one job. `app/src/events/` is the stream;
-`app/src/series/` is the storage engine. Above them, the API routes; below them,
+Two modules, stacked, each with one job. `server/src/events/` is the stream;
+`server/src/series/` is the storage engine. Above them, the API routes; below them,
 the storage adapter. Neither is a shared utility and nothing else in the
 codebase reaches into either.
 
@@ -198,12 +209,12 @@ noticing.
 its evaluator, `#config`, `#observability/logger.ts`. The bus itself imports
 nothing else at all — it is a `Set` of listeners and a filter. The sink adds
 `#series/store.ts`, and that is the only place in the codebase where an event
-becomes a point.
+becomes a point, and `#realtime/events.ts` to announce each append it made.
 
-**What may import `#events/`.** The ingest route, the realtime fan-out, and the
-sink's own entrypoint. A producer publishes; it does not subscribe.
+**What may import `#events/`.** The ingest route and the sink's own
+entrypoint. A producer publishes; it does not subscribe.
 
-**Enforced, not just documented.** `app/test/egress-call-sites.spec.ts` already
+**Enforced, not just documented.** `server/test/egress-call-sites.spec.ts` already
 does exactly this for server-side `fetch` — an inventory keyed by file, with a
 `why` for each entry, that fails when a new call site appears. A sibling spec
 takes the inventory of files importing `#series/` and `#events/`, so a new
@@ -219,12 +230,14 @@ front rather than treat it as tidiness:
   is no other way in.
 - **The storage module reports what changed and tells nobody.**
   `appendPoints` returns `{ latestTs, count }` and emits nothing. Audiences are
-  a product decision, and the engine has no opinion about audiences — the bus
-  is where that decision is made, once, for every kind of event.
+  a product decision, and the engine has no opinion about audiences — the
+  caller of `appendPoints` (the sink, or the `points` route) announces it, after
+  the append returns.
 
-The `series` table is the module's own. No other repository selects from it or
-joins against it; the only reference across the line is its `document_id`
-foreign key, which points outward and is read by nothing but the cascade.
+The `series` and `series_deleted` tables are the module's own. No other
+repository selects from them or joins against them; the only reference across
+the line is `series.document_id`, a foreign key which points outward and is read
+by nothing but the cascade.
 
 ## Layout
 
@@ -273,6 +286,12 @@ costs nothing extra. Naming them explicitly, rather than inferring "everything
 at or below my watermark", is what makes a segment that becomes visible late
 safe: it is not in the set, so it is still read.
 
+The list is **cumulative**: a new chunk names what the chunk it replaces named,
+plus the segments it absorbed itself, trimmed to keys still present in the
+listing it compacted from. Naming only this round's segments would read the
+previous round's twice until they were collected. Trimming is safe because a
+key missing from that listing has already been deleted and cannot reappear.
+
 **3. Compaction is single-writer, and never deletes.** The claim is one row
 update — `UPDATE series SET compacting_at = ? WHERE name = ? AND (compacting_at
 IS NULL OR compacting_at < ?)`, read back to confirm it is ours: the
@@ -282,18 +301,36 @@ forever. A claim is coordination, not data — dropping the column loses nothing
 Compaction then reads the window's current chunk and its live segments, writes
 `c-{watermark}` with `ifNoneMatch`, and stops.
 
-Deleting what the new chunk absorbed is the sweep's job, once those objects are
-past a grace period. That is not tidiness, it is what removes the last race in
+Deleting what the new chunk superseded — the chunk it replaced and the segments
+it names — waits out a grace period **counted from the new chunk's
+`updatedAt`**, the moment those objects became garbage. Their own `updatedAt`
+says nothing: a segment written an hour ago and absorbed a second ago is still
+being fetched by any reader that listed the window a second ago. That is not tidiness, it is what removes the last race in
 the design: a reader that has just listed a window would otherwise find segments
 deleted underneath it before it could fetch them, and the only repair would be
 treating a 404 mid-read as "compaction happened, start again". With a grace
 period longer than any read, a listed object is still there when the read
 reaches it.
 
+The deletion is scheduled in-process once the chunk is written — the
+`SUPERSEDED_GRACE_MS` timer `#git/publish.ts` uses — and repeated by the next
+compaction of the same window, which lists it anyway. A process that dies
+inside the grace period leaves garbage that costs storage until then, or until
+retention deletes the window, and never a wrong read. There is no sweep that
+lists a whole series looking for leftovers.
+
 Everything a crash can leave behind reads correctly under rule 2: an abandoned
 chunk with a lower watermark loses to the live one, and segments the winning
-chunk names are skipped whether or not they have been collected yet. Nothing is
-ever acknowledged to a writer and then lost, and no point is ever read twice.
+chunk names are skipped whether or not they have been collected yet. Nothing
+acknowledged as durable is ever lost, and no point is ever read twice.
+
+**One order, whatever the representation.** Points are ordered by event time,
+then by source segment (`{arrival}-{uuid}`, which sorts lexically), then by
+index within that segment. A chunk stores its points in that order and keeps
+each point's source segment and index, so a window reads in the same order
+before compaction, after it, and after a second one. Without the tie-break,
+equal timestamps from two segments would come out in whichever order the
+merge met them.
 
 **Late points need no special case.** A point whose event time falls in a window
 that was compacted long ago arrives with a *new* arrival stamp, becomes a
@@ -336,7 +373,7 @@ The header:
     // Neither: no equality pruning, and the planner knows it.
     "message": { "type": "string", "nulls": 0 }
   },
-  "subsumes": ["s-000…-a1b2"] // chunks only: the segments absorbed
+  "subsumes": ["s-000…-a1b2"] // chunks only: every segment absorbed, cumulatively
 }
 ```
 
@@ -346,6 +383,11 @@ The body:
 {
   "t0": 1764547200000,        // first event timestamp, absolute
   "dt": [0, 1000, 1000, 999], // deltas from the previous point
+  // Chunks only: each point's source segment (an index into `segments`) and
+  // its index there — the tie-break that keeps order stable across compaction.
+  "segments": ["000…-a1b2", "000…-c3d4"],
+  "src": [0, 0, 1, 0],
+  "idx": [0, 1, 0, 2],
   "columns": {                // one array per field seen, nulls where absent
     "speed": [0, 4.2, 11.9],
     // A column with a `values` set is dictionary-encoded: indices into it.
@@ -405,7 +447,7 @@ of the body. The header, the frame and everything reading them stay as they are.
 
 ## The `series` table
 
-The one table, added by migration `3`. One row per stream, so it grows with
+Two tables, added by migration `6`. One row per stream, so they grow with
 streams and not with points.
 
 ```ts
@@ -443,7 +485,27 @@ export const series = sqliteTable(
   },
   (t) => [index("series_document_id_idx").on(t.documentId)],
 );
+
+/** A series whose row is gone and whose objects are not yet. */
+export const seriesDeleted = sqliteTable("series_deleted", {
+  name: text("name").primaryKey(),
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }).notNull(),
+});
 ```
+
+The migration also creates the one trigger that fills it:
+
+```sql
+CREATE TRIGGER series_deleted_on_delete AFTER DELETE ON series BEGIN
+  INSERT OR REPLACE INTO series_deleted (name, deleted_at)
+  VALUES (old.name, unixepoch('subsec') * 1000);
+END
+```
+
+A trigger, not application code, because the cascade from `document` deletes
+series rows without any series code running, and the tombstone has to be
+written in the same transaction as the delete that caused it. Declaring a name
+again removes its tombstone before the row is inserted.
 
 `name` is the primary key rather than a generated id, because the name *is* the
 prefix: an id to rename around would imply a rename, and renaming a series means
@@ -464,6 +526,14 @@ and window, so a recovery command can walk the prefixes and re-declare what it
 finds with default policy. That is the price of not keeping a second copy of the
 declaration in storage, and it is the cheaper side of the trade.
 
+**Objects are deleted only on a tombstone, never on a missing row.** A database
+restored from a backup older than its storage has neither the rows nor the
+tombstones for the series declared since, and a sweep that treated "no row" as
+garbage would delete exactly the points recovery exists to save. The cost of
+the rule is the opposite case: a series deleted after the backup was taken has
+no tombstone in the restored database, so recovery re-declares it, and it has to
+be deleted again.
+
 ## Reads
 
 `readSeriesPoints(store, name, { from, to, where, limit, cursor })` — the raw
@@ -474,8 +544,8 @@ points, in event order:
 2. For each, `list` the window prefix, pick the chunk with the greatest
    watermark, and read it plus every segment it does not name — the windows
    fetched concurrently, since they do not depend on each other.
-3. Merge by event timestamp, apply the same `where` predicates the aggregate
-   query uses, and page.
+3. Merge in the order rule 2 defines — event time, source segment, index —
+   apply the same `where` predicates the aggregate query uses, and page.
 
 Predicates are shared with `## Querying` deliberately: a log panel filtering to
 `level = "error"` and a chart counting errors per minute should not be able to
@@ -486,8 +556,11 @@ Steps 2 and 3 read no row: the row is consulted once, before them, for
 storage, so the number of points a series holds has no bearing on how much
 database work a read does — which is the property the whole layout exists for.
 
-The cursor is the existing `encodeSeekCursor` with a string id — `{objectKey}:{offset}` — so a page boundary is exact wherever it falls, including
-inside an object.
+The cursor is the existing `encodeSeekCursor` over the last point's position
+in that order: `t` is its event time and the id is `{arrival}-{uuid}:{index}`,
+its source segment and index there. It names a point, not an object, so a page
+boundary stays exact when the segment it fell in has since been compacted into a
+chunk and swept.
 
 Objects are immutable, so an LRU of decoded objects keyed by storage key needs
 no invalidation at all; it is capped by decoded bytes. A window's *listing* is
@@ -656,16 +729,21 @@ expired since the last prune. The expired windows are computed from the clock
 and `retentionDays`, so pruning never lists a series' history; it lists and
 deletes a bounded, known set of window prefixes.
 
-`recoverSeries(store)` — walk `series/` and re-declare any name with no row,
-taking `windowSeconds` from an object's header and the rest from defaults. Not
+`recoverSeries(store)` — walk `series/` and re-declare any name with neither a
+row nor a tombstone, taking `windowSeconds` from an object's header and the rest
+from defaults. Not
 on any hot path: it is what the CLI runs after a database is restored from a
-backup older than its storage, and what the truncate test exercises.
+backup older than its storage, and what the restore test exercises.
 
-`sweepSeries(store, name)` — modelled on `sweepOrphanedPacks`: within a
-window, delete the chunks that lose to the winner and the segments the winner
-names. Skips anything whose `updatedAt` is inside the grace period, so neither
-an object being written right now nor one a reader is mid-fetch on is ever taken
-for a leak.
+`collectWindow(store, name, window)` — modelled on `sweepOrphanedPacks`:
+delete the chunks that lose to the winner and the segments the winner names,
+once the **winner's** `updatedAt` is past the grace period (rule 3). Scheduled
+after each compaction and run again by the next compaction of that window;
+never called by listing a series to find work.
+
+`purgeDeletedSeries(store)` — for each tombstone, list and delete that name's
+prefix, then drop the tombstone. The listing is of one deleted series, so its
+cost is that series' size, paid once.
 
 ## What the table is for
 
@@ -675,8 +753,8 @@ something storage already says:
 - **Ownership.** `documentId` with `onDelete: "cascade"`. The row goes when its
   document does, which is the entire cleanup story: no delete hook to write, no
   sweep reconciling declarations against documents that no longer exist. The
-  objects are then collected by the sweep, which deletes the prefix of a name
-  that has no row.
+  trigger records a tombstone in the same transaction, and `purgeDeletedSeries`
+  deletes the objects on the next tick.
 - **Access control.** A series with a `documentId` is governed by that document:
   `verifyAccess(… ResourceType.DOCUMENT …)`, which walks the `parent_id` chain,
   so a child document inherits its parent's grants. Without one, the space's own
@@ -698,10 +776,11 @@ cosmetic when wrong.
 
 ## Realtime
 
-Realtime is a bus subscriber, and the only one besides the sink. It is not a
-producer, and no route emits a series change of its own — which is the property
-that makes a new kind of event show up in every view that wants it without
-anyone wiring it there.
+Realtime is not a bus subscriber. A change is published by whoever called
+`appendPoints` — the sink, or the `points` route — once the append has returned,
+so a notification never arrives before the points it announces. Two callers,
+one helper building the change from the `{ latestTs, count }` the append
+returned, and every write path is live without a producer wiring it.
 
 `SpaceChange` gains one variant in `#realtime/changes.ts`:
 
@@ -768,10 +847,10 @@ the bus, which is *not* when it is durable; a producer that needs the stronger
 answer posts to `points` instead and waits for the append. Both routes exist on
 purpose, and the difference between them is one sentence in each one's JSDoc.
 
-`POST .../points` stays as the direct, durable path, and it does not go through
-the bus — which means it emits no realtime change and reaches no subscriber. It
-is the escape hatch, not the front door, and the one place worth checking when a
-write lands in storage and nothing lights up.
+`POST .../points` stays as the direct, durable path. It does not go through the
+bus, so no bus subscriber sees it, but it publishes the same realtime change as
+the sink after its append returns — a device posting here is as live as one
+posting to `/events`.
 
 `query` is a `POST` because its request is a structured object, not because it
 changes anything: it is idempotent and safe to retry, and it is not
@@ -783,7 +862,7 @@ the server.
 The append route authenticates through `authenticateJobTokenOrSpaceRole`, so a
 workflow's job token and a device's space access token both reach it, and it
 goes through the existing `apiRateLimiter`. Every new route needs its row in
-`app/test/snapshots/route-access.md`, which snapshots the access matrix for
+`server/test/output/route-access.md`, which snapshots the access matrix for
 every registered route.
 
 Chunks and segments are never served directly, and `redirectUrl` is never used
@@ -801,16 +880,19 @@ non-zero:
 
 - **Compact** windows that have closed, or that have more than
   `compactAfterSegments` segments (on the tick's own cadence).
-- **Prune and sweep** hourly: expired windows first, then the garbage collector.
+- **Prune and purge** hourly: expired windows first, then the prefixes of
+  tombstoned series.
 
 Discovering what to compact is one query per space — the series whose
 `lastAppendAt` is past their `lastCompactedAt` — plus one listing per candidate
 window. An idle series costs nothing, which is the point of keeping those two
 timestamps.
 
-The sweep also deletes the prefix of any name that has no row, which is how a
-series whose owning document was deleted loses its objects: the cascade takes
-the row, and the next sweep takes the bytes.
+A series whose owning document was deleted loses its objects the same way:
+the cascade takes the row, the trigger leaves a tombstone, and the next tick
+takes the bytes. Superseded chunks and segments are not the tick's job — the
+compaction that superseded them collects them (rule 3) — so no step lists an
+idle series, and an idle series costs nothing.
 
 ## Clients
 
@@ -852,8 +934,8 @@ In `#config`, beside the existing budgets:
   and therefore the durability window for everything on the bus; `1000`.
 - `VEKTOR_EVENTS_FLUSH_POINTS` — events the sink holds before appending early;
   `500`.
-- `VEKTOR_EVENTS_SUBSCRIBER_QUEUE` — events a slow subscriber may fall behind
-  before it is dropped; `10_000`.
+- `VEKTOR_EVENTS_SUBSCRIBER_QUEUE` — events a subscriber's buffer holds before
+  it is unsubscribed, or, for the sink, before publishes are refused; `10_000`.
 - `VEKTOR_WORKFLOW_LOG_RETENTION_DAYS` — the window a run's log series is
   declared with; `30`.
 
@@ -886,15 +968,15 @@ One series per run, declared over the API — `POST /series`, which is idempoten
 by name, so a retry is harmless. It cannot be part of `createRun`'s transaction,
 because an HTTP request is not: the run document is inserted, then the series is
 declared. A run whose declare never succeeded logs nothing until the next
-attempt, and if it is deleted first the row cascades away and the sweep takes
-whatever objects existed. The declaration:
+attempt, and if it is deleted first the row cascades away and its tombstone
+takes whatever objects existed. The declaration:
 
 - `name`: `workflow-run:{runId}`
 - `kind`: `log`
 - `documentId`: the run document, so ACL resolves through the `parent_id` walk
   to the workflow document's grants — the same verdict the run route reaches
   today by checking `run.documentId` — and so deleting the run cascades the row
-  away and the next sweep takes its objects, `clearRunStoreForTests` included.
+  away and the next tick purges its objects, `clearRunStoreForTests` included.
   It is also what authorises the writes: a job token scoped to the run reaches
   the append route as an ordinary `authenticateJobTokenOrSpaceRole` caller.
 - `windowSeconds` short, and `compactAfterSegments` low: a run is minutes, and
@@ -941,9 +1023,9 @@ worth naming rather than discovering: a crash loses at most the sum of the two,
 where today it loses every line the run ever wrote. `finalizeRun` posts its last
 batch and the sink flushes on shutdown, so an orderly end loses nothing.
 
-Liveness comes for free: the bus produces the `{ kind: "series" }` change for
-this writer exactly as for any other, so `appendRunLog` stops emitting anything
-itself.
+Liveness comes for free: the sink publishes the `{ kind: "series" }` change
+after appending this writer's batch exactly as for any other, so `appendRunLog`
+stops emitting anything itself.
 
 ### Reads move to the client
 
@@ -985,27 +1067,28 @@ what it already does for every other capability.
 
 ## Order of work
 
-1. `app/src/series/format.ts` — the frame, the header with its statistics, the
+1. `server/src/series/format.ts` — the frame, the header with its statistics, the
    columnar body, key naming — with its round-trip test, before anything
    depends on it. The header-only read is part of this step, not an
    afterthought: everything else is built on being able to judge an object
    without fetching it.
-2. The `series` table and migration `3` (one `createTables` call and nothing to
-   backfill), with its reads and writes in `app/src/series/declarations.ts` —
+2. The `series` table and migration `6` (one `createTables` call and nothing to
+   backfill), with its reads and writes in `server/src/series/declarations.ts` —
    inside the module, not in `#db/space/` beside the repositories other things
    share. The schema definition itself stays in `#db/schema/space.ts`, because
    that is where the migrator looks; it is the one thing about this module that
    is declared outside it, and it points one way.
-3. `app/src/series/store.ts` — append, read, the decoded-object cache. No
+3. `server/src/series/store.ts` — append, read, the decoded-object cache. No
    compaction yet: rule 2 reads a window of pure segments correctly, which is
    what makes it safe to land first.
-4. Compaction, prune and sweep, then their due-checks on the tick.
-5. `app/src/series/query.ts` — predicates as column masks, the mergeable
+4. Compaction with its window collection, prune and tombstone purge, then
+   their due-checks on the tick.
+5. `server/src/series/query.ts` — predicates as column masks, the mergeable
    aggregates, bucketing, and the planner: prune by header, refuse by count,
    decode the rest. Pure functions over decoded objects, with the planner the
    only part that touches storage. Before the bus, because the bus imports the
    predicate type and its evaluator from here and must not grow its own.
-6. `app/src/events/` — the bus, then the sink. Small enough to land together,
+6. `server/src/events/` — the bus, then the sink. Small enough to land together,
    and the sink is what makes the bus testable end to end.
 7. Routes — `/events`, `points`, and the declaration endpoints — the
    `SpaceChange` variant published from the bus, the two realtime topics, the
@@ -1019,7 +1102,7 @@ what it already does for every other capability.
 
 ## Integration test
 
-`app/test/series.spec.ts`, at the level the repo tests at — route in, JSON out,
+`server/test/series.spec.ts`, at the level the repo tests at — route in, JSON out,
 with a real storage adapter behind it. The invariant every case exists to
 protect is that **a range reads identically whatever state its objects are in**:
 
@@ -1031,20 +1114,31 @@ protect is that **a range reads identically whatever state its objects are in**:
   again: it appears, and the window compacts a second time without losing it.
 - Simulate the crash windows directly, since they are the design's real risk:
   a chunk written but nothing deleted (extra chunk, undeleted segments) reads
-  identically, and the sweep then removes exactly the garbage; a claim left
-  behind by a dead process blocks compaction only until its TTL passes.
-- Page a range across a boundary inside one object and across two objects.
+  identically, and the next compaction of that window removes exactly the
+  garbage once the winning chunk is past the grace period; a claim left behind
+  by a dead process blocks compaction only until its TTL passes.
+- A reader that lists a window, then a compaction of it, then the reader's
+  fetches: every listed object is still there, including segments that were
+  written long before the compaction absorbed them.
+- Compact a window, append a late point, compact again: the second chunk names
+  every segment the first did that is still listed, and the range reads each
+  point once.
+- Points with equal timestamps from several segments read in the same order
+  before compaction, after it, and after a second one.
+- Page a range across a boundary inside one object and across two objects,
+  then compact and collect the window between two pages: the second page continues exactly
+  where the first ended.
 - Assert a point for an undeclared series is refused, and that a viewer cannot
   append.
 - Assert prune deletes the expired windows and leaves the live ones, and that
-  deleting the owning document takes the row by cascade and the prefix on the
-  next sweep.
+  deleting the owning document takes the row by cascade, leaves a tombstone,
+  and the prefix goes on the next tick.
 The boundary gets its own spec, in the shape of `egress-call-sites.spec.ts`: an
 inventory of the files importing `#series/` and `#events/`, each with a `why`,
 failing when a new one appears. It is a cheap test and it is the only thing that
 keeps the modules modules a year from now.
 
-`app/test/events.spec.ts` covers the stream, and its cases are about the seam
+`server/test/events.spec.ts` covers the stream, and its cases are about the seam
 rather than the storage:
 
 - **The same filter, live and at rest.** Publish a mixed batch — a GPS fix, two
@@ -1058,12 +1152,14 @@ rather than the storage:
   the batch is refused with it — a partially accepted batch is a worse answer
   than a rejected one, because a producer cannot tell which half it has to
   resend.
-- A slow subscriber past `VEKTOR_EVENTS_SUBSCRIBER_QUEUE` is dropped, the
-  publish still returns, and the sink is unaffected. The sink is asserted to be
-  undroppable.
-- Nothing is acknowledged before it is durable: a publish that returns, followed
-  by a simulated restart before the sink's flush, may lose events — and a
-  `points` append that returns, followed by the same restart, may not.
+- A slow subscriber past `VEKTOR_EVENTS_SUBSCRIBER_QUEUE` is unsubscribed, the
+  publish still returns, and the sink is unaffected. A sink whose buffer is full
+  makes `POST /events` answer 503 instead of dropping anything.
+- Only `points` acknowledges durability: a publish that returns, followed by a
+  simulated restart before the sink's flush, may lose events — and a `points`
+  append that returns, followed by the same restart, may not.
+- The `{ kind: "series" }` change for an append arrives only once a range read
+  returns its points, for both the sink and the `points` route.
 - A viewer may subscribe to a series topic for a document it can read, may not
   for one it cannot, and may not subscribe to `space:events` without a space
   role.
@@ -1095,11 +1191,13 @@ Then the query path, where the risk is an optimisation that changes an answer:
 - Once rollups land: the same query answered from rollups and from raw chunks
   returns identical rows, and `scanned.source` distinguishes them.
 
-- **Delete every row in `series`, run the recovery command, and assert the same
-  range reads identically.** This is the rule from the top of this document as a
+- **Restore the space database from a snapshot taken before the series were
+  declared, run a full tick, run the recovery command, and assert the same range
+  reads identically.** This is the rule from the top of this document as a
   test: the objects hold every point and enough header to re-declare the series
-  they belong to. If it ever stops passing, something has put a fact only the
-  database knows into the read path.
+  they belong to, and the tick between restore and recovery is what proves a
+  missing row is never treated as garbage. If it ever stops passing, something
+  has put a fact only the database knows into the read path.
 
 For the run logs, `workflow.spec.ts` and `jobs.spec.ts` keep asserting on the
 same log lines, read from the series endpoint rather than the run response —
