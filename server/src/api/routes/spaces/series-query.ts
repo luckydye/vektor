@@ -7,7 +7,8 @@ import { requireSeriesAccess, seriesErrorResponse } from "./seriesAccess.ts";
 /**
  * Aggregate a series
  *
- * Buckets `[from, to)` by `every` ms and optionally `groupBy` a column. The
+ * Buckets `[from, to)` by `every` ms and optionally `groupBy` a column; points
+ * are narrowed by `filter` terms (`level:error speed:>30`) and/or `where`. The
  * response reports what was scanned and what header statistics pruned.
  *
  * @tag Series

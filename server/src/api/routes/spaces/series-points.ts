@@ -9,6 +9,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { ingestPoints } from "#events/events.ts";
+import { parseSeriesFilter } from "#series/filter.ts";
 import { SeriesInputError } from "#series/limits.ts";
 import { parsePredicates } from "#series/predicates.ts";
 import { readSeriesPoints } from "#series/store.ts";
@@ -39,7 +40,8 @@ export const POST: ApiRouteHandler = (context) =>
 /**
  * Read a series' points in `[from, to)`
  *
- * `where` is a JSON-encoded predicate array. Pages follow a cursor that names a
+ * `filter` takes `key:value` terms (`level:error speed:>30`), `where` the same
+ * as a JSON predicate array; both are ANDed. Pages follow a cursor that names a
  * point, so paging stays stable across compaction.
  *
  * @tag Series
@@ -47,6 +49,7 @@ export const POST: ApiRouteHandler = (context) =>
  * @param name Series name.
  * @query from!:integer Range start, ms, inclusive.
  * @query to!:integer Range end, ms, exclusive.
+ * @query filter Terms like `level:error -host:a speed:>=30 msg:*timeout* id:*`.
  * @query where JSON-encoded predicate array.
  * @paginated
  */
@@ -70,7 +73,10 @@ export const GET: ApiRouteHandler = (context) =>
       const page = await readSeriesPoints(store, series.name, {
         from,
         to,
-        where: parsePredicates(where),
+        where: [
+          ...parsePredicates(where),
+          ...parseSeriesFilter(params.get("filter") ?? ""),
+        ],
         limit,
         cursor,
       });

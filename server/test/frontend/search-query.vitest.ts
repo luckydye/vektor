@@ -52,6 +52,16 @@ describe("parseSearchQuery", () => {
     expect(parseSearchQuery("(status:open").filters).toEqual([]);
   });
 
+  it("paints terms search cannot apply instead of dropping them", () => {
+    const parsed = parseSearchQuery("-status:open size:>3 status:a,b notes");
+    expect(parsed.filters).toEqual([]);
+    expect(parsed.unsupported).toEqual(["-status:open", "size:>3", "status:a,b"]);
+    expect(parsed.text).toBe("notes");
+    expect(new Set(parsed.segments.filter((s) => s.kind !== "text").map((s) => s.kind))).toEqual(
+      new Set(["unsupported"]),
+    );
+  });
+
   it("covers the whole input with segments, in order", () => {
     const raw = "status:open release";
     const parsed = parseSearchQuery(raw);

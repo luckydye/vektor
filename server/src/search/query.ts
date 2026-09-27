@@ -4,11 +4,15 @@ import {
   DATE_FILTER_KEY,
   DOCUMENT_TYPE_FILTER_KEY,
 } from "#documents/properties.ts";
+import { parseQueryLanguage } from "#utils/queryLanguage.ts";
 
-/** A stretch of the raw query, in input order, for the highlighter to paint. */
+/**
+ * A stretch of the raw query, in input order, for the highlighter to paint.
+ * `unsupported` is a well-formed term search cannot apply yet.
+ */
 export interface QuerySegment {
   text: string;
-  kind: "text" | "key" | "separator" | "value";
+  kind: "text" | "key" | "separator" | "value" | "unsupported";
 }
 
 export interface ParsedQuery {
@@ -16,6 +20,8 @@ export interface ParsedQuery {
   text: string;
   filters: PropertyFilter[];
   segments: QuerySegment[];
+  /** Terms search cannot apply, e.g. comparisons; shown, never silently dropped. */
+  unsupported: string[];
 }
 
 /**
@@ -27,12 +33,6 @@ const KEY_ALIASES: Record<string, string> = {
   modified: DATE_FILTER_KEY,
 };
 
-/** The value that matches any document carrying the property at all. */
-const ANY_VALUE = "*";
-
-/** `key:value`, the value optionally quoted so it can hold spaces. */
-const FILTER_TERM = /([A-Za-z_][A-Za-z0-9_.-]*)(:)("[^"]*"?|'[^']*'?|\S*)/g;
-
 function unquote(value: string): string {
   const quote = value[0];
   if (quote !== '"' && quote !== "'") return value;
@@ -42,55 +42,33 @@ function unquote(value: string): string {
 
 /**
  * Split a raw search box input into its full-text part and its `key:value`
- * filters, plus the segments the box paints to tell one from the other.
+ * filters (`docs/query-language.md`), plus the segments the box paints.
  *
  * A term with no value yet (`status:`) reads as a filter being typed: painted as
- * one and kept out of the text, but not applied until it has a value.
+ * one and kept out of the text, but not applied until it has a value. Search
+ * applies `key:v` and `key:*`; other terms are painted as unsupported.
  */
 export function parseSearchQuery(raw: string): ParsedQuery {
-  const segments: QuerySegment[] = [];
+  const parsed = parseQueryLanguage(raw);
   const filters: PropertyFilter[] = [];
-  const textParts: string[] = [];
-  let plainFrom = 0;
+  const unsupported = new Set<number>();
 
-  const flushPlain = (until: number) => {
-    if (until <= plainFrom) return;
-    const text = raw.slice(plainFrom, until);
-    segments.push({ text, kind: "text" });
-    textParts.push(text);
+  parsed.clauses.forEach((clause, index) => {
+    const key = KEY_ALIASES[canonicalPropertyKey(clause.key)] ?? clause.key;
+    if (clause.op === "eq") filters.push({ key, value: clause.value.text });
+    else if (clause.op === "exists") filters.push({ key, value: null });
+    else unsupported.add(index);
+  });
+
+  return {
+    text: parsed.text,
+    filters,
+    segments: parsed.segments.map(({ text, kind, clause }) => ({
+      text,
+      kind: clause !== undefined && unsupported.has(clause) ? "unsupported" : kind,
+    })),
+    unsupported: [...unsupported].map((index) => parsed.clauses[index]?.term ?? ""),
   };
-
-  FILTER_TERM.lastIndex = 0;
-  let match = FILTER_TERM.exec(raw);
-  while (match !== null) {
-    const [term, key, separator, rawValue] = match;
-    const start = match.index;
-    const startsTerm = start === 0 || /\s/.test(raw[start - 1]);
-    // `https://…` is a term being searched for, not a filter on `https`.
-    const isUrl = rawValue.startsWith("//");
-
-    if (startsTerm && !isUrl) {
-      flushPlain(start);
-      segments.push({ text: key, kind: "key" });
-      segments.push({ text: separator, kind: "separator" });
-      if (rawValue) segments.push({ text: rawValue, kind: "value" });
-
-      const value = unquote(rawValue);
-      if (value) {
-        filters.push({
-          key: KEY_ALIASES[canonicalPropertyKey(key)] ?? key,
-          value: value === ANY_VALUE ? null : value,
-        });
-      }
-      plainFrom = start + term.length;
-    }
-
-    match = FILTER_TERM.exec(raw);
-  }
-
-  flushPlain(raw.length);
-
-  return { text: textParts.join(" ").replace(/\s+/g, " ").trim(), filters, segments };
 }
 
 /** The word the caret sits in, split at its colon if it has one. */

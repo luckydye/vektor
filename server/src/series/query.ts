@@ -6,6 +6,7 @@
 
 import type { SpaceStore } from "#db/client/store.ts";
 import { requireSeries } from "./catalog.ts";
+import { parseSeriesFilter } from "./filter.ts";
 import {
   compareStoredPoints,
   type ObjectHeader,
@@ -104,11 +105,17 @@ export function parseSeriesQuery(input: unknown): SeriesQuery {
   return {
     from: from as number,
     to: to as number,
-    where: parsePredicates(raw.where),
+    where: [...parsePredicates(raw.where), ...parseFilterField(raw.filter)],
     every: every as number | undefined,
     groupBy: group ? { column: group.column as string } : undefined,
     select: aggregates,
   };
+}
+
+function parseFilterField(filter: unknown): SeriesPredicate[] {
+  if (filter === undefined) return [];
+  if (typeof filter !== "string") throw new SeriesInputError("filter must be a string");
+  return parseSeriesFilter(filter);
 }
 
 /** Mergeable state of one aggregate in one bucket and group. */

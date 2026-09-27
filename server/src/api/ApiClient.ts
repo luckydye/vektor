@@ -1,9 +1,6 @@
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector, Doc as YDoc } from "yjs";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
-import type { SeriesPoint } from "#series/format.ts";
-import type { SeriesPredicate } from "#series/predicates.ts";
-import type { SeriesQuery, SeriesQueryResult } from "#series/query.ts";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -28,6 +25,9 @@ import {
   type YjsJoinPayload,
   type YjsRoomGenerationPayload,
 } from "#realtime/protocol.ts";
+import type { SeriesPoint } from "#series/format.ts";
+import type { SeriesPredicate } from "#series/predicates.ts";
+import type { SeriesQuery, SeriesQueryResult } from "#series/query.ts";
 import { ReplicaCache } from "./ReplicaCache.ts";
 import type { ReplicaOperation } from "./ReplicaDb.ts";
 
@@ -1808,7 +1808,10 @@ export class ApiClient {
 
   series = {
     list: (spaceId: string) =>
-      this.apiGet<{ series: SeriesInfo[] }>(this.baseUrl, `/api/v1/spaces/${spaceId}/series`),
+      this.apiGet<{ series: SeriesInfo[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/series`,
+      ),
 
     get: (spaceId: string, name: string) =>
       this.apiGet<{ series: SeriesInfo; latestPoint: SeriesPoint | null }>(
@@ -1823,6 +1826,8 @@ export class ApiClient {
         from: number;
         to: number;
         where?: SeriesPredicate[];
+        /** `key:value` terms, e.g. `level:error speed:>30`. */
+        filter?: string;
         limit?: number;
         cursor?: string;
       },
@@ -1833,7 +1838,8 @@ export class ApiClient {
         { ...query, where: query.where ? JSON.stringify(query.where) : undefined },
       ),
 
-    query: (spaceId: string, name: string, query: SeriesQuery) =>
+    /** `filter` takes `key:value` terms and is ANDed with `where`. */
+    query: (spaceId: string, name: string, query: SeriesQuery & { filter?: string }) =>
       this.apiPost<SeriesQueryResult>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/series/${encodeURIComponent(name)}/query`,

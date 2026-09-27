@@ -33,6 +33,7 @@ const SEGMENT_CLASS: Record<QuerySegment["kind"], string> = {
   key: "rounded-l bg-primary-50 font-medium text-primary-700",
   separator: "bg-primary-50 text-primary-400",
   value: "rounded-r bg-primary-50 text-primary-900",
+  unsupported: "text-neutral-400 line-through",
 };
 
 /** How many completions are offered at once; the rest are typed towards. */
