@@ -7,8 +7,8 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { deleteSeries, patchSeries } from "#series/catalog.ts";
-import { SeriesInputError } from "#series/limits.ts";
-import { latestPointWithin } from "#series/store.ts";
+import { SeriesInputError, seriesLimits } from "#series/limits.ts";
+import { readSeriesPoints, windowMs, windowOf } from "#series/store.ts";
 import {
   publicSeries,
   requireSeriesAccess,
@@ -29,10 +29,14 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const { store, series } = await requireSeriesAccess(context, Permission.VIEWER);
-      return jsonResponse({
-        series: publicSeries(series),
-        latestPoint: await latestPointWithin(store, series.name, LATEST_POINT_WINDOWS),
+      const to = Date.now() + seriesLimits().maxFutureMs;
+      const { points } = await readSeriesPoints(store, series.name, {
+        from: windowOf(series, to) - (LATEST_POINT_WINDOWS - 1) * windowMs(series),
+        to,
+        limit: 1,
+        order: "desc",
       });
+      return jsonResponse({ series: publicSeries(series), latestPoint: points[0] ?? null });
     },
     { fallbackMessage: "Failed to read series", onError: seriesErrorResponse },
   );

@@ -51,6 +51,7 @@ export const POST: ApiRouteHandler = (context) =>
  * @query to!:integer Range end, ms, exclusive.
  * @query filter Terms like `level:error -host:a speed:>=30 msg:*timeout* id:*`.
  * @query where JSON-encoded predicate array.
+ * @query order `asc` (default) or `desc`, newest first.
  * @paginated
  */
 export const GET: ApiRouteHandler = (context) =>
@@ -79,6 +80,7 @@ export const GET: ApiRouteHandler = (context) =>
         ],
         limit,
         cursor,
+        order: (params.get("order") ?? undefined) as "asc" | "desc" | undefined,
       });
       return jsonResponse({ points: page.points, limit, nextCursor: page.nextCursor });
     },

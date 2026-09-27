@@ -1836,6 +1836,8 @@ export class ApiClient {
         filter?: string;
         limit?: number;
         cursor?: string;
+        /** `desc` reads newest first. */
+        order?: "asc" | "desc";
       },
     ) =>
       this.apiGet<{ points: SeriesPoint[]; limit: number; nextCursor: string | null }>(

@@ -376,6 +376,8 @@ export interface ReadOptions {
   where?: SeriesPredicate[];
   limit?: number;
   cursor?: string;
+  /** `desc` reads newest first; the cursor then pages further back in time. */
+  order?: "asc" | "desc";
 }
 
 export interface ReadResult {
@@ -411,7 +413,7 @@ function publicPoint({ ts, type, fields }: StoredPoint): SeriesPoint {
   return { ts, type, fields };
 }
 
-/** Points in `[from, to)` in stable order, one page at a time. */
+/** Points in `[from, to)` in stable order, oldest or newest first, one page at a time. */
 export async function readSeriesPoints(
   store: SpaceStore,
   name: string,
@@ -419,11 +421,26 @@ export async function readSeriesPoints(
 ): Promise<ReadResult> {
   assertRange(options.from, options.to);
   const limit = options.limit ?? 1000;
+  const order = options.order ?? "asc";
+  if (order !== "asc" && order !== "desc") {
+    throw new SeriesInputError('order must be "asc" or "desc"');
+  }
+  const descending = order === "desc";
   const row = await requireSeries(store, name);
   const after = options.cursor ? decodeCursor(options.cursor) : null;
   const where = options.where ?? [];
-  const from = Math.max(options.from, after?.ts ?? options.from);
-  const windows = windowsBetween(row, from, options.to);
+  // Windows disjoint in ts: reversing their order and each window's points is newest first.
+  const windows = descending
+    ? windowsBetween(
+        row,
+        options.from,
+        Math.min(options.to, (after?.ts ?? Number.POSITIVE_INFINITY) + 1),
+      ).reverse()
+    : windowsBetween(
+        row,
+        Math.max(options.from, after?.ts ?? Number.NEGATIVE_INFINITY),
+        options.to,
+      );
 
   const read = async (): Promise<ReadResult> => {
     const collected: StoredPoint[] = [];
@@ -433,9 +450,12 @@ export async function readSeriesPoints(
       const pages = await Promise.all(
         batch.map((window) => windowPoints(store.spaceId, row.id, window)),
       );
-      for (const point of pages.flat()) {
+      for (const point of pages.flatMap((page) => (descending ? page.reverse() : page))) {
         if (point.ts < options.from || point.ts >= options.to) continue;
-        if (after && compareStoredPoints(point, after) <= 0) continue;
+        if (after) {
+          const position = compareStoredPoints(point, after);
+          if (descending ? position >= 0 : position <= 0) continue;
+        }
         if (!matchesAll(point, where)) continue;
         collected.push(point);
       }
@@ -447,22 +467,4 @@ export async function readSeriesPoints(
     };
   };
   return withDeadline(read(), SERIES_READ_DEADLINE_MS, "Series read");
-}
-
-/** The newest point in the last `maxWindows` windows, or null: a bounded "last seen". */
-export async function latestPointWithin(
-  store: SpaceStore,
-  name: string,
-  maxWindows: number,
-): Promise<SeriesPoint | null> {
-  const row = await requireSeries(store, name);
-  if (row.oldestWindow === null) return null;
-  let window = windowOf(row, Date.now() + seriesLimits().maxFutureMs);
-  for (let step = 0; step < maxWindows && window >= row.oldestWindow; step++) {
-    const points = await windowPoints(store.spaceId, row.id, window);
-    const last = points.at(-1);
-    if (last) return publicPoint(last);
-    window -= windowMs(row);
-  }
-  return null;
 }
