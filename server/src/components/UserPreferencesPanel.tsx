@@ -28,6 +28,7 @@ import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { DesktopAppPreferences } from "./DesktopAppPreferences.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
+import { SettingsSection } from "./SettingsSection.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
 interface Props {
@@ -47,7 +48,9 @@ const tabs = [
 
 // Only the desktop app announces itself, so the tab is absent in a browser.
 const app = nativeApp();
-const visibleTabs = app ? [...tabs, { id: "desktop", label: "Desktop App" as const }] : tabs;
+const visibleTabs = app
+  ? [...tabs, { id: "desktop", label: "Desktop App" as const }]
+  : tabs;
 
 const themeOptions: {
   value: ThemePreference;
@@ -317,15 +320,10 @@ export function UserPreferencesPanel(props: Props) {
         panels={{
           general: () => (
             <>
-              <section>
-                <div class="mb-3">
-                  <h2 class="font-semibold text-foreground text-size-medium">
-                    {t("Interface")}
-                  </h2>
-                  <p class="mt-1 text-neutral-500 text-size-small">
-                    {t("Choose how Vektor looks on this device.")}
-                  </p>
-                </div>
+              <SettingsSection
+                title={t("Interface")}
+                description={t("Choose how Vektor looks on this device.")}
+              >
                 <fieldset class="grid grid-cols-3 gap-2">
                   <legend class="sr-only">{t("Theme")}</legend>
                   <For each={themeOptions}>
@@ -343,25 +341,22 @@ export function UserPreferencesPanel(props: Props) {
                         }}
                       >
                         <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-neutral-200 p-0.5">
-                          <span class={`h-full w-full rounded-full ${option.swatchClass}`} />
+                          <span
+                            class={`h-full w-full rounded-full ${option.swatchClass}`}
+                          />
                         </span>
                         <span>{t(option.label)}</span>
                       </button>
                     )}
                   </For>
                 </fieldset>
-              </section>
+              </SettingsSection>
 
-              <section class="mt-6">
-                <div class="mb-3">
-                  <h2 class="font-semibold text-foreground text-size-medium">
-                    {t("Collaboration")}
-                  </h2>
-                  <p class="mt-1 text-neutral-500 text-size-small">
-                    {t("Personalize how you appear to collaborators.")}
-                  </p>
-                </div>
-                <div class="rounded-lg border border-neutral-200 bg-background p-3 flex justify-start gap-5 items-center">
+              <SettingsSection
+                title={t("Collaboration")}
+                description={t("Personalize how you appear to collaborators.")}
+              >
+                <div class="flex items-center justify-start gap-5 rounded-lg border border-neutral-200 bg-background p-3">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="font-medium text-foreground text-size-small">
@@ -416,18 +411,12 @@ export function UserPreferencesPanel(props: Props) {
                     </a-popover>
                   </a-popover-trigger>
                 </div>
-              </section>
+              </SettingsSection>
 
-              <section class="mt-6">
-                <div class="mb-3">
-                  <h2 class="font-semibold text-foreground text-size-medium">
-                    {t("Notifications")}
-                  </h2>
-                  <p class="mt-1 text-neutral-500 text-size-small">
-                    {t("Manage notifications for the current space.")}
-                  </p>
-                </div>
-
+              <SettingsSection
+                title={t("Notifications")}
+                description={t("Manage notifications for the current space.")}
+              >
                 <Show when={notificationPreferenceError()}>
                   <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
                     {notificationPreferenceError()}
@@ -467,7 +456,7 @@ export function UserPreferencesPanel(props: Props) {
                     </div>
                   </Show>
                 </Show>
-              </section>
+              </SettingsSection>
             </>
           ),
 

@@ -39,7 +39,7 @@ interface TabsProps {
 export function TabsList(props: { class?: string; children: JSX.Element }) {
   return (
     <a-tabs-list
-      class={`inline-flex max-w-full overflow-x-auto rounded-lg bg-neutral-100/75 px-1 py-0.5 ${props.class ?? ""}`}
+      class={`inline-flex max-w-full overflow-x-auto rounded-lg bg-neutral-100/75 px-1 py-0.5 w-full ${props.class ?? ""}`}
     >
       {props.children}
     </a-tabs-list>

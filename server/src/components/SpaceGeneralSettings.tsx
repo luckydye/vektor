@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
-import { type AIUsage, api } from "#api/client.ts";
 import { Permission } from "#acl/permissions.ts";
+import { type AIUsage, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { imageFileAsDataUrl } from "#utils/image.ts";
@@ -11,6 +11,7 @@ import {
 } from "#utils/spacePreferences.ts";
 import { Button } from "./Button.tsx";
 import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
+import { SettingsSection } from "./SettingsSection.tsx";
 import { SpaceMembers } from "./SpaceMembers.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
 import { SpaceShareLinks } from "./SpaceShareLinks.tsx";
@@ -194,79 +195,86 @@ export function SpaceGeneralSettings(props: Props) {
   return (
     <>
       <div>
-        <div class="flex flex-col items-start gap-8 sm:flex-row sm:gap-10">
-          <div class="top-4 w-full shrink-0 sm:sticky sm:w-72">
-            <SpaceProfileCard
-              name={localName()}
-              slug={currentSpace()?.slug ?? ""}
-              description={localDescription()}
-              brandColor={localBrandColor()}
-              logo={localLogoSvg()}
-              onUpdateBrandColor={setLocalBrandColor}
-              onLogoUpload={(event) => void handleLogoUpload(event)}
-              onRemoveLogo={() => setLocalLogoSvg("")}
-            />
-          </div>
-
-          <form
-            class="w-full min-w-0 flex-1"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleSave();
-            }}
-          >
-            <div class="space-y-4">
-              <div>
-                <label
-                  for="settings-space-name"
-                  class="mb-1 block font-medium text-neutral-700 text-size-small"
-                >
-                  Name
-                </label>
-                <input
-                  id="settings-space-name"
-                  value={localName()}
-                  onInput={(e) => setLocalName(e.currentTarget.value)}
-                  type="text"
-                  required
-                  class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 text-size-medium"
-                />
-              </div>
-              <div>
-                <label
-                  for="settings-space-description"
-                  class="mb-1 block font-medium text-neutral-700 text-size-small"
-                >
-                  Description
-                </label>
-                <input
-                  id="settings-space-description"
-                  value={localDescription()}
-                  onInput={(e) => setLocalDescription(e.currentTarget.value)}
-                  type="text"
-                  placeholder="e.g., Engineering / Documentation"
-                  class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 text-size-medium"
-                />
-              </div>
-            </div>
-            <Show when={error()}>
-              <div class="mt-4 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
-                {error()}
-              </div>
-            </Show>
-            <div class="mt-6 flex justify-end">
-              <Button
-                type="submit"
-                disabled={isSaving()}
-                text={isSaving() ? "Saving…" : "Save Changes"}
+        <SettingsSection
+          title="Space Settings"
+          description="Personalize your space with settings and preferences."
+        >
+          <div class="flex flex-col items-start gap-8 sm:flex-row sm:gap-10">
+            <div class="w-full shrink-0 sm:w-72">
+              <SpaceProfileCard
+                name={localName()}
+                slug={currentSpace()?.slug ?? ""}
+                description={localDescription()}
+                brandColor={localBrandColor()}
+                logo={localLogoSvg()}
+                onUpdateBrandColor={setLocalBrandColor}
+                onLogoUpload={(event) => void handleLogoUpload(event)}
+                onRemoveLogo={() => setLocalLogoSvg("")}
               />
             </div>
-          </form>
-        </div>
 
-        <section class="mt-10">
-          <h2 class="font-semibold text-neutral-900 text-size-large">Features</h2>
-          <div class="mt-3 flex items-center justify-between gap-4">
+            <form
+              class="w-full min-w-0 flex-1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSave();
+              }}
+            >
+              <div class="space-y-4">
+                <div>
+                  <label
+                    for="settings-space-name"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Name
+                  </label>
+                  <input
+                    id="settings-space-name"
+                    value={localName()}
+                    onInput={(e) => setLocalName(e.currentTarget.value)}
+                    type="text"
+                    required
+                    class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 text-size-medium"
+                  />
+                </div>
+                <div>
+                  <label
+                    for="settings-space-description"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Description
+                  </label>
+                  <input
+                    id="settings-space-description"
+                    value={localDescription()}
+                    onInput={(e) => setLocalDescription(e.currentTarget.value)}
+                    type="text"
+                    placeholder="e.g., Engineering / Documentation"
+                    class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 text-size-medium"
+                  />
+                </div>
+              </div>
+              <Show when={error()}>
+                <div class="mt-4 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
+                  {error()}
+                </div>
+              </Show>
+              <div class="mt-6 flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={isSaving()}
+                  text={isSaving() ? "Saving…" : "Save Changes"}
+                />
+              </div>
+            </form>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Features"
+          description="Choose which document types members can create."
+        >
+          <div class="flex items-center justify-between gap-4">
             <div>
               <p class="font-medium text-neutral-900 text-size-medium">Workflows</p>
               <p class="mt-0.5 text-neutral-500 text-size-small">
@@ -306,24 +314,23 @@ export function SpaceGeneralSettings(props: Props) {
               }
             />
           </div>
-        </section>
+        </SettingsSection>
 
         <Show when={currentSpace()?.userRole === Permission.OWNER}>
-          <section class="mt-10">
-            <h2 class="font-semibold text-neutral-900 text-size-large">AI usage</h2>
-            <p class="mt-1 text-neutral-500 text-size-small">
-              Track this space's estimated AI token usage and set its weekly budget.
-            </p>
+          <SettingsSection
+            title="AI usage"
+            description="Track this space's estimated AI token usage and set its weekly budget."
+          >
             <Show
               when={aiUsageDisplay()}
               fallback={
-                <div class="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-neutral-500 text-size-small">
+                <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-neutral-500 text-size-small">
                   {aiLimitError() ? "Usage is unavailable." : "Loading AI usage…"}
                 </div>
               }
             >
               {(display) => (
-                <div class="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-background shadow-sm">
+                <div class="overflow-hidden rounded-xl border border-neutral-200 bg-background shadow-sm">
                   <div class="p-5 sm:p-6">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                       <div>
@@ -408,19 +415,24 @@ export function SpaceGeneralSettings(props: Props) {
             <Show when={aiLimitError()}>
               <p class="mt-2 text-red-600 text-size-small">{aiLimitError()}</p>
             </Show>
-          </section>
+          </SettingsSection>
         </Show>
 
-        <div class="mt-10">
+        <SettingsSection
+          title="Access"
+          description="Members, groups and tokens with access to this space."
+        >
           <SpaceMembers />
-        </div>
+        </SettingsSection>
 
-        <div class="mt-10">
+        <SettingsSection
+          title="Share links"
+          description="Review every read-only link created for pages in this space."
+        >
           <SpaceShareLinks />
-        </div>
+        </SettingsSection>
 
-        <div class="mt-10 pt-6">
-          <h2 class="mb-3 font-semibold text-red-700 text-size-medium">Danger Zone</h2>
+        <SettingsSection title="Danger Zone">
           <div class="flex items-center justify-between gap-4 rounded-lg border border-primary-200 p-4">
             <div>
               <p class="font-medium text-neutral-900 text-size-medium">
@@ -436,7 +448,7 @@ export function SpaceGeneralSettings(props: Props) {
               onClick={() => setShowDeleteConfirm(true)}
             />
           </div>
-        </div>
+        </SettingsSection>
 
         <div class="mt-12 text-right opacity-20">
           <span>Vektor v{VEKTOR_VERSION}</span>

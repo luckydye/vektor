@@ -788,10 +788,6 @@ export function SpaceMembers() {
   return (
     <>
       <div class="flex flex-col gap-6">
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold text-neutral-900 text-size-large">Access</h2>
-        </div>
-
         {/*
           <div class="rounded-lg border border-neutral-200 bg-background p-3">
             <form

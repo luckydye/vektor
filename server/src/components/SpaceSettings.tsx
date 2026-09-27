@@ -5,6 +5,7 @@ import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
 import { ExtensionSettings } from "./ExtensionSettings.tsx";
 import { JobsSettings } from "./JobsSettings.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
+import { SettingsSection } from "./SettingsSection.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
 import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
 
@@ -37,55 +38,30 @@ export function SpaceSettings() {
       initialTab={tabFromHash()}
       onTabChange={setTab}
       panels={{
-        general: () => (
-          <>
-            <section>
-              <h2 class="mb-3 font-semibold text-neutral-900 text-size-large">
-                Space Settings
-              </h2>
-              <p class="mt-1 text-neutral-900 text-size-medium">
-                Personalize your space with settings and preferences.
-              </p>
-              <div class="pt-6">
-                <SpaceGeneralSettings />
-              </div>
-            </section>
-          </>
-        ),
+        general: () => <SpaceGeneralSettings />,
         integrations: () => (
           <>
-            <section>
-              <h2 class="mb-3 font-semibold text-neutral-900 text-size-large">
-                Extensions
-              </h2>
-              <p class="mt-1 text-neutral-900 text-size-medium">
-                Install and manage extensions to add functionality
-              </p>
+            <SettingsSection
+              title="Extensions"
+              description="Install and manage extensions to add functionality."
+            >
               <ExtensionSettings />
-
-              <Show when={currentSpace()?.userRole === Permission.OWNER}>
-                <SpaceSecretsSettings />
-              </Show>
-            </section>
+            </SettingsSection>
+            <Show when={currentSpace()?.userRole === Permission.OWNER}>
+              <SpaceSecretsSettings />
+            </Show>
           </>
         ),
-        jobs: () => (
-          <section>
-            <h2 class="mb-4 font-semibold text-neutral-900 text-size-large">
-              Jobs &amp; Workflows
-            </h2>
-            <JobsSettings />
-          </section>
-        ),
+        jobs: () => <JobsSettings />,
         archive: () => (
-          <section>
-            <h2 class="mt-2 mb-4 font-semibold text-neutral-900 text-size-large">
-              Archived Documents
-            </h2>
+          <SettingsSection
+            title="Archived Documents"
+            description="Restore or permanently delete archived documents."
+          >
             <Show when={currentSpace()}>
               {(space) => <ArchivedDocuments spaceId={space().id} />}
             </Show>
-          </section>
+          </SettingsSection>
         ),
       }}
     />

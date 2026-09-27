@@ -7,6 +7,7 @@ import { useLocale } from "#composeables/useTranslation.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
+import { SettingsSection } from "./SettingsSection.tsx";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
 type WorkflowRunRow = WorkflowRunsPage["runs"][number];
@@ -199,221 +200,225 @@ export function JobsSettings() {
   );
 
   return (
-    <div>
-      <div class="mb-4 flex items-center justify-between">
-        <h2 class="font-semibold text-neutral-900 text-size-medium">
-          Scheduled Workflows
-        </h2>
-        <Show when={!isCreatingSchedule()}>
-          <button
-            type="button"
-            onClick={handleStartCreateSchedule}
-            class="font-medium text-blue-600 text-size-small hover:text-blue-800"
-          >
-            + Add Schedule
-          </button>
-        </Show>
-      </div>
-
-      <Show when={scheduleError()}>
-        <div class="mb-3 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
-          {scheduleError()}
-        </div>
-      </Show>
-
-      <Show when={isCreatingSchedule()}>
-        <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleCreateSchedule();
-            }}
-            class="space-y-3"
-          >
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <label
-                  for="schedule-workflow"
-                  class="mb-1 block font-medium text-neutral-700 text-size-small"
-                >
-                  Workflow
-                </label>
-                <select
-                  id="schedule-workflow"
-                  value={newScheduleDocumentId()}
-                  onChange={(e) => setNewScheduleDocumentId(e.currentTarget.value)}
-                  required
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
-                >
-                  <option value="" disabled>
-                    {availableWorkflows().length > 0
-                      ? "Select workflow"
-                      : "No workflow documents available"}
-                  </option>
-                  <For each={availableWorkflows()}>
-                    {(workflow) => <option value={workflow.id}>{workflow.title}</option>}
-                  </For>
-                </select>
-              </div>
-              <div>
-                <label
-                  for="schedule-cron"
-                  class="mb-1 block font-medium text-neutral-700 text-size-small"
-                >
-                  Cron Expression
-                </label>
-                <input
-                  id="schedule-cron"
-                  value={newScheduleCron()}
-                  onInput={(e) => setNewScheduleCron(e.currentTarget.value)}
-                  type="text"
-                  required
-                  placeholder="e.g. 0 6 * * 1"
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 font-mono text-size-medium"
-                />
-                <p class="mt-0.5 text-neutral-500 text-size-small">
-                  minute hour day month weekday
-                </p>
-              </div>
-              <div>
-                <label
-                  for="schedule-timezone"
-                  class="mb-1 block font-medium text-neutral-700 text-size-small"
-                >
-                  Timezone <span class="font-normal text-neutral-400">(optional)</span>
-                </label>
-                <input
-                  id="schedule-timezone"
-                  value={newScheduleTimezone()}
-                  onInput={(e) => setNewScheduleTimezone(e.currentTarget.value)}
-                  type="text"
-                  placeholder="e.g. Europe/Berlin"
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
-                />
-              </div>
-            </div>
-            <div class="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCreatingSchedule(false);
-                  setScheduleError(null);
-                }}
-                class="px-3 py-1.5 text-neutral-600 text-size-medium hover:text-neutral-800"
-              >
-                Cancel
-              </button>
-              <Button
-                type="submit"
-                disabled={isSubmittingSchedule() || !newScheduleDocumentId()}
-                text={isSubmittingSchedule() ? "Creating..." : "Create Schedule"}
-              />
-            </div>
-          </form>
-        </div>
-      </Show>
-
-      <Show when={isLoadingSchedules()}>
-        <div class="py-6 text-center text-neutral-500 text-size-medium">
-          Loading schedules...
-        </div>
-      </Show>
-      <Show
-        when={!isLoadingSchedules() && schedules().length === 0 && !isCreatingSchedule()}
+    <>
+      <SettingsSection
+        title="Scheduled Workflows"
+        description="Workflows that run automatically on a schedule."
+        actions={
+          <Show when={!isCreatingSchedule()}>
+            <button
+              type="button"
+              onClick={handleStartCreateSchedule}
+              class="font-medium text-blue-600 text-size-small hover:text-blue-800"
+            >
+              + Add Schedule
+            </button>
+          </Show>
+        }
       >
-        <div class="py-6 text-center text-neutral-500 text-size-medium">
-          No scheduled workflows
-        </div>
-      </Show>
-      <Show when={!isLoadingSchedules() && schedules().length > 0}>
-        <div class="overflow-x-auto rounded-md border border-neutral-100">
-          <table class="min-w-full text-size-medium">
-            <thead class="bg-neutral-50">
-              <tr>
-                <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                  Workflow
-                </th>
-                <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                  Schedule
-                </th>
-                <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                  Next Run
-                </th>
-                <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                  Last Run
-                </th>
-                <th class="px-4 py-2.5 text-right font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-neutral-100">
-              <For each={schedules()}>
-                {(schedule) => (
-                  <tr class="hover:bg-neutral-50">
-                    <td class="px-4 py-2.5">
-                      <div class="flex items-center gap-2">
-                        <span
-                          class="h-2 w-2 shrink-0 rounded-full"
-                          classList={{
-                            "bg-green-500": schedule.enabled,
-                            "bg-neutral-300": !schedule.enabled,
-                          }}
-                        />
-                        <span class="font-medium text-neutral-900">
-                          {workflowName(schedule.documentId)}
-                        </span>
-                      </div>
-                    </td>
-                    <td class="whitespace-nowrap px-4 py-2.5">
-                      <code class="rounded-sm bg-neutral-100 px-1.5 py-0.5 font-mono text-size-small">
-                        {schedule.cronExpression}
-                      </code>
-                      <Show when={schedule.timezone}>
-                        <span class="ml-1 text-neutral-400 text-size-small">
-                          {schedule.timezone}
-                        </span>
-                      </Show>
-                    </td>
-                    <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                      {schedule.enabled && schedule.nextRunAt
-                        ? formatDateTime(schedule.nextRunAt, lang)
-                        : "—"}
-                    </td>
-                    <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                      {schedule.lastRunAt
-                        ? formatDateTime(schedule.lastRunAt, lang)
-                        : "—"}
-                    </td>
-                    <td class="space-x-2 whitespace-nowrap px-4 py-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleSchedule(schedule)}
-                        class="text-blue-600 text-size-small hover:text-blue-800"
-                      >
-                        {schedule.enabled ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteSchedule(schedule.id)}
-                        class="text-red-600 text-size-small hover:text-red-800"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
-      </Show>
+        <Show when={scheduleError()}>
+          <div class="mb-3 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
+            {scheduleError()}
+          </div>
+        </Show>
 
-      <div class="mt-8 border-neutral-100 border-t pt-6">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="font-semibold text-neutral-900 text-size-medium">
-            Recent Workflow Runs
-          </h2>
+        <Show when={isCreatingSchedule()}>
+          <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleCreateSchedule();
+              }}
+              class="space-y-3"
+            >
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label
+                    for="schedule-workflow"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Workflow
+                  </label>
+                  <select
+                    id="schedule-workflow"
+                    value={newScheduleDocumentId()}
+                    onChange={(e) => setNewScheduleDocumentId(e.currentTarget.value)}
+                    required
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                  >
+                    <option value="" disabled>
+                      {availableWorkflows().length > 0
+                        ? "Select workflow"
+                        : "No workflow documents available"}
+                    </option>
+                    <For each={availableWorkflows()}>
+                      {(workflow) => (
+                        <option value={workflow.id}>{workflow.title}</option>
+                      )}
+                    </For>
+                  </select>
+                </div>
+                <div>
+                  <label
+                    for="schedule-cron"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Cron Expression
+                  </label>
+                  <input
+                    id="schedule-cron"
+                    value={newScheduleCron()}
+                    onInput={(e) => setNewScheduleCron(e.currentTarget.value)}
+                    type="text"
+                    required
+                    placeholder="e.g. 0 6 * * 1"
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 font-mono text-size-medium"
+                  />
+                  <p class="mt-0.5 text-neutral-500 text-size-small">
+                    minute hour day month weekday
+                  </p>
+                </div>
+                <div>
+                  <label
+                    for="schedule-timezone"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Timezone <span class="font-normal text-neutral-400">(optional)</span>
+                  </label>
+                  <input
+                    id="schedule-timezone"
+                    value={newScheduleTimezone()}
+                    onInput={(e) => setNewScheduleTimezone(e.currentTarget.value)}
+                    type="text"
+                    placeholder="e.g. Europe/Berlin"
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                  />
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingSchedule(false);
+                    setScheduleError(null);
+                  }}
+                  class="px-3 py-1.5 text-neutral-600 text-size-medium hover:text-neutral-800"
+                >
+                  Cancel
+                </button>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingSchedule() || !newScheduleDocumentId()}
+                  text={isSubmittingSchedule() ? "Creating..." : "Create Schedule"}
+                />
+              </div>
+            </form>
+          </div>
+        </Show>
+
+        <Show when={isLoadingSchedules()}>
+          <div class="py-6 text-center text-neutral-500 text-size-medium">
+            Loading schedules...
+          </div>
+        </Show>
+        <Show
+          when={
+            !isLoadingSchedules() && schedules().length === 0 && !isCreatingSchedule()
+          }
+        >
+          <div class="py-6 text-center text-neutral-500 text-size-medium">
+            No scheduled workflows
+          </div>
+        </Show>
+        <Show when={!isLoadingSchedules() && schedules().length > 0}>
+          <div class="overflow-x-auto rounded-md border border-neutral-100">
+            <table class="min-w-full text-size-medium">
+              <thead class="bg-neutral-50">
+                <tr>
+                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                    Workflow
+                  </th>
+                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                    Schedule
+                  </th>
+                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                    Next Run
+                  </th>
+                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                    Last Run
+                  </th>
+                  <th class="px-4 py-2.5 text-right font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-100">
+                <For each={schedules()}>
+                  {(schedule) => (
+                    <tr class="hover:bg-neutral-50">
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center gap-2">
+                          <span
+                            class="h-2 w-2 shrink-0 rounded-full"
+                            classList={{
+                              "bg-green-500": schedule.enabled,
+                              "bg-neutral-300": !schedule.enabled,
+                            }}
+                          />
+                          <span class="font-medium text-neutral-900">
+                            {workflowName(schedule.documentId)}
+                          </span>
+                        </div>
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2.5">
+                        <code class="rounded-sm bg-neutral-100 px-1.5 py-0.5 font-mono text-size-small">
+                          {schedule.cronExpression}
+                        </code>
+                        <Show when={schedule.timezone}>
+                          <span class="ml-1 text-neutral-400 text-size-small">
+                            {schedule.timezone}
+                          </span>
+                        </Show>
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
+                        {schedule.enabled && schedule.nextRunAt
+                          ? formatDateTime(schedule.nextRunAt, lang)
+                          : "—"}
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
+                        {schedule.lastRunAt
+                          ? formatDateTime(schedule.lastRunAt, lang)
+                          : "—"}
+                      </td>
+                      <td class="space-x-2 whitespace-nowrap px-4 py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleSchedule(schedule)}
+                          class="text-blue-600 text-size-small hover:text-blue-800"
+                        >
+                          {schedule.enabled ? "Disable" : "Enable"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteSchedule(schedule.id)}
+                          class="text-red-600 text-size-small hover:text-red-800"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+        </Show>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Recent Workflow Runs"
+        description="The latest runs across all workflows in this space."
+        actions={
           <button
             type="button"
             onClick={() => refreshWorkflowRuns()}
@@ -422,8 +427,8 @@ export function JobsSettings() {
           >
             {isLoadingWorkflowRuns() ? "Refreshing..." : "Refresh"}
           </button>
-        </div>
-
+        }
+      >
         <Show when={workflowRunsQueryError()}>
           <div class="mb-3 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
             {workflowRunsQueryError()?.message ?? "Failed to load workflow runs"}
@@ -501,7 +506,7 @@ export function JobsSettings() {
             </button>
           </div>
         </Show>
-      </div>
-    </div>
+      </SettingsSection>
+    </>
   );
 }

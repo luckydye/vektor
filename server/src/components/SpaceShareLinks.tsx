@@ -77,10 +77,7 @@ export function SpaceShareLinks() {
 
   async function revokeLink(link: ShareLink) {
     const spaceId = currentSpaceId();
-    if (
-      !spaceId ||
-      !confirm(t("Revoke this link? Anyone holding it loses access."))
-    ) {
+    if (!spaceId || !confirm(t("Revoke this link? Anyone holding it loses access."))) {
       return;
     }
 
@@ -116,22 +113,12 @@ export function SpaceShareLinks() {
   }
 
   return (
-    <section>
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h2 class="font-semibold text-neutral-900 text-size-large">
-            {t("Share links")}
-          </h2>
-          <p class="mt-1 text-neutral-500 text-size-small">
-            {t("Review every read-only link created for pages in this space.")}
-          </p>
-        </div>
-        <Show when={!isLoading() && links().length > 0}>
-          <span class="whitespace-nowrap text-neutral-500 text-size-small">
-            {t("{count} active").replace("{count}", String(activeCount()))}
-          </span>
-        </Show>
-      </div>
+    <div>
+      <Show when={!isLoading() && links().length > 0}>
+        <p class="text-neutral-500 text-size-small">
+          {t("{count} active").replace("{count}", String(activeCount()))}
+        </p>
+      </Show>
 
       <Show when={error()}>
         <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-600 text-size-small">
@@ -276,6 +263,6 @@ export function SpaceShareLinks() {
           </p>
         </div>
       </Show>
-    </section>
+    </div>
   );
 }

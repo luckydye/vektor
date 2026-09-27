@@ -4,6 +4,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
+import { SettingsSection } from "./SettingsSection.tsx";
 
 export function SpaceSecretsSettings() {
   const lang = useLocale();
@@ -142,9 +143,10 @@ export function SpaceSecretsSettings() {
   );
 
   return (
-    <div class="mt-8 pt-6">
-      <div class="mb-4 flex items-center justify-between">
-        <h2 class="mt-2 mb-4 font-semibold text-neutral-900 text-size-large">Secrets</h2>
+    <SettingsSection
+      title="Secrets"
+      description="Values that workflows and extensions in this space can read."
+      actions={
         <Show when={!isCreatingSecret()}>
           <button
             type="button"
@@ -154,8 +156,8 @@ export function SpaceSecretsSettings() {
             + Create Secret
           </button>
         </Show>
-      </div>
-
+      }
+    >
       <Show when={secretsError()}>
         <div class="mb-3 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
           {secretsError()}
@@ -357,6 +359,6 @@ export function SpaceSecretsSettings() {
           </div>
         )}
       </Show>
-    </div>
+    </SettingsSection>
   );
 }

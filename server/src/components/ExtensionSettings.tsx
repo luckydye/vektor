@@ -74,7 +74,7 @@ export function ExtensionSettings() {
 
   return (
     <div class="flex flex-1 flex-col">
-      <div class="space-y-4 pt-6">
+      <div class="space-y-4">
         <Show when={uploadError()}>
           <div class="rounded-md border border-red-200 bg-red-50 p-3">
             <p class="text-red-600 text-size-medium">{uploadError()}</p>
@@ -89,7 +89,7 @@ export function ExtensionSettings() {
             </div>
           }
         >
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div class="grid @4xl:grid-cols-3 @6xl:grid-cols-4 @xl:grid-cols-2 grid-cols-1 gap-4">
             <For each={extensions()}>
               {(ext) => (
                 <div class="group relative flex flex-col rounded-lg border border-neutral-100 p-4 transition-all hover:border-neutral-200 hover:shadow-sm">
