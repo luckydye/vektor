@@ -1,4 +1,4 @@
-import { verifyAccess } from "#acl/guards.ts";
+import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -33,12 +33,22 @@ import {
  * Read one space
  *
  * @tag Spaces
+ * @jobToken
  * @response #/components/schemas/Space
+ * @note A job gets the space without `userRole` and `userPreferences`.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    if (context.var.credentials.jobToken) {
+      await authenticateJobTokenOrSpaceRole(
+        context.var.credentials,
+        spaceId,
+        Permission.VIEWER,
+      );
+      return jsonResponse(await getSpace(spaceId));
+    }
+    const user = requireUser(context);
     await verifyAccess(
       spaceId,
       { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
