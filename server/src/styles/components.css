@@ -575,3 +575,51 @@ a-lightbox-blur[enabled] {
     font-size: 1.25rem;
   }
 }
+
+/* ── Popover sheet ──────────────────────────────────────────────────── */
+
+/*
+ * An <a-popover class="popover-sheet"> is a bottom sheet on phones. The popover
+ * copies its class onto the full-screen portal it renders into; the portal's
+ * child is what floating-ui places with an inline transform, and that child's
+ * child is the menu panel.
+ */
+@media (width < 48rem) {
+  .popover-sheet {
+    background-color: rgb(0 0 0 / 0);
+    transition: background-color 150ms;
+  }
+  .popover-sheet[enabled] {
+    background-color: rgb(0 0 0 / 0.4);
+  }
+  .popover-sheet > * {
+    position: fixed;
+    inset: auto 0 0;
+    width: auto;
+    padding: 0;
+    transform: none !important;
+  }
+  .popover-sheet > * > * {
+    min-width: 0;
+    max-height: 80dvh;
+    overflow-y: auto;
+    border-width: 1px 0 0;
+    border-radius: 1rem 1rem 0 0;
+    padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
+    scale: 1;
+    translate: 0 100%;
+    transition: translate 150ms ease-out;
+  }
+  .popover-sheet[enabled] > * > * {
+    translate: 0 0;
+  }
+  .popover-sheet > * > *::before {
+    content: "";
+    display: block;
+    width: 2.25rem;
+    height: 0.25rem;
+    margin: 0 auto 0.5rem;
+    border-radius: 9999px;
+    background-color: var(--color-neutral-300);
+  }
+}
