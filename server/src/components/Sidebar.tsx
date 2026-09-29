@@ -3,7 +3,6 @@ import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { Actions } from "#utils/actions.ts";
 import { readStored, storedText, writeStored } from "#utils/clientStorage.ts";
-import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
@@ -14,6 +13,7 @@ import {
 } from "#utils/sidebarState.ts";
 import { Icon } from "./Icon.tsx";
 import { Navigation } from "./Navigation.tsx";
+import { useSwipeDrawer } from "#composeables/useSwipeDrawer.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
@@ -26,8 +26,6 @@ interface Props {
 }
 
 const RESIZE_DRAG_THRESHOLD = 4;
-const DRAWER_DRAG_THRESHOLD = 8;
-const ANDROID_BACK_GESTURE_INSET = 24;
 const SNAP_THRESHOLD = 15;
 
 export function Sidebar(props: Props) {
@@ -44,214 +42,31 @@ export function Sidebar(props: Props) {
   const [displayWidth, setDisplayWidth] = createSignal(initialSidebarWidth);
   const [isResizing, setIsResizing] = createSignal(false);
   const [isMobileOpen, setIsMobileOpen] = createSignal(false);
-  const [drawerOffset, setDrawerOffset] = createSignal(0);
-  const [drawerWidth, setDrawerWidth] = createSignal(initialSidebarWidth);
-  const [isDrawerDragging, setIsDrawerDragging] = createSignal(false);
 
   let hasDragged = false;
   let resizeStartX = 0;
   let resizeStartY = 0;
   let resizeStartWidth = 0;
-  let drawerPointerId: number | null = null;
-  let drawerStartX = 0;
-  let drawerStartY = 0;
-  let drawerStartOffset = 0;
-  let holdsScrollLock = false;
 
   const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
   const mobileDrawerWidth = () => Math.max(currentWidth(), defaultWidth());
 
   function setMobileOpen(open: boolean) {
     setIsMobileOpen(open);
-    if (open && !holdsScrollLock) {
-      lockScroll();
-      holdsScrollLock = true;
-    } else if (!open && holdsScrollLock) {
-      unlockScroll();
-      holdsScrollLock = false;
-    }
     props.onMobileOpenChange?.(open, mobileDrawerWidth());
   }
+
+  const drawer = useSwipeDrawer({
+    side: "left",
+    width: mobileDrawerWidth,
+    isOpen: isMobileOpen,
+    setOpen: setMobileOpen,
+    onDragChange: (offset) => props.onMobileDragChange?.(offset),
+  });
 
   function closeMobileDrawerOnDesktop() {
     if (!isMobileViewport() && isMobileOpen()) setMobileOpen(false);
   }
-
-  const isAndroidBackGestureAt = (clientX: number) =>
-    /Android/i.test(navigator.userAgent) && clientX < ANDROID_BACK_GESTURE_INSET;
-
-  function isInsideHorizontallyScrollableContent(
-    targets: readonly (EventTarget | undefined)[],
-  ) {
-    return targets.some((target) => {
-      if (!(target instanceof Element)) return false;
-      const { overflowX } = getComputedStyle(target);
-      return (
-        (overflowX === "auto" || overflowX === "scroll") &&
-        target.scrollWidth > target.clientWidth
-      );
-    });
-  }
-
-  function isDrawerGestureControl(e: TouchEvent) {
-    return e
-      .composedPath()
-      .some(
-        (target) =>
-          target instanceof Element &&
-          target.matches("a-track, input[type='range'], [role='slider']"),
-      );
-  }
-
-  function startDrawerDrag(
-    pointerId: number,
-    clientX: number,
-    clientY: number,
-    startOffset: number,
-  ) {
-    if (!isMobileViewport()) return false;
-
-    drawerPointerId = pointerId;
-    drawerStartX = clientX;
-    drawerStartY = clientY;
-    drawerStartOffset = startOffset;
-    setDrawerOffset(startOffset);
-    setDrawerWidth(mobileDrawerWidth());
-    setIsDrawerDragging(false);
-    sidebarRef?.style.removeProperty("transform");
-    return true;
-  }
-
-  function startDrawerFromScreen(e: TouchEvent) {
-    const touch = e.changedTouches[0];
-    if (!touch || e.touches.length !== 1) return;
-    if (
-      isMobileOpen() ||
-      isAndroidBackGestureAt(touch.clientX) ||
-      isDrawerGestureControl(e) ||
-      isInsideHorizontallyScrollableContent(e.composedPath())
-    ) {
-      return;
-    }
-    startDrawerDrag(touch.identifier, touch.clientX, touch.clientY, 0);
-  }
-
-  function startDrawerFromSidebar(e: TouchEvent) {
-    if (!isMobileOpen()) return;
-    const touch = e.changedTouches[0];
-    if (
-      !touch ||
-      e.touches.length !== 1 ||
-      isDrawerGestureControl(e) ||
-      isInsideHorizontallyScrollableContent(e.composedPath())
-    ) {
-      return;
-    }
-    startDrawerDrag(touch.identifier, touch.clientX, touch.clientY, mobileDrawerWidth());
-  }
-
-  function startDrawerFromContent(e: TouchEvent) {
-    const touch = e.changedTouches[0];
-    if (!touch || e.touches.length !== 1) return;
-    startDrawerDrag(touch.identifier, touch.clientX, touch.clientY, mobileDrawerWidth());
-  }
-
-  function moveDrawerDrag(pointerId: number, clientX: number, clientY: number) {
-    if (pointerId !== drawerPointerId) return false;
-
-    const deltaX = clientX - drawerStartX;
-    const deltaY = clientY - drawerStartY;
-    if (!isDrawerDragging()) {
-      if (
-        Math.abs(deltaY) > DRAWER_DRAG_THRESHOLD &&
-        Math.abs(deltaY) > Math.abs(deltaX)
-      ) {
-        drawerPointerId = null;
-        return false;
-      }
-      if (Math.abs(deltaX) < DRAWER_DRAG_THRESHOLD) return false;
-      const isOpening = drawerStartOffset === 0;
-      if ((isOpening && deltaX < 0) || (!isOpening && deltaX > 0)) {
-        drawerPointerId = null;
-        return false;
-      }
-      setIsDrawerDragging(true);
-    }
-
-    setDrawerOffset(Math.max(0, Math.min(drawerWidth(), drawerStartOffset + deltaX)));
-    sidebarRef?.style.setProperty(
-      "transform",
-      `translateX(${drawerOffset() - drawerWidth()}px)`,
-    );
-    props.onMobileDragChange?.(drawerOffset());
-    return true;
-  }
-
-  function stopDrawerDrag(pointerId: number) {
-    if (pointerId !== drawerPointerId) return;
-    drawerPointerId = null;
-    if (!isDrawerDragging()) return;
-
-    setIsDrawerDragging(false);
-    props.onMobileDragChange?.(null);
-    setMobileOpen(drawerOffset() >= drawerWidth() / 2);
-  }
-
-  function cancelDrawerDrag() {
-    drawerPointerId = null;
-    if (!isDrawerDragging()) return;
-
-    setIsDrawerDragging(false);
-    props.onMobileDragChange?.(null);
-    setMobileOpen(isMobileOpen());
-  }
-
-  function changedDrawerTouch(e: TouchEvent) {
-    for (let index = 0; index < e.changedTouches.length; index += 1) {
-      const touch = e.changedTouches.item(index);
-      if (touch?.identifier === drawerPointerId) return touch;
-    }
-    return null;
-  }
-
-  function handleDrawerTouchMove(e: TouchEvent) {
-    const touch = changedDrawerTouch(e);
-    if (!touch) return;
-
-    const deltaX = touch.clientX - drawerStartX;
-    const deltaY = touch.clientY - drawerStartY;
-    const isOpening = drawerStartOffset === 0;
-    if ((isOpening ? deltaX > 0 : deltaX < 0) && Math.abs(deltaX) > Math.abs(deltaY)) {
-      if (!e.cancelable) {
-        cancelDrawerDrag();
-        return;
-      }
-      e.preventDefault();
-    }
-
-    moveDrawerDrag(touch.identifier, touch.clientX, touch.clientY);
-  }
-
-  const handleScreenDrawerMove = (e: TouchEvent) => {
-    if (!isMobileOpen()) handleDrawerTouchMove(e);
-  };
-  const stopScreenDrawerDrag = (e: TouchEvent) => {
-    if (isMobileOpen()) return;
-    const touch = changedDrawerTouch(e);
-    if (touch) stopDrawerDrag(touch.identifier);
-  };
-  const handleOpenDrawerMove = (e: TouchEvent) => {
-    if (isMobileOpen()) handleDrawerTouchMove(e);
-  };
-  const closeDrawerMoveListener = {
-    handleEvent: handleOpenDrawerMove,
-    passive: false,
-  };
-  const stopOpenDrawerDrag = (e: TouchEvent) => {
-    if (!isMobileOpen()) return;
-    const touch = changedDrawerTouch(e);
-    if (touch) stopDrawerDrag(touch.identifier);
-  };
 
   function dispatchSidebarResize() {
     window.dispatchEvent(
@@ -328,13 +143,6 @@ export function Sidebar(props: Props) {
 
   onMount(() => {
     window.addEventListener("resize", closeMobileDrawerOnDesktop);
-    document.addEventListener("touchstart", startDrawerFromScreen, { capture: true });
-    document.addEventListener("touchmove", handleScreenDrawerMove, {
-      capture: true,
-      passive: false,
-    });
-    document.addEventListener("touchend", stopScreenDrawerDrag, { capture: true });
-    document.addEventListener("touchcancel", stopScreenDrawerDrag, { capture: true });
 
     Actions.register("ui:toggle:sidebar", {
       title: t("Toggle Sidebar"),
@@ -372,15 +180,7 @@ export function Sidebar(props: Props) {
     if (isServer) return;
 
     window.removeEventListener("resize", closeMobileDrawerOnDesktop);
-    document.removeEventListener("touchstart", startDrawerFromScreen, true);
-    document.removeEventListener("touchmove", handleScreenDrawerMove, true);
-    document.removeEventListener("touchend", stopScreenDrawerDrag, true);
-    document.removeEventListener("touchcancel", stopScreenDrawerDrag, true);
     props.onMobileDragChange?.(null);
-    if (holdsScrollLock) {
-      unlockScroll();
-      holdsScrollLock = false;
-    }
     props.onMobileOpenChange?.(false, mobileDrawerWidth());
     Actions.unregister("ui:toggle:sidebar");
     Actions.unregister("sidebar:toggle-mobile");
@@ -393,10 +193,7 @@ export function Sidebar(props: Props) {
         <div
           class="fixed inset-y-0 right-0 z-40 touch-pan-y md:hidden"
           style={{ left: `${mobileDrawerWidth()}px` }}
-          onTouchStart={startDrawerFromContent}
-          on:touchmove={closeDrawerMoveListener}
-          onTouchEnd={stopOpenDrawerDrag}
-          onTouchCancel={stopOpenDrawerDrag}
+          onTouchStart={drawer.startFromDrawer}
         />
       </Show>
 
@@ -407,10 +204,8 @@ export function Sidebar(props: Props) {
         style={{
           "--sidebar-rendered-width": `${displayWidth()}px`,
           "--mobile-sidebar-width": `${mobileDrawerWidth()}px`,
-          transform: isDrawerDragging()
-            ? `translateX(${drawerOffset() - drawerWidth()}px)`
-            : undefined,
-          transition: isDrawerDragging() ? "none" : undefined,
+          transform: drawer.transform(),
+          transition: drawer.isDragging() ? "none" : undefined,
           "--color-background": "var(--color-neutral-10)",
         }}
         class={twMerge(
@@ -418,16 +213,13 @@ export function Sidebar(props: Props) {
           "fixed top-0 bottom-0 w-(--mobile-sidebar-width) touch-pan-y transition-transform will-change-transform md:w-(--sidebar-rendered-width)",
           "z-40 md:z-10",
           "md:translate-x-0",
-          isMobileOpen() || isDrawerDragging() ? "translate-x-0" : "-translate-x-full",
+          isMobileOpen() || drawer.isDragging() ? "translate-x-0" : "-translate-x-full",
         )}
         onClick={(e) => {
           const target = e.target as HTMLElement;
           if (target.tagName === "A" || target.closest("a")) setMobileOpen(false);
         }}
-        onTouchStart={startDrawerFromSidebar}
-        on:touchmove={closeDrawerMoveListener}
-        onTouchEnd={stopOpenDrawerDrag}
-        onTouchCancel={stopOpenDrawerDrag}
+        onTouchStart={drawer.startFromDrawer}
       >
         <span
           aria-hidden="true"
@@ -448,7 +240,7 @@ export function Sidebar(props: Props) {
 
         <div class={twMerge(
           "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-50",
-          (isDrawerDragging() || isMobileOpen()) && "shadow-2xl"
+          (drawer.isDragging() || isMobileOpen()) && "shadow-2xl"
         )}>
           <Navigation />
         </div>

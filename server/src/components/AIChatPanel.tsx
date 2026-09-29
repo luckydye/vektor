@@ -251,7 +251,13 @@ export function AIChatPanel(props: Props) {
   );
 
   return (
-    <DockedPanel id="ai-chat" title="AI Assistant" defaultSide="right" defaultWidth={380}>
+    <DockedPanel
+      id="ai-chat"
+      title="AI Assistant"
+      defaultSide="right"
+      defaultWidth={380}
+      swipeToOpen={isAgentConfigured()}
+    >
       <div class="flex h-full flex-col bg-neutral-50">
         <AIChatSessions
           sessions={sessions()}
