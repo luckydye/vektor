@@ -21,8 +21,6 @@ interface Props {
   minWidth?: number;
   maxWidth?: number;
   initialWidth?: number;
-  onMobileOpenChange?: (open: boolean, width: number) => void;
-  onMobileDragChange?: (offset: number | null) => void;
 }
 
 const RESIZE_DRAG_THRESHOLD = 4;
@@ -51,22 +49,16 @@ export function Sidebar(props: Props) {
   const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
   const mobileDrawerWidth = () => Math.max(currentWidth(), defaultWidth());
 
-  function setMobileOpen(open: boolean) {
-    setIsMobileOpen(open);
-    props.onMobileOpenChange?.(open, mobileDrawerWidth());
-  }
-
   const drawer = useSwipeDrawer({
     side: "left",
     size: mobileDrawerWidth,
     openFromScreen: true,
     isOpen: isMobileOpen,
-    setOpen: setMobileOpen,
-    onDragChange: (offset) => props.onMobileDragChange?.(offset),
+    setOpen: setIsMobileOpen,
   });
 
   function closeMobileDrawerOnDesktop() {
-    if (!isMobileViewport() && isMobileOpen()) setMobileOpen(false);
+    if (!isMobileViewport() && isMobileOpen()) setIsMobileOpen(false);
   }
 
   function dispatchSidebarResize() {
@@ -163,7 +155,7 @@ export function Sidebar(props: Props) {
       title: t("Toggle Mobile Sidebar"),
       description: t("Open or close the mobile sidebar menu"),
       group: "navigation",
-      run: async () => setMobileOpen(!isMobileOpen()),
+      run: async () => setIsMobileOpen(!isMobileOpen()),
     });
 
     const savedWidth = readStored(SIDEBAR_WIDTH_KEY, storedText);
@@ -181,8 +173,6 @@ export function Sidebar(props: Props) {
     if (isServer) return;
 
     window.removeEventListener("resize", closeMobileDrawerOnDesktop);
-    props.onMobileDragChange?.(null);
-    props.onMobileOpenChange?.(false, mobileDrawerWidth());
     Actions.unregister("ui:toggle:sidebar");
     Actions.unregister("sidebar:toggle-mobile");
   });
@@ -218,7 +208,7 @@ export function Sidebar(props: Props) {
         )}
         onClick={(e) => {
           const target = e.target as HTMLElement;
-          if (target.tagName === "A" || target.closest("a")) setMobileOpen(false);
+          if (target.tagName === "A" || target.closest("a")) setIsMobileOpen(false);
         }}
         onTouchStart={drawer.startFromDrawer}
       >

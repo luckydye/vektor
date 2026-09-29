@@ -54,8 +54,8 @@ export function SwipeDrawer(props: Props) {
         aria-label={props.title}
         inert={!isVisible()}
         class={twMerge(
-          "fixed right-0 z-90 flex touch-pan-y flex-col overflow-hidden rounded-l-lg border-neutral-100 border-l bg-neutral-10 transition-transform will-change-transform",
-          isVisible() ? "translate-x-0 shadow-2xl" : "translate-x-full",
+          "fixed right-0 z-90 flex touch-pan-y p-1.5 transition-transform will-change-transform",
+          isVisible() ? "translate-x-0" : "translate-x-full",
         )}
         style={{
           top: `${viewport().offsetTop}px`,
@@ -66,18 +66,25 @@ export function SwipeDrawer(props: Props) {
         }}
         onTouchStart={drawer.startFromDrawer}
       >
-        <div class="flex shrink-0 items-center gap-2 border-neutral-100 border-b px-3 py-2.5">
-          <span class="flex-1 font-semibold text-neutral-800 text-size-medium">
-            {props.title}
-          </span>
-          <IconButton
-            icon="cancel"
-            label={t("Close")}
-            onClick={() => props.onUpdateOpen(false)}
-          />
-        </div>
+        <div
+          class={twMerge(
+            "flex h-full w-full flex-col overflow-hidden rounded-lg border border-neutral-50 bg-neutral-10 transition-shadow",
+            isVisible() && "shadow-2xl",
+          )}
+        >
+          <div class="flex shrink-0 items-center gap-2 border-neutral-100 border-b px-3 py-2.5">
+            <span class="flex-1 font-semibold text-neutral-800 text-size-medium">
+              {props.title}
+            </span>
+            <IconButton
+              icon="cancel"
+              label={t("Close")}
+              onClick={() => props.onUpdateOpen(false)}
+            />
+          </div>
 
-        <div class="min-h-0 flex-1 overflow-hidden">{props.children}</div>
+          <div class="min-h-0 flex-1 overflow-hidden">{props.children}</div>
+        </div>
       </div>
     </Portal>
   );

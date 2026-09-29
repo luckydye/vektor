@@ -14,6 +14,7 @@ import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
 import { usePopoverSheets } from "#composeables/usePopoverSheets.ts";
+import { useDrawerShift } from "#composeables/useSwipeDrawer.ts";
 import { LocaleContext } from "#composeables/useTranslation.ts";
 import {
   DocumentContextContext,
@@ -118,8 +119,7 @@ export function SpaceApp(props: Props) {
   const toast = useToast();
   const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
   const [hasMounted, setHasMounted] = createSignal(false);
-  const [mobileSidebarOffset, setMobileSidebarOffset] = createSignal(0);
-  const [isMobileSidebarDragging, setIsMobileSidebarDragging] = createSignal(false);
+  const drawerShift = useDrawerShift();
   usePopoverSheets();
 
   const [showOrganizationTour, setShowOrganizationTour] = createSignal(false);
@@ -137,14 +137,6 @@ export function SpaceApp(props: Props) {
     offeredOrganizationTour = true;
     setShowOrganizationTour(true);
   });
-
-  const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
-
-  function resetMobileDrawerOnDesktop() {
-    if (isMobileViewport()) return;
-    setIsMobileSidebarDragging(false);
-    setMobileSidebarOffset(0);
-  }
 
   useSync(currentSpaceId, [realtimeTopics.extensions], (topics) => {
     const spaceId = currentSpaceId();
@@ -173,7 +165,6 @@ export function SpaceApp(props: Props) {
 
   onMount(() => {
     setHasMounted(true);
-    window.addEventListener("resize", resetMobileDrawerOnDesktop);
     void registerShellElements();
 
     const idle = (
@@ -230,7 +221,6 @@ export function SpaceApp(props: Props) {
 
     onCleanup(() => {
       unsubscribeAccessChanges();
-      window.removeEventListener("resize", resetMobileDrawerOnDesktop);
     });
   });
 
@@ -253,11 +243,11 @@ export function SpaceApp(props: Props) {
           class="main-content relative h-full min-h-screen transition-transform md:transition-none"
           style={{
             transform:
-              mobileSidebarOffset() === 0
+              drawerShift.shift() === 0
                 ? undefined
-                : `translateX(${mobileSidebarOffset() / 6}px)`,
-            "will-change": mobileSidebarOffset() === 0 ? undefined : "transform",
-            transition: isMobileSidebarDragging() ? "none" : undefined,
+                : `translateX(${drawerShift.shift() / 6}px)`,
+            "will-change": drawerShift.shift() === 0 ? undefined : "transform",
+            transition: drawerShift.isDragging() ? "none" : undefined,
           }}
         >
           <DockedWindowLayout />
@@ -278,18 +268,7 @@ export function SpaceApp(props: Props) {
           </Show>
         </div>
 
-        <Sidebar
-          initialWidth={initialSidebarWidth}
-          onMobileDragChange={(offset) => {
-            if (!isMobileViewport()) return;
-            setIsMobileSidebarDragging(offset !== null);
-            if (offset !== null) setMobileSidebarOffset(offset);
-          }}
-          onMobileOpenChange={(open, width) => {
-            if (!isMobileViewport()) return;
-            setMobileSidebarOffset(open ? width : 0);
-          }}
-        />
+        <Sidebar initialWidth={initialSidebarWidth} />
       </div>
 
       <button

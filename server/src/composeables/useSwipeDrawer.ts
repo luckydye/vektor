@@ -13,7 +13,6 @@ interface Options {
    * page scroll while open and keeps other drawers from opening by screen swipe.
    */
   openFromScreen?: boolean;
-  onDragChange?: (offset: number | null) => void;
 }
 
 interface Sample {
@@ -39,6 +38,30 @@ const MAX_RELEASE_DURATION = 300;
 // A swipe on the screen only opens a drawer while none is open, so the swipe
 // that closes one drawer never opens the one on the other side.
 const openDrawers = new Set<symbol>();
+
+interface Shift {
+  /** px the drawer pushes the page by, positive to the right. */
+  shift: number;
+  isDragging: boolean;
+}
+
+// Replaced rather than mutated on every write: `Map.set` is invisible to a signal.
+const [shifts, setShifts] = createSignal<ReadonlyMap<symbol, Shift>>(new Map());
+
+function writeShift(id: symbol, shift: Shift | null) {
+  const next = new Map(shifts());
+  if (shift) next.set(id, shift);
+  else next.delete(id);
+  setShifts(next);
+}
+
+/** How far the side drawers push the page aside, for the page's parallax. */
+export function useDrawerShift() {
+  return {
+    shift: () => [...shifts().values()].reduce((sum, entry) => sum + entry.shift, 0),
+    isDragging: () => [...shifts().values()].some((entry) => entry.isDragging),
+  };
+}
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -151,7 +174,6 @@ export function useSwipeDrawer(options: Options) {
     pointerId = null;
     if (!isDragging()) return;
     setIsDragging(false);
-    options.onDragChange?.(null);
     options.setOpen(options.isOpen());
   }
 
@@ -189,7 +211,6 @@ export function useSwipeDrawer(options: Options) {
 
     setOffset(clamp(startOffset + direction * along, 0, options.size()));
     sample(e.timeStamp);
-    options.onDragChange?.(offset());
   }
 
   function end(e: TouchEvent) {
@@ -210,7 +231,6 @@ export function useSwipeDrawer(options: Options) {
 
     setReleaseTransition(`translate ${Math.round(duration)}ms ${RELEASE_CURVE}`);
     setIsDragging(false);
-    options.onDragChange?.(null);
     options.setOpen(open);
   }
 
@@ -242,6 +262,13 @@ export function useSwipeDrawer(options: Options) {
     createEffect(() => applyOpenState(options.isOpen()));
   }
 
+  if (axis === "x") {
+    createEffect(() => {
+      const revealed = isDragging() ? offset() : options.isOpen() ? options.size() : 0;
+      writeShift(id, { shift: direction * revealed, isDragging: isDragging() });
+    });
+  }
+
   onMount(() => {
     if (options.openFromScreen) {
       document.addEventListener("touchstart", startFromScreen, { capture: true });
@@ -256,6 +283,7 @@ export function useSwipeDrawer(options: Options) {
       document.removeEventListener("touchend", end, true);
       document.removeEventListener("touchcancel", end, true);
       applyOpenState(false);
+      writeShift(id, null);
     });
   });
 
