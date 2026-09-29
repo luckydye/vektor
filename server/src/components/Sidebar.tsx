@@ -58,7 +58,8 @@ export function Sidebar(props: Props) {
 
   const drawer = useSwipeDrawer({
     side: "left",
-    width: mobileDrawerWidth,
+    size: mobileDrawerWidth,
+    openFromScreen: true,
     isOpen: isMobileOpen,
     setOpen: setMobileOpen,
     onDragChange: (offset) => props.onMobileDragChange?.(offset),
@@ -204,8 +205,8 @@ export function Sidebar(props: Props) {
         style={{
           "--sidebar-rendered-width": `${displayWidth()}px`,
           "--mobile-sidebar-width": `${mobileDrawerWidth()}px`,
-          transform: drawer.transform(),
-          transition: drawer.isDragging() ? "none" : undefined,
+          translate: drawer.translate(),
+          transition: drawer.transition(),
           "--color-background": "var(--color-neutral-10)",
         }}
         class={twMerge(

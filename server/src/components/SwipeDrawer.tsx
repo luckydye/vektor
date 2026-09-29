@@ -24,7 +24,8 @@ export function SwipeDrawer(props: Props) {
 
   const drawer = useSwipeDrawer({
     side: "right",
-    width,
+    size: width,
+    openFromScreen: true,
     isOpen: () => props.open,
     setOpen: (open) => props.onUpdateOpen(open),
   });
@@ -60,8 +61,8 @@ export function SwipeDrawer(props: Props) {
           top: `${viewport().offsetTop}px`,
           height: `${viewport().height}px`,
           width: `${width()}px`,
-          transform: drawer.transform(),
-          transition: drawer.isDragging() ? "none" : undefined,
+          translate: drawer.translate(),
+          transition: drawer.transition(),
         }}
         onTouchStart={drawer.startFromDrawer}
       >

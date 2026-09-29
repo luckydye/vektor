@@ -582,15 +582,19 @@ a-lightbox-blur[enabled] {
  * An <a-popover class="popover-sheet"> is a bottom sheet on phones. The popover
  * copies its class onto the full-screen portal it renders into; the portal's
  * child is what floating-ui places with an inline transform, and that child's
- * child is the menu panel.
+ * child is the menu panel. usePopoverSheets drags the panel down to dismiss.
+ *
+ * On close the popover removes its portal on the first transition that ends
+ * inside it, so the panel's slide has to be that one: the backdrop clears at
+ * once, and the fade-out the portal forces on its child waits out the slide.
  */
 @media (width < 48rem) {
   .popover-sheet {
     background-color: rgb(0 0 0 / 0);
-    transition: background-color 150ms;
   }
   .popover-sheet[enabled] {
     background-color: rgb(0 0 0 / 0.4);
+    transition: background-color 150ms;
   }
   .popover-sheet > * {
     position: fixed;
@@ -598,6 +602,10 @@ a-lightbox-blur[enabled] {
     width: auto;
     padding: 0;
     transform: none !important;
+    transition: opacity 0s 400ms;
+  }
+  .popover-sheet[enabled] > * {
+    transition: none;
   }
   .popover-sheet > * > * {
     min-width: 0;
