@@ -72,7 +72,10 @@ export function ContextMenu(props: Props) {
         {props.trigger}
       </Show>
 
-      <a-popover class="group" placements={props.placements ?? "bottom-end"}>
+      <a-popover
+        class="group popover-sheet"
+        placements={props.placements ?? "bottom-end"}
+      >
         <div class="w-max p-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
           <div
             class={`min-w-[100px] ${menuOrigin(props.placements)} scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-all duration-150 group-[&[enabled]]:scale-100`}

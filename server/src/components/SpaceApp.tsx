@@ -13,6 +13,7 @@ import { api } from "#api/client.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
+import { usePopoverSheets } from "#composeables/usePopoverSheets.ts";
 import { LocaleContext } from "#composeables/useTranslation.ts";
 import {
   DocumentContextContext,
@@ -119,6 +120,7 @@ export function SpaceApp(props: Props) {
   const [hasMounted, setHasMounted] = createSignal(false);
   const [mobileSidebarOffset, setMobileSidebarOffset] = createSignal(0);
   const [isMobileSidebarDragging, setIsMobileSidebarDragging] = createSignal(false);
+  usePopoverSheets();
 
   const [showOrganizationTour, setShowOrganizationTour] = createSignal(false);
 

@@ -22,6 +22,7 @@ import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
+import { SwipeDrawer } from "./SwipeDrawer.tsx";
 
 interface Props {
   id: string;
@@ -29,6 +30,8 @@ interface Props {
   defaultSide?: "left" | "right";
   defaultWidth?: number;
   defaultMode?: "docked" | "floating";
+  /** On mobile, render as a drawer on the right edge that a left swipe anywhere opens. */
+  swipeToOpen?: boolean;
   children?: JSX.Element;
 }
 
@@ -43,6 +46,7 @@ export function DockedPanel(props: Props) {
   const {
     register,
     deregister,
+    open,
     close,
     dock,
     undock,
@@ -271,17 +275,30 @@ export function DockedPanel(props: Props) {
     <Show
       when={isDesktop()}
       fallback={
-        <Dialog
-          show={isOpen()}
-          title={props.title}
-          expand
-          bodyClass="p-0 flex flex-col min-h-0 overflow-hidden"
-          onUpdateShow={(v) => {
-            if (!v) onClose();
-          }}
+        <Show
+          when={props.swipeToOpen}
+          fallback={
+            <Dialog
+              show={isOpen()}
+              title={props.title}
+              expand
+              bodyClass="p-0 flex flex-col min-h-0 overflow-hidden"
+              onUpdateShow={(v) => {
+                if (!v) onClose();
+              }}
+            >
+              {props.children}
+            </Dialog>
+          }
         >
-          {props.children}
-        </Dialog>
+          <SwipeDrawer
+            title={props.title}
+            open={isOpen()}
+            onUpdateOpen={(v) => (v ? open(props.id) : onClose())}
+          >
+            {props.children}
+          </SwipeDrawer>
+        </Show>
       }
     >
       <Show when={isOpen()}>

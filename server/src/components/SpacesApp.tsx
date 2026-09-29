@@ -10,6 +10,7 @@ import {
 } from "#composeables/useTranslation.ts";
 import { useInstanceUsers } from "#composeables/useInstanceUsers.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
+import { usePopoverSheets } from "#composeables/usePopoverSheets.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
@@ -230,6 +231,7 @@ function SpacesShell(props: { initialTab?: SpacesTab }) {
   const t = useTranslation();
 
   const [activeTab, setActiveTab] = createSignal<SpacesTab>(props.initialTab ?? "spaces");
+  usePopoverSheets();
   const {
     isInstanceAdmin,
     users,

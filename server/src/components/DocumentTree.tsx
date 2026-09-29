@@ -735,7 +735,7 @@ export function DocumentTree(props: Props) {
           />
 
           <a-popover
-            class="group"
+            class="group popover-sheet"
             placements="right-start,left-start"
             on:exit={closeContextMenu}
           >
