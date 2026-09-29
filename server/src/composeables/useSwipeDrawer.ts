@@ -48,11 +48,16 @@ interface Shift {
 // Replaced rather than mutated on every write: `Map.set` is invisible to a signal.
 const [shifts, setShifts] = createSignal<ReadonlyMap<symbol, Shift>>(new Map());
 
+// Written from each drawer's effect, so it must not read `shifts()` itself: the
+// effect would track the signal it writes and re-run forever. The setter's
+// callback reads the current map untracked.
 function writeShift(id: symbol, shift: Shift | null) {
-  const next = new Map(shifts());
-  if (shift) next.set(id, shift);
-  else next.delete(id);
-  setShifts(next);
+  setShifts((current) => {
+    const next = new Map(current);
+    if (shift) next.set(id, shift);
+    else next.delete(id);
+    return next;
+  });
 }
 
 /** How far the side drawers push the page aside, for the page's parallax. */
