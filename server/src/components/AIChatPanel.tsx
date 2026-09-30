@@ -8,6 +8,7 @@ import {
 } from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { useIntegrationAIModel } from "#composeables/useIntegrationAIModel.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
@@ -227,8 +228,11 @@ export function AIChatPanel(props: Props) {
     );
   }
 
+  const runsOnIntegrationModel = useIntegrationAIModel();
   const isAgentConfigured = createMemo(() => {
-    return !!currentSpace() && config().AI_ENABLED === "1";
+    return (
+      !!currentSpace() && (config().AI_ENABLED === "1" || runsOnIntegrationModel())
+    );
   });
 
   createEffect(

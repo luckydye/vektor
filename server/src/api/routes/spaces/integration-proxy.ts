@@ -11,15 +11,11 @@ import {
 } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import {
-  getOAuthIntegrationCredentialForUser,
-  type OAuthIntegrationCredential,
-  updateOAuthIntegrationTokenSet,
-} from "#db/space/oauthIntegrations.ts";
+import { getOAuthIntegrationCredentialForUser } from "#db/space/oauthIntegrations.ts";
 import {
   getOAuthProviderConfiguration,
   type OAuthProviderConfiguration,
-  refreshOAuthToken,
+  resolveIntegrationAccessToken,
 } from "#integrations/oauthProviders.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
@@ -83,6 +79,11 @@ function getProviderBaseUrl(providerConfig: OAuthProviderConfiguration): URL {
   if (providerConfig.instanceUrl) {
     return new URL(providerConfig.instanceUrl);
   }
+  if (!providerConfig.userInfoUrl) {
+    throw badRequestResponse(
+      `${providerConfig.id} declares neither an instance URL nor a userinfo URL to send requests to`,
+    );
+  }
   return new URL(providerConfig.userInfoUrl);
 }
 
@@ -145,48 +146,6 @@ export function buildIntegrationApiUrl(
   return resolved;
 }
 
-/** Seconds before expiry at which we proactively refresh the access token. */
-const REFRESH_BUFFER_SECS = 60;
-
-/**
- * Returns a valid access token for the credential, refreshing it first if it
- * is expired or within REFRESH_BUFFER_SECS of expiry.  Throws if the token is
- * expired and no refresh token is available.
- */
-async function resolveAccessToken(
-  spaceId: string,
-  credential: OAuthIntegrationCredential,
-  providerConfig: OAuthProviderConfiguration,
-): Promise<string> {
-  const { accessTokenExpiresAt, refreshToken } = credential;
-
-  const needsRefresh =
-    accessTokenExpiresAt !== null &&
-    accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_BUFFER_SECS * 1000;
-
-  if (!needsRefresh) {
-    return credential.accessToken;
-  }
-
-  if (!refreshToken) {
-    throw new Error(
-      `${credential.provider} access token has expired and no refresh token is available. ` +
-        `Please reconnect the integration.`,
-    );
-  }
-
-  const refreshed = await refreshOAuthToken({ providerConfig, refreshToken });
-
-  await updateOAuthIntegrationTokenSet(await openSpaceStore(spaceId), credential.id, {
-    accessToken: refreshed.accessToken,
-    refreshToken: refreshed.refreshToken ?? refreshToken, // keep old refresh token if provider didn't return a new one
-    expiresAt: refreshed.expiresAt,
-    scope: refreshed.scope ?? credential.scope,
-  });
-
-  return refreshed.accessToken;
-}
-
 /**
  * Call the provider's API with the space's stored credentials
  *
@@ -241,7 +200,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw forbiddenResponse("Integration credential does not belong to this user");
     }
 
-    const accessToken = await resolveAccessToken(
+    const accessToken = await resolveIntegrationAccessToken(
       spaceId,
       credential,
       providerConfig.config,

@@ -218,30 +218,43 @@ export async function callOpenAICompatible(options: {
   };
 }
 
-/** Calls a Zen GPT model, which Zen exposes through the OpenAI Responses API. */
+/**
+ * Calls a model through the OpenAI Responses API: Zen's GPT models, and the
+ * model APIs extension integrations provide.
+ */
 export async function callOpenAIResponses(options: {
-  provider: OpenAICompatibleProvider;
+  /** Names the provider in errors. */
+  label: string;
+  url: string;
+  apiKey: string;
+  model: string;
+  /** False keeps the provider from retaining the conversation. */
+  store?: false;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
   onText?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
-  const response = await fetch("https://opencode.ai/zen/v1/responses", {
+  const response = await fetch(options.url, {
     method: "POST",
-    headers: getOpenAICompatibleHeaders(options.provider),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${options.apiKey}`,
+    },
     body: JSON.stringify({
-      model: options.provider.model,
+      model: options.model,
       input: toOpenAIResponsesInput(options.messages),
       tools: toOpenAIResponsesTools(options.tools),
       stream: true,
+      ...(options.store === false ? { store: false } : {}),
     }),
     signal: options.signal,
+    // Following a redirect would re-send the bearer token wherever it points.
+    redirect: "manual",
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(
-      `${options.provider.provider} ${response.status}: ${await response.text()}`,
-    );
+    throw new Error(`${options.label} ${response.status}: ${await response.text()}`);
   }
 
   let content = "";

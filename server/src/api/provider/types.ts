@@ -26,9 +26,23 @@ export type ChatMessage = {
   tool_call_id?: string;
 };
 
-export type AIProvider =
+export type AIProvider = InstanceAIProvider | IntegrationAIProvider;
+
+/** The provider the instance operator configures. */
+export type InstanceAIProvider =
   | { provider: "anthropic"; apiKey: string; model: string }
   | { provider: "openai"; apiKey: string; model: string }
   | { provider: "openrouter"; apiKey: string; model: string }
   | { provider: "opencode-zen"; apiKey: string; model: string }
   | { provider: "ollama"; baseUrl: string; model: string };
+
+/** A model API a connected extension integration pays for with the user's token. */
+export type IntegrationAIProvider = {
+  provider: "integration";
+  /** The integration id, e.g. `chatgpt`. */
+  integration: string;
+  format: "openai-responses";
+  url: string;
+  accessToken: () => Promise<string>;
+  model: string;
+};

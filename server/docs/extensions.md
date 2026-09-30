@@ -869,7 +869,14 @@ manifest describes the provider; it never contains credentials.
 |-------|----------|-------------|
 | `id` | Yes | Provider id; lowercase alphanumeric and hyphens. Appears in every `/integrations/:provider` route |
 | `label` | Yes | Shown on the settings card |
-| `authorizationUrl`, `tokenUrl`, `userInfoUrl` | Yes | Endpoints. `{instance}` is replaced with the configured instance URL |
+| `authorizationUrl`, `tokenUrl` | Yes | Endpoints. `{instance}` is replaced with the configured instance URL |
+| `userInfoUrl` | No | Profile endpoint. Without it, `profile` is read from the token response's `id_token` claims |
+| `clientId` | No | A public client id. The provider then needs no operator credentials and runs as a PKCE client without a secret |
+| `redirectUri` | No | A fixed redirect for providers that only accept loopback addresses. The sign-in opens in a new tab, and the user pastes the address it lands on back into the settings card |
+| `registration` | No | `{ "hostIdParam": "…" }` for providers that register a client per user: the redirect carries this instance's stable host id under that name, and the callback's `client_id` is kept and used for the exchange, refreshes and reconnects. Needs `clientId` |
+| `tokenParams` | No | Extra form parameters for the token exchange and refresh |
+| `manageUrl` | No | Linked from the settings card as "Manage usage" while connected |
+| `ai` | No | A model API the connection pays for — see below |
 | `scopes` | No | Requested scopes, unless the operator overrides them |
 | `defaultInstanceUrl` | No | Used when the operator configures none — set it for a hosted-only service |
 | `apiBasePath` | No | Proxied requests are confined to this path and prefixed with it |
@@ -877,7 +884,7 @@ manifest describes the provider; it never contains credentials.
 | `profile` | Yes | Which userinfo fields hold the account id and display name, tried in order |
 | `agent` | No | `instructions` for the agent's system prompt, and a `command` naming a job in `jobs` |
 
-Credentials come from the environment, named after the provider id: for `gitlab`,
+Unless the manifest declares a public `clientId`, credentials come from the environment, named after the provider id: for `gitlab`,
 `VEKTOR_OAUTH_GITLAB_CLIENT_ID`, `VEKTOR_OAUTH_GITLAB_CLIENT_SECRET`, and
 optionally `VEKTOR_OAUTH_GITLAB_BASE_URL` and `VEKTOR_OAUTH_GITLAB_SCOPES`. A
 provider whose id contains hyphens uses underscores in the variable name. Until
@@ -888,6 +895,42 @@ Set `authorizationParams` when the provider needs to be asked for a refresh
 token. Google issues none without `"access_type": "offline"`, and only repeats
 it on a later consent with `"prompt": "consent"` — without both, the connection
 stops working an hour after it is made.
+
+### AI models
+
+An integration with `ai` can run the user's agent chats. Once connected, the
+settings card lists the account's models from `modelsPath`; picking one runs
+every agent chat of that user on it, and "Instance default" returns them to the
+instance's provider. Both paths resolve against the provider origin like proxied
+requests, and their usage counts against the connected account, not the space's
+weekly AI budget.
+
+```json
+"ai": { "format": "openai-responses", "path": "/v1/responses", "modelsPath": "/v1/models" }
+```
+
+`openai-responses` is the only format so far. Sign in with ChatGPT is declared
+this way — a public, registering client on a loopback redirect:
+
+```json
+{
+  "id": "chatgpt",
+  "label": "ChatGPT",
+  "authorizationUrl": "https://auth.openai.com/api/accounts/authorize",
+  "tokenUrl": "https://auth.openai.com/api/accounts/oauth/token",
+  "clientId": "dynamic_agent_client",
+  "redirectUri": "http://127.0.0.1:1455/auth/callback",
+  "registration": { "hostIdParam": "ext_agent_host_id" },
+  "scopes": ["openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"],
+  "authorizationParams": { "agent_name_hint": "Vektor", "resource": "https://api.openai.com/v1" },
+  "tokenParams": { "resource": "https://api.openai.com/v1" },
+  "defaultInstanceUrl": "https://api.openai.com",
+  "apiBasePath": "/v1",
+  "manageUrl": "https://chatgpt.com/settings/usage",
+  "profile": { "accountId": ["sub"], "username": ["email"] },
+  "ai": { "format": "openai-responses", "path": "/v1/responses", "modelsPath": "/v1/models" }
+}
+```
 
 ### Calling the provider from a view
 

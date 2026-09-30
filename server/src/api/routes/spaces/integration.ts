@@ -3,6 +3,7 @@ import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   successResponse,
@@ -13,6 +14,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import {
   deleteOAuthIntegrationForUser,
   getOAuthIntegrationForUser,
+  setOAuthIntegrationAIModel,
 } from "#db/space/oauthIntegrations.ts";
 
 import {
@@ -49,6 +51,51 @@ export const GET: ApiRouteHandler = (context) =>
 
     return jsonResponse({ connection: buildIntegrationView(definition, connection) });
   }, "Failed to get integration status");
+
+/**
+ * Pick the model the user's agent chats run on
+ *
+ * A model runs every agent chat on this integration; null returns them to the
+ * instance's provider.
+ *
+ * @tag Integrations
+ * @param provider Integration provider id, e.g. `chatgpt`.
+ * @body
+ */
+export const PATCH: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const providerParam = requireParam(context.var.params, "provider");
+
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
+
+    const body = await parseJsonBody<{ aiModel?: unknown }>(context.req.raw);
+    const aiModel = typeof body.aiModel === "string" ? body.aiModel.trim() : body.aiModel;
+    if (aiModel !== null && (typeof aiModel !== "string" || !aiModel)) {
+      throw badRequestResponse("aiModel must be a model id or null");
+    }
+
+    const definition = await getOAuthProviderDefinition(spaceId, providerParam);
+    if (!definition?.integration.ai) {
+      throw badRequestResponse(`${providerParam} does not provide AI models`);
+    }
+
+    const store = await openSpaceStore(spaceId);
+    const connection = await getOAuthIntegrationForUser(store, user.id, providerParam);
+    if (!connection) {
+      throw badRequestResponse(`${providerParam} is not connected for this user`);
+    }
+
+    await setOAuthIntegrationAIModel(store, user.id, providerParam, aiModel);
+    const updated = await getOAuthIntegrationForUser(store, user.id, providerParam);
+    return jsonResponse({ connection: buildIntegrationView(definition, updated) });
+  }, "Failed to update integration");
 
 /**
  * Disconnect an integration

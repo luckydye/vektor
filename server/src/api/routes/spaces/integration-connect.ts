@@ -11,11 +11,15 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { createOAuthIntegrationState } from "#db/space/oauthIntegrations.ts";
+import {
+  createOAuthIntegrationState,
+  getOAuthIntegrationForUser,
+} from "#db/space/oauthIntegrations.ts";
 import {
   buildOAuthAuthorizationUrl,
-  getOAuthCallbackUrl,
+  getOAuthClientId,
   getOAuthProviderConfiguration,
+  getOAuthRedirectUri,
 } from "#integrations/oauthProviders.ts";
 import { normalizeRedirectPath, toBase64Url } from "#utils/url.ts";
 
@@ -69,9 +73,10 @@ export const POST: ApiRouteHandler = (context) =>
     const state = createOAuthState();
     const codeVerifier = createPkceCodeVerifier();
     const codeChallenge = createPkceCodeChallenge(codeVerifier);
-    const redirectUri = getOAuthCallbackUrl(spaceId, providerParam);
+    const redirectUri = getOAuthRedirectUri(spaceId, configured.config);
 
     const store = await openSpaceStore(spaceId);
+    const existing = await getOAuthIntegrationForUser(store, user.id, providerParam);
     await createOAuthIntegrationState(
       store,
       user.id,
@@ -84,6 +89,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const authorizeUrl = buildOAuthAuthorizationUrl({
       providerConfig: configured.config,
+      clientId: getOAuthClientId(configured.config, existing),
       state,
       codeChallenge,
       redirectUri,

@@ -208,6 +208,11 @@ async function propertyKeyTypeIndex(db: SpaceDb): Promise<void> {
   );
 }
 
+async function oauthIntegrationClientAndModel(db: SpaceDb): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.oauthIntegration.clientId);
+  await addColumnIfMissing(db, spaceSchema.oauthIntegration.aiModel);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -216,4 +221,9 @@ export const spaceMigrations: Migration[] = [
   { id: 5, name: "ai-weekly-usage", up: aiWeeklyUsage },
   { id: 6, name: "time-series", up: timeSeries },
   { id: 7, name: "property-key-type-index", up: propertyKeyTypeIndex },
+  {
+    id: 8,
+    name: "oauth-integration-client-and-model",
+    up: oauthIntegrationClientAndModel,
+  },
 ];

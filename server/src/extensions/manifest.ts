@@ -46,6 +46,28 @@ export interface ExtensionIntegrationAgent {
 }
 
 /**
+ * A model API the integration's access token pays for. While a user has the
+ * integration connected and a model picked, their agent chats run on it
+ * instead of the instance's provider.
+ */
+export interface ExtensionIntegrationAI {
+  format: "openai-responses";
+  /** Resolved against the provider origin like proxied requests, e.g. "/v1/responses". */
+  path: string;
+  /** Lists the models the account may use, e.g. "/v1/models". */
+  modelsPath: string;
+}
+
+/**
+ * For providers that register a client per user: the authorization redirect
+ * carries this instance's stable host id, and the callback carries the issued
+ * `client_id`, which the token exchange and every refresh use from then on.
+ */
+export interface ExtensionIntegrationRegistration {
+  hostIdParam: string;
+}
+
+/**
  * An OAuth provider an extension contributes. The server runs the flow; the
  * manifest only describes the endpoints, and `{instance}` in any of them is
  * replaced with the operator-configured instance URL.
@@ -56,7 +78,25 @@ export interface ExtensionIntegration {
   description?: string;
   authorizationUrl: string;
   tokenUrl: string;
-  userInfoUrl: string;
+  /** Without it, the profile fields are read from the token response's `id_token`. */
+  userInfoUrl?: string;
+  /**
+   * A public client id. The provider then needs no operator credentials, and
+   * the flow runs as a public PKCE client without a client secret.
+   */
+  clientId?: string;
+  /**
+   * A fixed redirect URI for providers that only accept loopback addresses.
+   * The browser lands on a page that does not load, and the user pastes its
+   * address back into Vektor to finish connecting.
+   */
+  redirectUri?: string;
+  registration?: ExtensionIntegrationRegistration;
+  /** Extra form parameters for the token exchange and refresh. */
+  tokenParams?: Record<string, string>;
+  /** Where the user manages the connected account's usage. */
+  manageUrl?: string;
+  ai?: ExtensionIntegrationAI;
   scopes?: string[];
   /** Instance URL used when the operator configures none. */
   defaultInstanceUrl?: string;
@@ -181,25 +221,97 @@ const RESERVED_AUTHORIZATION_PARAMS = new Set([
   "code_challenge_method",
 ]);
 
-function validateAuthorizationParams(integration: ExtensionIntegration): void {
-  const params = integration.authorizationParams;
+/** The token exchange's own parameters, which `tokenParams` may not overwrite. */
+const RESERVED_TOKEN_PARAMS = new Set([
+  "grant_type",
+  "code",
+  "code_verifier",
+  "client_id",
+  "client_secret",
+  "redirect_uri",
+  "refresh_token",
+]);
+
+function validateParams(
+  integration: ExtensionIntegration,
+  field: "authorizationParams" | "tokenParams",
+  reserved: Set<string>,
+): void {
+  const params = integration[field];
   if (params === undefined) return;
 
   if (typeof params !== "object" || params === null || Array.isArray(params)) {
     throw new Error(
-      `Extension manifest integration '${integration.id}' has an invalid 'authorizationParams'`,
+      `Extension manifest integration '${integration.id}' has an invalid '${field}'`,
     );
   }
 
   for (const [name, value] of Object.entries(params)) {
-    if (RESERVED_AUTHORIZATION_PARAMS.has(name.toLowerCase())) {
+    if (reserved.has(name.toLowerCase())) {
       throw new Error(
-        `Extension manifest integration '${integration.id}' may not set the reserved authorization parameter '${name}'`,
+        `Extension manifest integration '${integration.id}' may not set the reserved parameter '${name}' in '${field}'`,
       );
     }
     if (typeof value !== "string") {
       throw new Error(
-        `Extension manifest integration '${integration.id}' authorization parameter '${name}' must be a string`,
+        `Extension manifest integration '${integration.id}' parameter '${name}' in '${field}' must be a string`,
+      );
+    }
+  }
+}
+
+function validateOptionalStrings(
+  integration: ExtensionIntegration,
+  fields: Array<"userInfoUrl" | "clientId" | "redirectUri" | "manageUrl">,
+): void {
+  for (const field of fields) {
+    const value = integration[field];
+    if (value !== undefined && (typeof value !== "string" || !value.trim())) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' has an invalid '${field}'`,
+      );
+    }
+  }
+}
+
+function validateRegistration(integration: ExtensionIntegration): void {
+  const registration = integration.registration;
+  if (registration === undefined) return;
+
+  const hostIdParam = registration?.hostIdParam;
+  if (typeof hostIdParam !== "string" || !hostIdParam.trim()) {
+    throw new Error(
+      `Extension manifest integration '${integration.id}' registration is missing 'hostIdParam'`,
+    );
+  }
+  if (
+    RESERVED_AUTHORIZATION_PARAMS.has(hostIdParam.toLowerCase()) ||
+    Object.hasOwn(integration.authorizationParams ?? {}, hostIdParam)
+  ) {
+    throw new Error(
+      `Extension manifest integration '${integration.id}' registration 'hostIdParam' collides with another authorization parameter`,
+    );
+  }
+  if (!integration.clientId) {
+    throw new Error(
+      `Extension manifest integration '${integration.id}' registration needs the 'clientId' it registers with`,
+    );
+  }
+}
+
+function validateAI(integration: ExtensionIntegration): void {
+  const ai = integration.ai;
+  if (ai === undefined) return;
+
+  if (ai?.format !== "openai-responses") {
+    throw new Error(
+      `Extension manifest integration '${integration.id}' ai 'format' must be "openai-responses"`,
+    );
+  }
+  for (const field of ["path", "modelsPath"] as const) {
+    if (typeof ai[field] !== "string" || !ai[field].startsWith("/")) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' ai '${field}' must be an absolute path`,
       );
     }
   }
@@ -240,7 +352,7 @@ function validateIntegrations(manifest: ExtensionManifest): void {
         `Extension manifest integration '${integration.id}' is missing required 'label' field`,
       );
     }
-    for (const field of ["authorizationUrl", "tokenUrl", "userInfoUrl"] as const) {
+    for (const field of ["authorizationUrl", "tokenUrl"] as const) {
       if (typeof integration[field] !== "string" || !integration[field].trim()) {
         throw new Error(
           `Extension manifest integration '${integration.id}' is missing required '${field}' field`,
@@ -257,7 +369,16 @@ function validateIntegrations(manifest: ExtensionManifest): void {
       );
     }
 
-    validateAuthorizationParams(integration);
+    validateOptionalStrings(integration, [
+      "userInfoUrl",
+      "clientId",
+      "redirectUri",
+      "manageUrl",
+    ]);
+    validateParams(integration, "authorizationParams", RESERVED_AUTHORIZATION_PARAMS);
+    validateParams(integration, "tokenParams", RESERVED_TOKEN_PARAMS);
+    validateRegistration(integration);
+    validateAI(integration);
 
     const commandJobId = integration.agent?.command?.jobId;
     if (commandJobId && !manifest.jobs?.some((job) => job.id === commandJobId)) {

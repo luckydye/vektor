@@ -1,7 +1,7 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Bash } from "just-bash";
 import type { VektorMcpConfig } from "#agent/tools.ts";
-import type { ChatMessage } from "#api/provider/types.ts";
+import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import {
   type AgentEvent,
   type AgentResult,
@@ -213,6 +213,7 @@ export async function runAgentInWorker(options: {
   connectedProviders: string[];
   userProfile?: string;
   userId?: string | null;
+  provider?: AIProvider;
   jobToken: string;
   shellSnapshot?: string | null;
   signal?: AbortSignal;

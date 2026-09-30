@@ -141,6 +141,10 @@ export async function callModel(options: {
   onText?: (text: string) => void | Promise<void>;
   onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
+  // The space's weekly budget caps the instance's own provider; an
+  // integration's usage is billed to the user's account instead.
+  if (options.provider.provider === "integration") return callModelProvider(options);
+
   const inputTokens = estimateModelInput(options.messages, options.tools);
   const settle = await reserveAITokens(
     await openSpaceStore(options.spaceId),
@@ -188,8 +192,24 @@ async function callModelProvider(
   if (provider.provider === "ollama") {
     return callOllama({ ...options, provider });
   }
+  if (provider.provider === "integration") {
+    return callOpenAIResponses({
+      ...options,
+      label: provider.integration,
+      url: provider.url,
+      apiKey: await provider.accessToken(),
+      model: provider.model,
+      store: false,
+    });
+  }
   if (provider.provider === "opencode-zen" && isOpenCodeZenGPTModel(provider.model)) {
-    return callOpenAIResponses({ ...options, provider });
+    return callOpenAIResponses({
+      ...options,
+      label: provider.provider,
+      url: "https://opencode.ai/zen/v1/responses",
+      apiKey: provider.apiKey,
+      model: provider.model,
+    });
   }
   if (
     provider.provider === "opencode-zen" &&
@@ -327,7 +347,7 @@ export async function runAgentPrompt(options: {
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   /** Test seam for deterministic provider responses. */
   modelCaller?: typeof callModel;
-  /** Test seam that avoids reading provider configuration. */
+  /** Unset runs on the instance's provider. */
   provider?: AIProvider;
 }): Promise<AgentResult> {
   const {

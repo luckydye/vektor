@@ -724,5 +724,13 @@
   "Open the Vektor app": "Vektor-App öffnen",
   "You can close this tab and return to the app.": "Du kannst diesen Tab schließen und zur App zurückkehren.",
   "Sign out failed": "Abmelden fehlgeschlagen",
-  "Confirm": "Bestätigen"
+  "Confirm": "Bestätigen",
+  "Model for agent chats": "Modell für Agent-Chats",
+  "Instance default": "Standard der Instanz",
+  "Runs your agent chats": "Führt deine Agent-Chats aus",
+  "Manage usage": "Nutzung verwalten",
+  "Paste the address you landed on after signing in": "Füge die Adresse ein, auf der du nach der Anmeldung gelandet bist",
+  "Finish connecting": "Verbindung abschließen",
+  "Failed to load models": "Modelle konnten nicht geladen werden",
+  "Failed to update model": "Modell konnte nicht geändert werden"
 }

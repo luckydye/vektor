@@ -234,7 +234,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET/PUT/DELETE/HEAD | `/spaces/:spaceId/secrets/:name` | Read / upsert / delete / check existence of a secret |
 | GET/PUT | `/spaces/:spaceId/settings/ai-limit` | Read weekly estimated token usage and set a space limit |
 | GET | `/spaces/:spaceId/integrations` | List OAuth integration connection states |
-| GET/DELETE | `/spaces/:spaceId/integrations/:provider` | Read / disconnect a single integration |
+| GET/PATCH/DELETE | `/spaces/:spaceId/integrations/:provider` | Read / pick the agent model of / disconnect a single integration |
 | POST | `/spaces/:spaceId/integrations/:provider/connect` | Start OAuth authorization flow |
 | GET | `/spaces/:spaceId/integrations/:provider/callback` | OAuth redirect callback (browser) |
 | POST | `/spaces/:spaceId/integrations/:provider/proxy` | Proxy an authenticated request to the integration's API |
@@ -1527,6 +1527,22 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations/github"
 }
 ```
 
+### `PATCH /spaces/:spaceId/integrations/:provider`
+
+- **Auth**: session; `viewer` on the space. The provider must declare `ai` and
+  be connected for this user (else `400`).
+- **Body**: `aiModel` (a model id, or `null`).
+- **Behavior**: a model runs all of this user's agent chats on the integration,
+  and clears the model picked on any other integration; `null` returns them to
+  the instance's provider.
+- **Returns**: `200 { connection }` (same shape as one list entry).
+
+```bash
+curl -sS -X PATCH -b "$COOKIE" -H "Content-Type: application/json" \
+  -d '{ "aiModel": "gpt-5" }' \
+  "$VEKTOR/spaces/$SPACE/integrations/chatgpt"
+```
+
 ### `DELETE /spaces/:spaceId/integrations/:provider`
 
 - **Auth**: session; `viewer` on the space.
@@ -1565,7 +1581,8 @@ curl -sS -b "$COOKIE" -H "Content-Type: application/json" \
 - **Auth**: session; `viewer` on the space. (Not JSON — a browser redirect target.)
   Authorization happens before anything else, so a refusal is a real 401/403 rather
   than a redirect that would leak the space slug.
-- **Query**: `code`, `state` (from provider), or `error`/`error_description`.
+- **Query**: `code`, `state` (from provider), or `error`/`error_description`. A
+  provider with `registration` also returns the `client_id` it issued.
 - **Behavior**: consumes the pending OAuth state (validated per user/provider),
   exchanges the code, fetches the external account identity, upserts the
   integration credential.

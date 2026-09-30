@@ -10,6 +10,7 @@ import { extractManifest } from "#extensions/manifest.ts";
 import {
   buildOAuthAuthorizationUrl,
   fetchOAuthExternalUser,
+  type OAuthProviderConfiguration,
   type OAuthProviderDefinition,
   resolveOAuthProviderConfiguration,
 } from "#integrations/oauthProviders.ts";
@@ -200,6 +201,7 @@ describe("buildOAuthAuthorizationUrl", () => {
     const url = new URL(
       buildOAuthAuthorizationUrl({
         providerConfig: resolved.config,
+        clientId: resolved.config.clientId,
         state: "state-value",
         codeChallenge: "challenge-value",
         redirectUri: "https://wiki.example.com/callback",
@@ -218,7 +220,7 @@ describe("fetchOAuthExternalUser", () => {
     vi.restoreAllMocks();
   });
 
-  const providerConfig = {
+  const providerConfig: OAuthProviderConfiguration = {
     id: "gitlab",
     label: "GitLab",
     clientId: "id",
@@ -227,9 +229,23 @@ describe("fetchOAuthExternalUser", () => {
     authorizationUrl: "https://gitlab.com/oauth/authorize",
     tokenUrl: "https://gitlab.com/oauth/token",
     userInfoUrl: "https://gitlab.com/api/v4/user",
+    redirectUri: null,
+    registration: null,
+    tokenParams: {},
+    manageUrl: null,
+    ai: null,
     instanceUrl: "https://gitlab.com",
     apiBasePath: "/api/v4",
+    authorizationParams: {},
     profile: { accountId: ["id", "ringId"], username: ["login", "name"] },
+  };
+
+  const tokenSet = {
+    accessToken: "token",
+    refreshToken: null,
+    expiresAt: null,
+    scope: null,
+    idToken: null,
   };
 
   function stubProfile(profile: Record<string, unknown>) {
@@ -241,7 +257,7 @@ describe("fetchOAuthExternalUser", () => {
 
   it("maps the fields the manifest names, numbers included", async () => {
     stubProfile({ id: 42, name: "Ada" });
-    await expect(fetchOAuthExternalUser(providerConfig, "token")).resolves.toEqual({
+    await expect(fetchOAuthExternalUser(providerConfig, tokenSet)).resolves.toEqual({
       accountId: "42",
       username: "Ada",
     });
@@ -249,7 +265,7 @@ describe("fetchOAuthExternalUser", () => {
 
   it("falls through to the next field in order", async () => {
     stubProfile({ ringId: "ring-1", login: "ada" });
-    await expect(fetchOAuthExternalUser(providerConfig, "token")).resolves.toEqual({
+    await expect(fetchOAuthExternalUser(providerConfig, tokenSet)).resolves.toEqual({
       accountId: "ring-1",
       username: "ada",
     });
@@ -257,7 +273,7 @@ describe("fetchOAuthExternalUser", () => {
 
   it("fails when no field yields an account id", async () => {
     stubProfile({ name: "Ada" });
-    await expect(fetchOAuthExternalUser(providerConfig, "token")).rejects.toThrow(
+    await expect(fetchOAuthExternalUser(providerConfig, tokenSet)).rejects.toThrow(
       /missing id \/ ringId/,
     );
   });

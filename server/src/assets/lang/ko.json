@@ -724,5 +724,13 @@
   "Open the Vektor app": "Vektor 앱 열기",
   "You can close this tab and return to the app.": "이 탭을 닫고 앱으로 돌아가세요.",
   "Sign out failed": "로그아웃하지 못했습니다",
-  "Confirm": "확인"
+  "Confirm": "확인",
+  "Model for agent chats": "에이전트 채팅 모델",
+  "Instance default": "인스턴스 기본값",
+  "Runs your agent chats": "에이전트 채팅에 사용 중",
+  "Manage usage": "사용량 관리",
+  "Paste the address you landed on after signing in": "로그인 후 이동한 주소를 붙여넣으세요",
+  "Finish connecting": "연결 완료",
+  "Failed to load models": "모델을 불러오지 못했습니다",
+  "Failed to update model": "모델을 변경하지 못했습니다"
 }

@@ -221,6 +221,10 @@ export const oauthIntegration = sqliteTable(
     externalAccountId: text("external_account_id").notNull(),
     externalUsername: text("external_username"),
     instanceUrl: text("instance_url"),
+    /** The client the provider registered for this user, when it registers one per user. */
+    clientId: text("client_id"),
+    /** The model the user's agent chats run on, for integrations that provide one. */
+    aiModel: text("ai_model"),
     scope: text("scope"),
     accessTokenCiphertext: text("access_token_ciphertext").notNull(),
     accessTokenIv: text("access_token_iv").notNull(),

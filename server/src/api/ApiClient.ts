@@ -495,6 +495,12 @@ export interface OAuthIntegrationConnection {
   externalAccountId: string | null;
   externalUsername: string | null;
   instanceUrl: string | null;
+  /** The browser lands on a dead loopback page whose address the user pastes back. */
+  pastesRedirect: boolean;
+  manageUrl: string | null;
+  /** Set when the integration can run the user's agent chats: lists their models. */
+  aiModelsPath: string | null;
+  aiModel: string | null;
   scopes: string[];
   accessTokenExpiresAt: Date | string | null;
   createdAt: Date | string | null;
@@ -2209,6 +2215,51 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/integrations/${provider}/connect`,
         body ?? {},
+      );
+    },
+
+    /**
+     * The callback that finishes a connection whose provider redirected to a
+     * loopback address: `landedOn` is the address the browser ended up at.
+     */
+    pastedCallbackUrl: (
+      spaceId: string,
+      provider: OAuthIntegrationProvider,
+      landedOn: string,
+    ): string => {
+      const { search } = new URL(landedOn.trim());
+      if (!search) throw new Error("That address carries no sign-in result");
+      return `${this.baseUrl}/api/v1/spaces/${spaceId}/integrations/${provider}/callback${search}`;
+    },
+
+    /** Model ids the connected account may run agent chats on. */
+    listAIModels: async (
+      spaceId: string,
+      connection: OAuthIntegrationConnection,
+    ): Promise<string[]> => {
+      if (!connection.aiModelsPath) {
+        throw new Error(`${connection.label} does not provide AI models`);
+      }
+      const response = await this.integrations.request(spaceId, connection.provider, {
+        path: connection.aiModelsPath,
+      });
+      if (!response.ok) {
+        throw new Error(`${connection.label} ${response.status}: ${response.body}`);
+      }
+      const { data } = JSON.parse(response.body) as { data: Array<{ id: string }> };
+      return data.map((model) => model.id).sort();
+    },
+
+    /** A model runs the user's agent chats on this integration; null returns them to the instance. */
+    setAIModel: async (
+      spaceId: string,
+      provider: OAuthIntegrationProvider,
+      aiModel: string | null,
+    ) => {
+      return await this.apiPatch<{ connection: OAuthIntegrationConnection }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/integrations/${provider}`,
+        { aiModel },
       );
     },
 

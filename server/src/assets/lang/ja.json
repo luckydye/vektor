@@ -724,5 +724,13 @@
   "Open the Vektor app": "Vektor アプリを開く",
   "You can close this tab and return to the app.": "このタブを閉じてアプリに戻ってください。",
   "Sign out failed": "サインアウトに失敗しました",
-  "Confirm": "確認"
+  "Confirm": "確認",
+  "Model for agent chats": "エージェントチャットのモデル",
+  "Instance default": "インスタンスの既定",
+  "Runs your agent chats": "エージェントチャットで使用中",
+  "Manage usage": "使用量を管理",
+  "Paste the address you landed on after signing in": "サインイン後に表示されたアドレスを貼り付けてください",
+  "Finish connecting": "接続を完了",
+  "Failed to load models": "モデルを読み込めませんでした",
+  "Failed to update model": "モデルを更新できませんでした"
 }

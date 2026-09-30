@@ -9,7 +9,7 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
-import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
+import type { AIProvider, ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -18,6 +18,7 @@ import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
 import { getUserProfile } from "#db/space/userProfiles.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
+import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 
@@ -622,6 +623,8 @@ function getOrStartActiveChatTurn(options: {
   userAttachments: ChatAttachment[];
   userProfile?: string;
   connectedProviders: string[];
+  /** Unset runs the turn on the instance's provider. */
+  provider?: AIProvider;
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -655,6 +658,7 @@ function getOrStartActiveChatTurn(options: {
     messages: options.messages,
     userProfile: options.userProfile,
     connectedProviders: options.connectedProviders,
+    provider: options.provider,
     userId: options.userId,
     apiUrl: options.apiUrl,
     spaceId: options.spaceId,
@@ -918,6 +922,8 @@ export const POST: ApiRouteHandler = (context) =>
           userAttachments: chatAttachments,
           userProfile: userProfile ?? undefined,
           connectedProviders,
+          provider:
+            userId === null ? undefined : await resolveUserAIProvider(spaceId, userId),
           apiUrl: getLocalOrigin(),
           spaceId,
           documentId: typeof documentId === "string" ? documentId : undefined,

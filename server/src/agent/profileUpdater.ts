@@ -1,6 +1,6 @@
 import { openSpaceStore } from "#db/client/store.ts";
-import { getAIProvider } from "#db/space/aiConfig.ts";
 import { getUserProfile, setUserProfile } from "#db/space/userProfiles.ts";
+import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { appLogger } from "#observability/logger.ts";
 import { callModel } from "./core.ts";
 
@@ -49,7 +49,7 @@ async function runProfileUpdate(options: {
   sessionMessages: unknown[];
 }): Promise<void> {
   const store = await openSpaceStore(options.spaceId);
-  const provider = getAIProvider();
+  const provider = await resolveUserAIProvider(options.spaceId, options.userId);
   const currentProfile = await getUserProfile(store, options.userId);
 
   type DisplayMsg = { role: string; content?: string | null };

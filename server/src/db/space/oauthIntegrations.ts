@@ -15,6 +15,9 @@ export interface OAuthIntegrationConnection {
   externalAccountId: string;
   externalUsername: string | null;
   instanceUrl: string | null;
+  /** Set when the provider registered a client for this user. */
+  clientId: string | null;
+  aiModel: string | null;
   scope: string | null;
   accessTokenExpiresAt: Date | null;
   createdAt: Date;
@@ -44,6 +47,8 @@ function rowToConnection(
     externalAccountId: row.externalAccountId,
     externalUsername: row.externalUsername ?? null,
     instanceUrl: row.instanceUrl ?? null,
+    clientId: row.clientId ?? null,
+    aiModel: row.aiModel ?? null,
     scope: row.scope ?? null,
     accessTokenExpiresAt: row.accessTokenExpiresAt ?? null,
     createdAt: row.createdAt,
@@ -133,6 +138,7 @@ export async function upsertOAuthIntegrationForUser(
   externalAccountId: string,
   externalUsername: string | null,
   instanceUrl: string | null,
+  clientId: string | null,
   tokenSet: OAuthIntegrationTokenSet,
 ): Promise<OAuthIntegrationConnection> {
   const existing = await one(
@@ -157,6 +163,7 @@ export async function upsertOAuthIntegrationForUser(
     externalAccountId,
     externalUsername,
     instanceUrl,
+    clientId,
     scope: tokenSet.scope,
     accessTokenExpiresAt: tokenSet.expiresAt,
     updatedAt: now,
@@ -179,6 +186,7 @@ export async function upsertOAuthIntegrationForUser(
         externalAccountId,
         externalUsername,
         instanceUrl,
+        clientId,
         scope: tokenSet.scope,
         accessTokenCiphertext: accessEncrypted.ciphertext,
         accessTokenIv: accessEncrypted.iv,
@@ -192,6 +200,7 @@ export async function upsertOAuthIntegrationForUser(
     return {
       ...connectionBase,
       id: existing.id,
+      aiModel: existing.aiModel ?? null,
       createdAt: existing.createdAt,
       lastUsedAt: existing.lastUsedAt ?? null,
     };
@@ -205,6 +214,8 @@ export async function upsertOAuthIntegrationForUser(
     externalAccountId,
     externalUsername,
     instanceUrl,
+    clientId,
+    aiModel: null,
     scope: tokenSet.scope,
     accessTokenCiphertext: accessEncrypted.ciphertext,
     accessTokenIv: accessEncrypted.iv,
@@ -221,6 +232,7 @@ export async function upsertOAuthIntegrationForUser(
   return {
     ...connectionBase,
     id,
+    aiModel: null,
     createdAt: now,
     lastUsedAt: null,
   };
@@ -250,6 +262,32 @@ export async function updateOAuthIntegrationTokenSet(
       updatedAt: new Date(),
     })
     .where(eq(oauthIntegration.id, integrationId));
+}
+
+/**
+ * Picks the model the user's agent chats run on. One integration provides the
+ * agent at a time, so picking a model on one clears it on the others.
+ */
+export async function setOAuthIntegrationAIModel(
+  s: SpaceStore,
+  userId: string,
+  provider: OAuthIntegrationProvider,
+  aiModel: string | null,
+): Promise<void> {
+  await s.tx(async (tx) => {
+    if (aiModel !== null) {
+      await tx.db
+        .update(oauthIntegration)
+        .set({ aiModel: null })
+        .where(eq(oauthIntegration.userId, userId));
+    }
+    await tx.db
+      .update(oauthIntegration)
+      .set({ aiModel })
+      .where(
+        and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
+      );
+  });
 }
 
 export async function deleteOAuthIntegrationForUser(

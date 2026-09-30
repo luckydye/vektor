@@ -60,7 +60,7 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   // A fixed endpoint table, no user input in the URL (#71).
   "src/api/provider/openaiCompatible.ts": {
     calls: 2,
-    why: "fixed CHAT_COMPLETIONS_URLS table, no user input in the URL",
+    why: "fixed CHAT_COMPLETIONS_URLS table, no user input in the URL; the Responses URL is Zen's or an integration's, built by buildIntegrationApiUrl against the provider origin, with redirect: manual",
   },
   "src/api/routes/chat/completions.ts": {
     calls: 1,

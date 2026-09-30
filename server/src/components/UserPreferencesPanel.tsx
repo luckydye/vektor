@@ -7,9 +7,11 @@ import {
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
+import { useQueryClient } from "#composeables/query.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useDesktopMounts } from "#composeables/useDesktopMounts.ts";
+import { integrationsQueryKey } from "#composeables/useIntegrationAIModel.ts";
 import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -95,6 +97,14 @@ export function UserPreferencesPanel(props: Props) {
     createSignal<OAuthIntegrationProvider | null>(null);
   const [disconnectingProvider, setDisconnectingProvider] =
     createSignal<OAuthIntegrationProvider | null>(null);
+  // A provider that redirects to a loopback address hands its result back
+  // through the address the user pastes here.
+  const [pastingProvider, setPastingProvider] =
+    createSignal<OAuthIntegrationProvider | null>(null);
+  const [pastedAddress, setPastedAddress] = createSignal("");
+  const [aiModels, setAIModels] = createSignal<Record<string, string[]>>({});
+  const [updatingModelProvider, setUpdatingModelProvider] =
+    createSignal<OAuthIntegrationProvider | null>(null);
   const [spaceNotificationsMuted, setSpaceNotificationsMuted] = createSignal(false);
   const [isLoadingNotificationPreference, setIsLoadingNotificationPreference] =
     createSignal(false);
@@ -105,6 +115,7 @@ export function UserPreferencesPanel(props: Props) {
   >(null);
   const { currentSpace, currentSpaceId, spaces } = useSpace();
   const accessTokens = usePersonalAccessTokens();
+  const queryClient = useQueryClient();
 
   // A token delegates its issuer's role on the space, so a space reached only
   // through a document grant has no role to delegate and cannot mint one.
@@ -161,6 +172,7 @@ export function UserPreferencesPanel(props: Props) {
     try {
       const response = await api.integrations.get(spaceId);
       setIntegrationConnections(response.connections || []);
+      void loadAIModels(spaceId, response.connections || []);
     } catch (error) {
       setIntegrationsError(
         error instanceof Error ? error.message : t("Failed to load integrations"),
@@ -168,6 +180,71 @@ export function UserPreferencesPanel(props: Props) {
       setIntegrationConnections([]);
     } finally {
       setIsLoadingIntegrations(false);
+    }
+  };
+
+  const loadAIModels = async (
+    spaceId: string,
+    connections: OAuthIntegrationConnection[],
+  ) => {
+    const providing = connections.filter(
+      (connection) => connection.connected && connection.aiModelsPath,
+    );
+    try {
+      const lists = await Promise.all(
+        providing.map(
+          async (connection) =>
+            [
+              connection.provider,
+              await api.integrations.listAIModels(spaceId, connection),
+            ] as const,
+        ),
+      );
+      setAIModels(Object.fromEntries(lists));
+    } catch (error) {
+      setIntegrationsError(
+        error instanceof Error ? error.message : t("Failed to load models"),
+      );
+    }
+  };
+
+  const handleSelectAIModel = async (
+    provider: OAuthIntegrationProvider,
+    aiModel: string | null,
+  ) => {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+    setUpdatingModelProvider(provider);
+    setIntegrationsError(null);
+
+    try {
+      await api.integrations.setAIModel(spaceId, provider, aiModel);
+      queryClient.invalidateQueries({ queryKey: integrationsQueryKey(spaceId) });
+      await loadIntegrations();
+    } catch (error) {
+      setIntegrationsError(
+        error instanceof Error ? error.message : t("Failed to update model"),
+      );
+    } finally {
+      setUpdatingModelProvider(null);
+    }
+  };
+
+  const handleFinishPastedConnect = (provider: OAuthIntegrationProvider) => {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+    setIntegrationsError(null);
+
+    try {
+      window.location.href = api.integrations.pastedCallbackUrl(
+        spaceId,
+        provider,
+        pastedAddress(),
+      );
+    } catch (error) {
+      setIntegrationsError(
+        error instanceof Error ? error.message : t("Integration OAuth failed"),
+      );
     }
   };
 
@@ -233,9 +310,10 @@ export function UserPreferencesPanel(props: Props) {
     void accessTokens.remove(tokenId);
   };
 
-  const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
+  const handleConnectIntegration = async (connection: OAuthIntegrationConnection) => {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
+    const provider = connection.provider;
     setConnectingProvider(provider);
     setIntegrationsError(null);
     setIntegrationsMessage(null);
@@ -243,6 +321,15 @@ export function UserPreferencesPanel(props: Props) {
     try {
       const redirectTo = `${window.location.pathname}${window.location.search}`;
       const response = await api.integrations.connect(spaceId, provider, { redirectTo });
+      if (connection.pastesRedirect) {
+        // The provider's redirect lands on a page that does not load, so the
+        // sign-in runs in its own tab while this one waits for the address.
+        window.open(response.authorizeUrl, "_blank", "noopener");
+        setPastedAddress("");
+        setPastingProvider(provider);
+        setConnectingProvider(null);
+        return;
+      }
       window.location.href = response.authorizeUrl;
     } catch (error) {
       setIntegrationsError(
@@ -267,6 +354,7 @@ export function UserPreferencesPanel(props: Props) {
 
     try {
       await api.integrations.disconnect(spaceId, provider);
+      queryClient.invalidateQueries({ queryKey: integrationsQueryKey(spaceId) });
       await loadIntegrations();
     } catch (error) {
       setIntegrationsError(
@@ -611,6 +699,91 @@ export function UserPreferencesPanel(props: Props) {
                               </Show>
                               <Show
                                 when={
+                                  card.connection?.connected &&
+                                  card.connection?.aiModelsPath
+                                }
+                              >
+                                <label class="mt-2 block text-neutral-600">
+                                  {t("Model for agent chats")}
+                                  <select
+                                    class="mt-1 block w-full rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
+                                    disabled={updatingModelProvider() === card.provider}
+                                    onChange={(event) =>
+                                      void handleSelectAIModel(
+                                        card.provider,
+                                        event.currentTarget.value || null,
+                                      )
+                                    }
+                                  >
+                                    <option value="" selected={!card.connection?.aiModel}>
+                                      {t("Instance default")}
+                                    </option>
+                                    <For each={aiModels()[card.provider] ?? []}>
+                                      {(model) => (
+                                        <option
+                                          value={model}
+                                          selected={card.connection?.aiModel === model}
+                                        >
+                                          {model}
+                                        </option>
+                                      )}
+                                    </For>
+                                  </select>
+                                </label>
+                                <Show when={card.connection?.aiModel}>
+                                  <p class="mt-1 text-green-700">
+                                    {t("Runs your agent chats")}
+                                  </p>
+                                </Show>
+                              </Show>
+                              <Show
+                                when={card.connection?.connected && card.connection?.manageUrl}
+                              >
+                                <a
+                                  href={card.connection?.manageUrl ?? undefined}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="mt-1 inline-block text-blue-600 hover:underline"
+                                >
+                                  {t("Manage usage")}
+                                </a>
+                              </Show>
+                              <Show
+                                when={
+                                  !card.connection?.connected &&
+                                  pastingProvider() === card.provider
+                                }
+                              >
+                                <form
+                                  class="flex flex-col gap-1.5"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    handleFinishPastedConnect(card.provider);
+                                  }}
+                                >
+                                  <label class="text-neutral-600" for={`paste-${card.provider}`}>
+                                    {t("Paste the address you landed on after signing in")}
+                                  </label>
+                                  <input
+                                    id={`paste-${card.provider}`}
+                                    type="url"
+                                    required
+                                    value={pastedAddress()}
+                                    onInput={(event) =>
+                                      setPastedAddress(event.currentTarget.value)
+                                    }
+                                    class="rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
+                                  />
+                                  <button
+                                    type="submit"
+                                    class="rounded-md border border-neutral-200 px-3 py-1 font-medium text-size-small hover:bg-neutral-50"
+                                  >
+                                    {t("Finish connecting")}
+                                  </button>
+                                </form>
+                              </Show>
+                              <Show
+                                when={
                                   !card.connection?.connected &&
                                   card.connection?.configured === false
                                 }
@@ -641,7 +814,7 @@ export function UserPreferencesPanel(props: Props) {
                                       card.connection?.configured === false
                                     }
                                     onClick={() =>
-                                      void handleConnectIntegration(card.provider)
+                                      void handleConnectIntegration(card.connection)
                                     }
                                     class="w-full rounded-md bg-blue-600 px-3 py-1.5 font-medium text-size-small text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                   >

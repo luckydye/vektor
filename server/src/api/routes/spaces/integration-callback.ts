@@ -11,14 +11,16 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   consumeOAuthIntegrationState,
+  getOAuthIntegrationForUser,
   upsertOAuthIntegrationForUser,
 } from "#db/space/oauthIntegrations.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import {
   exchangeOAuthCode,
   fetchOAuthExternalUser,
-  getOAuthCallbackUrl,
+  getOAuthClientId,
   getOAuthProviderConfiguration,
+  getOAuthRedirectUri,
 } from "#integrations/oauthProviders.ts";
 import { appLogger } from "#observability/logger.ts";
 import { appendQueryParams, normalizeRedirectPath } from "#utils/url.ts";
@@ -131,18 +133,28 @@ export const GET: ApiRouteHandler = (context) =>
         );
       }
 
-      const redirectUri = getOAuthCallbackUrl(spaceId, providerParam);
+      // A registering provider names the client it issued; a reconnect reuses
+      // the one registered before.
+      const existing = await getOAuthIntegrationForUser(store, user.id, providerParam);
+      const clientId = configured.config.registration
+        ? (url.searchParams.get("client_id") ?? existing?.clientId ?? null)
+        : null;
+      if (
+        configured.config.registration &&
+        (!clientId || clientId === configured.config.clientId)
+      ) {
+        throw new Error(`${configured.config.label} did not register a client`);
+      }
+
       const tokenSet = await exchangeOAuthCode({
         providerConfig: configured.config,
+        clientId: getOAuthClientId(configured.config, { clientId }),
         code,
         codeVerifier: statePayload.codeVerifier,
-        redirectUri,
+        redirectUri: getOAuthRedirectUri(spaceId, configured.config),
       });
 
-      const externalUser = await fetchOAuthExternalUser(
-        configured.config,
-        tokenSet.accessToken,
-      );
+      const externalUser = await fetchOAuthExternalUser(configured.config, tokenSet);
 
       await upsertOAuthIntegrationForUser(
         store,
@@ -151,6 +163,7 @@ export const GET: ApiRouteHandler = (context) =>
         externalUser.accountId,
         externalUser.username,
         configured.config.instanceUrl,
+        clientId,
         tokenSet,
       );
 

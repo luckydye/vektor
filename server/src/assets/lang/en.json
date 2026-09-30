@@ -724,5 +724,13 @@
   "Open the Vektor app": "Open the Vektor app",
   "You can close this tab and return to the app.": "You can close this tab and return to the app.",
   "Sign out failed": "Sign out failed",
-  "Confirm": "Confirm"
+  "Confirm": "Confirm",
+  "Model for agent chats": "Model for agent chats",
+  "Instance default": "Instance default",
+  "Runs your agent chats": "Runs your agent chats",
+  "Manage usage": "Manage usage",
+  "Paste the address you landed on after signing in": "Paste the address you landed on after signing in",
+  "Finish connecting": "Finish connecting",
+  "Failed to load models": "Failed to load models",
+  "Failed to update model": "Failed to update model"
 }

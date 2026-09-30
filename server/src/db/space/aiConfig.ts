@@ -1,7 +1,7 @@
-import type { AIProvider } from "#api/provider/types.ts";
+import type { InstanceAIProvider } from "#api/provider/types.ts";
 
 /** Provider credentials are supplied once by the instance operator. */
-export function getAIProvider(): AIProvider {
+export function getAIProvider(): InstanceAIProvider {
   const provider = process.env.VEKTOR_AI_PROVIDER?.trim();
   const model = process.env.VEKTOR_AI_MODEL?.trim();
   if (!provider || !model) {
