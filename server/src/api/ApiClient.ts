@@ -2246,13 +2246,16 @@ export class ApiClient {
       if (!response.ok) {
         throw new Error(`${connection.label} ${response.status}: ${response.body}`);
       }
-      const { data } = JSON.parse(response.body) as { data?: Array<{ id: string }> };
-      if (!Array.isArray(data)) {
+      // Plan-backed model lists name each model by `slug`, in the provider's own order.
+      const { models } = JSON.parse(response.body) as {
+        models?: Array<{ slug: string }>;
+      };
+      if (!Array.isArray(models)) {
         throw new Error(
-          `${connection.label} model list has no 'data' array: ${response.body.slice(0, 300)}`,
+          `${connection.label} model list has no 'models' array: ${response.body.slice(0, 300)}`,
         );
       }
-      return data.map((model) => model.id).sort();
+      return models.map((model) => model.slug);
     },
 
     /** A model runs the user's agent chats on this integration; null returns them to the instance. */

@@ -899,7 +899,7 @@ stops working an hour after it is made.
 ### AI models
 
 An integration with `ai` can run the user's agent chats. Once connected, the
-settings card lists the account's models from `modelsPath`; picking one runs
+settings card lists the account's models from `modelsPath` (a `{ "models": [{ "slug" }] }` list); picking one runs
 every agent chat of that user on it, and "Instance default" returns them to the
 instance's provider. Both paths resolve against the provider origin like proxied
 requests, and their usage counts against the connected account, not the space's
