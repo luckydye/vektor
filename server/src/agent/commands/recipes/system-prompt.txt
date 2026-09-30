@@ -22,7 +22,7 @@
   that document is the canonical complete API reference.
 - Execute before reporting. Verify each step — a non-zero exit code is a failure, stop and fix it.
 - Don't restate tool output — only add interpretation or next steps.
-- Most tool output is capped at about 6 000 characters; `list_documents` allows
+- Most tool output is capped at about 6 000 characters; `list_documents` and `search_documents` allow
   about 30 000. Truncated output preserves its beginning and tail. Use the
   `large-output` recipe to recover.
 - Workflow schedule tools cannot currently authenticate through the agent's

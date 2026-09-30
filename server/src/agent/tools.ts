@@ -45,7 +45,8 @@ export function expectString(
   options: { optional?: boolean } = {},
 ): string | undefined {
   const value = args[key];
-  if (value === undefined || value === null) {
+  // Models without strict schemas fill unused optional fields with "".
+  if (value === undefined || value === null || (options.optional && value === "")) {
     if (options.optional) {
       return undefined;
     }
@@ -179,30 +180,54 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           },
           cursor: {
             type: "string",
-            description: "nextCursor returned by a previous list_documents call.",
+            description:
+              "nextCursor returned by a previous list_documents call. Omit for the first page.",
           },
-          type: { type: "string" },
+          type: {
+            type: "string",
+            description:
+              'Only documents of this type, e.g. "database", "record" (a database row), "canvas", "workflow".',
+          },
           parentId: {
             type: "string",
-            description: "List the direct children of this document.",
+            description:
+              "List the direct children of this document, e.g. a database's rows.",
           },
-          categorySlugs: { type: "string" },
+          categorySlugs: {
+            type: "string",
+            description: "Comma-separated category slugs.",
+          },
         },
       },
     },
     {
       name: "search_documents",
-      description: "Search documents in current Vektor space.",
+      description:
+        "Full-text search over titles, content and properties in the current Vektor space. " +
+        "To browse by type or parent, use list_documents instead.",
       inputSchema: {
         type: "object",
         properties: {
-          q: { type: "string" },
+          q: { type: "string", description: "Search text." },
           limit: { type: "number" },
           cursor: {
             type: "string",
-            description: "nextCursor returned by a previous search_documents call.",
+            description:
+              "nextCursor returned by a previous search_documents call. Omit for the first page.",
           },
-          filters: { type: "string" },
+          filters: {
+            type: "array",
+            description:
+              'Exact property matches. Key "_type" matches the document type; a null value matches any document that has the property.',
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string" },
+                value: { type: ["string", "null"] },
+              },
+              required: ["key", "value"],
+            },
+          },
         },
       },
     },
@@ -508,12 +533,27 @@ export async function installExtension(
   });
 }
 
+/** The fields a listing needs: full records are ~800 characters each and crowd out the page. */
+function summarizeDocument(doc: Record<string, unknown>) {
+  const { title, ...properties } = doc.properties as Record<string, unknown>;
+  return {
+    id: doc.id,
+    title: title ?? doc.slug,
+    type: doc.type ?? "document",
+    parentId: doc.parentId ?? undefined,
+    updatedAt: doc.updatedAt,
+    properties,
+    snippet: doc.snippet || undefined,
+    fileUrl: doc.fileUrl,
+  };
+}
+
 export async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
   const args = assertObject(rawArgs ?? {}, "tool arguments");
 
   switch (name) {
-    case "list_documents":
-      return await apiRequest(
+    case "list_documents": {
+      const response = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/documents${buildQuery({
           limit: expectNumber(args, "limit", { optional: true }) ?? 100,
@@ -522,17 +562,21 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           parentId: expectString(args, "parentId", { optional: true }),
           categorySlugs: expectString(args, "categorySlugs", { optional: true }),
         })}`,
-      );
-    case "search_documents":
-      return await apiRequest(
+      )) as { documents: Array<Record<string, unknown>> };
+      return { ...response, documents: response.documents.map(summarizeDocument) };
+    }
+    case "search_documents": {
+      const response = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/search${buildQuery({
           q: expectString(args, "q", { optional: true }),
           limit: expectNumber(args, "limit", { optional: true }),
           cursor: expectString(args, "cursor", { optional: true }),
-          filters: expectString(args, "filters", { optional: true }),
+          filters: args.filters === undefined ? undefined : JSON.stringify(args.filters),
         })}`,
-      );
+      )) as { results: Array<Record<string, unknown>> };
+      return { ...response, results: response.results.map(summarizeDocument) };
+    }
     case "read_document": {
       const documentId = expectString(args, "documentId");
       const rev = expectNumber(args, "rev", { optional: true });

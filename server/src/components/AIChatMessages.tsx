@@ -1,4 +1,12 @@
-import { createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  type JSX,
+  onCleanup,
+  Show,
+} from "solid-js";
 import type { AIChatMessage } from "#api/client.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
@@ -256,6 +264,41 @@ function getToolMessageKey(message: AIChatMessage, index: number): string {
     : `tool:${index}:${message.timestamp}`;
 }
 
+type ToolRun = {
+  key: string;
+  items: Array<{ message: AIChatMessage; key: string }>;
+};
+
+/** Maps each shown tool message to the run of consecutive tool messages it belongs to. */
+function groupToolRuns(messages: readonly AIChatMessage[]): Map<AIChatMessage, ToolRun> {
+  const runs = new Map<AIChatMessage, ToolRun>();
+  let run: ToolRun | null = null;
+  for (const [index, message] of messages.entries()) {
+    if (message.role !== "tool") {
+      run = null;
+      continue;
+    }
+    if (message.toolPhase === "call") continue;
+    const key = getToolMessageKey(message, index);
+    run ??= { key: `run:${key}`, items: [] };
+    run.items.push({ message, key });
+    runs.set(message, run);
+  }
+  return runs;
+}
+
+/** Tool names in first-use order with repeat counts, e.g. `bash, search_documents ×14`. */
+function summarizeToolRun(run: ToolRun): string {
+  const counts = new Map<string, number>();
+  for (const { message } of run.items) {
+    const name = message.toolName || "Tool";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+    .join(", ");
+}
+
 export function AIChatMessages(props: Props) {
   const lang = useLocale();
   let messagesContainer: HTMLDivElement | undefined;
@@ -285,6 +328,14 @@ export function AIChatMessages(props: Props) {
     },
   );
 
+  const toolRuns = createMemo(() => groupToolRuns(props.messages));
+
+  /** Only a run's first message renders; it draws the whole run. */
+  function isMessageShown(message: AIChatMessage): boolean {
+    if (message.role !== "tool") return true;
+    return toolRuns().get(message)?.items[0]?.message === message;
+  }
+
   function toolPreview(message: AIChatMessage): string {
     return formatToolPreview(message, props.messages);
   }
@@ -293,16 +344,102 @@ export function AIChatMessages(props: Props) {
     return formatCollapsedToolInput(message, props.messages);
   }
 
-  function isToolMessageExpanded(message: AIChatMessage, index: number): boolean {
-    return expandedToolMessages().has(getToolMessageKey(message, index));
+  function isToolMessageExpanded(key: string): boolean {
+    return expandedToolMessages().has(key);
   }
 
-  function toggleToolMessageExpanded(message: AIChatMessage, index: number) {
-    const key = getToolMessageKey(message, index);
+  function toggleToolMessageExpanded(key: string) {
     const next = new Set(expandedToolMessages());
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setExpandedToolMessages(next);
+  }
+
+  function renderToolMessage(message: AIChatMessage, key: string) {
+    return (
+      <div class="ml-9 flex min-w-0" classList={{ "flex-1": isToolMessageExpanded(key) }}>
+        <div class="mr-1.5 shrink-0 pt-1.5">
+          <Icon class="tool-message-icon h-4 w-4" name="link" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <button
+            type="button"
+            class="tool-message-bg max-w-full cursor-pointer overflow-hidden rounded-lg border text-left transition-colors hover:bg-neutral-100"
+            classList={{
+              "w-full": isToolMessageExpanded(key),
+              "inline-block": !isToolMessageExpanded(key),
+            }}
+            onClick={() => toggleToolMessageExpanded(key)}
+          >
+            <div
+              class="tool-message-header flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-size-extra-small"
+              classList={{
+                "border-b": isToolMessageExpanded(key),
+              }}
+            >
+              <span class="tool-message-label shrink-0">Used</span>
+              <span class="tool-message-name truncate font-semibold">
+                {message.toolName || "Tool"}
+              </span>
+              <Show when={collapsedToolInput(message)}>
+                <span class="min-w-0 flex-1 truncate font-normal text-neutral-500">
+                  {collapsedToolInput(message)}
+                </span>
+              </Show>
+            </div>
+            <Show when={isToolMessageExpanded(key)}>
+              <pre
+                class="overflow-x-auto whitespace-pre-wrap px-3.5 py-3 text-size-small leading-relaxed transition-all"
+                classList={{
+                  "tool-error-bg text-red-700": message.isError,
+                  "text-neutral-700": !message.isError,
+                }}
+              >
+                {toolPreview(message)}
+              </pre>
+            </Show>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderToolRun(run: () => ToolRun) {
+    const failed = () => run().items.filter(({ message }) => message.isError).length;
+    return (
+      <Show
+        when={run().items.length > 1}
+        fallback={renderToolMessage(run().items[0].message, run().items[0].key)}
+      >
+        <div class="min-w-0 flex-1 space-y-1.5">
+          <div class="ml-9 flex min-w-0">
+            <div class="mr-1.5 shrink-0 pt-1.5">
+              <Icon class="tool-message-icon h-4 w-4" name="link" />
+            </div>
+            <button
+              type="button"
+              class="tool-message-bg tool-message-header flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-left text-size-extra-small transition-colors hover:bg-neutral-100"
+              onClick={() => toggleToolMessageExpanded(run().key)}
+            >
+              <span class="tool-message-label shrink-0">
+                Used {run().items.length} tools
+              </span>
+              <span class="tool-message-name truncate font-semibold">
+                {summarizeToolRun(run())}
+              </span>
+              <Show when={failed()}>
+                <span class="shrink-0 text-red-700">· {failed()} failed</span>
+              </Show>
+            </button>
+          </div>
+          <Show when={isToolMessageExpanded(run().key)}>
+            <Index each={run().items}>
+              {(item) => renderToolMessage(item().message, item().key)}
+            </Index>
+          </Show>
+        </div>
+      </Show>
+    );
   }
 
   async function copyAssistantMessage(message: AIChatMessage) {
@@ -408,8 +545,8 @@ export function AIChatMessages(props: Props) {
         </div>
       </Show>
       <For each={props.messages}>
-        {(message, index) => (
-          <Show when={message.role !== "tool" || message.toolPhase !== "call"}>
+        {(message) => (
+          <Show when={isMessageShown(message)}>
             <div
               class="animate-message-slide-in"
               classList={{
@@ -493,54 +630,8 @@ export function AIChatMessages(props: Props) {
                 </div>
               </Show>
 
-              <Show when={message.role === "tool"}>
-                <div
-                  class="ml-9 flex min-w-0"
-                  classList={{ "flex-1": isToolMessageExpanded(message, index()) }}
-                >
-                  <div class="mr-1.5 shrink-0 pt-1.5">
-                    <Icon class="tool-message-icon h-4 w-4" name="link" />
-                  </div>
-                  <div class="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      class="tool-message-bg max-w-full cursor-pointer overflow-hidden rounded-lg border text-left transition-colors hover:bg-neutral-100"
-                      classList={{
-                        "w-full": isToolMessageExpanded(message, index()),
-                        "inline-block": !isToolMessageExpanded(message, index()),
-                      }}
-                      onClick={() => toggleToolMessageExpanded(message, index())}
-                    >
-                      <div
-                        class="tool-message-header flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-size-extra-small"
-                        classList={{
-                          "border-b": isToolMessageExpanded(message, index()),
-                        }}
-                      >
-                        <span class="tool-message-label shrink-0">Used</span>
-                        <span class="tool-message-name truncate font-semibold">
-                          {message.toolName || "Tool"}
-                        </span>
-                        <Show when={collapsedToolInput(message)}>
-                          <span class="min-w-0 flex-1 truncate font-normal text-neutral-500">
-                            {collapsedToolInput(message)}
-                          </span>
-                        </Show>
-                      </div>
-                      <Show when={isToolMessageExpanded(message, index())}>
-                        <pre
-                          class="overflow-x-auto whitespace-pre-wrap px-3.5 py-3 text-size-small leading-relaxed transition-all"
-                          classList={{
-                            "tool-error-bg text-red-700": message.isError,
-                            "text-neutral-700": !message.isError,
-                          }}
-                        >
-                          {toolPreview(message)}
-                        </pre>
-                      </Show>
-                    </button>
-                  </div>
-                </div>
+              <Show when={message.role === "tool" && toolRuns().get(message)}>
+                {(run) => renderToolRun(run)}
               </Show>
 
               <Show when={message.role === "user"}>

@@ -258,20 +258,19 @@ export async function callOpenAIResponses(options: {
   }
 
   let content = "";
-  let completedResponse: Record<string, unknown> | undefined;
+  // Collected per item: with `store: false` the ChatGPT backend sends an empty
+  // `output` on `response.completed`.
+  const output: Array<Record<string, unknown>> = [];
   for await (const chunk of parseSSE(response.body)) {
     if (chunk.type === "response.output_text.delta" && typeof chunk.delta === "string") {
       content += chunk.delta;
       await options.onText?.(chunk.delta);
     }
-    if (chunk.type === "response.completed" && chunk.response) {
-      completedResponse = chunk.response as Record<string, unknown>;
+    if (chunk.type === "response.output_item.done" && chunk.item) {
+      output.push(chunk.item as Record<string, unknown>);
     }
   }
 
-  const output = Array.isArray(completedResponse?.output)
-    ? (completedResponse.output as Array<Record<string, unknown>>)
-    : [];
   const toolCalls = output
     .filter((item) => item.type === "function_call")
     .map((item) => ({
