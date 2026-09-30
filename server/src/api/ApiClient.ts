@@ -2246,7 +2246,12 @@ export class ApiClient {
       if (!response.ok) {
         throw new Error(`${connection.label} ${response.status}: ${response.body}`);
       }
-      const { data } = JSON.parse(response.body) as { data: Array<{ id: string }> };
+      const { data } = JSON.parse(response.body) as { data?: Array<{ id: string }> };
+      if (!Array.isArray(data)) {
+        throw new Error(
+          `${connection.label} model list has no 'data' array: ${response.body.slice(0, 300)}`,
+        );
+      }
       return data.map((model) => model.id).sort();
     },
 
