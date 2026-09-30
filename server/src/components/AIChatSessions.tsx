@@ -7,6 +7,8 @@ import { Icon } from "./Icon.tsx";
 interface Props {
   sessions: AIChatSessionListEntry[];
   currentSessionId: string | null;
+  /** Where the current session's latest model context can be inspected. */
+  contextUrl: string | null;
   showPicker: boolean;
   isGenerating: boolean;
   getSessionStatus: (session: AIChatSessionListEntry) => string;
@@ -32,6 +34,20 @@ export function AIChatSessions(props: Props) {
               <Icon class="h-3.5 w-3.5" name="activity" />
               History
             </button>
+          </Show>
+          <Show when={props.contextUrl}>
+            {(url) => (
+              <a
+                href={url()}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="flex items-center gap-1.5 text-neutral-500 text-size-small transition-colors hover:text-neutral-700"
+                title="Model context of the next turn"
+              >
+                <Icon class="h-3.5 w-3.5" name="source-code" />
+                Context
+              </a>
+            )}
           </Show>
           <div class="flex-1" />
           <button

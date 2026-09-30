@@ -19,6 +19,7 @@ import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
 import * as accessTokens from "./routes/spaces/access-tokens.ts";
 import * as aiChatSession from "./routes/spaces/ai-chat-session.ts";
+import * as aiChatSessionContext from "./routes/spaces/ai-chat-session-context.ts";
 import * as aiChatSessions from "./routes/spaces/ai-chat-sessions.ts";
 import * as spaceAuditLogs from "./routes/spaces/audit-logs.ts";
 import * as categories from "./routes/spaces/categories.ts";
@@ -133,6 +134,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]",
     module: aiChatSession,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]/context",
+    module: aiChatSessionContext,
   },
 
   { pattern: "/api/v1/spaces/[spaceId]/categories", module: categories },

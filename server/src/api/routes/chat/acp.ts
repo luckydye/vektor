@@ -1,6 +1,7 @@
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
+import { AgentTurnError } from "#agent/core.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import {
   badRequestResponse,
@@ -249,12 +250,12 @@ function getToolKind(toolName: string): string {
  *   pre-tool text (assistant) → tool result → post-tool text (assistant) → …
  *
  * Text is accumulated and flushed at each tool boundary, so pre- and post-tool
- * text stay separate bubbles. `fallbackContent` stands in when the turn emitted
- * no text at all, so it always has one visible response.
+ * text stay separate bubbles. `fallbackContent`, when given, stands in for a
+ * turn that emitted no text at all, so it has one visible response.
  */
 function createTurnMessagesFromEvents(
   events: AgentEvent[],
-  fallbackContent: string,
+  fallbackContent: string | null,
 ): unknown[] {
   const messages: unknown[] = [];
   const now = Date.now();
@@ -299,7 +300,10 @@ function createTurnMessagesFromEvents(
 
   flushText();
 
-  if (!messages.some((m) => (m as { role: string }).role === "assistant")) {
+  if (
+    fallbackContent !== null &&
+    !messages.some((m) => (m as { role: string }).role === "assistant")
+  ) {
     messages.push({ role: "assistant", content: fallbackContent, timestamp: now });
   }
 
@@ -307,31 +311,35 @@ function createTurnMessagesFromEvents(
 }
 
 /**
- * Persists the user message and every displayable event received before a turn
- * was stopped. The assistant history must still end with an assistant message,
- * otherwise opening the session would treat the stopped request as one to
- * reconnect and run again.
+ * Appends a finished turn to the session: its display messages in streaming
+ * order, and its model messages to the conversation history. The history must
+ * end with an assistant message, otherwise opening the session would treat the
+ * turn as one to reconnect and run again.
  */
-async function persistCancelledChatTurn(options: {
+async function persistChatTurn(options: {
   spaceId: string;
   chatId: string;
   userId: string;
-  requestMessages: Array<{ role: string; content?: string | null }>;
+  requestMessages: ChatMessage[];
   userAttachments: ChatAttachment[];
   events: AgentEvent[];
+  /** The turn's own messages, as the model sent and received them. */
+  turnMessages: ChatMessage[];
+  /** Shown when the turn streamed no text of its own. */
+  fallbackContent: string | null;
+  /** Ends both logs after the turn's messages, e.g. the error that stopped it. */
+  closingContent?: string;
+  shellSnapshot?: string | null;
 }) {
-  const session = await getAIChatSession(
-    await openSpaceStore(options.spaceId),
-    options.chatId,
-    options.userId,
-  );
+  const store = await openSpaceStore(options.spaceId);
+  const session = await getAIChatSession(store, options.chatId, options.userId);
   if (!session) return;
 
-  const lastUserRequest = [...options.requestMessages]
-    .reverse()
-    .find((message) => message.role === "user");
-  const existingMessages = session.messages as Array<{ role?: string }>;
-  const alreadyHasUserMessage = existingMessages.at(-1)?.role === "user";
+  // The user message is pre-saved before the agent starts, except under a job
+  // token; add it only when it is missing so the log never shows it twice.
+  const lastUserRequest = options.requestMessages.findLast((m) => m.role === "user");
+  const alreadyHasUserMessage =
+    (session.messages as Array<{ role?: string }>).at(-1)?.role === "user";
   const userMessage =
     !alreadyHasUserMessage && lastUserRequest
       ? {
@@ -343,15 +351,9 @@ async function persistCancelledChatTurn(options: {
             : {}),
         }
       : null;
-  const partialAssistantContent = options.events
-    .filter(
-      (event): event is Extract<AgentEvent, { type: "text" }> => event.type === "text",
-    )
-    .map((event) => event.text)
-    .join("");
-  const stoppedMessage = partialAssistantContent.trim() || "Response stopped by user.";
+  const closing = options.closingContent;
 
-  await upsertAIChatSession(await openSpaceStore(options.spaceId), options.userId, {
+  await upsertAIChatSession(store, options.userId, {
     id: session.id,
     title: session.title,
     createdAt: session.createdAt,
@@ -359,76 +361,17 @@ async function persistCancelledChatTurn(options: {
     messages: [
       ...(session.messages as unknown[]),
       ...(userMessage ? [userMessage] : []),
-      ...createTurnMessagesFromEvents(options.events, stoppedMessage),
+      ...createTurnMessagesFromEvents(options.events, options.fallbackContent),
+      ...(closing
+        ? [{ role: "assistant", content: closing, timestamp: Date.now() }]
+        : []),
     ],
     conversationHistory: [
       ...options.requestMessages,
-      { role: "assistant", content: stoppedMessage },
+      ...options.turnMessages,
+      ...(closing ? [{ role: "assistant", content: closing }] : []),
     ],
-    shellSnapshot: session.shellSnapshot,
-  });
-}
-
-async function persistCompletedChatTurn(options: {
-  spaceId: string;
-  chatId: string;
-  userId: string;
-  requestMessages: Array<{ role: string; content?: string | null }>;
-  userAttachments: ChatAttachment[];
-  events: AgentEvent[];
-  result: AgentRunResult;
-}) {
-  const session = await getAIChatSession(
-    await openSpaceStore(options.spaceId),
-    options.chatId,
-    options.userId,
-  );
-  if (!session) return;
-
-  // The last user-role entry in requestMessages is the message that triggered
-  // this turn.  Use its content as the display message for the session log.
-  const lastUserRequest = [...options.requestMessages]
-    .reverse()
-    .find((m) => m.role === "user");
-
-  // The pre-save step wrote the user message into session.messages before the
-  // agent started.  Only add it here if it wasn't already pre-saved (e.g. when
-  // running under a job token or when the pre-save was skipped), so we don't
-  // end up with duplicate user messages in the display log.
-  const existingMessages = session.messages as Array<{ role?: string }>;
-  const alreadyHasUserMessage = existingMessages.at(-1)?.role === "user";
-  const userMessage =
-    !alreadyHasUserMessage && lastUserRequest
-      ? {
-          role: "user",
-          content: lastUserRequest.content ?? "",
-          timestamp: Date.now(),
-          ...(options.userAttachments.length
-            ? { attachments: options.userAttachments }
-            : {}),
-        }
-      : null;
-
-  const conversationHistory = [
-    ...options.requestMessages,
-    { role: "assistant", content: options.result.content },
-  ];
-
-  await upsertAIChatSession(await openSpaceStore(options.spaceId), options.userId, {
-    id: session.id,
-    title: session.title,
-    createdAt: session.createdAt,
-    updatedAt: Date.now(),
-    messages: [
-      // All messages from previous completed turns.
-      ...(session.messages as unknown[]),
-      // Current turn reconstructed in streaming order:
-      // user → [pre-tool text] → tool result → [post-tool text] → …
-      ...(userMessage ? [userMessage] : []),
-      ...createTurnMessagesFromEvents(options.events, options.result.content),
-    ],
-    conversationHistory,
-    shellSnapshot: options.result.shellSnapshot ?? null,
+    shellSnapshot: options.shellSnapshot,
   });
 }
 
@@ -674,14 +617,16 @@ function getOrStartActiveChatTurn(options: {
       turn.result = result;
       turn.updatedAt = Date.now();
       if (options.userId !== null) {
-        await persistCompletedChatTurn({
+        await persistChatTurn({
           spaceId: options.spaceId,
           chatId: options.chatId,
           userId: options.userId,
           requestMessages: options.sessionMessages,
           userAttachments: options.userAttachments,
           events: turn.events,
-          result,
+          turnMessages: result.messages,
+          fallbackContent: result.content,
+          shellSnapshot: result.shellSnapshot ?? null,
         });
         // Schedule a profile update after idle.  Fetch the freshly-persisted
         // session so the updater has the complete display message history.
@@ -704,13 +649,19 @@ function getOrStartActiveChatTurn(options: {
       if (isAbort) {
         if (options.userId !== null) {
           try {
-            await persistCancelledChatTurn({
+            const partialText = turn.events
+              .flatMap((event) => (event.type === "text" ? [event.text] : []))
+              .join("");
+            const stoppedMessage = partialText.trim() || "Response stopped by user.";
+            await persistChatTurn({
               spaceId: options.spaceId,
               chatId: options.chatId,
               userId: options.userId,
               requestMessages: options.sessionMessages,
               userAttachments: options.userAttachments,
               events: turn.events,
+              turnMessages: [{ role: "assistant", content: stoppedMessage }],
+              fallbackContent: stoppedMessage,
             });
           } catch (persistError) {
             appLogger.warn("Failed to persist cancelled chat turn", {
@@ -727,6 +678,28 @@ function getOrStartActiveChatTurn(options: {
           error,
         });
         turn.error = error instanceof Error ? error.message : "Agent request failed";
+        // A failed save of a completed turn lands here too; that turn is not the failure.
+        if (options.userId !== null && !turn.result) {
+          try {
+            await persistChatTurn({
+              spaceId: options.spaceId,
+              chatId: options.chatId,
+              userId: options.userId,
+              requestMessages: options.sessionMessages,
+              userAttachments: options.userAttachments,
+              events: turn.events,
+              turnMessages: error instanceof AgentTurnError ? error.messages : [],
+              fallbackContent: null,
+              closingContent: `Sorry, I encountered an error: ${error.message}`,
+            });
+          } catch (persistError) {
+            appLogger.warn("Failed to persist failed chat turn", {
+              chatId: options.chatId,
+              spaceId: options.spaceId,
+              error: persistError,
+            });
+          }
+        }
       }
       turn.updatedAt = Date.now();
     })

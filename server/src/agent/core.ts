@@ -36,8 +36,20 @@ import {
 export type AgentResult = {
   content: string;
   stopReason: string;
+  /** The turn's assistant and tool messages, for the persisted conversation history. */
+  messages: ChatMessage[];
   shellSnapshot?: string | null;
 };
+
+/** A failed turn, carrying the messages it produced before failing. */
+export class AgentTurnError extends Error {
+  constructor(
+    message: string,
+    readonly messages: ChatMessage[],
+  ) {
+    super(message);
+  }
+}
 
 export type AgentShellBootstrap = {
   cwd?: string;
@@ -78,7 +90,9 @@ function buildCoreAgentSystemPrompt(
     lines.length > 0
       ? `\n## Integrations\n${lines.map((line) => `- ${line}\n`).join("")}`
       : "";
-  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+  const now = new Date();
+  const today = `${now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })}, ${now.toISOString().slice(0, 10)} (UTC)`;
+  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}\n\nToday is ${today}.`;
 }
 
 /** Maps a document type to the recipe that best explains how to edit it. */
@@ -329,8 +343,8 @@ async function fetchDocumentContext(
   }
 }
 
-export async function runAgentPrompt(options: {
-  messages: ChatMessage[];
+/** The system prompt and tools a turn starts from, before any message. */
+export async function prepareAgentTurn(options: {
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -338,34 +352,10 @@ export async function runAgentPrompt(options: {
   documentReadonly?: boolean;
   connectedProviders?: string[];
   userProfile?: string;
-  /** Whose credentials a contributed integration command runs under. */
-  userId?: string | null;
   jobToken: string;
-  bash?: Bash;
-  signal?: AbortSignal;
-  onChunk?: (chunk: string) => void | Promise<void>;
-  onEvent?: (event: AgentEvent) => void | Promise<void>;
-  /** Test seam for deterministic provider responses. */
-  modelCaller?: typeof callModel;
-  /** Unset runs on the instance's provider. */
-  provider?: AIProvider;
-}): Promise<AgentResult> {
-  const {
-    messages,
-    spaceId,
-    documentId,
-    connectedProviders,
-    userProfile,
-    jobToken,
-    bash: providedBash,
-    apiUrl,
-    signal,
-    onChunk,
-    onEvent,
-  } = options;
-
-  const provider = options.provider ?? getAIProvider();
-  const modelCaller = options.modelCaller ?? callModel;
+}) {
+  const { apiUrl, spaceId, documentId, connectedProviders, userProfile, jobToken } =
+    options;
 
   // Resolve document metadata so the system prompt can inline the right
   // editing playbook and avoid suggesting mutations for locked documents.
@@ -398,12 +388,6 @@ export async function runAgentPrompt(options: {
     spaceId,
     connectedProviders ?? [],
   );
-  const bash =
-    providedBash ??
-    createAgentShell(
-      { current: mcpConfig },
-      { integrationCommands: integrationSurface.commands, userId: options.userId },
-    );
   const vektorTools = await listVektorTools(mcpConfig);
   const vektorToolNames = new Set(vektorTools.map((tool) => tool.name));
   const tools = [
@@ -522,197 +506,250 @@ export async function runAgentPrompt(options: {
     })),
   ];
 
+  const systemPrompt = buildCoreAgentSystemPrompt(
+    documentId,
+    integrationSurface.instructions,
+    userProfile,
+    documentType,
+    documentReadonly,
+  );
+  return { systemPrompt, tools, mcpConfig, integrationSurface, vektorToolNames };
+}
+
+export async function runAgentPrompt(options: {
+  messages: ChatMessage[];
+  apiUrl: string;
+  spaceId: string;
+  documentId?: string;
+  documentType?: string | null;
+  documentReadonly?: boolean;
+  connectedProviders?: string[];
+  userProfile?: string;
+  /** Whose credentials a contributed integration command runs under. */
+  userId?: string | null;
+  jobToken: string;
+  bash?: Bash;
+  signal?: AbortSignal;
+  onChunk?: (chunk: string) => void | Promise<void>;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  /** Test seam for deterministic provider responses. */
+  modelCaller?: typeof callModel;
+  /** Unset runs on the instance's provider. */
+  provider?: AIProvider;
+}): Promise<AgentResult> {
+  const { messages, spaceId, bash: providedBash, signal, onChunk, onEvent } = options;
+
+  const provider = options.provider ?? getAIProvider();
+  const modelCaller = options.modelCaller ?? callModel;
+
+  const { systemPrompt, tools, mcpConfig, integrationSurface, vektorToolNames } =
+    await prepareAgentTurn(options);
+  const bash =
+    providedBash ??
+    createAgentShell(
+      { current: mcpConfig },
+      { integrationCommands: integrationSurface.commands, userId: options.userId },
+    );
   const agentMessages: ChatMessage[] = [
-    {
-      role: "system",
-      content: buildCoreAgentSystemPrompt(
-        documentId,
-        integrationSurface.instructions,
-        userProfile,
-        documentType,
-        documentReadonly,
-      ),
-    },
+    { role: "system", content: systemPrompt },
     ...messages,
   ];
   const allChunks: string[] = [];
   let emptyResponseRetries = 0;
   const maxEmptyResponseRetries = 2;
 
-  while (true) {
-    const { message, finishReason } = await modelCaller({
-      spaceId,
-      provider,
-      messages: agentMessages,
-      tools,
-      signal,
-      onText: async (text) => {
-        allChunks.push(text);
-        await onEvent?.({ type: "text", text });
-        await onChunk?.(text);
-      },
-      onThinking: async (text) => {
-        await onEvent?.({ type: "thinking", text });
-      },
-    });
+  // Empty retries are dropped: providers reject assistant turns with no content.
+  const turnMessages = () =>
+    agentMessages
+      .slice(1 + messages.length)
+      .filter((m) => m.role !== "assistant" || m.content?.trim() || m.tool_calls?.length);
 
-    agentMessages.push(message);
+  try {
+    while (true) {
+      const { message, finishReason } = await modelCaller({
+        spaceId,
+        provider,
+        messages: agentMessages,
+        tools,
+        signal,
+        onText: async (text) => {
+          allChunks.push(text);
+          await onEvent?.({ type: "text", text });
+          await onChunk?.(text);
+        },
+        onThinking: async (text) => {
+          await onEvent?.({ type: "thinking", text });
+        },
+      });
 
-    if (!message.tool_calls?.length) {
-      if (!message.content?.trim()) {
-        if (emptyResponseRetries >= maxEmptyResponseRetries) {
-          throw new Error(
-            `The model returned an empty response ${maxEmptyResponseRetries + 1} times.`,
-          );
+      agentMessages.push(message);
+
+      if (!message.tool_calls?.length) {
+        if (!message.content?.trim()) {
+          if (emptyResponseRetries >= maxEmptyResponseRetries) {
+            throw new Error(
+              `The model returned an empty response ${maxEmptyResponseRetries + 1} times.`,
+            );
+          }
+          emptyResponseRetries += 1;
+          await onEvent?.({
+            type: "status",
+            text: "Model planned an action but emitted no tool call; retrying.",
+          });
+          agentMessages.push({
+            role: "user",
+            content:
+              "Continue the requested task now. Use the available structured tools for Vektor and filesystem work, and bash for commands; do not only describe or plan the action. Otherwise provide a visible answer.",
+          });
+          continue;
         }
-        emptyResponseRetries += 1;
+        return {
+          content: allChunks.join(""),
+          stopReason: finishReason,
+          messages: turnMessages(),
+        };
+      }
+
+      emptyResponseRetries = 0;
+
+      for (const toolCall of message.tool_calls) {
         await onEvent?.({
-          type: "status",
-          text: "Model planned an action but emitted no tool call; retrying.",
+          type: "tool_call",
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          toolArguments: toolCall.function.arguments,
         });
-        agentMessages.push({
-          role: "user",
-          content:
-            "Continue the requested task now. Use the available structured tools for Vektor and filesystem work, and bash for commands; do not only describe or plan the action. Otherwise provide a visible answer.",
-        });
-        continue;
-      }
-      return { content: allChunks.join(""), stopReason: finishReason };
-    }
 
-    emptyResponseRetries = 0;
+        let result: unknown;
+        let isError = false;
+        try {
+          const args = JSON.parse(toolCall.function.arguments || "{}") as unknown;
+          const record = (args && typeof args === "object" ? args : {}) as Record<
+            string,
+            unknown
+          >;
 
-    for (const toolCall of message.tool_calls) {
-      await onEvent?.({
-        type: "tool_call",
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        toolArguments: toolCall.function.arguments,
-      });
-
-      let result: unknown;
-      let isError = false;
-      try {
-        const args = JSON.parse(toolCall.function.arguments || "{}") as unknown;
-        const record = (args && typeof args === "object" ? args : {}) as Record<
-          string,
-          unknown
-        >;
-
-        if (toolCall.function.name === "bash") {
-          const command = record.command;
-          if (typeof command !== "string" || !command.trim()) {
-            throw new Error('bash requires a non-empty "command".');
-          }
-          const res = await bash.exec(command);
-          const stdout = res.stdout.trim();
-          const stderr = res.stderr.trim();
-          const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
-            .filter(Boolean)
-            .join("\n");
-          if (res.exitCode !== 0) {
-            result =
-              output ||
-              `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
+          if (toolCall.function.name === "bash") {
+            const command = record.command;
+            if (typeof command !== "string" || !command.trim()) {
+              throw new Error('bash requires a non-empty "command".');
+            }
+            const res = await bash.exec(command);
+            const stdout = res.stdout.trim();
+            const stderr = res.stderr.trim();
+            const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
+              .filter(Boolean)
+              .join("\n");
+            if (res.exitCode !== 0) {
+              result =
+                output ||
+                `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
+            } else {
+              result = output || "(no output)";
+            }
+            isError = res.exitCode !== 0;
+          } else if (toolCall.function.name === "list_files") {
+            const path = record.path ?? ".";
+            const recursive = record.recursive ?? false;
+            if (typeof path !== "string" || !path.trim()) {
+              throw new Error('list_files "path" must be a non-empty string.');
+            }
+            if (typeof recursive !== "boolean") {
+              throw new Error('list_files "recursive" must be a boolean.');
+            }
+            result = await listFiles(bash, path, recursive);
+          } else if (toolCall.function.name === "read_file") {
+            const path = record.path;
+            if (typeof path !== "string" || !path.trim()) {
+              throw new Error('read_file requires a non-empty "path".');
+            }
+            const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
+            result = await bash.fs.readFile(resolvedPath, "utf8");
+          } else if (toolCall.function.name === "write_file") {
+            const path = record.path;
+            const content = record.content;
+            const mode = record.mode ?? "overwrite";
+            if (typeof path !== "string" || !path.trim()) {
+              throw new Error('write_file requires a non-empty "path".');
+            }
+            if (typeof content !== "string") {
+              throw new Error('write_file requires string "content".');
+            }
+            if (mode !== "overwrite" && mode !== "append") {
+              throw new Error('write_file "mode" must be "overwrite" or "append".');
+            }
+            const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
+            if (mode === "append") {
+              await bash.fs.appendFile(resolvedPath, content, "utf8");
+            } else {
+              await bash.fs.writeFile(resolvedPath, content, "utf8");
+            }
+            result = `${mode === "append" ? "Appended" : "Wrote"} ${Buffer.byteLength(content, "utf8")} bytes to ${resolvedPath}.`;
+          } else if (toolCall.function.name === "recipes") {
+            const name = record.name;
+            const search = record.search;
+            if (name !== undefined && typeof name !== "string") {
+              throw new Error('recipes "name" must be a string.');
+            }
+            if (search !== undefined && typeof search !== "string") {
+              throw new Error('recipes "search" must be a string.');
+            }
+            result = queryRecipes({ name, search });
+          } else if (vektorToolNames.has(toolCall.function.name)) {
+            result = await callVektorTool(mcpConfig, toolCall.function.name, record);
           } else {
-            result = output || "(no output)";
+            throw new Error(
+              `Unknown tool "${toolCall.function.name}". Use the bash tool for shell commands.`,
+            );
           }
-          isError = res.exitCode !== 0;
-        } else if (toolCall.function.name === "list_files") {
-          const path = record.path ?? ".";
-          const recursive = record.recursive ?? false;
-          if (typeof path !== "string" || !path.trim()) {
-            throw new Error('list_files "path" must be a non-empty string.');
-          }
-          if (typeof recursive !== "boolean") {
-            throw new Error('list_files "recursive" must be a boolean.');
-          }
-          result = await listFiles(bash, path, recursive);
-        } else if (toolCall.function.name === "read_file") {
-          const path = record.path;
-          if (typeof path !== "string" || !path.trim()) {
-            throw new Error('read_file requires a non-empty "path".');
-          }
-          const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
-          result = await bash.fs.readFile(resolvedPath, "utf8");
-        } else if (toolCall.function.name === "write_file") {
-          const path = record.path;
-          const content = record.content;
-          const mode = record.mode ?? "overwrite";
-          if (typeof path !== "string" || !path.trim()) {
-            throw new Error('write_file requires a non-empty "path".');
-          }
-          if (typeof content !== "string") {
-            throw new Error('write_file requires string "content".');
-          }
-          if (mode !== "overwrite" && mode !== "append") {
-            throw new Error('write_file "mode" must be "overwrite" or "append".');
-          }
-          const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
-          if (mode === "append") {
-            await bash.fs.appendFile(resolvedPath, content, "utf8");
-          } else {
-            await bash.fs.writeFile(resolvedPath, content, "utf8");
-          }
-          result = `${mode === "append" ? "Appended" : "Wrote"} ${Buffer.byteLength(content, "utf8")} bytes to ${resolvedPath}.`;
-        } else if (toolCall.function.name === "recipes") {
-          const name = record.name;
-          const search = record.search;
-          if (name !== undefined && typeof name !== "string") {
-            throw new Error('recipes "name" must be a string.');
-          }
-          if (search !== undefined && typeof search !== "string") {
-            throw new Error('recipes "search" must be a string.');
-          }
-          result = queryRecipes({ name, search });
-        } else if (vektorToolNames.has(toolCall.function.name)) {
-          result = await callVektorTool(mcpConfig, toolCall.function.name, record);
-        } else {
-          throw new Error(
-            `Unknown tool "${toolCall.function.name}". Use the bash tool for shell commands.`,
-          );
+        } catch (error) {
+          isError = true;
+          result = error instanceof Error ? error.message : String(error);
         }
-      } catch (error) {
-        isError = true;
-        result = error instanceof Error ? error.message : String(error);
+
+        const content = typeof result === "string" ? result : JSON.stringify(result);
+
+        // Full content goes to the client for display.
+        await onEvent?.({
+          type: "tool_result",
+          toolCallId: toolCall.id,
+          toolName: toolCall.function.name,
+          content,
+          isError,
+        });
+
+        // Truncate before adding to the LLM context window. Preserve the tail so
+        // structured responses keep pagination metadata such as nextCursor.
+        const MAX_TOOL_RESULT_CHARS =
+          toolCall.function.name === "list_documents" ||
+          toolCall.function.name === "search_documents"
+            ? 30_000
+            : 6_000;
+        const TOOL_RESULT_TAIL_CHARS = Math.min(2_000, MAX_TOOL_RESULT_CHARS / 3);
+        const modelContent =
+          content.length > MAX_TOOL_RESULT_CHARS
+            ? [
+                content.slice(0, MAX_TOOL_RESULT_CHARS - TOOL_RESULT_TAIL_CHARS),
+                "",
+                `[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} middle characters not shown. For structured tools, narrow the query or request a smaller page and continue with nextCursor from the response tail. For bash output, rerun the command with output redirected to a file.]`,
+                "",
+                content.slice(-TOOL_RESULT_TAIL_CHARS),
+              ].join("\n")
+            : content;
+
+        agentMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: modelContent,
+        });
       }
-
-      const content = typeof result === "string" ? result : JSON.stringify(result);
-
-      // Full content goes to the client for display.
-      await onEvent?.({
-        type: "tool_result",
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        content,
-        isError,
-      });
-
-      // Truncate before adding to the LLM context window. Preserve the tail so
-      // structured responses keep pagination metadata such as nextCursor.
-      const MAX_TOOL_RESULT_CHARS =
-        toolCall.function.name === "list_documents" ||
-        toolCall.function.name === "search_documents"
-          ? 30_000
-          : 6_000;
-      const TOOL_RESULT_TAIL_CHARS = Math.min(2_000, MAX_TOOL_RESULT_CHARS / 3);
-      const modelContent =
-        content.length > MAX_TOOL_RESULT_CHARS
-          ? [
-              content.slice(0, MAX_TOOL_RESULT_CHARS - TOOL_RESULT_TAIL_CHARS),
-              "",
-              `[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} middle characters not shown. For structured tools, narrow the query or request a smaller page and continue with nextCursor from the response tail. For bash output, rerun the command with output redirected to a file.]`,
-              "",
-              content.slice(-TOOL_RESULT_TAIL_CHARS),
-            ].join("\n")
-          : content;
-
-      agentMessages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        content: modelContent,
-      });
     }
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw new AgentTurnError(
+      error instanceof Error ? error.message : String(error),
+      turnMessages(),
+    );
   }
 }
 

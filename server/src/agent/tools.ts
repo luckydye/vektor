@@ -186,7 +186,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           type: {
             type: "string",
             description:
-              'Only documents of this type, e.g. "database", "record" (a database row), "canvas", "workflow".',
+              'Only documents of this type, e.g. "database", "record" (a database row; pass parentId for one database\'s rows), "canvas", "workflow".',
           },
           parentId: {
             type: "string",
@@ -238,7 +238,11 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         type: "object",
         properties: {
           documentId: { type: "string" },
-          rev: { type: "number" },
+          rev: {
+            type: "number",
+            description:
+              "Historical revision (1 or higher). Omit to read the live draft.",
+          },
         },
         required: ["documentId"],
       },

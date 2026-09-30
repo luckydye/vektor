@@ -11,16 +11,16 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useIntegrationAIModel } from "#composeables/useIntegrationAIModel.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
-import { registerScopedAction } from "#utils/scopedAction.ts";
 import { config } from "#config";
+import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { AIChatMessages, type AIChatMessagesHandle } from "./AIChatMessages.tsx";
 import { AIChatSessions } from "./AIChatSessions.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { MessageInput, type MessageInputHandle } from "./MessageInput.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId?: string;
@@ -230,9 +230,7 @@ export function AIChatPanel(props: Props) {
 
   const runsOnIntegrationModel = useIntegrationAIModel();
   const isAgentConfigured = createMemo(() => {
-    return (
-      !!currentSpace() && (config().AI_ENABLED === "1" || runsOnIntegrationModel())
-    );
+    return !!currentSpace() && (config().AI_ENABLED === "1" || runsOnIntegrationModel());
   });
 
   createEffect(
@@ -254,6 +252,15 @@ export function AIChatPanel(props: Props) {
     }),
   );
 
+  const contextUrl = () => {
+    const spaceId = currentSpaceId();
+    const sessionId = currentSessionId();
+    if (!spaceId || !sessionId) return null;
+    const document = documentId();
+    const query = document ? `?documentId=${encodeURIComponent(document)}` : "";
+    return `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}/context${query}`;
+  };
+
   return (
     <DockedPanel
       id="ai-chat"
@@ -266,6 +273,7 @@ export function AIChatPanel(props: Props) {
         <AIChatSessions
           sessions={sessions()}
           currentSessionId={currentSessionId()}
+          contextUrl={contextUrl()}
           showPicker={showSessionPicker()}
           isGenerating={isGenerating()}
           getSessionStatus={getSessionStatus}

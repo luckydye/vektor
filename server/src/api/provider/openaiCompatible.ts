@@ -106,6 +106,8 @@ function toOpenAIResponsesTools(tools: unknown[]): unknown[] {
       name: functionTool.function.name,
       description: functionTool.function.description,
       parameters: functionTool.function.parameters,
+      // The Responses API defaults to strict, which treats every property as required.
+      strict: false,
     };
   });
 }
