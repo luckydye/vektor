@@ -1034,9 +1034,16 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/permissions/me"
 ### `GET /spaces/:spaceId/search`
 
 - **Auth**: session / access token / job token / public; `viewer` role.
-- **Query**: `q` (string), `limit`/`cursor?` (default 20/max 100), `filters` (JSON
-  array string of `{ key: string, value: string|null }`).
-- **Behavior**: empty query + no filters → returns an empty result set without
+- **Query**: `q` (string), `limit`/`cursor?` (default 20/max 100), `parentId?`
+  (only direct children of that document), `filters` (JSON array string; every
+  filter must match):
+  - `{ key, value: string|null }`: exact, case-insensitive property match; `null`
+    matches any document that has the property.
+  - `{ key, from?, before? }`: the property's value, read as a date
+    (`YYYY-MM-DD`, `YYYY-MM-DD HH:mm` or ISO date-time), is at or after `from` and
+    before `before`. Values that are not dates never match. Not valid for `_type`
+    or `_date`.
+- **Behavior**: empty query + no filters or `parentId` → returns an empty result set without
   querying. Public-space access is treated as a trusted view (no per-document ACL
   filtering) for search purposes. Stale document indexes are refreshed before the query
   reads them. `cursor` is an opaque index into the relevance-ranked, in-memory result

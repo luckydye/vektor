@@ -7,7 +7,8 @@ import {
   ResourceUnavailableError,
 } from "#acl/errors.ts";
 import type { ApiContext } from "#api/server/types.ts";
-import type { PropertyFilter } from "#db/space/search.ts";
+import { type PropertyFilter, parseFilterDate } from "#db/space/search.ts";
+import { DATE_FILTER_KEY, DOCUMENT_TYPE_FILTER_KEY } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
 
 export function jsonResponse(
@@ -199,8 +200,29 @@ export function parseSearchFilters(raw: string | null): PropertyFilter[] {
       if (typeof filter.key !== "string" || !filter.key.trim()) {
         throw new Error("Each filter must have a non-empty 'key' string");
       }
-      if (filter.value !== null && typeof filter.value !== "string") {
-        throw new Error("Filter 'value' must be a string or null");
+      if ("value" in filter) {
+        if (filter.value !== null && typeof filter.value !== "string") {
+          throw new Error("Filter 'value' must be a string or null");
+        }
+        if ("from" in filter || "before" in filter) {
+          throw new Error("A filter takes either 'value' or 'from'/'before'");
+        }
+        continue;
+      }
+      if (filter.from === undefined && filter.before === undefined) {
+        throw new Error("Each filter needs 'value', or 'from' and/or 'before'");
+      }
+      if (filter.key === DOCUMENT_TYPE_FILTER_KEY || filter.key === DATE_FILTER_KEY) {
+        throw new Error(`'${filter.key}' does not take a range`);
+      }
+      for (const bound of ["from", "before"] as const) {
+        const value = filter[bound];
+        if (value === undefined) continue;
+        if (typeof value !== "string" || parseFilterDate(value) === null) {
+          throw new Error(
+            `Filter '${bound}' must be a date such as 2026-09-28 or 2026-09-28T09:00:00Z`,
+          );
+        }
       }
     }
     return parsed;

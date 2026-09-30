@@ -203,8 +203,8 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "search_documents",
       description:
-        "Full-text search over titles, content and properties in the current Vektor space. " +
-        "To browse by type or parent, use list_documents instead.",
+        "Search documents in the current Vektor space by text (q), property filters, parent, or any combination. " +
+        "Date ranges over properties (e.g. a database's date column) go in filters, not in q.",
       inputSchema: {
         type: "object",
         properties: {
@@ -215,17 +215,25 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
             description:
               "nextCursor returned by a previous search_documents call. Omit for the first page.",
           },
+          parentId: {
+            type: "string",
+            description: "Only direct children of this document, e.g. a database's rows.",
+          },
           filters: {
             type: "array",
             description:
-              'Exact property matches. Key "_type" matches the document type; a null value matches any document that has the property.',
+              'All must match. {key, value} matches a property exactly (null: has the property; key "_type": the document type). ' +
+              "{key, from, before} matches a property whose value is a date at or after from and before before; either bound may be omitted. " +
+              'Bounds are dates like "2026-09-28" or "2026-09-28T09:00:00+02:00".',
             items: {
               type: "object",
               properties: {
                 key: { type: "string" },
                 value: { type: ["string", "null"] },
+                from: { type: "string" },
+                before: { type: "string" },
               },
-              required: ["key", "value"],
+              required: ["key"],
             },
           },
         },
@@ -576,6 +584,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           q: expectString(args, "q", { optional: true }),
           limit: expectNumber(args, "limit", { optional: true }),
           cursor: expectString(args, "cursor", { optional: true }),
+          parentId: expectString(args, "parentId", { optional: true }),
           filters: args.filters === undefined ? undefined : JSON.stringify(args.filters),
         })}`,
       )) as { results: Array<Record<string, unknown>> };

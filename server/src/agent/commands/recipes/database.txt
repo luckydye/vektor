@@ -25,6 +25,12 @@ document tools — there is no dedicated database tool.
 3. List rows directly with `list_documents` using
    {"parentId":"<database-id>","type":"record","limit":500}.
    Each row's `properties` holds its cells.
+4. Query rows by a date column with `search_documents`, never by putting dates
+   in `q`. Take the column from `_schema`; `from` is inclusive, `before`
+   exclusive. This week's entries of a calendar database:
+    {"parentId":"<database-id>","filters":[{"key":"Start","from":"2026-09-28","before":"2026-10-05"}]}
+   An event spanning the range starts before `before` and ends at or after
+   `from`: filter `Start` with `before` and `End` with `from`.
 
 ## Change a database
 - Create a database: call `write_document` with type `database`, a title, and

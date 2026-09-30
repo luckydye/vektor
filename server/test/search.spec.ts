@@ -651,3 +651,91 @@ describe("Search Date Filters", () => {
     expect(data.results).toEqual([]);
   });
 });
+
+describe("Search Date Range Filters", () => {
+  let calendarId: string;
+
+  const searchSlugs = async (params: Record<string, string>) => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?${new URLSearchParams(params)}`,
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { results: Array<{ slug: string }> };
+    return data.results.map((result) => result.slug).sort();
+  };
+
+  const createDocument = async (body: Record<string, unknown>) => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({ content: "<p></p>", ...body }),
+    });
+    expect(response.status).toBe(201);
+    return ((await response.json()) as { document: { id: string } }).document.id;
+  };
+
+  beforeAll(async () => {
+    calendarId = await createDocument({
+      slug: "range-calendar",
+      type: "database",
+      properties: { title: "Range Calendar" },
+    });
+    // Untyped text values, as the calendar sync wrote them, in every accepted shape.
+    for (const [slug, start] of [
+      ["range-monday", "2026-09-28"],
+      ["range-tuesday", "2026-09-29T16:00:00.000Z"],
+      ["range-sunday", "2026-10-04 18:30"],
+      ["range-next-monday", "2026-10-05"],
+      ["range-last-sunday", "2026-09-27T23:00:00.000Z"],
+      ["range-not-a-date", "Confirmed"],
+    ]) {
+      await createDocument({
+        slug,
+        type: "record",
+        parentId: calendarId,
+        properties: { title: slug, Start: start },
+      });
+    }
+    await createDocument({
+      slug: "range-elsewhere",
+      type: "record",
+      properties: { title: "Elsewhere", Start: "2026-09-30" },
+    });
+  });
+
+  it("returns the database rows whose date falls in [from, before)", async () => {
+    const slugs = await searchSlugs({
+      parentId: calendarId,
+      filters: JSON.stringify([{ key: "Start", from: "2026-09-28", before: "2026-10-05" }]),
+    });
+    expect(slugs).toEqual(["range-monday", "range-sunday", "range-tuesday"]);
+  });
+
+  it("scopes to the whole space without parentId", async () => {
+    const slugs = await searchSlugs({
+      filters: JSON.stringify([{ key: "Start", from: "2026-09-30", before: "2026-10-01" }]),
+    });
+    expect(slugs).toEqual(["range-elsewhere"]);
+  });
+
+  it("accepts an open-ended range", async () => {
+    const slugs = await searchSlugs({
+      parentId: calendarId,
+      filters: JSON.stringify([{ key: "Start", from: "2026-10-04" }]),
+    });
+    expect(slugs).toEqual(["range-next-monday", "range-sunday"]);
+  });
+
+  it("lists a parent's children with no query or filters", async () => {
+    const slugs = await searchSlugs({ parentId: calendarId });
+    expect(slugs).toHaveLength(6);
+  });
+
+  it("rejects a bound that is not a date", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?${new URLSearchParams({
+        filters: JSON.stringify([{ key: "Start", from: "monday" }]),
+      })}`,
+    );
+    expect(response.status).toBe(400);
+  });
+});

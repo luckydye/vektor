@@ -49,9 +49,42 @@ export type SearchResult = DocumentWithProperties & {
   snippet: string;
 };
 
-export interface PropertyFilter {
+/** A string matches that exact value; null matches any document that has the property. */
+export interface PropertyValueFilter {
   key: string;
   value: string | null;
+}
+
+/** Matches a property whose value, read as a date, is at or after `from` and before `before`. */
+export interface PropertyRangeFilter {
+  key: string;
+  from?: string;
+  before?: string;
+}
+
+export type PropertyFilter = PropertyValueFilter | PropertyRangeFilter;
+
+export function isPropertyRangeFilter(
+  filter: PropertyFilter,
+): filter is PropertyRangeFilter {
+  return !("value" in filter);
+}
+
+const FILTER_DATE_PATTERN =
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/** Epoch milliseconds of a date value, or null when it is not a date. */
+export function parseFilterDate(value: string): number | null {
+  if (!FILTER_DATE_PATTERN.test(value)) return null;
+  const time = Date.parse(value.replace(" ", "T"));
+  return Number.isNaN(time) ? null : time;
+}
+
+function parseFilterBound(value: string | undefined, unbounded: number): number {
+  if (value === undefined) return unbounded;
+  const time = parseFilterDate(value);
+  if (time === null) throw new Error(`Invalid range filter bound: ${value}`);
+  return time;
 }
 
 /**
@@ -278,6 +311,8 @@ export interface SearchDocumentsOptions {
   limit?: number;
   cursor?: string;
   filters?: PropertyFilter[];
+  /** Only direct children of this document. */
+  parentId?: string;
   /** Passed to `#search/ranking.ts`: the bar a match has to clear. */
   strict?: boolean;
   /**
@@ -298,17 +333,25 @@ export async function searchDocuments(
   query: string,
   options: SearchDocumentsOptions = {},
 ): Promise<{ results: SearchResult[]; nextCursor: string | null }> {
-  const { limit = 20, cursor, filters = [], strict = false } = options;
+  const { limit = 20, cursor, filters = [], parentId, strict = false } = options;
   const hasQuery = query.trim().length > 0;
-  const hasFilters = filters.length > 0;
+  const hasFilters = filters.length > 0 || parentId !== undefined;
 
   if ((!hasQuery && !hasFilters) || docIds?.length === 0) {
     return { results: [], nextCursor: null };
   }
 
-  const typeFilters = filters.filter((f) => f.key === DOCUMENT_TYPE_FILTER_KEY);
-  const dateFilters = filters.filter((f) => f.key === DATE_FILTER_KEY);
-  const propertyFilters = filters.filter(
+  const valueFilters = filters.filter(
+    (f): f is PropertyValueFilter => !isPropertyRangeFilter(f),
+  );
+  const rangeFilters = filters.filter(isPropertyRangeFilter).map((filter) => ({
+    key: filter.key,
+    from: parseFilterBound(filter.from, -Infinity),
+    before: parseFilterBound(filter.before, Infinity),
+  }));
+  const typeFilters = valueFilters.filter((f) => f.key === DOCUMENT_TYPE_FILTER_KEY);
+  const dateFilters = valueFilters.filter((f) => f.key === DATE_FILTER_KEY);
+  const propertyFilters = valueFilters.filter(
     (f) => f.key !== DOCUMENT_TYPE_FILTER_KEY && f.key !== DATE_FILTER_KEY,
   );
 
@@ -346,6 +389,15 @@ export async function searchDocuments(
           return false;
         }
       }
+    }
+    for (const filter of rangeFilters) {
+      const propValue = readDocumentProperty(properties, filter.key);
+      const values = propValue === undefined ? [] : [propValue].flat();
+      const inRange = values.some((value) => {
+        const time = parseFilterDate(value);
+        return time !== null && time >= filter.from && time < filter.before;
+      });
+      if (!inRange) return false;
     }
     return true;
   };
@@ -523,6 +575,10 @@ export async function searchDocuments(
             : docIds.includes(r.id),
         );
 
+  if (parentId !== undefined) {
+    accessibleResults = accessibleResults.filter((r) => r.parentId === parentId);
+  }
+
   if (dateFilters.length > 0 && accessibleResults.length > 0) {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -563,7 +619,8 @@ export async function searchDocuments(
     });
   }
 
-  const hasPropertyOrTypeFilters = typeFilters.length > 0 || propertyFilters.length > 0;
+  const hasPropertyOrTypeFilters =
+    typeFilters.length > 0 || propertyFilters.length > 0 || rangeFilters.length > 0;
   if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
     const propertiesByDocument = await readProperties(

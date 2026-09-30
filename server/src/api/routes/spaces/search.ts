@@ -22,7 +22,8 @@ import { refreshStaleDocumentIndexes } from "#search/indexing.ts";
  * @tag Search
  * @paginated
  * @query q Search query.
- * @query filters JSON-encoded `[{ key, value }]` document property filters.
+ * @query filters JSON-encoded document property filters: `{ key, value }` matches a value, `{ key, from?, before? }` a date range.
+ * @query parentId Only direct children of this document.
  * @response #/components/schemas/SearchResponse
  */
 export const GET: ApiRouteHandler = (context) =>
@@ -51,8 +52,10 @@ export const GET: ApiRouteHandler = (context) =>
         new URL(context.req.url).searchParams.get("filters"),
       );
 
+      const parentId = new URL(context.req.url).searchParams.get("parentId") ?? undefined;
+
       // Allow empty query only when filters are provided
-      if (!query.trim() && filters.length === 0) {
+      if (!query.trim() && filters.length === 0 && parentId === undefined) {
         return jsonResponse({ results: [], nextCursor: null, query: "", filters: [] });
       }
 
@@ -76,6 +79,7 @@ export const GET: ApiRouteHandler = (context) =>
         limit,
         cursor,
         filters,
+        parentId,
       });
 
       return jsonResponse({
