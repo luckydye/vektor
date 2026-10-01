@@ -202,7 +202,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
             type: "array",
             items: { type: "string" },
             description:
-              'Only these properties of each document, e.g. ["Start","End"]. Omit for all.',
+              'Properties to include for each document, e.g. ["Start","End"]; none are returned without this. Ask only for what the answer needs.',
           },
         },
       },
@@ -234,7 +234,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
             type: "array",
             items: { type: "string" },
             description:
-              'Only these properties of each document, e.g. ["Start","End"]. Omit for all.',
+              'Properties to include for each document, e.g. ["Start","End"]; none are returned without this. Ask only for what the answer needs.',
           },
           filters: {
             type: "array",
@@ -267,6 +267,12 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         type: "object",
         properties: {
           documentId: { type: "string" },
+          properties: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              'Hidden "_"-prefixed properties to include, e.g. ["_schema"] for a database\'s columns; the others are always returned.',
+          },
           rev: {
             type: "number",
             description:
@@ -598,30 +604,59 @@ export async function installExtension(
 
 /** The fields a listing needs: full records are ~800 characters each and crowd out the page. */
 /**
- * `request` drops what the caller already knows: the parent it asked for, and
- * the snippet, which without a query is only the start of the raw body.
+ * A listing is pointers: properties only when asked for by name. `request` also
+ * drops what the caller already knows: the parent it asked for, and the
+ * snippet, which without a query is only the start of the raw body.
  */
 function summarizeDocument(
   doc: Record<string, unknown>,
   request: { parentId?: string; hasQuery: boolean; properties?: string[] },
 ) {
   const { title, ...properties } = doc.properties as Record<string, unknown>;
-  const wanted =
-    request.properties && new Set(request.properties.map((key) => key.toLowerCase()));
+  const wanted = new Set(request.properties?.map((key) => key.toLowerCase()));
   return {
     id: doc.id,
     title: title ?? doc.slug,
     type: doc.type ?? "document",
     parentId: request.parentId ? undefined : (doc.parentId ?? undefined),
     updatedAt: doc.updatedAt,
-    properties: wanted
-      ? Object.fromEntries(
-          Object.entries(properties).filter(([key]) => wanted.has(key.toLowerCase())),
-        )
-      : properties,
+    properties:
+      wanted.size > 0
+        ? Object.fromEntries(
+            Object.entries(properties).filter(([key]) => wanted.has(key.toLowerCase())),
+          )
+        : undefined,
     snippet: request.hasQuery ? doc.snippet || undefined : undefined,
     fileUrl: doc.fileUrl,
   };
+}
+
+/** Whether a property key is app-internal (`_schema`, `_kanban`, …) rather than content. */
+function isHiddenProperty(key: string): boolean {
+  return key.startsWith("_");
+}
+
+/** Drops hidden properties from each document in a response, except the named ones. */
+function hideInternalProperties(response: unknown, requested: string[] = []): unknown {
+  if (!response || typeof response !== "object") return response;
+  const keep = new Set(requested.map((key) => key.toLowerCase()));
+  return Object.fromEntries(
+    Object.entries(response).map(([key, value]) => {
+      const properties = (value as { properties?: unknown } | null)?.properties;
+      if (!properties || typeof properties !== "object") return [key, value];
+      return [
+        key,
+        {
+          ...value,
+          properties: Object.fromEntries(
+            Object.entries(properties).filter(
+              ([name]) => !isHiddenProperty(name) || keep.has(name.toLowerCase()),
+            ),
+          ),
+        },
+      ];
+    }),
+  );
 }
 
 function expectStringArray(
@@ -690,38 +725,45 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       // Without an explicit revision, read the live draft content (including
       // unsaved changes in the collaboration room) so partial edits via
       // edit_document reference the same state.
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}${buildQuery(
-          rev !== undefined ? { rev } : { live: "true" },
-        )}`,
+      return hideInternalProperties(
+        await apiRequest(
+          config,
+          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}${buildQuery(
+            rev !== undefined ? { rev } : { live: "true" },
+          )}`,
+        ),
+        expectStringArray(args, "properties"),
       );
     }
     case "get_current_document":
       if (!config.documentId) {
         throw new Error("Current document not available");
       }
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(config.documentId)}?live=true`,
+      return hideInternalProperties(
+        await apiRequest(
+          config,
+          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(config.documentId)}?live=true`,
+        ),
       );
     case "write_document": {
       const documentId = expectString(args, "documentId", { optional: true });
       const content = expectString(args, "content");
       if (documentId) {
-        return await apiRequest(
-          config,
-          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Origin: new URL(config.apiUrl).origin,
+        return hideInternalProperties(
+          await apiRequest(
+            config,
+            `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Origin: new URL(config.apiUrl).origin,
+              },
+              body: JSON.stringify({
+                content,
+              }),
             },
-            body: JSON.stringify({
-              content,
-            }),
-          },
+          ),
         );
       }
       const title = expectString(args, "title", { optional: true });
@@ -733,14 +775,16 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         body.type = type;
       }
       if (parentId) body.parentId = parentId;
-      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/documents`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Origin: new URL(config.apiUrl).origin,
-        },
-        body: JSON.stringify(body),
-      });
+      return hideInternalProperties(
+        await apiRequest(config, `/api/v1/spaces/${config.spaceId}/documents`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify(body),
+        }),
+      );
     }
     case "edit_document": {
       const documentId = expectString(args, "documentId");
@@ -748,17 +792,19 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       if (!Array.isArray(operations) || operations.length === 0) {
         throw new Error("operations must be a non-empty array");
       }
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/edit`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Origin: new URL(config.apiUrl).origin,
+      return hideInternalProperties(
+        await apiRequest(
+          config,
+          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/edit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: new URL(config.apiUrl).origin,
+            },
+            body: JSON.stringify({ operations }),
           },
-          body: JSON.stringify({ operations }),
-        },
+        ),
       );
     }
     case "delete_document": {
@@ -776,17 +822,21 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     case "update_document_properties": {
       const documentId = expectString(args, "documentId");
       const properties = expectObject(args, "properties");
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Origin: new URL(config.apiUrl).origin,
+      // The keys being written are the ones the caller asked about.
+      return hideInternalProperties(
+        await apiRequest(
+          config,
+          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: new URL(config.apiUrl).origin,
+            },
+            body: JSON.stringify({ properties }),
           },
-          body: JSON.stringify({ properties }),
-        },
+        ),
+        Object.keys(properties),
       );
     }
     case "run_workflow": {

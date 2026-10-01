@@ -6,10 +6,16 @@ keywords: search, find, list, read, lookup
 1. Use `get_current_document` for "this document" or "the page".
 2. Use `search_documents` for full-text search; pass the query in `q`.
 3. Use `list_documents` for browsing metadata. Useful filters include `type`,
-   `parentId`, and comma-separated `categorySlugs`.
-4. Both list and search responses can contain `nextCursor`; pass it back as
+   `parentId`, and comma-separated `categorySlugs`. Listings return id, title
+   and type; name the properties you need in `properties`.
+4. Structured data (tasks, contacts, events, …) lives in databases, as rows of
+   type "record". Find them with `list_documents` type "database", then query
+   one database's rows with `search_documents` and `parentId`, filtering by
+   column values or date ranges instead of searching text (see the `database`
+   recipe).
+5. Both list and search responses can contain `nextCursor`; pass it back as
    `cursor` to continue.
-5. Use `read_document` with the returned ID to read the live draft. Pass `rev`
+6. Use `read_document` with the returned ID to read the live draft. Pass `rev`
    only when a historical revision is specifically required.
-6. To keep selected content in the virtual filesystem, write it with
+7. To keep selected content in the virtual filesystem, write it with
    `write_file`; do not claim a sandbox path is a user-downloadable URL.

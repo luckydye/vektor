@@ -11,7 +11,6 @@ import editTextRaw from "./recipes/edit-text.txt" with { type: "text" };
 import extensionRaw from "./recipes/extension.txt" with { type: "text" };
 import findDocsRaw from "./recipes/find-docs.txt" with { type: "text" };
 import headerImageRaw from "./recipes/header-image.txt" with { type: "text" };
-import largeOutputRaw from "./recipes/large-output.txt" with { type: "text" };
 import uploadRaw from "./recipes/upload.txt" with { type: "text" };
 import workflowRaw from "./recipes/workflow.txt" with { type: "text" };
 
@@ -46,7 +45,6 @@ const RECIPES: Record<string, Recipe> = {
   workflow: parseRecipe(workflowRaw),
   upload: parseRecipe(uploadRaw),
   extension: parseRecipe(extensionRaw),
-  "large-output": parseRecipe(largeOutputRaw),
 };
 
 /** Returns a recipe's title + body for inlining into prompts. Null if unknown. */

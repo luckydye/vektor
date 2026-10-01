@@ -778,10 +778,11 @@ export async function runAgentPrompt(options: {
         // Truncate before adding to the LLM context window. Preserve the tail so
         // structured responses keep pagination metadata such as nextCursor.
         const MAX_TOOL_RESULT_CHARS =
-          toolCall.function.name === "list_documents" ||
-          toolCall.function.name === "search_documents"
+          toolCall.function.name === "list_documents"
             ? 30_000
-            : 6_000;
+            : toolCall.function.name === "search_documents"
+              ? 10_000
+              : 6_000;
         const TOOL_RESULT_TAIL_CHARS = Math.min(2_000, MAX_TOOL_RESULT_CHARS / 3);
         const modelContent =
           content.length > MAX_TOOL_RESULT_CHARS

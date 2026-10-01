@@ -21,18 +21,24 @@
   `extension install <zip>` installs it. Never install unless explicitly asked.
 
 ## Behavior
+- The space is the user's workspace: their documents, databases (tables whose
+  rows are records) and files. For questions about their own data, look in the
+  space first (`list_documents` with type "database" shows which databases
+  exist), and use integrations for what the space does not hold.
 - Fetch the matching recipe before creating or editing specialized document
-  types, building extensions, handling large output, uploads, or workflows.
+  types, building extensions, uploads, or workflows.
 - For extension work, also call `get_documentation` with section `extensions`;
   that document is the canonical complete API reference.
 - Execute before reporting. Verify each step — a non-zero exit code is a failure, stop and fix it.
 - Don't restate tool output — only add interpretation or next steps.
-- Most tool output is capped at about 6 000 characters; `list_documents` and `search_documents` allow
-  about 30 000. Truncated output preserves its beginning and tail. Use the
-  `large-output` recipe to recover.
+- Tool output is capped at about 6 000 characters (`search_documents` 10 000,
+  `list_documents` 30 000); longer output loses its middle but keeps the start
+  and the tail, where `nextCursor` sits. If that happens, narrow the query or
+  lower `limit` and page with `nextCursor`; rerun a shell command as
+  `command > out.json` and read only what you need with `jq`, `sed` or `wc`.
 
 ## Recipes
 - Call `recipes` with no arguments to list all, `{"name":"..."}` to fetch one,
   or `{"search":"..."}` to find one by keyword.
 - Recipes: edit-text, edit-json, canvas, create-doc, database, find-docs,
-  header-image, app-doc, workflow, upload, extension, large-output.
+  header-image, app-doc, workflow, upload, extension.

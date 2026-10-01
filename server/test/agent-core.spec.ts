@@ -489,7 +489,16 @@ describe("agent model loop", () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     globalThis.fetch = async (input, init) => {
       requests.push({ url: String(input), init });
-      return new Response(JSON.stringify({ documents: [{ id: "doc-1" }] }), {
+      const document = {
+        id: "doc-1",
+        slug: "doc-1",
+        type: "document",
+        content: "",
+        properties: { title: "Doc", status: "open" },
+        parentId: null,
+        updatedAt: "2026-10-01T00:00:00.000Z",
+      };
+      return new Response(JSON.stringify({ documents: [document], nextCursor: null }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -549,8 +558,19 @@ describe("agent model loop", () => {
             expect(toolNames).not.toContain("install_extension");
             expect(toolNames).not.toContain("integration_api_request");
           } else {
+            // Listings are pointers: no properties unless the call names them.
             expect(options.messages.at(-1)?.content).toBe(
-              JSON.stringify({ documents: [{ id: "doc-1" }] }, null, 2),
+              JSON.stringify({
+                documents: [
+                  {
+                    id: "doc-1",
+                    title: "Doc",
+                    type: "document",
+                    updatedAt: "2026-10-01T00:00:00.000Z",
+                  },
+                ],
+                nextCursor: null,
+              }),
             );
           }
           callCount += 1;

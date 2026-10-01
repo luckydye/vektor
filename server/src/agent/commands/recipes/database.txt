@@ -20,17 +20,21 @@ document tools — there is no dedicated database tool.
 ## Read a database
 1. Find it: `list_documents` with {"type":"database"} (or
    `get_current_document` if the database is the open page).
-2. Read columns: `read_document` on the database id, then parse the
-   `properties._schema` JSON string.
-3. List rows directly with `list_documents` using
-   {"parentId":"<database-id>","type":"record","limit":500}.
-   Each row's `properties` holds its cells.
+2. Read columns: `read_document` on the database id with
+   {"properties":["_schema"]} (hidden "_" properties are left out otherwise),
+   then parse the `properties._schema` JSON string. A database without
+   `_schema` has no declared columns: `read_document` one row to see them.
+3. List rows directly with `list_documents`, naming the columns you need
+   (rows carry no properties otherwise):
+   {"parentId":"<database-id>","properties":["status","priority"],"limit":500}.
 4. Query rows by a date column with `search_documents`, never by putting dates
    in `q`. Take the column from `_schema`; `from` is inclusive, `before`
    exclusive. This week's entries of a calendar database:
-    {"parentId":"<database-id>","filters":[{"key":"Start","from":"2026-09-28","before":"2026-10-05"}]}
+    {"parentId":"<database-id>","properties":["Start","End","Location"],"filters":[{"key":"Start","from":"2026-09-28","before":"2026-10-05"}]}
    An event spanning the range starts before `before` and ends at or after
    `from`: filter `Start` with `before` and `End` with `from`.
+   Request only the columns the answer shows; ids, links and colours are
+   rarely among them.
 
 ## Change a database
 - Create a database: call `write_document` with type `database`, a title, and
