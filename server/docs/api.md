@@ -1439,6 +1439,8 @@ The instance operator configures the provider for every space with
 `VEKTOR_AI_BASE_URL` for Ollama. `VEKTOR_AI_WEEKLY_MAX_TOKENS` caps each
 space's weekly budget; it defaults to 1,000,000 estimated tokens.
 For a private Ollama host, set `VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1` as well.
+The agent's `web_search` tool uses Exa's keyless, rate-limited endpoint at
+`mcp.exa.ai`.
 
 ### `GET /spaces/:spaceId/settings/ai-limit`
 
