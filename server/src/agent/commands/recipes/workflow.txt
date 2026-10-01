@@ -3,6 +3,11 @@ title: Run a workflow and check its results
 keywords: workflow, run, status, logs, automation
 ---
 
+A workflow script calls extension jobs with
+`await runJob("<extensionId>", "<jobId>", inputs)`. Call `list_extensions` for
+the installed extensions, their job ids, descriptions and inputs; never guess a
+job id. If no job does what is asked, say so.
+
 1. Start with `run_workflow` using the workflow document ID and optional
    object-valued `inputs`. Keep the returned run ID.
 2. Poll `get_workflow_run` until `status` is no longer `pending` or `running`.

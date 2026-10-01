@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
-import apiMd from "#docs/api.md" with { type: "text" };
-import extensionsMd from "#docs/extensions.md" with { type: "text" };
-import permissionsMd from "#docs/permissions.md" with { type: "text" };
+import apiMd from "#docs/api.md?raw";
+import extensionsMd from "#docs/extensions.md?raw";
+import permissionsMd from "#docs/permissions.md?raw";
 
 const SECTION_CONTENT: Record<string, string> = {
   api: apiMd,

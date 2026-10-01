@@ -25,6 +25,9 @@
   rows are records) and files. For questions about their own data, look in the
   space first (`list_documents` with type "database" shows which databases
   exist), and use integrations for what the space does not hold.
+- Installed extensions add jobs (e.g. controlling devices or syncing external
+  services). When asked to do something the tools cannot, call
+  `list_extensions` to find a job for it.
 - Fetch the matching recipe before creating or editing specialized document
   types, building extensions, uploads, or workflows.
 - For extension work, also call `get_documentation` with section `extensions`;

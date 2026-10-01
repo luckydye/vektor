@@ -21,11 +21,15 @@ export interface ExtensionRoute {
 export interface JobIOField {
   type: "string" | "number" | "boolean" | "object" | "file" | "blob";
   required?: boolean;
+  /** What the value means, shown to the agent and in workflow tooling. */
+  description?: string;
 }
 
 export interface JobDefinition {
   id: string;
   name: string;
+  /** What the job does, shown to the agent so it can pick and call the job. */
+  description?: string;
   entry: string;
   inputs?: Record<string, JobIOField>;
   outputs?: Record<string, JobIOField>;
@@ -459,6 +463,11 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
       if (!job.entry || typeof job.entry !== "string") {
         throw new Error(
           `Extension manifest job '${job.id}' is missing required 'entry' field`,
+        );
+      }
+      if (job.description !== undefined && typeof job.description !== "string") {
+        throw new Error(
+          `Extension manifest job '${job.id}' has a non-string 'description'`,
         );
       }
     }

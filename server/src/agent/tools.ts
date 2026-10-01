@@ -5,6 +5,7 @@
  * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
  */
 
+import type { JobDefinition } from "#extensions/manifest.ts";
 import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 
 type McpTool = {
@@ -434,6 +435,13 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           },
         },
       },
+    },
+    {
+      name: "list_extensions",
+      description:
+        "List the enabled extensions in the current space with the jobs each defines: id, name, description, inputs and outputs. " +
+        'A workflow script calls a job as `await runJob("<extensionId>", "<jobId>", inputs)`; use only job ids listed here.',
+      inputSchema: { type: "object", properties: {} },
     },
     // The schedule routes need a signed-in user; a job token is rejected, so the
     // in-app agent never sees tools it cannot call.
@@ -933,6 +941,30 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           cursor,
         })}`,
       );
+    }
+    case "list_extensions": {
+      const { extensions } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/extensions`,
+      )) as {
+        extensions: Array<{
+          id: string;
+          name: string;
+          description?: string;
+          enabled: boolean;
+          jobs?: JobDefinition[];
+        }>;
+      };
+      return {
+        extensions: extensions
+          .filter((ext) => ext.enabled)
+          .map(({ id, name, description, jobs }) => ({
+            id,
+            name,
+            description,
+            jobs: (jobs ?? []).map(({ entry: _entry, ...job }) => job),
+          })),
+      };
     }
     case "schedule_workflow": {
       const documentId = expectString(args, "documentId");

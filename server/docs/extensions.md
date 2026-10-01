@@ -722,6 +722,31 @@ await output({
 Throwing fails the job; the message lands in the run log. Ambient types for
 every global are in `extensions/job-runtime.d.ts`.
 
+Declare each job in the manifest. `description` on the job and on each input
+and output is what the agent reads (via `list_extensions`) to discover a job
+and call it from a workflow, so say what the job does and what each field means:
+
+```json
+{
+  "jobs": [
+    {
+      "id": "word-count",
+      "name": "Word count",
+      "description": "Counts the words in a document's content.",
+      "entry": "dist/jobs/word-count.js",
+      "inputs": {
+        "documentId": { "type": "string", "required": true, "description": "Document to count" }
+      },
+      "outputs": {
+        "words": { "type": "string", "description": "Number of words" }
+      }
+    }
+  ]
+}
+```
+
+A workflow runs it with `await runJob("<extension-id>", "word-count", { documentId })`.
+
 ### Binary results
 
 An output of `{ type: "blob", bytes }` is stored by the host and reaches the

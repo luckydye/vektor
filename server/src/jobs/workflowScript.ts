@@ -124,7 +124,10 @@ export async function executeWorkflowScript(
 
     const jobDef = extension.manifest.jobs?.find((j) => j.id === workflowJobId);
     if (!jobDef) {
-      throw new Error(`Job "${workflowJobId}" not found in extension "${extensionId}"`);
+      const available = extension.manifest.jobs?.map((j) => j.id).join(", ") || "none";
+      throw new Error(
+        `Job "${workflowJobId}" not found in extension "${extensionId}" (jobs: ${available})`,
+      );
     }
 
     const zipBuffer = await getExtensionPackage(
