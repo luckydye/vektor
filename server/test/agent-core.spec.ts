@@ -435,10 +435,12 @@ describe("agent model loop", () => {
         jobToken: "token",
         provider,
         modelCaller: async (options) => {
-          expect(options.messages[0]?.content).toContain(
+          // The turn context, not the session's system prompt, describes the document.
+          expect(options.messages[0]?.content).not.toContain("## Current document");
+          expect(options.messages.at(-1)?.content).toContain(
             "The current document is read-only",
           );
-          expect(options.messages[0]?.content).not.toContain(
+          expect(options.messages.at(-1)?.content).not.toContain(
             "## Editing the current document",
           );
           return {

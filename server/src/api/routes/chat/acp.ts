@@ -590,6 +590,8 @@ function getOrStartActiveChatTurn(options: {
   userAttachments: ChatAttachment[];
   userProfile?: string;
   timeZone?: string;
+  /** The session's stored system prompt; unset on its first turn. */
+  systemPrompt?: string;
   connectedProviders: string[];
   /** Unset runs the turn on the instance's provider. */
   provider?: AIProvider;
@@ -627,6 +629,7 @@ function getOrStartActiveChatTurn(options: {
     messages: options.messages,
     userProfile: options.userProfile,
     timeZone: options.timeZone,
+    systemPrompt: options.systemPrompt,
     connectedProviders: options.connectedProviders,
     provider: options.provider,
     userId: options.userId,
@@ -850,7 +853,7 @@ export const POST: ApiRouteHandler = (context) =>
           (userId === null && Array.isArray(params.messages)
             ? params.messages
             : [])) as ChatMessage[];
-        // The stored system message is what the previous turn sent; this turn builds its own.
+        // The system message is fixed for the session: every turn resends the stored one.
         const storedSystem = storedHistory.filter((message) => message.role === "system");
         const history = storedHistory.filter((message) => message.role !== "system");
         const [userProfile, oauthIntegrations] = await Promise.all([
@@ -936,6 +939,7 @@ export const POST: ApiRouteHandler = (context) =>
           messages: modelMessages,
           sessionMessages: agentMessages,
           userText,
+          systemPrompt: storedSystem[0]?.content ?? undefined,
           userAttachments: chatAttachments,
           userProfile: userProfile ?? undefined,
           timeZone,

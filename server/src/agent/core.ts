@@ -85,34 +85,44 @@ export type AgentEvent =
       isError: boolean;
     };
 
-/** The date only: the time of day would change the prompt, and void its cache, every minute. */
-function describeToday(timeZone: string): string {
+function describeNow(timeZone: string): string {
   const now = new Date();
   const weekday = now.toLocaleDateString("en-US", { weekday: "long", timeZone });
   const date = now.toLocaleDateString("en-CA", { timeZone });
+  const time = now.toLocaleTimeString("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const offset = new Intl.DateTimeFormat("en-US", {
     timeZone,
     timeZoneName: "longOffset",
   })
     .formatToParts(now)
     .find((part) => part.type === "timeZoneName")?.value;
-  return `Today is ${weekday}, ${date}. The user's time zone is ${timeZone} (${offset}); give times in it.`;
+  return `It is ${weekday}, ${date} ${time} in the user's time zone ${timeZone} (${offset}); give times in it.`;
 }
 
+/** Fixed for a session: what changes between turns goes in the turn context instead. */
 function buildCoreAgentSystemPrompt(
-  documentId?: string,
-  integrationInstructions?: string[],
+  integrationInstructions: string[],
   userProfile?: string,
+) {
+  const integrationLines =
+    integrationInstructions.length > 0
+      ? `\n## Integrations\n${integrationInstructions.map((line) => `- ${line}\n`).join("")}`
+      : "";
+  return `${systemPromptRaw}${integrationLines}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+}
+
+/** Sent after the user's message: the facts of this turn the session's system prompt cannot hold. */
+function buildTurnContext(
+  timeZone: string,
+  documentId?: string,
   documentType?: string | null,
   documentReadonly?: boolean,
-  timeZone = "UTC",
-) {
-  const lines = integrationInstructions ?? [];
-  const integrationLines =
-    lines.length > 0
-      ? `\n## Integrations\n${lines.map((line) => `- ${line}\n`).join("")}`
-      : "";
-  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}\n\n${describeToday(timeZone)}`;
+): string {
+  return `Context for this message, from Vektor:\n${describeNow(timeZone)}${documentEditingSection(documentId, documentType, documentReadonly)}`;
 }
 
 /** Maps a document type to the recipe that best explains how to edit it. */
@@ -375,14 +385,14 @@ async function prepareAgentTurn(options: {
   documentReadonly?: boolean;
   connectedProviders?: string[];
   userProfile?: string;
-  /** IANA zone the prompt states dates in; UTC when unset. */
+  /** IANA zone the turn context states the time in; UTC when unset. */
   timeZone?: string;
   jobToken: string;
 }) {
   const { apiUrl, spaceId, documentId, connectedProviders, userProfile, jobToken } =
     options;
 
-  // Resolve document metadata so the system prompt can inline the right
+  // Resolve document metadata so the turn context can inline the right
   // editing playbook and avoid suggesting mutations for locked documents.
   // A failed lookup falls back to the caller-provided context.
   let documentType = options.documentType;
@@ -535,14 +545,23 @@ async function prepareAgentTurn(options: {
   ];
 
   const systemPrompt = buildCoreAgentSystemPrompt(
-    documentId,
     integrationSurface.instructions,
     userProfile,
+  );
+  const turnContext = buildTurnContext(
+    options.timeZone ?? "UTC",
+    documentId,
     documentType,
     documentReadonly,
-    options.timeZone,
   );
-  return { systemPrompt, tools, mcpConfig, integrationSurface, vektorToolNames };
+  return {
+    systemPrompt,
+    turnContext,
+    tools,
+    mcpConfig,
+    integrationSurface,
+    vektorToolNames,
+  };
 }
 
 export async function runAgentPrompt(options: {
@@ -555,6 +574,8 @@ export async function runAgentPrompt(options: {
   connectedProviders?: string[];
   userProfile?: string;
   timeZone?: string;
+  /** The session's system prompt from its first turn; unset builds a new one. */
+  systemPrompt?: string;
   /** Whose credentials a contributed integration command runs under. */
   userId?: string | null;
   jobToken: string;
@@ -574,8 +595,9 @@ export async function runAgentPrompt(options: {
   const provider = options.provider ?? getAIProvider();
   const modelCaller = options.modelCaller ?? callModel;
 
-  const { systemPrompt, tools, mcpConfig, integrationSurface, vektorToolNames } =
-    await prepareAgentTurn(options);
+  const prepared = await prepareAgentTurn(options);
+  const { turnContext, tools, mcpConfig, integrationSurface, vektorToolNames } = prepared;
+  const systemPrompt = options.systemPrompt ?? prepared.systemPrompt;
   options.onSetup?.({ model: provider.model, systemPrompt, tools });
   const bash =
     providedBash ??
@@ -583,9 +605,11 @@ export async function runAgentPrompt(options: {
       { current: mcpConfig },
       { integrationCommands: integrationSurface.commands, userId: options.userId },
     );
+  // The turn context follows the input, so it is the first of the turn's own messages and persists with them.
   const agentMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     ...messages,
+    { role: "user", content: turnContext },
   ];
   const allChunks: string[] = [];
   let emptyResponseRetries = 0;

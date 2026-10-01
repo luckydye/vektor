@@ -214,6 +214,7 @@ export async function runAgentInWorker(options: {
   connectedProviders: string[];
   userProfile?: string;
   timeZone?: string;
+  systemPrompt?: string;
   userId?: string | null;
   provider?: AIProvider;
   jobToken: string;
