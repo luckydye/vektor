@@ -244,8 +244,6 @@ export function config() {
       AI_BASE_URL: process.env.VEKTOR_AI_BASE_URL,
       /** Maximum estimated tokens each space may use in a UTC week. */
       AI_WEEKLY_MAX_TOKENS: process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS,
-      /** Exa API key for the agent's web_search tool; the tool is hidden when unset. */
-      EXA_API_KEY: process.env.VEKTOR_EXA_API_KEY,
 
       /**
        * Which runtime executes extension jobs and workflow scripts. Only "boa"

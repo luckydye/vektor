@@ -28,7 +28,7 @@ import { getRecipe, queryRecipes } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
-import { webSearch, webSearchEnabled, webSearchTool } from "./webSearch.ts";
+import { webSearch, webSearchTool } from "./webSearch.ts";
 import {
   getIntegrationAgentSurface,
   type IntegrationAgentCommand,
@@ -535,7 +535,7 @@ async function prepareAgentTurn(options: {
         },
       },
     },
-    ...(webSearchEnabled() ? [webSearchTool] : []),
+    webSearchTool,
     ...vektorTools.map((tool) => ({
       type: "function",
       function: {
@@ -754,7 +754,7 @@ export async function runAgentPrompt(options: {
               throw new Error('recipes "search" must be a string.');
             }
             result = queryRecipes({ name, search });
-          } else if (toolCall.function.name === "web_search" && webSearchEnabled()) {
+          } else if (toolCall.function.name === "web_search") {
             result = await webSearch(record);
           } else if (vektorToolNames.has(toolCall.function.name)) {
             result = await callVektorTool(mcpConfig, toolCall.function.name, record);
