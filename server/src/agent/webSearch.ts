@@ -1,5 +1,3 @@
-import { config } from "#config";
-
 export const webSearchTool = {
   type: "function",
   function: {
@@ -23,14 +21,15 @@ export const webSearchTool = {
   },
 };
 
-/** Exa only runs when the operator configured a key; the free tier is enough. */
-export function webSearchEnabled(): boolean {
-  return Boolean(config().EXA_API_KEY?.trim());
-}
+/** Exa's hosted MCP server: free and keyless, rate-limited per client IP. */
+const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
 
-export async function webSearch(args: Record<string, unknown>) {
-  const apiKey = config().EXA_API_KEY?.trim();
-  if (!apiKey) throw new Error("VEKTOR_EXA_API_KEY is not configured.");
+type JsonRpcResponse = {
+  result?: { content: Array<{ type: string; text?: string }>; isError?: boolean };
+  error?: { code: number; message: string };
+};
+
+export async function webSearch(args: Record<string, unknown>): Promise<string> {
   const { query, numResults = 5 } = args as { query: unknown; numResults?: number };
   if (typeof query !== "string" || !query.trim()) {
     throw new Error('web_search "query" must be a non-empty string.');
@@ -39,33 +38,40 @@ export async function webSearch(args: Record<string, unknown>) {
     throw new Error('web_search "numResults" must be an integer from 1 to 10.');
   }
 
-  const response = await fetch("https://api.exa.ai/search", {
+  const response = await fetch(EXA_MCP_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
     body: JSON.stringify({
-      query,
-      type: "auto",
-      numResults,
-      contents: { text: { maxCharacters: 1000 } },
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "web_search_exa", arguments: { query, numResults } },
     }),
   });
+  const body = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `Exa ${response.status} ${response.statusText}: ${await response.text()}`,
-    );
+    throw new Error(`Exa ${response.status} ${response.statusText}: ${body}`);
   }
-  const { results } = (await response.json()) as {
-    results: Array<{
-      title: string | null;
-      url: string;
-      publishedDate?: string;
-      text?: string;
-    }>;
-  };
-  return results.map(({ title, url, publishedDate, text }) => ({
-    title,
-    url,
-    publishedDate,
-    text,
-  }));
+
+  // Streamable HTTP may answer as a single SSE event instead of plain JSON.
+  const json = response.headers.get("Content-Type")?.includes("text/event-stream")
+    ? body
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5))
+        .join("")
+    : body;
+  const { result, error } = JSON.parse(json) as JsonRpcResponse;
+  if (error) throw new Error(`Exa ${error.code}: ${error.message}`);
+  if (!result) throw new Error(`Exa returned no result: ${body}`);
+
+  const text = result.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+  if (result.isError) throw new Error(`Exa: ${text}`);
+  return text;
 }
