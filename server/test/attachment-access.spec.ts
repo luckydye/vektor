@@ -253,7 +253,7 @@ describe("attachments for a document-scoped grantee", () => {
         method: "POST",
         headers: {
           "Content-Type": "text/plain",
-          "X-Job-Token": createJobToken(spaceId, String(Date.now()), scopedUserId),
+          "X-Job-Token": createJobToken(spaceId, String(Date.now()), scopedUserId, { app: "test" }),
         },
         body: "AGENT UPLOAD",
       },

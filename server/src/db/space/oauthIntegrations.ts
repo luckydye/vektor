@@ -87,6 +87,30 @@ export async function getOAuthIntegrationForUser(
   return row ? rowToConnection(row) : null;
 }
 
+export async function getOAuthIntegrationByExternalAccount(
+  s: SpaceStore,
+  provider: OAuthIntegrationProvider,
+  externalAccountId: string,
+): Promise<OAuthIntegrationConnection | null> {
+  const rows = await s.db
+    .select()
+    .from(oauthIntegration)
+    .where(
+      and(
+        eq(oauthIntegration.provider, provider),
+        eq(oauthIntegration.externalAccountId, externalAccountId),
+      ),
+    );
+  // Nothing stops two users linking one external account; picking either would credit the wrong person.
+  if (rows.length > 1) {
+    throw new Error(
+      `${provider} account ${externalAccountId} is linked to several users`,
+    );
+  }
+
+  return rows[0] ? rowToConnection(rows[0]) : null;
+}
+
 export async function getOAuthIntegrationCredentialForUser(
   s: SpaceStore,
   userId: string,

@@ -302,7 +302,7 @@ describe("API Tests - Documents", () => {
   });
 
   it("preserves valid importer timestamps from a job token", async () => {
-    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID, { app: "test" });
     const createdAt = "2001-02-03T04:05:06.000Z";
     const updatedAt = "2002-03-04T05:06:07.000Z";
     const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
@@ -329,7 +329,7 @@ describe("API Tests - Documents", () => {
     ["updatedAt", "999999-01-01T00:00:00Z"],
     ["createdAt", 123],
   ])("rejects invalid importer %s values", async (field, value) => {
-    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID, { app: "test" });
     const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
       headers: {
@@ -824,7 +824,7 @@ describe("API Tests - Documents", () => {
     const createData = await createResponse.json();
     const documentId = createData.document.id;
 
-    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID, { app: "test" });
     const archiveResponse = await fetch(
       `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
       {
@@ -910,7 +910,7 @@ describe("API Tests - Document Properties", () => {
   });
 
   it("should patch properties with X-Job-Token auth", async () => {
-    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID, { app: "test" });
     const patchResponse = await fetch(
       `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {

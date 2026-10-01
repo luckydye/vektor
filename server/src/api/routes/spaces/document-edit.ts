@@ -12,6 +12,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, updateDocument } from "#db/space/documents.ts";
+import { createRevision } from "#db/space/revisions.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
 import { documentIsReadonly } from "#documents/types.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";
@@ -86,5 +87,16 @@ export const POST: ApiRouteHandler = (context) =>
     if (!written.ok) {
       throw notFoundResponse("Document");
     }
-    return jsonResponse({ document: written.document, live: result.live });
+
+    // A revision, as for PUT, so the edit shows in history under whoever made it.
+    const userId = auth.type === "user" ? auth.user.id : auth.userId;
+    if (!userId) return jsonResponse({ document: written.document, live: result.live });
+    await createRevision(store, id, result.content, userId, {
+      message: "Document edited",
+    });
+    const document = await getDocument(store, id);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
+    return jsonResponse({ document, live: result.live });
   }, "Failed to edit document");

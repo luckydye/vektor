@@ -1,4 +1,5 @@
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector, Doc as YDoc } from "yjs";
+import type { Attribution } from "#acl/apps.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
 import {
@@ -569,6 +570,8 @@ export interface AuditLog {
   userId?: string | null;
   event: AuditEvent;
   details?: AuditDetails | null;
+  /** The app that acted, and for whom; null when a person acted directly. */
+  attribution?: Attribution | null;
   createdAt: Date | string;
   userName?: string | null;
 }

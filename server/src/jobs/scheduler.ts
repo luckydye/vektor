@@ -1,3 +1,4 @@
+import type { Attribution } from "#acl/apps.ts";
 import { extractFile } from "#db/space/extensions.ts";
 import { getJobRuntime } from "./runtime/index.ts";
 import type { CapabilityTable } from "./runtime/types.ts";
@@ -84,10 +85,12 @@ export async function runJob(
   inputs: Record<string, unknown>,
   spaceId: string,
   onLog?: (message: string) => void,
-  options?: {
+  options: {
     timeoutMs?: number;
     signal?: AbortSignal;
     initiatedByUserId?: string | null;
+    /** The app credited for what the job does. */
+    attribution: Attribution;
     jobId?: string;
     /** Capabilities granted on top of the standard table (workflows add runJob). */
     extraCapabilities?: CapabilityTable;
@@ -97,9 +100,10 @@ export async function runJob(
     timeoutMs = DEFAULT_TIMEOUT_MS,
     signal,
     initiatedByUserId,
+    attribution,
     jobId: logicalJobId,
     extraCapabilities,
-  } = options ?? {};
+  } = options;
 
   const executionId = crypto.randomUUID();
   jobsQueuedTotal += 1;
@@ -120,6 +124,7 @@ export async function runJob(
       spaceId,
       jobId: logicalJobId ?? entryPath,
       initiatedByUserId: initiatedByUserId ?? null,
+      attribution,
       inputs: { ...inputs, jobId: executionId, spaceId },
       onLog: (message) => onLog?.(message),
       signal,

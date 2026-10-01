@@ -213,6 +213,10 @@ async function oauthIntegrationClientAndModel(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.oauthIntegration.aiModel);
 }
 
+async function auditLogAttribution(db: SpaceDb): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.auditLog.attribution);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -226,4 +230,5 @@ export const spaceMigrations: Migration[] = [
     name: "oauth-integration-client-and-model",
     up: oauthIntegrationClientAndModel,
   },
+  { id: 9, name: "audit-log-attribution", up: auditLogAttribution },
 ];

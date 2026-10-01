@@ -1,8 +1,10 @@
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { AuditLog } from "#api/client.ts";
+import { appLabel } from "#acl/apps.ts";
 import {
   type ActivityGroup,
+  activityActorName,
   getAuditEventAction,
   getAuditEventLabel,
   getEntryChangeLabel,
@@ -65,14 +67,9 @@ function activityMinute(entry?: AuditLog): string {
   }
 }
 
-function getDocumentBatchKey(
-  entry: AuditLog | undefined,
-  userId: string | null,
-  lang: string,
-): string {
+function getDocumentBatchKey(entry: AuditLog | undefined, lang: string): string {
   if (!entry) return "";
   return [
-    userId,
     entry.docId,
     getAuditEventAction(entry.event, lang),
     entry.revisionId ?? activityMinute(entry),
@@ -84,10 +81,7 @@ function isSameDocumentBatch(
   group: ActivityGroup,
   lang: string,
 ): boolean {
-  return (
-    getDocumentBatchKey(group.items[0], group.userId, lang) ===
-    getDocumentBatchKey(entry, entry.userId ?? null, lang)
-  );
+  return getDocumentBatchKey(group.items[0], lang) === getDocumentBatchKey(entry, lang);
 }
 
 export function DocumentActivityFeed(props: Props) {
@@ -138,16 +132,24 @@ export function DocumentActivityFeed(props: Props) {
               <div class="flex items-start gap-3">
                 <vektor-avatar
                   size="small"
-                  attr:user-id={group.userId ?? undefined}
-                  prop:user={props.getUser?.(group.userId)}
+                  attr:user-id={group.actor.userId ?? undefined}
+                  attr:app={group.actor.app ?? undefined}
+                  prop:user={props.getUser?.(group.actor.userId)}
                 />
 
                 <div class="min-w-0 flex-1">
                   <div class="flex min-w-0 items-center gap-2">
                     <div class="flex min-w-0 flex-1 items-baseline gap-1 text-size-small leading-small">
                       <span class="truncate font-semibold text-neutral-900">
-                        {props.getUserName(group.userId)}
+                        {activityActorName(group.actor, props.getUserName)}
                       </span>
+                      <Show when={group.actor.app}>
+                        {(app) => (
+                          <span class="shrink-0 text-neutral-500">
+                            {t("via {app}").replace("{app}", appLabel(app()))}
+                          </span>
+                        )}
+                      </Show>
                       <span class="shrink-0 text-neutral-700">
                         {getGroupAction(group.items, lang)}
                       </span>

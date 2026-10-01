@@ -78,13 +78,13 @@ describe("X-Job-Token validation on document routes", () => {
   });
 
   it("rejects a job token signed for a different space", async () => {
-    const otherSpaceToken = createJobToken("space_other", String(Date.now()));
+    const otherSpaceToken = createJobToken("space_other", String(Date.now()), null, { app: "test" });
     const response = await jobRequest(docPath(), otherSpaceToken);
     expect(response.status).toBe(401);
   });
 
   it("accepts a valid job token for GET and PUT", async () => {
-    const token = createJobToken(testSpaceId, String(Date.now()));
+    const token = createJobToken(testSpaceId, String(Date.now()), null, { app: "test" });
 
     const read = await jobRequest(docPath(), token);
     expect(read.status).toBe(200);
@@ -118,7 +118,7 @@ describe("X-Job-Token validation on document routes", () => {
     });
     expect(lockResponse.status).toBe(200);
 
-    const token = createJobToken(testSpaceId, String(Date.now()));
+    const token = createJobToken(testSpaceId, String(Date.now()), null, { app: "test" });
     const putResponse = await jobRequest(lockedPath, token, {
       method: "PUT",
       body: JSON.stringify({ content: "<p>overwritten</p>" }),

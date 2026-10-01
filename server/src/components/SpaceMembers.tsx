@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, Index, on, Show } from "solid-js";
+import { appOfPrincipal, appPrincipal, SERVER_APPS } from "#acl/apps.ts";
 import {
   Feature,
   highestPermission,
@@ -15,6 +16,7 @@ import type {
   User,
 } from "#api/client.ts";
 import { api } from "#api/client.ts";
+import { useExtensions } from "#composeables/useExtensions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -48,7 +50,7 @@ interface MemberAccess {
   highestRole: string;
 }
 
-type InviteeType = "user" | "group" | "token";
+type InviteeType = "user" | "group" | "token" | "app";
 
 interface InviteRow {
   id: string;
@@ -101,6 +103,7 @@ export function SpaceMembers() {
 
   const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
+  const { extensions } = useExtensions();
 
   const [permissions, setPermissions] = createSignal<PermissionEntry[]>([]);
   const [error, setError] = createSignal<string | null>(null);
@@ -295,6 +298,19 @@ export function SpaceMembers() {
       }));
   }
 
+  /** Apps whose extension is enabled and that hold no grant yet. */
+  const appOptions = createMemo<FilterSelectOption[]>(() => {
+    const enabled = new Set(
+      extensions()
+        .filter((extension) => extension.enabled)
+        .map((extension) => extension.id),
+    );
+    const members = existingMemberIds();
+    return SERVER_APPS.filter(
+      (app) => enabled.has(app.id) && !members.has(appPrincipal(app.id)),
+    ).map((app) => ({ value: app.id, label: app.label }));
+  });
+
   function getMemberUser(perm: PermissionEntry): User | undefined {
     if (!perm.permission.userId) return undefined;
     return usersMap().get(perm.permission.userId);
@@ -302,6 +318,8 @@ export function SpaceMembers() {
 
   function getMemberName(perm: PermissionEntry): string {
     if (perm.permission.userId) {
+      const app = appOfPrincipal(perm.permission.userId);
+      if (app) return app.label;
       const userData = getMemberUser(perm);
       return userData?.name || userData?.email || perm.permission.userId;
     }
@@ -314,7 +332,8 @@ export function SpaceMembers() {
   }
 
   function getMemberType(perm: PermissionEntry): string {
-    return perm.permission.userId ? "User" : "Group";
+    if (!perm.permission.userId) return "Group";
+    return appOfPrincipal(perm.permission.userId) ? "App" : "User";
   }
 
   /** The role a user holds today, for comparing a token against its issuer. */
@@ -530,7 +549,9 @@ export function SpaceMembers() {
                 roleOrFeature: row.role,
                 ...(row.type === "group"
                   ? { groupId: row.value.trim() }
-                  : { email: row.value.trim() }),
+                  : row.type === "app"
+                    ? { userId: appPrincipal(row.value) }
+                    : { email: row.value.trim() }),
                 ...grantTarget(row),
               }),
             ),
@@ -1017,45 +1038,62 @@ export function SpaceMembers() {
                 <div class="grid grid-cols-[7.5rem_minmax(0,1fr)_2.5rem] items-center gap-y-3 px-4 py-3 lg:grid-cols-[6.5rem_minmax(12rem,2fr)_minmax(8rem,1fr)_7.5rem_7rem_2.5rem]">
                   <div class="col-start-2 row-start-1 min-w-0 lg:col-start-2 lg:row-start-1">
                     <Show
-                      when={row().type === "user"}
+                      when={row().type === "app"}
                       fallback={
-                        <input
-                          value={row().value}
-                          onInput={(event) =>
-                            updateInviteRow(row().id, {
-                              value: event.currentTarget.value,
-                            })
+                        <Show
+                          when={row().type === "user"}
+                          fallback={
+                            <input
+                              value={row().value}
+                              onInput={(event) =>
+                                updateInviteRow(row().id, {
+                                  value: event.currentTarget.value,
+                                })
+                              }
+                              type="text"
+                              autocomplete="off"
+                              placeholder={
+                                row().type === "group"
+                                  ? t("e.g., admins, developers")
+                                  : t("e.g., CI deploy token")
+                              }
+                              aria-label={t("Member")}
+                              class="focus-ring h-9 w-full rounded-md rounded-l-none border border-neutral-200 border-l-0 bg-background px-2.5 py-0 text-neutral-900 text-size-medium"
+                            />
                           }
-                          type="text"
-                          autocomplete="off"
-                          placeholder={
-                            row().type === "group"
-                              ? t("e.g., admins, developers")
-                              : t("e.g., CI deploy token")
-                          }
-                          aria-label={t("Member")}
-                          class="focus-ring h-9 w-full rounded-md rounded-l-none border border-neutral-200 border-l-0 bg-background px-2.5 py-0 text-neutral-900 text-size-medium"
-                        />
+                        >
+                          <FilterSelect
+                            id={`member-person-${row().id}`}
+                            class="h-9 rounded-l-none border-l-0"
+                            value={row().value}
+                            options={personOptions(row())}
+                            placeholder={t("person@example.com")}
+                            filterPlaceholder={t("Search people or type an email…")}
+                            fallbackIcon={() => (
+                              <Icon class="h-4 w-4 text-neutral-400" name="people" />
+                            )}
+                            customValue={(query) =>
+                              query.includes("@")
+                                ? {
+                                    value: query,
+                                    label: t("Invite {email}").replace("{email}", query),
+                                  }
+                                : null
+                            }
+                            onChange={(value) => updateInviteRow(row().id, { value })}
+                          />
+                        </Show>
                       }
                     >
                       <FilterSelect
-                        id={`member-person-${row().id}`}
+                        id={`member-app-${row().id}`}
                         class="h-9 rounded-l-none border-l-0"
                         value={row().value}
-                        options={personOptions(row())}
-                        placeholder={t("person@example.com")}
-                        filterPlaceholder={t("Search people or type an email…")}
+                        options={appOptions()}
+                        placeholder={t("Choose an app")}
                         fallbackIcon={() => (
-                          <Icon class="h-4 w-4 text-neutral-400" name="people" />
+                          <Icon class="h-4 w-4 text-neutral-400" name="extension" />
                         )}
-                        customValue={(query) =>
-                          query.includes("@")
-                            ? {
-                                value: query,
-                                label: t("Invite {email}").replace("{email}", query),
-                              }
-                            : null
-                        }
                         onChange={(value) => updateInviteRow(row().id, { value })}
                       />
                     </Show>
@@ -1081,6 +1119,7 @@ export function SpaceMembers() {
                     <Show when={userIsOwner()}>
                       <option value="group">{t("Group")}</option>
                       <option value="token">{t("Token")}</option>
+                      <option value="app">{t("App")}</option>
                     </Show>
                   </select>
 
@@ -1282,6 +1321,9 @@ export function SpaceMembers() {
                                 <vektor-avatar
                                   size="28"
                                   attr:user-id={userId()}
+                                  attr:kind={
+                                    appOfPrincipal(userId()) ? "credential" : undefined
+                                  }
                                   prop:user={getMemberUser(member.primaryPermission)}
                                 />
                               )}

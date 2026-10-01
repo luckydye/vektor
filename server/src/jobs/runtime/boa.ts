@@ -41,6 +41,7 @@ export function createBoaRuntime(): JobRuntime {
         spaceId: context.spaceId,
         jobId: context.jobId,
         initiatedByUserId: context.initiatedByUserId,
+        attribution: context.attribution,
         onLog: context.onLog,
         signal: context.signal,
         extra: {

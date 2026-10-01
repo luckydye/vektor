@@ -841,7 +841,9 @@ export const POST: ApiRouteHandler = (context) =>
             Permission.VIEWER,
           );
           userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
-          jobToken = createJobToken(spaceId, Date.now().toString(), userId);
+          jobToken = createJobToken(spaceId, Date.now().toString(), userId, {
+            app: "agent",
+          });
         }
 
         // Load existing conversation history, user profile, and connected integrations from DB.

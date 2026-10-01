@@ -1,4 +1,5 @@
 import type { Next } from "hono";
+import { withAttributionScope } from "#acl/attribution.ts";
 import { AclFailure } from "#acl/errors.ts";
 import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
@@ -212,22 +213,24 @@ export async function apiRouter(
   try {
     // One identity cache for the length of this request, so the IdP staleness
     // bound stays a per-request bound rather than a per-check one.
-    const { limit, result } = await withIdentityScope(async () => {
-      await hydrateRequestContext(c);
-      // Keyed on the resolved user: a credential the server never accepted
-      // must not buy a window of its own.
-      const limit = checkRateLimit({
-        ...caller,
-        pattern: match.pattern,
-        method,
-        userId: c.var.user?.id,
-      });
-      if (limit && !limit.allowed) {
-        logRateLimit(pathname, method, limit);
-        return { limit, result: rateLimitedResponse(limit) };
-      }
-      return { limit, result: await handler(c) };
-    });
+    const { limit, result } = await withIdentityScope(() =>
+      withAttributionScope(async () => {
+        await hydrateRequestContext(c);
+        // Keyed on the resolved user: a credential the server never accepted
+        // must not buy a window of its own.
+        const limit = checkRateLimit({
+          ...caller,
+          pattern: match.pattern,
+          method,
+          userId: c.var.user?.id,
+        });
+        if (limit && !limit.allowed) {
+          logRateLimit(pathname, method, limit);
+          return { limit, result: rateLimitedResponse(limit) };
+        }
+        return { limit, result: await handler(c) };
+      }),
+    );
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });

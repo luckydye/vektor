@@ -272,6 +272,8 @@ export const auditLog = sqliteTable("audit_log", {
   userId: text("user_id"),
   event: text("event").notNull(),
   details: text("details"),
+  /** JSON `Attribution`: the app that acted, and for whom. Null for a person acting directly. */
+  attribution: text("attribution"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 

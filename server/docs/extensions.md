@@ -995,3 +995,17 @@ const response = await apiFetch(
 
 The command is registered only for users who have that provider connected, as
 are the `agent.instructions` appended to the system prompt.
+
+## Discord bot
+
+With the `discord` extension enabled and a `DISCORD_BOT_TOKEN` space secret set, the server itself connects to Discord and answers @mentions and DMs with the agent. No process outside the server and no access token is involved.
+
+The bot acts as its own principal, `app:discord`, not as the people writing to it. It starts with no access. A space owner grants it access in the space's members settings: add a row, set its type to **App**, pick **Discord bot**, then choose a role and what it applies to.
+
+Each Discord channel is one conversation, and a thread counts as a channel of its own. The server picks up a new, changed or deleted secret within 30 seconds. A bot token can serve only one space.
+
+## Attribution
+
+Every audit entry records which app acted, and for whom: the agent, an MCP client, a workflow, the Discord bot, or the extension whose job ran. Activity feeds show the person with the app's badge on their avatar and "via <app>" next to their name. The app's name comes from the signed job token, so a job cannot claim to be another app. An extension job started by a person directly is credited to the extension. One started by the agent, or from Discord, keeps the app that started it.
+
+The Discord bot credits the Vektor user who linked the message author's Discord account under Settings → Integrations. An author who hasn't linked an account is credited by their Discord name. Linking affects credit only, never what the bot may access.

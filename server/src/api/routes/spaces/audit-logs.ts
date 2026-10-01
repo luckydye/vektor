@@ -12,6 +12,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import {
   getAuditLogsForDocument,
   getRecentAuditLogs,
+  parseAuditAttribution,
   parseAuditDetails,
 } from "#db/space/auditLogs.ts";
 import { getDocument } from "#db/space/documents.ts";
@@ -67,6 +68,7 @@ export const GET: ApiRouteHandler = (context) =>
     const auditLogs = rows.map((log) => ({
       ...log,
       details: parseAuditDetails(log),
+      attribution: parseAuditAttribution(log),
     }));
 
     return jsonResponse({ auditLogs, limit, nextCursor });

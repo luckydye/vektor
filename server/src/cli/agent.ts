@@ -94,16 +94,14 @@ function renderUpdate(update: Record<string, unknown>): void {
   }
 }
 
-async function runTurn(
+/** Runs one `session/prompt` turn, passing every update to `onUpdate`, and returns the reply text. */
+export async function streamAcpPrompt(
   host: string,
-  spaceId: string,
-  sessionId: string,
   authHeaders: Record<string, string>,
-  history: ChatMessage[],
-  userText: string,
-  documentId: string | undefined,
-  signal: AbortSignal,
-): Promise<ChatMessage[]> {
+  params: Record<string, unknown>,
+  onUpdate: (update: Record<string, unknown>) => void,
+  signal?: AbortSignal,
+): Promise<string> {
   const res = await fetch(`${host}/api/v1/chat/acp`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders },
@@ -111,14 +109,7 @@ async function runTurn(
       jsonrpc: "2.0",
       id: randomUUID(),
       method: "session/prompt",
-      params: {
-        sessionId,
-        spaceId,
-        ...(documentId ? { documentId } : {}),
-        messages: history,
-        prompt: [{ type: "text", text: userText }],
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
+      params,
     }),
     signal,
   });
@@ -166,7 +157,7 @@ async function runTurn(
             ) {
               accumulatedText += (update.content as { text: string }).text;
             }
-            renderUpdate(update);
+            onUpdate(update);
           }
         } else if ("error" in msg) {
           finalError =
@@ -179,11 +170,38 @@ async function runTurn(
   }
 
   if (finalError) throw new Error(finalError);
+  return accumulatedText;
+}
+
+async function runTurn(
+  host: string,
+  spaceId: string,
+  sessionId: string,
+  authHeaders: Record<string, string>,
+  history: ChatMessage[],
+  userText: string,
+  documentId: string | undefined,
+  signal: AbortSignal,
+): Promise<ChatMessage[]> {
+  const reply = await streamAcpPrompt(
+    host,
+    authHeaders,
+    {
+      sessionId,
+      spaceId,
+      ...(documentId ? { documentId } : {}),
+      messages: history,
+      prompt: [{ type: "text", text: userText }],
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    renderUpdate,
+    signal,
+  );
 
   return [
     ...history,
     { role: "user", content: userText },
-    { role: "assistant", content: accumulatedText },
+    { role: "assistant", content: reply },
   ];
 }
 

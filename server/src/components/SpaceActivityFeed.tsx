@@ -2,8 +2,10 @@ import { createMemo, For, Index, mergeProps, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { AuditLog } from "#api/client.ts";
 import { useSpaceActivity } from "#composeables/useSpaceActivity.ts";
+import { appLabel } from "#acl/apps.ts";
 import {
   type ActivityGroup,
+  activityActorName,
   getAuditEventAction,
   getEntryChangeLabel,
   groupActivityEntries,
@@ -211,15 +213,23 @@ export function SpaceActivityFeed(props: Props) {
                           <div class="flex min-w-0 items-center gap-3">
                             <vektor-avatar
                               size="medium"
-                              attr:user-id={group.userId ?? undefined}
-                              prop:user={getUser(group.userId)}
+                              attr:user-id={group.actor.userId ?? undefined}
+                              attr:app={group.actor.app ?? undefined}
+                              prop:user={getUser(group.actor.userId)}
                             />
 
                             <div class="min-w-0">
                               <div class="flex min-w-0 items-baseline gap-1 text-size-medium leading-medium">
                                 <span class="font-semibold text-neutral-900">
-                                  {getUserName(group.userId)}
+                                  {activityActorName(group.actor, getUserName)}
                                 </span>
+                                <Show when={group.actor.app}>
+                                  {(app) => (
+                                    <span class="shrink-0 text-neutral-500">
+                                      {t("via {app}").replace("{app}", appLabel(app()))}
+                                    </span>
+                                  )}
+                                </Show>
                                 <span class="shrink-0 text-neutral-700">
                                   {batch.action}
                                 </span>

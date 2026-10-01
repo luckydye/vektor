@@ -1,4 +1,6 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
+import type { Attribution } from "#acl/apps.ts";
+import { currentAttribution } from "#acl/attribution.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
@@ -78,11 +80,12 @@ export interface CreateAuditLogParams {
   details?: AuditDetails;
 }
 
-/** Record an audit entry, and tell the realtime layer it happened. */
+/** Record an audit entry, credited to the current request's app, and tell the realtime layer it happened. */
 export async function createAuditLog(
   s: SpaceStore,
   params: CreateAuditLogParams,
 ): Promise<AuditLog> {
+  const attribution = currentAttribution();
   const result = await s.db
     .insert(auditLog)
     .values({
@@ -91,6 +94,7 @@ export async function createAuditLog(
       userId: params.userId,
       event: params.event,
       details: params.details ? JSON.stringify(params.details) : undefined,
+      attribution: attribution ? JSON.stringify(attribution) : null,
       createdAt: new Date(),
     })
     .returning();
@@ -195,9 +199,13 @@ export function parseAuditDetails(log: AuditLog): AuditDetails | null {
   }
 }
 
+export function parseAuditAttribution(log: AuditLog): Attribution | null {
+  return log.attribution ? (JSON.parse(log.attribution) as Attribution) : null;
+}
+
 /**
  * Everyone who has contributed content to a document: its author, plus every
- * account behind a contribution audit event on it.
+ * account behind a contribution audit event on it, or that an app acted for.
  */
 export async function listDocumentContributorIds(
   s: SpaceStore,
@@ -212,7 +220,7 @@ export async function listDocumentContributorIds(
     ),
     many(
       s.db
-        .selectDistinct({ userId: auditLog.userId })
+        .selectDistinct({ userId: auditLog.userId, attribution: auditLog.attribution })
         .from(auditLog)
         .where(
           and(
@@ -225,6 +233,11 @@ export async function listDocumentContributorIds(
 
   return [
     ...(doc ? [doc.createdBy] : []),
-    ...rows.flatMap(({ userId }) => (userId ? [userId] : [])),
+    ...rows.flatMap((row) => {
+      const onBehalfOf = row.attribution
+        ? (JSON.parse(row.attribution) as Attribution).onBehalfOf?.userId
+        : undefined;
+      return [row.userId, onBehalfOf].filter((id): id is string => !!id);
+    }),
   ];
 }

@@ -44,7 +44,12 @@ export function integrationCommand(
         { args, provider: command.providerId },
         spaceId,
         undefined,
-        { initiatedByUserId: userId, jobId: command.jobId },
+        {
+          initiatedByUserId: userId,
+          // Only the agent runs these, for the user it chats with.
+          attribution: { app: "agent" },
+          jobId: command.jobId,
+        },
       );
 
       const exitCodeRaw = textOutput(outputs, "exitCode");

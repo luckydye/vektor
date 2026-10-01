@@ -217,10 +217,40 @@ export function getActivityBucketLabel(dateString: string | Date, lang: string):
 // Grouping
 // ---------------------------------------------------------------------------
 
-/** A run of consecutive entries by one author on one day. */
+/** Who an entry is shown as: the person it was done by or for, and the app if one acted. */
+export interface ActivityActor {
+  /** The account to show; null for someone known only by name, or nobody. */
+  userId: string | null;
+  /** The name of someone without an account, as the app knows them. */
+  name: string | null;
+  app: string | null;
+}
+
+export function activityActor(entry: AuditLog): ActivityActor {
+  const attribution = entry.attribution;
+  const onBehalfOf = attribution?.onBehalfOf;
+  if (onBehalfOf) {
+    return {
+      userId: onBehalfOf.userId ?? null,
+      name: onBehalfOf.name,
+      app: attribution.app,
+    };
+  }
+  return { userId: entry.userId ?? null, name: null, app: attribution?.app ?? null };
+}
+
+/** The actor's display name, resolving an account through `userName`. */
+export function activityActorName(
+  actor: ActivityActor,
+  userName: (userId: string | null) => string,
+): string {
+  return actor.userId || !actor.name ? userName(actor.userId) : actor.name;
+}
+
+/** A run of consecutive entries by one actor on one day. */
 export interface ActivityGroup {
   id: string;
-  userId: string | null;
+  actor: ActivityActor;
   /** Timestamp of the first entry; the group is ordered, so this is its start. */
   time: string | Date;
   items: AuditLog[];
@@ -253,12 +283,14 @@ export function groupActivityEntries(
 
   for (const entry of entries) {
     const date = getActivityDate(entry.createdAt as string, lang);
-    const userId = entry.userId ?? null;
+    const actor = activityActor(entry);
     const previous = groups[groups.length - 1];
 
     if (
       previous &&
-      previous.userId === userId &&
+      previous.actor.userId === actor.userId &&
+      previous.actor.name === actor.name &&
+      previous.actor.app === actor.app &&
       previous.date === date &&
       isSameBatch(entry, previous)
     ) {
@@ -269,7 +301,7 @@ export function groupActivityEntries(
     const bucketLabel = getActivityBucketLabel(entry.createdAt as string, lang);
     groups.push({
       id: `group-${groupIndex++}`,
-      userId,
+      actor,
       time: entry.createdAt,
       items: [entry],
       date,

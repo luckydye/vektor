@@ -24,6 +24,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
+import type { Attribution } from "#acl/apps.ts";
 import { config, getLocalOrigin } from "#config";
 import { isSerializedDocumentType } from "#documents/types.ts";
 import { getNativeImage } from "#files/native.ts";
@@ -69,6 +70,7 @@ export interface CapabilityContext {
   /** Logical job id; scopes the disk cache and labels errors. */
   jobId: string;
   initiatedByUserId: string | null;
+  attribution: Attribution;
   onLog: (message: string) => void;
   signal?: AbortSignal;
   /** Capabilities layered on top of the standard table (workflows add runJob). */
@@ -285,14 +287,19 @@ export interface Capabilities {
 }
 
 export function createCapabilities(context: CapabilityContext): Capabilities {
-  const { spaceId, jobId, initiatedByUserId, onLog, signal } = context;
+  const { spaceId, jobId, initiatedByUserId, attribution, onLog, signal } = context;
   const scratch = new Scratch();
   const cache = new JobCache(jobId);
 
   // Space operations authenticate exactly as they did from the sandbox: a
   // short-lived token scoped to this space and the initiating user.
   const origin = getLocalOrigin();
-  const token = createJobToken(spaceId, Date.now().toString(), initiatedByUserId ?? null);
+  const token = createJobToken(
+    spaceId,
+    Date.now().toString(),
+    initiatedByUserId ?? null,
+    attribution,
+  );
   const spaceUrl = (path: string) => `${origin}/api/v1/spaces/${spaceId}${path}`;
 
   async function api(

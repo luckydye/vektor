@@ -1,3 +1,4 @@
+import { appLabel } from "#acl/apps.ts";
 import { api } from "#api/client.ts";
 import eyesOne from "#assets/avatars/parts/eyes/eyes-1.svg?raw";
 import eyesTwo from "#assets/avatars/parts/eyes/eyes-2.svg?raw";
@@ -13,6 +14,7 @@ import mouthThree from "#assets/avatars/parts/mouth/mouth-3.svg?raw";
 import mouthFour from "#assets/avatars/parts/mouth/mouth-4.svg?raw";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
 import avatarZero from "#assets/avatars/zero.svg?raw";
+import extensionIcon from "#assets/icons/extension.svg?raw";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
 import { createCosmeticElement } from "#cosmetics/CosmeticElement.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
@@ -48,6 +50,9 @@ const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
 const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
+// A four-point spark: the agent, as distinct from an extension or bot.
+const agentIcon = `<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2c.6 4.9 2.6 7.4 10 10-7.4 2.6-9.4 5.1-10 10-.6-4.9-2.6-7.4-10-10 7.4-2.6 9.4-5.1 10-10z"/></svg>`;
+
 const userCache = new Map<string, { expiresAt: number; user: AvatarUser | undefined }>();
 const userRequests = new Map<string, Promise<AvatarUser | undefined>>();
 const userCacheDuration = 5 * 60 * 1000;
@@ -81,6 +86,26 @@ const avatarStyles = `
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .avatar-app-badge {
+    position: absolute;
+    right: -12%;
+    bottom: -12%;
+    box-sizing: border-box;
+    width: 50%;
+    height: 50%;
+    padding: 9%;
+    border-radius: 28%;
+    background: var(--color-primary-600);
+    color: var(--color-neutral-10);
+    box-shadow: 0 0 0 2px var(--color-background);
+  }
+
+  .avatar-app-badge svg {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .avatar-frame {
@@ -194,7 +219,7 @@ const AvatarElement =
   typeof HTMLElement === "undefined"
     ? undefined
     : class AvatarElement extends HTMLElement {
-        static observedAttributes = ["size", "user-id", "kind"];
+        static observedAttributes = ["size", "user-id", "kind", "app"];
 
         private readonly avatarContainer: HTMLDivElement;
         private fetchedUser: AvatarUser | undefined;
@@ -248,6 +273,10 @@ const AvatarElement =
         attributeChangedCallback(name: string) {
           if (name === "size") {
             this.providedSize = null;
+            this.render();
+            return;
+          }
+          if (name === "app") {
             this.render();
             return;
           }
@@ -341,6 +370,16 @@ const AvatarElement =
           if (frame) {
             frame.className = "avatar-frame";
             root.appendChild(frame);
+          }
+
+          // The app that acted for this person, badged on their face.
+          const app = this.getAttribute("app")?.trim();
+          if (app) {
+            const badge = document.createElement("div");
+            badge.className = "avatar-app-badge";
+            badge.title = appLabel(app);
+            badge.innerHTML = app === "agent" ? agentIcon : extensionIcon;
+            root.appendChild(badge);
           }
 
           this.avatarContainer.replaceChildren(root);

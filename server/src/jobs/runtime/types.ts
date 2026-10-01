@@ -7,6 +7,8 @@
  * implementing this interface and returning it from `resolveJobRuntime()`.
  */
 
+import type { Attribution } from "#acl/apps.ts";
+
 /** A single host capability. Arguments arrive as the guest passed them. */
 export type Capability = (...args: never[]) => unknown;
 
@@ -23,6 +25,8 @@ export interface JobRunContext {
   jobId: string;
   /** Whose authority the run acts under; null for system-triggered runs. */
   initiatedByUserId: string | null;
+  /** The app credited for what the run does. */
+  attribution: Attribution;
   /** Becomes the guest's `input` global. */
   inputs: Record<string, unknown>;
   onLog: (message: string) => void;

@@ -49,7 +49,9 @@ async function resolveMcpAuth(
     Permission.VIEWER,
   );
   const userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
-  return { jobToken: createJobToken(spaceId, Date.now().toString(), userId) };
+  return {
+    jobToken: createJobToken(spaceId, Date.now().toString(), userId, { app: "mcp" }),
+  };
 }
 
 /**

@@ -15,6 +15,7 @@ import { user } from "#db/schema/auth.ts";
 import {
   DOCUMENT_CONTRIBUTION_AUDIT_EVENTS,
   getAuditLogsForDocument,
+  parseAuditAttribution,
 } from "#db/space/auditLogs.ts";
 
 /**
@@ -38,17 +39,19 @@ export const GET: ApiRouteHandler = (context) =>
     const store = await openSpaceStore(spaceId);
     const { rows: logs } = await getAuditLogsForDocument(store, documentId, 1000);
 
-    // Extract unique user IDs from audit logs
+    // Extract unique user IDs from audit logs, and the people apps acted for
     const userIds = new Set<string>();
     for (const log of logs) {
       if (
-        log.userId &&
-        DOCUMENT_CONTRIBUTION_AUDIT_EVENTS.includes(
+        !DOCUMENT_CONTRIBUTION_AUDIT_EVENTS.includes(
           log.event as (typeof DOCUMENT_CONTRIBUTION_AUDIT_EVENTS)[number],
         )
       ) {
-        userIds.add(log.userId);
+        continue;
       }
+      if (log.userId) userIds.add(log.userId);
+      const onBehalfOf = parseAuditAttribution(log)?.onBehalfOf?.userId;
+      if (onBehalfOf) userIds.add(onBehalfOf);
     }
 
     // If no contributors found, return empty array

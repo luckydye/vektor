@@ -367,8 +367,8 @@ describe("checkRateLimit", () => {
       ip: "127.0.0.1",
       spaceId,
     };
-    const first = createJobToken(spaceId, String(Date.now()), "user-1");
-    const second = createJobToken(spaceId, String(Date.now() - 1), "user-2");
+    const first = createJobToken(spaceId, String(Date.now()), "user-1", { app: "test" });
+    const second = createJobToken(spaceId, String(Date.now() - 1), "user-2", { app: "test" });
 
     const decision = checkRateLimit({ ...run, jobToken: first }, limiter);
     expect(decision?.key.startsWith("job:")).toBe(true);
@@ -395,7 +395,7 @@ describe("checkRateLimit", () => {
       method: "POST",
       ip: "127.0.0.1",
       spaceId,
-      jobToken: createJobToken(spaceId, String(Date.now()), "user-1"),
+      jobToken: createJobToken(spaceId, String(Date.now()), "user-1", { app: "test" }),
     };
 
     for (let i = 0; i < 30; i++)
@@ -415,7 +415,7 @@ describe("checkRateLimit", () => {
     expect(checkRateLimit(forged, limiter)).toMatchObject({ key: "ip:1.2.3.4" });
     expect(
       checkRateLimit(
-        { ...forged, jobToken: createJobToken("other-space", String(Date.now()), null) },
+        { ...forged, jobToken: createJobToken("other-space", String(Date.now()), null, { app: "test" }) },
         limiter,
       ),
     ).toMatchObject({ key: "ip:1.2.3.4" });
@@ -479,7 +479,7 @@ describe("checkAddressRateLimit", () => {
     const job = {
       ip: "127.0.0.1",
       spaceId,
-      jobToken: createJobToken(spaceId, String(Date.now()), "user-1"),
+      jobToken: createJobToken(spaceId, String(Date.now()), "user-1", { app: "test" }),
     };
 
     expect(checkAddressRateLimit(job, limiter)?.key.startsWith("job:")).toBe(true);

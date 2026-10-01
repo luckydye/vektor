@@ -15,6 +15,7 @@
  *   data: [DONE]
  */
 
+import { currentAttribution } from "#acl/attribution.ts";
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -76,6 +77,8 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (!extensionId || !entry) return badRequestResponse(`Job "${jobId}" not found`);
 
+      // A job token already names the app acting; otherwise the extension itself acts.
+      const attribution = currentAttribution() ?? { app: extensionId };
       const zipBuffer = await getExtensionPackage(store, extensionId);
       if (!zipBuffer)
         return badRequestResponse(`Extension package not found for job "${jobId}"`);
@@ -83,10 +86,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (body.stream) {
         const encoder = new TextEncoder();
         const abortController = new AbortController();
-        const signal = AbortSignal.any([
-          context.req.raw.signal,
-          abortController.signal,
-        ]);
+        const signal = AbortSignal.any([context.req.raw.signal, abortController.signal]);
         let closed = false;
         const stream = new ReadableStream({
           async start(controller) {
@@ -112,6 +112,7 @@ export const POST: ApiRouteHandler = (context) =>
                 {
                   signal,
                   initiatedByUserId,
+                  attribution,
                   jobId,
                 },
               );
@@ -152,6 +153,7 @@ export const POST: ApiRouteHandler = (context) =>
         (msg) => logs.push(msg),
         {
           initiatedByUserId,
+          attribution,
           jobId,
         },
       );

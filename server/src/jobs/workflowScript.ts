@@ -49,6 +49,7 @@ export async function executeWorkflowScript(
 ): Promise<void> {
   const run = getRun(runId);
   if (!run) throw new Error(`Run not found: ${runId}`);
+  const attribution = { app: run.sourceExtensionId ?? "workflow" };
 
   setRunStatus(runId, "running");
   const controller = new AbortController();
@@ -147,6 +148,7 @@ export async function executeWorkflowScript(
       {
         signal: controller.signal,
         initiatedByUserId: run.initiatedByUserId,
+        attribution,
         jobId: workflowJobId,
       },
     );
@@ -169,6 +171,7 @@ export async function executeWorkflowScript(
       spaceId,
       jobId: `workflow:${runId}`,
       initiatedByUserId: run.initiatedByUserId,
+      attribution,
       inputs: runtimeInputs,
       onLog: appendWorkflowLog,
       onVmReady: (touch) => {

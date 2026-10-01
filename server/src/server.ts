@@ -9,6 +9,7 @@ import { apiRouter, isGitPath } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
 import { initializeDatabases } from "./db/client/db.ts";
+import { startDiscordBots, stopDiscordBots } from "./integrations/discordBot.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 import {
   startEmailNotificationWorker,
@@ -309,6 +310,7 @@ server.listen(port, host, () => {
 });
 
 startCronScheduler();
+startDiscordBots();
 startEmailNotificationWorker();
 
 let isShuttingDown = false;
@@ -323,6 +325,7 @@ async function shutdown(reason: string, exitCode = 0) {
   appLogger.info("Shutdown initiated", { reason, exitCode });
 
   stopCronScheduler();
+  stopDiscordBots();
   stopEmailNotificationWorker();
   stopSerializationPool();
 
