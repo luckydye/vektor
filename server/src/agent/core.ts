@@ -41,6 +41,13 @@ export type AgentResult = {
   shellSnapshot?: string | null;
 };
 
+/** What a turn sends the model besides its messages. */
+export type AgentTurnSetup = {
+  model: string;
+  systemPrompt: string;
+  tools: unknown[];
+};
+
 /** A failed turn, carrying the messages it produced before failing. */
 export class AgentTurnError extends Error {
   constructor(
@@ -78,27 +85,41 @@ export type AgentEvent =
       isError: boolean;
     };
 
+/** The date only: the time of day would change the prompt, and void its cache, every minute. */
+function describeToday(timeZone: string): string {
+  const now = new Date();
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long", timeZone });
+  const date = now.toLocaleDateString("en-CA", { timeZone });
+  const offset = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(now)
+    .find((part) => part.type === "timeZoneName")?.value;
+  return `Today is ${weekday}, ${date}. The user's time zone is ${timeZone} (${offset}); give times in it.`;
+}
+
 function buildCoreAgentSystemPrompt(
   documentId?: string,
   integrationInstructions?: string[],
   userProfile?: string,
   documentType?: string | null,
   documentReadonly?: boolean,
+  timeZone = "UTC",
 ) {
   const lines = integrationInstructions ?? [];
   const integrationLines =
     lines.length > 0
       ? `\n## Integrations\n${lines.map((line) => `- ${line}\n`).join("")}`
       : "";
-  const now = new Date();
-  const today = `${now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })}, ${now.toISOString().slice(0, 10)} (UTC)`;
-  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}\n\nToday is ${today}.`;
+  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}\n\n${describeToday(timeZone)}`;
 }
 
 /** Maps a document type to the recipe that best explains how to edit it. */
 function recipeForDocumentType(documentType?: string | null): string {
   if (documentType === "canvas") return "canvas";
   if (documentType === "app") return "app-doc";
+  if (documentType === "database" || documentType === "record") return "database";
   return "edit-text";
 }
 
@@ -106,7 +127,7 @@ function recipeForDocumentType(documentType?: string | null): string {
  * When a document is in context, inline the editing playbook directly instead
  * of making the model discover it via \`recipes\`. Small models skip the lookup
  * step, so the most common task gets its instructions up front. The inlined
- * recipe is chosen by document type (canvas / app / html).
+ * recipe is chosen by document type (canvas / app / database / html).
  */
 function documentEditingSection(
   documentId?: string,
@@ -128,7 +149,9 @@ function documentEditingSection(
   const mutationInstructions =
     documentType === "app"
       ? `- To change it, read the complete source and use \`write_document\` with documentId \`${documentId}\` and the complete revised HTML. NEVER use \`edit_document\` for app documents because partial HTML edits remove script elements.`
-      : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
+      : documentType === "database" || documentType === "record"
+        ? `- Its data lives in properties: change columns (the database's \`_schema\`) and cells (a row's properties) with \`update_document_properties\`, never with \`edit_document\`.`
+        : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
   sed, perl, python, js-exec, or by piping through grep/awk — those corrupt unicode (emoji,
   umlauts) and bypass collaborative editing. There is no temp-file step.`;
 
@@ -344,7 +367,7 @@ async function fetchDocumentContext(
 }
 
 /** The system prompt and tools a turn starts from, before any message. */
-export async function prepareAgentTurn(options: {
+async function prepareAgentTurn(options: {
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -352,6 +375,8 @@ export async function prepareAgentTurn(options: {
   documentReadonly?: boolean;
   connectedProviders?: string[];
   userProfile?: string;
+  /** IANA zone the prompt states dates in; UTC when unset. */
+  timeZone?: string;
   jobToken: string;
 }) {
   const { apiUrl, spaceId, documentId, connectedProviders, userProfile, jobToken } =
@@ -395,7 +420,10 @@ export async function prepareAgentTurn(options: {
       type: "function",
       function: {
         name: "bash",
-        description: "Execute bash in isolated in-memory environment.",
+        description:
+          "Run a command in a sandboxed bash with an in-memory filesystem and network access. " +
+          "Besides the usual utilities it has upload, curl, js-exec, zip/unzip/zipinfo, html-to-markdown, extension, and the connected integrations' commands. " +
+          "Output past about 6000 characters is cut in the middle.",
         parameters: {
           type: "object",
           properties: { command: { type: "string" } },
@@ -512,6 +540,7 @@ export async function prepareAgentTurn(options: {
     userProfile,
     documentType,
     documentReadonly,
+    options.timeZone,
   );
   return { systemPrompt, tools, mcpConfig, integrationSurface, vektorToolNames };
 }
@@ -525,6 +554,7 @@ export async function runAgentPrompt(options: {
   documentReadonly?: boolean;
   connectedProviders?: string[];
   userProfile?: string;
+  timeZone?: string;
   /** Whose credentials a contributed integration command runs under. */
   userId?: string | null;
   jobToken: string;
@@ -536,6 +566,8 @@ export async function runAgentPrompt(options: {
   modelCaller?: typeof callModel;
   /** Unset runs on the instance's provider. */
   provider?: AIProvider;
+  /** Receives the turn's setup before its first model call, for the persisted history. */
+  onSetup?: (setup: AgentTurnSetup) => void;
 }): Promise<AgentResult> {
   const { messages, spaceId, bash: providedBash, signal, onChunk, onEvent } = options;
 
@@ -544,6 +576,7 @@ export async function runAgentPrompt(options: {
 
   const { systemPrompt, tools, mcpConfig, integrationSurface, vektorToolNames } =
     await prepareAgentTurn(options);
+  options.onSetup?.({ model: provider.model, systemPrompt, tools });
   const bash =
     providedBash ??
     createAgentShell(

@@ -1,6 +1,11 @@
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
-import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
+import {
+  type AgentEvent,
+  type AgentTurnSetup,
+  type ChatMessage,
+  runAgentInWorker,
+} from "#agent/agent.ts";
 import { AgentTurnError } from "#agent/core.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import {
@@ -22,6 +27,7 @@ import { isSafeUploadPath } from "#files/uploads.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
+import { isTimeZone } from "#utils/dateFormat.ts";
 
 // JSON-RPC 2.0 types
 
@@ -158,6 +164,8 @@ type ActiveChatTurn = {
   promise: Promise<void>;
   result: AgentRunResult | null;
   error: string | null;
+  /** Null until the turn builds it; a turn failing before that sent nothing. */
+  setup: AgentTurnSetup | null;
   updatedAt: number;
   /** Aborts the agent worker. Called by an explicit client cancel request. */
   abort: () => void;
@@ -312,7 +320,8 @@ function createTurnMessagesFromEvents(
 
 /**
  * Appends a finished turn to the session: its display messages in streaming
- * order, and its model messages to the conversation history. The history must
+ * order, and its model messages to the conversation history, led by the system
+ * prompt the turn sent. The history must
  * end with an assistant message, otherwise opening the session would treat the
  * turn as one to reconnect and run again.
  */
@@ -329,6 +338,10 @@ async function persistChatTurn(options: {
   fallbackContent: string | null;
   /** Ends both logs after the turn's messages, e.g. the error that stopped it. */
   closingContent?: string;
+  /** The text the user sent, for the display log when it was not pre-saved. */
+  userText: string;
+  /** Leads the stored history as its system message, with the model and tools beside it. */
+  setup: AgentTurnSetup | null;
   shellSnapshot?: string | null;
 }) {
   const store = await openSpaceStore(options.spaceId);
@@ -337,20 +350,18 @@ async function persistChatTurn(options: {
 
   // The user message is pre-saved before the agent starts, except under a job
   // token; add it only when it is missing so the log never shows it twice.
-  const lastUserRequest = options.requestMessages.findLast((m) => m.role === "user");
   const alreadyHasUserMessage =
     (session.messages as Array<{ role?: string }>).at(-1)?.role === "user";
-  const userMessage =
-    !alreadyHasUserMessage && lastUserRequest
-      ? {
-          role: "user",
-          content: lastUserRequest.content ?? "",
-          timestamp: Date.now(),
-          ...(options.userAttachments.length
-            ? { attachments: options.userAttachments }
-            : {}),
-        }
-      : null;
+  const userMessage = alreadyHasUserMessage
+    ? null
+    : {
+        role: "user",
+        content: options.userText,
+        timestamp: Date.now(),
+        ...(options.userAttachments.length
+          ? { attachments: options.userAttachments }
+          : {}),
+      };
   const closing = options.closingContent;
 
   await upsertAIChatSession(store, options.userId, {
@@ -367,6 +378,16 @@ async function persistChatTurn(options: {
         : []),
     ],
     conversationHistory: [
+      ...(options.setup
+        ? [
+            {
+              role: "system",
+              content: options.setup.systemPrompt,
+              model: options.setup.model,
+              tools: options.setup.tools,
+            },
+          ]
+        : []),
       ...options.requestMessages,
       ...options.turnMessages,
       ...(closing ? [{ role: "assistant", content: closing }] : []),
@@ -559,12 +580,16 @@ function getOrStartActiveChatTurn(options: {
   key: string;
   userId: string | null;
   chatId: string;
+  /** The conversation as the model gets it, with images hydrated. */
   messages: ChatMessage[];
-  /** The persistent conversation, without turn-only generated context. */
+  /** The same conversation as persisted: image references, not bytes. */
   sessionMessages: ChatMessage[];
+  /** The text the user sent, for the display log. */
+  userText: string;
   /** Attachment display metadata persisted with the current user message. */
   userAttachments: ChatAttachment[];
   userProfile?: string;
+  timeZone?: string;
   connectedProviders: string[];
   /** Unset runs the turn on the instance's provider. */
   provider?: AIProvider;
@@ -591,6 +616,7 @@ function getOrStartActiveChatTurn(options: {
     promise: Promise.resolve(),
     result: null,
     error: null,
+    setup: null,
     updatedAt: Date.now(),
     abort: () => turnAbortController.abort(),
   };
@@ -600,6 +626,7 @@ function getOrStartActiveChatTurn(options: {
     chatId: options.chatId,
     messages: options.messages,
     userProfile: options.userProfile,
+    timeZone: options.timeZone,
     connectedProviders: options.connectedProviders,
     provider: options.provider,
     userId: options.userId,
@@ -611,6 +638,9 @@ function getOrStartActiveChatTurn(options: {
     signal: turnAbortController.signal,
     onEvent: (event) => {
       emitTurnEvent(turn, event);
+    },
+    onSetup: (setup) => {
+      turn.setup = setup;
     },
   })
     .then(async (result) => {
@@ -624,6 +654,8 @@ function getOrStartActiveChatTurn(options: {
           requestMessages: options.sessionMessages,
           userAttachments: options.userAttachments,
           events: turn.events,
+          setup: turn.setup,
+          userText: options.userText,
           turnMessages: result.messages,
           fallbackContent: result.content,
           shellSnapshot: result.shellSnapshot ?? null,
@@ -660,6 +692,8 @@ function getOrStartActiveChatTurn(options: {
               requestMessages: options.sessionMessages,
               userAttachments: options.userAttachments,
               events: turn.events,
+              setup: turn.setup,
+              userText: options.userText,
               turnMessages: [{ role: "assistant", content: stoppedMessage }],
               fallbackContent: stoppedMessage,
             });
@@ -688,6 +722,8 @@ function getOrStartActiveChatTurn(options: {
               requestMessages: options.sessionMessages,
               userAttachments: options.userAttachments,
               events: turn.events,
+              setup: turn.setup,
+              userText: options.userText,
               turnMessages: error instanceof AgentTurnError ? error.messages : [],
               fallbackContent: null,
               closingContent: `Sorry, I encountered an error: ${error.message}`,
@@ -738,6 +774,7 @@ export const POST: ApiRouteHandler = (context) =>
         const imageAttachments = parseImageAttachments(params.imageAttachments);
         const attachmentInput = params.attachments;
         const additionalContext = params.additionalContext;
+        const timeZone = params.timeZone;
 
         if (!sessionId || typeof sessionId !== "string") {
           return badRequestResponse("params.sessionId is required");
@@ -750,6 +787,9 @@ export const POST: ApiRouteHandler = (context) =>
         }
         if (additionalContext !== undefined && typeof additionalContext !== "string") {
           return badRequestResponse("params.additionalContext must be a string");
+        }
+        if (timeZone !== undefined && !isTimeZone(timeZone)) {
+          return badRequestResponse("params.timeZone must be an IANA time zone");
         }
         if (imageAttachments === null) {
           return badRequestResponse(
@@ -806,10 +846,13 @@ export const POST: ApiRouteHandler = (context) =>
           userId === null
             ? null
             : await getAIChatSession(await openSpaceStore(spaceId), sessionId, userId);
-        const history = (persistedSession?.conversationHistory ??
+        const storedHistory = (persistedSession?.conversationHistory ??
           (userId === null && Array.isArray(params.messages)
             ? params.messages
             : [])) as ChatMessage[];
+        // The stored system message is what the previous turn sent; this turn builds its own.
+        const storedSystem = storedHistory.filter((message) => message.role === "system");
+        const history = storedHistory.filter((message) => message.role !== "system");
         const [userProfile, oauthIntegrations] = await Promise.all([
           userId !== null
             ? getUserProfile(await openSpaceStore(spaceId), userId).catch(() => null)
@@ -876,7 +919,7 @@ export const POST: ApiRouteHandler = (context) =>
                   ...(chatAttachments.length ? { attachments: chatAttachments } : {}),
                 },
               ],
-              conversationHistory: messages,
+              conversationHistory: [...storedSystem, ...messages],
               shellSnapshot: persistedSession.shellSnapshot ?? null,
             });
           } catch {
@@ -891,9 +934,11 @@ export const POST: ApiRouteHandler = (context) =>
           userId,
           chatId: sessionId,
           messages: modelMessages,
-          sessionMessages: messages,
+          sessionMessages: agentMessages,
+          userText,
           userAttachments: chatAttachments,
           userProfile: userProfile ?? undefined,
+          timeZone,
           connectedProviders,
           provider:
             userId === null ? undefined : await resolveUserAIProvider(spaceId, userId),

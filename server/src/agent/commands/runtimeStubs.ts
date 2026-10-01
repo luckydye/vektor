@@ -15,9 +15,9 @@ function unavailableRuntime(name: string, hint: string) {
 }
 
 const JS_HINT =
-  'Run JavaScript/TypeScript with `js-exec` instead: `js-exec -c "<code>"` or `js-exec script.js` (QuickJS; no require/fetch/node built-ins).';
+  'Run JavaScript/TypeScript with `js-exec` instead: `js-exec -c "<code>"` or `js-exec script.js` (Boa sandbox; no require/fetch/node built-ins).';
 const PY_HINT =
-  "Python is unavailable. For scripting use `js-exec` (JavaScript/TypeScript in a QuickJS sandbox), or a shell pipeline.";
+  "Python is unavailable. For scripting use `js-exec` (JavaScript/TypeScript in a Boa sandbox), or a shell pipeline.";
 
 export const runtimeStubCommands = [
   unavailableRuntime("node", JS_HINT),

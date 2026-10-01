@@ -15,6 +15,6 @@ keywords: workflow, run, status, logs, automation
    by workflow, and follow `nextCursor` with the `cursor` argument to read
    additional pages.
 
-Workflow schedule tools currently target routes that require an interactive
-user session, so they cannot be completed through the agent's job-token
-connection. Explain that limitation instead of repeatedly retrying them.
+The agent cannot create, list or delete workflow schedules: the schedule
+routes require a signed-in user and reject the agent's job token. Say so when
+asked to schedule a workflow.

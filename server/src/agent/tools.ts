@@ -169,14 +169,14 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "list_documents",
       description:
-        "List documents in the current Vektor space. Returns up to 100 documents by default. " +
-        "Pass nextCursor from a prior result to fetch the next page, or parentId to list a document's direct children.",
+        "List documents in the current Vektor space, newest first. " +
+        "Pass nextCursor from a prior result as cursor to fetch the next page.",
       inputSchema: {
         type: "object",
         properties: {
           limit: {
             type: "number",
-            description: "Documents per page (default 100, maximum 500).",
+            description: "Documents per page, 1 to 5000 (default 100).",
           },
           cursor: {
             type: "string",
@@ -186,7 +186,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           type: {
             type: "string",
             description:
-              'Only documents of this type, e.g. "database", "record" (a database row; pass parentId for one database\'s rows), "canvas", "workflow".',
+              'Only documents of this type, e.g. "database", "record" (a database row), "canvas", "workflow". Ignored with parentId.',
           },
           parentId: {
             type: "string",
@@ -195,7 +195,14 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           },
           categorySlugs: {
             type: "string",
-            description: "Comma-separated category slugs.",
+            description:
+              "Comma-separated category slugs. Returns every match in one page: limit, cursor and parentId are ignored.",
+          },
+          properties: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              'Only these properties of each document, e.g. ["Start","End"]. Omit for all.',
           },
         },
       },
@@ -203,13 +210,17 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "search_documents",
       description:
-        "Search documents in the current Vektor space by text (q), property filters, parent, or any combination. " +
-        "Date ranges over properties (e.g. a database's date column) go in filters, not in q.",
+        "Search the current Vektor space by text (q), property filters, parent, or any combination; at least one is required. " +
+        "Date ranges over properties (e.g. a database's date column) go in filters, not in q. " +
+        'Results can include uploaded files (type "file", id is the file path, fileUrl set), which read_document cannot open.',
       inputSchema: {
         type: "object",
         properties: {
           q: { type: "string", description: "Search text." },
-          limit: { type: "number" },
+          limit: {
+            type: "number",
+            description: "Results per page, 1 to 100 (default 20).",
+          },
           cursor: {
             type: "string",
             description:
@@ -219,12 +230,20 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
             type: "string",
             description: "Only direct children of this document, e.g. a database's rows.",
           },
+          properties: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              'Only these properties of each document, e.g. ["Start","End"]. Omit for all.',
+          },
           filters: {
             type: "array",
             description:
-              'All must match. {key, value} matches a property exactly (null: has the property; key "_type": the document type). ' +
+              "All must match. {key, value} matches a property equal to value, ignoring case; a list property matches if any item does; " +
+              "null matches any non-empty value. " +
               "{key, from, before} matches a property whose value is a date at or after from and before before; either bound may be omitted. " +
-              'Bounds are dates like "2026-09-28" or "2026-09-28T09:00:00+02:00".',
+              'Bounds are dates like "2026-09-28" or "2026-09-28T09:00:00+02:00". ' +
+              'Reserved keys (value only): "_type" is the document type, "_date" the last update: "today", "week", "month", "older" or "2026-09-01/2026-09-30".',
             items: {
               type: "object",
               properties: {
@@ -241,7 +260,9 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "read_document",
-      description: "Get document by ID from current Vektor space.",
+      description:
+        "Read a document by ID or slug. Without rev it returns {document, space} with the live draft, one HTML block per line " +
+        "(the line numbers edit_document uses); this needs editor access. Output past about 6000 characters is cut in the middle.",
       inputSchema: {
         type: "object",
         properties: {
@@ -249,7 +270,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           rev: {
             type: "number",
             description:
-              "Historical revision (1 or higher). Omit to read the live draft.",
+              "Historical revision (1 or higher); returns {revision: {rev, content}}. Omit to read the live draft.",
           },
         },
         required: ["documentId"],
@@ -258,7 +279,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "write_document",
       description:
-        "Create or replace a document in the current Vektor space. Omit documentId to create, or provide it to replace the complete stored content. Use HTML for ordinary documents; Markdown in this JSON tool call is not converted automatically.",
+        "Create or replace a document in the current Vektor space. Omit documentId to create, or provide it to replace the complete stored content (a new revision). Markdown is not converted: send HTML.",
       inputSchema: {
         type: "object",
         properties: {
@@ -269,13 +290,14 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           content: {
             type: "string",
             description:
-              "Complete stored content. Use HTML for ordinary documents and complete HTML for app documents.",
+              "Complete stored content: HTML for ordinary documents and records (sanitized), complete HTML for app, canvas JSON ({shapes, strokes}) for canvas, script source for workflow.",
           },
-          title: { type: "string", description: "Document title (used when creating)" },
-          type: { type: "string", description: "Document type (used when creating)" },
+          title: { type: "string", description: "Document title (create only)" },
+          type: { type: "string", description: "Document type (create only)" },
           parentId: {
             type: "string",
-            description: "Parent document ID (used when creating)",
+            description:
+              'Parent document ID (create only). A database only takes children of type "record".',
           },
         },
         required: ["content"],
@@ -292,7 +314,11 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           operations: {
             type: "array",
             description:
-              'Edit operations, applied in order. Line ops: {op:"insert", line:"5"|"$", content}, {op:"replace", range:"10:14", content}, {op:"delete", range:"3"}. Regex: {op:"sub", pattern, replacement} (JS regex, flags gs, fails if nothing matches). Json ops: {op:"set", path:".a.b[0]", value}, {op:"unset", path}, {op:"push", path, value}.',
+              "Applied in order; any failing op rejects the whole batch. " +
+              'Line ops (1-based, inclusive, "$" = last line): {op:"insert", line:"5"|"$", content} inserts before line 5 ("$": after the last line), ' +
+              '{op:"replace", range:"10:14", content}, {op:"delete", range:"3" or "3:$"}. ' +
+              'Regex: {op:"sub", pattern, replacement} (JS regex, flags gs, $1 allowed, replacement defaults to ""; fails if the content is unchanged). ' +
+              'JSON ops: {op:"set", path:".a.b[0]", value} (the parent must exist), {op:"unset", path} (must exist), {op:"push", path, value} (onto an existing array).',
             items: { type: "object" },
           },
         },
@@ -302,7 +328,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "delete_document",
       description:
-        "Delete a document from the current Vektor space. By default archives the document (recoverable). Set permanent to true to delete permanently.",
+        "Delete a document from the current Vektor space. By default archives the document (recoverable). Set permanent to true to delete permanently, which needs owner permission.",
       inputSchema: {
         type: "object",
         properties: {
@@ -318,14 +344,15 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "update_document_properties",
       description:
-        "Update properties (e.g. title) on a document. Set a property value to null to remove it.",
+        "Update properties (e.g. title) on a document. Keys match ignoring case.",
       inputSchema: {
         type: "object",
         properties: {
           documentId: { type: "string", description: "Document ID" },
           properties: {
             type: "object",
-            description: "Key-value pairs to set. Use null to delete a property.",
+            description:
+              'Key-value pairs. Values are stored as strings or string lists; {value, type} also sets a type, e.g. {value:"2026-10-01", type:"date"}. null deletes the property.',
           },
         },
         required: ["documentId", "properties"],
@@ -333,7 +360,8 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "run_workflow",
-      description: "Start a workflow run for a workflow document.",
+      description:
+        "Start a run of a workflow document. Returns {runId} immediately; poll get_workflow_run for its status.",
       inputSchema: {
         type: "object",
         properties: {
@@ -400,65 +428,76 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         },
       },
     },
-    {
-      name: "schedule_workflow",
-      description:
-        "Create a cron schedule that runs a workflow document on a recurring basis. " +
-        "cronExpression is a standard 5-field expression (minute hour day month weekday), " +
-        'e.g. "*/5 * * * *" for every 5 minutes — minute resolution is the finest cron ' +
-        'cadence supported. For a cadence faster than a minute (e.g. "poll every 10 ' +
-        'seconds"), loop with a delay inside the workflow script itself instead of trying ' +
-        "to express that in cronExpression.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          documentId: { type: "string", description: "Workflow document ID to run" },
-          cronExpression: {
-            type: "string",
-            description: 'Standard 5-field cron expression, e.g. "0 6 * * 1"',
+    // The schedule routes need a signed-in user; a job token is rejected, so the
+    // in-app agent never sees tools it cannot call.
+    ...(config.jobToken
+      ? []
+      : ([
+          {
+            name: "schedule_workflow",
+            description:
+              "Create a cron schedule that runs a workflow document on a recurring basis. " +
+              "cronExpression is a standard 5-field expression (minute hour day month weekday), " +
+              'e.g. "*/5 * * * *" for every 5 minutes — minute resolution is the finest cron ' +
+              'cadence supported. For a cadence faster than a minute (e.g. "poll every 10 ' +
+              'seconds"), loop with a delay inside the workflow script itself instead of trying ' +
+              "to express that in cronExpression.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                documentId: {
+                  type: "string",
+                  description: "Workflow document ID to run",
+                },
+                cronExpression: {
+                  type: "string",
+                  description: 'Standard 5-field cron expression, e.g. "0 6 * * 1"',
+                },
+                timezone: {
+                  type: "string",
+                  description:
+                    'IANA timezone for evaluating the expression, e.g. "Europe/Berlin". Defaults to the server\'s local time.',
+                },
+                inputs: {
+                  type: "object",
+                  description: "Runtime inputs passed to the workflow script on each run",
+                },
+                enabled: {
+                  type: "boolean",
+                  description: "Whether the schedule is active (default true)",
+                },
+              },
+              required: ["documentId", "cronExpression"],
+            },
           },
-          timezone: {
-            type: "string",
-            description: "IANA timezone for evaluating the expression",
+          {
+            name: "list_workflow_schedules",
+            description:
+              "List cron schedules for workflow documents in the current space.",
+            inputSchema: { type: "object", properties: {} },
           },
-          inputs: {
-            type: "object",
-            description: "Runtime inputs passed to the workflow script on each run",
+          {
+            name: "delete_workflow_schedule",
+            description: "Delete a workflow cron schedule. Run history is preserved.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                scheduleId: { type: "string", description: "Schedule ID to delete" },
+              },
+              required: ["scheduleId"],
+            },
           },
-          enabled: {
-            type: "boolean",
-            description: "Whether the schedule is active (default true)",
-          },
-        },
-        required: ["documentId", "cronExpression"],
-      },
-    },
-    {
-      name: "list_workflow_schedules",
-      description: "List cron schedules for workflow documents in the current space.",
-      inputSchema: { type: "object", properties: {} },
-    },
-    {
-      name: "delete_workflow_schedule",
-      description: "Delete a workflow cron schedule. Run history is preserved.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          scheduleId: { type: "string", description: "Schedule ID to delete" },
-        },
-        required: ["scheduleId"],
-      },
-    },
+        ] satisfies McpTool[])),
     {
       name: "get_documentation",
       description:
-        "Get Vektor documentation for a specific section (api, extensions) as raw markdown.",
+        "Get Vektor documentation for a specific section (api, extensions, permissions) as raw markdown.",
       inputSchema: {
         type: "object",
         properties: {
           section: {
             type: "string",
-            enum: ["api", "extensions"],
+            enum: ["api", "extensions", "permissions"],
             description: "The documentation section to retrieve.",
           },
         },
@@ -474,7 +513,8 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         {
           name: "integration_api_request",
           description:
-            "Call a connected integration's API using the current user's OAuth token. Paths are relative to the provider's API base path.",
+            "Call a connected integration's API using the current user's OAuth token. " +
+            "Returns {ok, status, statusText, headers, body}; upstream errors are not raised, so check ok and status.",
           inputSchema: {
             type: "object",
             properties: {
@@ -482,10 +522,21 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
               method: {
                 type: "string",
                 enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+                description: "Default GET.",
               },
-              path: { type: "string" },
-              headers: { type: "object" },
-              body: { type: "string" },
+              path: {
+                type: "string",
+                description:
+                  "Path relative to the provider's API base path, with any query string.",
+              },
+              headers: {
+                type: "object",
+                description: "Only Accept and Content-Type are forwarded.",
+              },
+              body: {
+                type: "string",
+                description: "Request body; ignored for GET and DELETE.",
+              },
             },
             required: ["provider", "path"],
           },
@@ -546,18 +597,46 @@ export async function installExtension(
 }
 
 /** The fields a listing needs: full records are ~800 characters each and crowd out the page. */
-function summarizeDocument(doc: Record<string, unknown>) {
+/**
+ * `request` drops what the caller already knows: the parent it asked for, and
+ * the snippet, which without a query is only the start of the raw body.
+ */
+function summarizeDocument(
+  doc: Record<string, unknown>,
+  request: { parentId?: string; hasQuery: boolean; properties?: string[] },
+) {
   const { title, ...properties } = doc.properties as Record<string, unknown>;
+  const wanted =
+    request.properties && new Set(request.properties.map((key) => key.toLowerCase()));
   return {
     id: doc.id,
     title: title ?? doc.slug,
     type: doc.type ?? "document",
-    parentId: doc.parentId ?? undefined,
+    parentId: request.parentId ? undefined : (doc.parentId ?? undefined),
     updatedAt: doc.updatedAt,
-    properties,
-    snippet: doc.snippet || undefined,
+    properties: wanted
+      ? Object.fromEntries(
+          Object.entries(properties).filter(([key]) => wanted.has(key.toLowerCase())),
+        )
+      : properties,
+    snippet: request.hasQuery ? doc.snippet || undefined : undefined,
     fileUrl: doc.fileUrl,
   };
+}
+
+function expectStringArray(
+  args: Record<string, unknown>,
+  key: string,
+): string[] | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => typeof item !== "string" || !item.trim())
+  ) {
+    throw new Error(`${key} must be an array of non-empty strings`);
+  }
+  return value;
 }
 
 export async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
@@ -565,30 +644,45 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
 
   switch (name) {
     case "list_documents": {
+      const parentId = expectString(args, "parentId", { optional: true });
+      const properties = expectStringArray(args, "properties");
       const response = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/documents${buildQuery({
           limit: expectNumber(args, "limit", { optional: true }) ?? 100,
           cursor: expectString(args, "cursor", { optional: true }),
           type: expectString(args, "type", { optional: true }),
-          parentId: expectString(args, "parentId", { optional: true }),
+          parentId,
           categorySlugs: expectString(args, "categorySlugs", { optional: true }),
         })}`,
-      )) as { documents: Array<Record<string, unknown>> };
-      return { ...response, documents: response.documents.map(summarizeDocument) };
+      )) as { documents: Array<Record<string, unknown>>; nextCursor: string | null };
+      return {
+        documents: response.documents.map((doc) =>
+          summarizeDocument(doc, { parentId, hasQuery: false, properties }),
+        ),
+        nextCursor: response.nextCursor,
+      };
     }
     case "search_documents": {
+      const q = expectString(args, "q", { optional: true });
+      const parentId = expectString(args, "parentId", { optional: true });
+      const properties = expectStringArray(args, "properties");
       const response = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/search${buildQuery({
-          q: expectString(args, "q", { optional: true }),
+          q,
           limit: expectNumber(args, "limit", { optional: true }),
           cursor: expectString(args, "cursor", { optional: true }),
-          parentId: expectString(args, "parentId", { optional: true }),
+          parentId,
           filters: args.filters === undefined ? undefined : JSON.stringify(args.filters),
         })}`,
-      )) as { results: Array<Record<string, unknown>> };
-      return { ...response, results: response.results.map(summarizeDocument) };
+      )) as { results: Array<Record<string, unknown>>; nextCursor: string | null };
+      return {
+        results: response.results.map((doc) =>
+          summarizeDocument(doc, { parentId, hasQuery: q !== undefined, properties }),
+        ),
+        nextCursor: response.nextCursor,
+      };
     }
     case "read_document": {
       const documentId = expectString(args, "documentId");
@@ -802,7 +896,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       const method = expectString(args, "method", { optional: true });
       const headers = expectObject(args, "headers", { optional: true });
       const body = expectString(args, "body", { optional: true });
-      return await apiRequest(
+      const response = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/integrations/${encodeURIComponent(provider)}/proxy`,
         {
@@ -813,7 +907,10 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           },
           body: JSON.stringify({ method, path, headers, body }),
         },
-      );
+      )) as { headers: Record<string, string>; body: string };
+      // A JSON body as a string escapes every quote and newline a second time.
+      const isJson = response.headers["content-type"]?.includes("json") && response.body;
+      return isJson ? { ...response, body: JSON.parse(response.body) } : response;
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

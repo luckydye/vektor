@@ -6,12 +6,13 @@ import {
   type AgentEvent,
   type AgentResult,
   type AgentShellBootstrap,
+  type AgentTurnSetup,
   createAgentShell,
   runAgentPrompt,
 } from "./core.ts";
 import { getIntegrationAgentSurface } from "./integrations.ts";
 
-export type { AgentEvent, AgentResult, ChatMessage };
+export type { AgentEvent, AgentResult, AgentTurnSetup, ChatMessage };
 
 type AgentSession = {
   bash: Bash;
@@ -212,12 +213,14 @@ export async function runAgentInWorker(options: {
   documentId?: string;
   connectedProviders: string[];
   userProfile?: string;
+  timeZone?: string;
   userId?: string | null;
   provider?: AIProvider;
   jobToken: string;
   shellSnapshot?: string | null;
   signal?: AbortSignal;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
+  onSetup?: (setup: AgentTurnSetup) => void;
 }): Promise<AgentResult> {
   const session = await getOrCreateSession(options);
   const result = await runAgentPrompt({

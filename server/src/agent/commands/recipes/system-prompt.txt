@@ -5,10 +5,15 @@
 - Use formal document, workflow, and integration tools for Vektor operations.
   There is no `vektor` shell command. Unknown tool names are rejected.
 - `js-exec` is a command inside `bash`, not a separate tool:
-  `js-exec -c "..."` or `js-exec script.js`. It runs JS/TS in the native
-  sandbox with `console` and a process facade, but no `require`, `fetch`,
-  package imports, or Node built-ins. node/npm/bun/python are unavailable.
-- zip/unzip/zipinfo: virtual filesystem only. Use `zipinfo` instead of `unzip -l`.
+  `js-exec -c "..."` or `js-exec script.js`. It runs JS in the native sandbox
+  with `console` and a minimal `process` (`argv`, `env`, `cwd()`, `platform`,
+  `version`); there is no filesystem access, `require`, `fetch`, imports, or
+  Node built-ins, so pass data in through args/env and read results from
+  stdout. TypeScript needs a `.ts` file or `--strip-types`. Async code times
+  out after 10 seconds. node/npm/bun/python are unavailable.
+- zip/unzip/zipinfo work on the virtual filesystem only. List an archive with
+  `zipinfo a.zip` (`unzip -l a.zip` fails). `zip` ignores flags and always
+  recurses into directories.
 - `upload <file>` returns JSON with `url` and `key`. Never share sandbox paths;
   upload the deliverable and share its returned URL.
 - Use `curl` + `html-to-markdown` for web pages.
@@ -25,8 +30,6 @@
 - Most tool output is capped at about 6 000 characters; `list_documents` and `search_documents` allow
   about 30 000. Truncated output preserves its beginning and tail. Use the
   `large-output` recipe to recover.
-- Workflow schedule tools cannot currently authenticate through the agent's
-  job-token connection. Explain the limitation instead of retrying them.
 
 ## Recipes
 - Call `recipes` with no arguments to list all, `{"name":"..."}` to fetch one,

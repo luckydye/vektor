@@ -256,9 +256,7 @@ export function AIChatPanel(props: Props) {
     const spaceId = currentSpaceId();
     const sessionId = currentSessionId();
     if (!spaceId || !sessionId) return null;
-    const document = documentId();
-    const query = document ? `?documentId=${encodeURIComponent(document)}` : "";
-    return `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}/context${query}`;
+    return `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}/context`;
   };
 
   return (

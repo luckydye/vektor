@@ -42,7 +42,7 @@ export function AIChatSessions(props: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
                 class="flex items-center gap-1.5 text-neutral-500 text-size-small transition-colors hover:text-neutral-700"
-                title="Model context of the next turn"
+                title="Model context of the latest turn"
               >
                 <Icon class="h-3.5 w-3.5" name="source-code" />
                 Context

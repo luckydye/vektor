@@ -85,6 +85,7 @@ export async function fetchStreamingCompletion(options: {
         imageAttachments: options.imageAttachments,
         attachments: options.attachments,
         additionalContext: options.additionalContext,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
     }),
     signal: options.signal,

@@ -117,6 +117,7 @@ async function runTurn(
         ...(documentId ? { documentId } : {}),
         messages: history,
         prompt: [{ type: "text", text: userText }],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
     }),
     signal,

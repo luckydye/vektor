@@ -1,6 +1,5 @@
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { prepareAgentTurn } from "#agent/core.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -9,19 +8,13 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getLocalOrigin } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIChatSession } from "#db/space/aiChatSessions.ts";
-import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
-import { getUserProfile } from "#db/space/userProfiles.ts";
-import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
-import { createJobToken } from "#jobs/jobToken.ts";
 
 /**
- * Read the model context the session's next turn would send: model, tools, system prompt and the conversation history
+ * Read a chat session's full model context as its latest turn sent it: model, tools, system prompt and every message
  *
  * @tag AI
- * @query documentId The document open in the chat, which the system prompt describes.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -36,32 +29,22 @@ export const GET: ApiRouteHandler = (context) =>
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
-    const session = await getAIChatSession(store, sessionId, user.id);
+    const session = await getAIChatSession(
+      await openSpaceStore(spaceId),
+      sessionId,
+      user.id,
+    );
     if (!session) {
       throw notFoundResponse("AI chat session");
     }
 
-    const [userProfile, integrations, provider] = await Promise.all([
-      getUserProfile(store, user.id),
-      listOAuthIntegrationsForUser(store, user.id),
-      resolveUserAIProvider(spaceId, user.id),
-    ]);
-    const { systemPrompt, tools } = await prepareAgentTurn({
-      apiUrl: getLocalOrigin(),
-      spaceId,
-      documentId: new URL(context.req.url).searchParams.get("documentId") ?? undefined,
-      connectedProviders: integrations.map((integration) => integration.provider),
-      userProfile: userProfile ?? undefined,
-      jobToken: createJobToken(spaceId, Date.now().toString(), user.id),
-    });
-
-    return jsonResponse({
-      model: provider.model,
-      tools,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...session.conversationHistory,
-      ],
-    });
+    // The system entry carries the model and tools the turn sent beside its prompt.
+    const [first, ...rest] = session.conversationHistory as Array<
+      Record<string, unknown>
+    >;
+    if (first?.role !== "system") {
+      return jsonResponse({ messages: session.conversationHistory });
+    }
+    const { model, tools, ...systemMessage } = first;
+    return jsonResponse({ model, tools, messages: [systemMessage, ...rest] });
   }, "Failed to get AI chat session context");
