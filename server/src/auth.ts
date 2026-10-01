@@ -38,6 +38,7 @@ function getGoogleConfig(appConfig: AppConfig) {
       clientId,
       clientSecret,
       overrideUserInfoOnSignIn: true,
+      disableSignUp: appConfig.DISABLE_SIGNUP === "1",
       ...(appConfig.GOOGLE_REDIRECT_URI
         ? { redirectURI: appConfig.GOOGLE_REDIRECT_URI }
         : {}),
@@ -67,6 +68,7 @@ function getOAuthConfig(appConfig: AppConfig): GenericOAuthConfig[] {
       // writes it at account creation only, so a group revoked in the IdP would
       // go on granting ACL access here forever.
       overrideUserInfo: true,
+      disableSignUp: appConfig.DISABLE_SIGNUP === "1",
       mapProfileToUser: async (profile) => ({
         id: profile.id,
         email: profile.email,
@@ -112,6 +114,7 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
     emailAndPassword: {
       enabled: !!import.meta.env.DEV || appConfig.EMAIL_AUTH === "1",
       minPasswordLength: 12,
+      disableSignUp: appConfig.DISABLE_SIGNUP === "1",
       // Require verified email before login when an email sender is wired up.
       requireEmailVerification: appConfig.REQUIRE_EMAIL_VERIFICATION === "1",
     },

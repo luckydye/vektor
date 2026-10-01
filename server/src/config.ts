@@ -155,6 +155,8 @@ export function config() {
       GRAVATAR_URL: process.env.VEKTOR_GRAVATAR_URL,
 
       EMAIL_AUTH: process.env.VEKTOR_EMAIL_AUTH,
+      /** "1" stops new accounts being created; existing users still sign in. */
+      DISABLE_SIGNUP: process.env.VEKTOR_DISABLE_SIGNUP,
       REQUIRE_EMAIL_VERIFICATION: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION,
       EMAIL_FROM: process.env.VEKTOR_EMAIL_FROM,
       SMTP_HOST: process.env.VEKTOR_SMTP_HOST,
