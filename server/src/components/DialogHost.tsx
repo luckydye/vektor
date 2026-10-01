@@ -23,6 +23,7 @@ export function DialogHost() {
     <Dialog
       show={!!request()}
       title={request()?.title}
+      bodyClass={`overflow-y-auto px-5 pb-5 ${request()?.title ? "pt-1" : "pt-5"}`}
       onClose={() => settle(false)}
       footer={
         <DialogFooter
@@ -41,7 +42,7 @@ export function DialogHost() {
           settle(true, value());
         }}
       >
-        <p class="whitespace-pre-line text-neutral-600 text-size-medium">
+        <p class="whitespace-pre-line text-neutral-700 text-size-medium">
           {request()?.message}
         </p>
         <Show when={request()?.kind === "prompt"}>

@@ -297,7 +297,7 @@ export function UserPreferencesPanel(props: Props) {
     if (
       !(await confirmDialog(
         t("Revoke this token? Anything using it stops working immediately."),
-        { tone: "danger" },
+        { tone: "danger", confirmLabel: t("Revoke") },
       ))
     )
       return;
@@ -305,7 +305,10 @@ export function UserPreferencesPanel(props: Props) {
   };
 
   const deleteToken = async (tokenId: string) => {
-    if (!(await confirmDialog(t("Delete this token permanently?"), { tone: "danger" })))
+    if (!(await confirmDialog(t("Delete this token permanently?"), {
+        tone: "danger",
+        confirmLabel: t("Delete"),
+      })))
       return;
     void accessTokens.remove(tokenId);
   };
