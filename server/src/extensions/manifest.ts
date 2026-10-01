@@ -465,11 +465,6 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
           `Extension manifest job '${job.id}' is missing required 'entry' field`,
         );
       }
-      if (job.description !== undefined && typeof job.description !== "string") {
-        throw new Error(
-          `Extension manifest job '${job.id}' has a non-string 'description'`,
-        );
-      }
     }
   }
 
