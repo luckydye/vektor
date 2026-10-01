@@ -269,7 +269,24 @@ export async function patchDocumentProperties(
  * The property keys used in a space, with their types. A key only archived
  * documents hold is left out; spellings are weighed over every stored row.
  */
-export async function listSpaceProperties(s: SpaceStore): Promise<SpaceProperty[]> {
+export async function listSpaceProperties(
+  s: SpaceStore,
+  options: { parentId?: string } = {},
+): Promise<SpaceProperty[]> {
+  if (options.parentId !== undefined) {
+    // The keys one document's children use: a database's columns as its rows hold them.
+    const rows = await many<StoredPropertyKeyRow>(
+      s.db,
+      sql`
+        SELECT p.key AS key, count(*) AS count, min(p.type) AS type
+        FROM ${property} p JOIN ${document} ON ${document.id} = p.document_id
+        WHERE ${document.parentId} = ${options.parentId} AND ${nonArchivedDocumentCondition}
+        GROUP BY p.key
+      `,
+    );
+    return aggregateStoredProperties(rows).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   const rows = await many<StoredPropertyKeyRow>(
     s.db,
     sql`
@@ -313,7 +330,9 @@ export async function listPropertyValues(
         .where(nonArchivedDocumentCondition),
     );
     const types = new Set(["file", ...rows.map((row) => row.type || "document")]);
-    return page([...types].filter((type) => type.toLowerCase().startsWith(prefix)).sort());
+    return page(
+      [...types].filter((type) => type.toLowerCase().startsWith(prefix)).sort(),
+    );
   }
 
   const spellings = (

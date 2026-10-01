@@ -730,6 +730,18 @@ describe("Search Date Range Filters", () => {
     expect(slugs).toHaveLength(6);
   });
 
+  it("lists the property keys a database's rows use as its columns", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/properties?parentId=${encodeURIComponent(calendarId)}`,
+    );
+    expect(response.status).toBe(200);
+    const { properties } = (await response.json()) as {
+      properties: Array<{ name: string }>;
+    };
+    // Only the rows' keys: not the space-wide `_type` filter key, nor other documents' keys.
+    expect(properties.map((entry) => entry.name)).toEqual(["Start", "title"]);
+  });
+
   it("rejects a bound that is not a date", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/search?${new URLSearchParams({

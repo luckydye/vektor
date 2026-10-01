@@ -9,6 +9,7 @@ import { listSpaceProperties } from "#db/space/properties.ts";
  * List the document property keys used in a space, with their types
  *
  * @tag Documents
+ * @query parentId Only the keys this document's direct children use, e.g. a database's columns.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -16,7 +17,8 @@ export const GET: ApiRouteHandler = (context) =>
     await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
 
     const store = await openSpaceStore(spaceId);
-    const properties = await listSpaceProperties(store);
+    const parentId = new URL(context.req.url).searchParams.get("parentId") ?? undefined;
+    const properties = await listSpaceProperties(store, { parentId });
 
     return jsonResponse({ properties });
   }, "Failed to list space properties");

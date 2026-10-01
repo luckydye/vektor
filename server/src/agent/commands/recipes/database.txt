@@ -20,15 +20,13 @@ document tools — there is no dedicated database tool.
 ## Read a database
 1. Find it: `list_documents` with {"type":"database"} (or
    `get_current_document` if the database is the open page).
-2. Read columns: `read_document` on the database id with
-   {"properties":["_schema"]} (hidden "_" properties are left out otherwise),
-   then parse the `properties._schema` JSON string. A database without
-   `_schema` has no declared columns: `read_document` one row to see them.
+2. Read columns: `read_document` on the database id returns `columns`, the
+   declared `_schema` columns or, when it declares none, the keys its rows use.
 3. List rows directly with `list_documents`, naming the columns you need
    (rows carry no properties otherwise):
    {"parentId":"<database-id>","properties":["status","priority"],"limit":500}.
 4. Query rows by a date column with `search_documents`, never by putting dates
-   in `q`. Take the column from `_schema`; `from` is inclusive, `before`
+   in `q`. Take the column from `columns`; `from` is inclusive, `before`
    exclusive. This week's entries of a calendar database:
     {"parentId":"<database-id>","properties":["Start","End","Location"],"filters":[{"key":"Start","from":"2026-09-28","before":"2026-10-05"}]}
    An event spanning the range starts before `before` and ends at or after
@@ -40,8 +38,12 @@ document tools — there is no dedicated database tool.
 - Create a database: call `write_document` with type `database`, a title, and
   non-empty content such as `<p></p>`. Use the returned ID, then initialize
   `_schema` with `update_document_properties`.
-- Add a column: read the current `_schema`, append to its `columns`, and write
-  the whole array back with `update_document_properties` on the database:
+- Add a column: read the current `_schema` (`read_document` with
+  {"properties":["_schema"]}; hidden "_" properties are left out otherwise),
+  append to its `columns`, and write the whole array back with
+  `update_document_properties` on the database. A database without `_schema`
+  shows the columns its rows use; once one exists only declared columns show,
+  so start from the `columns` that `read_document` returned:
     {"documentId":"<dbId>","properties":{"_schema":"{\"columns\":[…]}"}}
 - Add a row: `write_document`
     {"content":"<p></p>","type":"record","title":"<row title>","parentId":"<dbId>"}

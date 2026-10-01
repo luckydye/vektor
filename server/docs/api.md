@@ -697,8 +697,10 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/members"
 ### `GET /spaces/:spaceId/properties`
 
 - **Auth**: session, access token, job token, or public; `viewer` role.
-- **Returns**: `200 { properties }` — every document property key, its type and the
-  values in use across the space, for filter UIs.
+- **Query**: `parentId?` — only the keys that document's direct children use, e.g. the
+  columns a database's rows hold.
+- **Returns**: `200 { properties }` — every document property key in use and its type
+  (`null` when untyped). Without `parentId` the list also holds the `_type` filter key.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/properties"
@@ -707,8 +709,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/properties"
 ```json
 {
   "properties": [
-    { "name": "type", "type": "select", "values": ["canvas", "document", "file", "workflow"] },
-    { "name": "status", "type": "select", "values": ["draft", "shipped"] }
+    { "name": "_type", "type": "select" },
+    { "name": "status", "type": "select" }
   ]
 }
 ```

@@ -262,7 +262,8 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       name: "read_document",
       description:
         "Read a document by ID or slug. Without rev it returns {document, space} with the live draft, one HTML block per line " +
-        "(the line numbers edit_document uses); this needs editor access. Output past about 6000 characters is cut in the middle.",
+        "(the line numbers edit_document uses); this needs editor access. A database also returns its columns. " +
+        "Output past about 6000 characters is cut in the middle.",
       inputSchema: {
         type: "object",
         properties: {
@@ -271,7 +272,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
             type: "array",
             items: { type: "string" },
             description:
-              'Hidden "_"-prefixed properties to include, e.g. ["_schema"] for a database\'s columns; the others are always returned.',
+              'Hidden "_"-prefixed properties to include, e.g. ["_schema"]; the others are always returned.',
           },
           rev: {
             type: "number",
@@ -659,6 +660,31 @@ function hideInternalProperties(response: unknown, requested: string[] = []): un
   );
 }
 
+/**
+ * A database's columns: its `_schema`, or, when it declares none, the keys its
+ * rows hold, as the database view derives them.
+ */
+async function databaseColumns(
+  config: VektorMcpConfig,
+  database: { id: string; properties: Record<string, unknown> },
+): Promise<Array<{ name: string; type: string | null }>> {
+  const schema = database.properties._schema;
+  const declared =
+    typeof schema === "string" && schema
+      ? ((JSON.parse(schema) as { columns?: Array<{ name: string; type: string }> })
+          .columns ?? [])
+      : [];
+  if (declared.length > 0) return declared.map(({ name, type }) => ({ name, type }));
+
+  const { properties } = (await apiRequest(
+    config,
+    `/api/v1/spaces/${config.spaceId}/properties${buildQuery({ parentId: database.id })}`,
+  )) as { properties: Array<{ name: string; type: string | null }> };
+  return properties.filter(
+    ({ name }) => !isHiddenProperty(name) && name.toLowerCase() !== "title",
+  );
+}
+
 function expectStringArray(
   args: Record<string, unknown>,
   key: string,
@@ -725,15 +751,24 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       // Without an explicit revision, read the live draft content (including
       // unsaved changes in the collaboration room) so partial edits via
       // edit_document reference the same state.
-      return hideInternalProperties(
-        await apiRequest(
-          config,
-          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}${buildQuery(
-            rev !== undefined ? { rev } : { live: "true" },
-          )}`,
-        ),
+      const response = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}${buildQuery(
+          rev !== undefined ? { rev } : { live: "true" },
+        )}`,
+      )) as {
+        document?: { id: string; type?: string; properties: Record<string, unknown> };
+      };
+      const visible = hideInternalProperties(
+        response,
         expectStringArray(args, "properties"),
       );
+      return response.document?.type === "database"
+        ? {
+            ...(visible as object),
+            columns: await databaseColumns(config, response.document),
+          }
+        : visible;
     }
     case "get_current_document":
       if (!config.documentId) {
