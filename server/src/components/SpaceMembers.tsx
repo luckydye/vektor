@@ -113,6 +113,9 @@ export function SpaceMembers() {
   const [inviteError, setInviteError] = createSignal<string | null>(null);
   const [updatingMember, setUpdatingMember] = createSignal<string | null>(null);
   const [removingMember, setRemovingMember] = createSignal<string | null>(null);
+  const [revokingScopedGrants, setRevokingScopedGrants] = createSignal<string | null>(
+    null,
+  );
   const [usersMap, setUsersMap] = createSignal(new Map<string, User>());
   const [categories, setCategories] = createSignal<Category[]>([]);
   const [documents, setDocuments] = createSignal<DocumentWithProperties[]>([]);
@@ -617,7 +620,6 @@ export function SpaceMembers() {
 
     const memberId = perm.permission.userId || perm.permission.groupId;
     const memberType = perm.permission.userId ? "user" : "group";
-    const isGroup = memberType === "group";
 
     if (
       !(await confirmDialog(`Are you sure you want to remove this ${memberType}?`, {
@@ -629,22 +631,52 @@ export function SpaceMembers() {
     setRemovingMember(memberId ?? null);
 
     try {
-      await api.permissions.revoke(spaceId, {
-        type: "role",
-        roleOrFeature: perm.permission.permission,
-        ...(isGroup ? { groupId: memberId } : { userId: memberId }),
-        ...(perm.permission.resourceType && perm.permission.resourceType !== "space"
-          ? {
-              resourceType: perm.permission.resourceType,
-              resourceId: perm.permission.resourceId,
-            }
-          : {}),
-      });
+      await revokeGrant(spaceId, perm);
       await fetchPermissions();
     } catch (err) {
       useToast().error(err instanceof Error ? err.message : "Failed to remove member");
     } finally {
       setRemovingMember(null);
+    }
+  }
+
+  function revokeGrant(spaceId: string, perm: PermissionEntry) {
+    const { userId, groupId } = perm.permission;
+    return api.permissions.revoke(spaceId, {
+      type: "role",
+      roleOrFeature: perm.permission.permission,
+      ...(groupId ? { groupId } : { userId }),
+      ...(perm.permission.resourceType && perm.permission.resourceType !== "space"
+        ? {
+            resourceType: perm.permission.resourceType,
+            resourceId: perm.permission.resourceId,
+          }
+        : {}),
+    });
+  }
+
+  async function handleRevokeScopedGrants(member: MemberAccess) {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+
+    const grants = getScopedGrants(member).filter(canRemoveMember);
+    if (
+      !(await confirmDialog(
+        `Revoke all ${grants.length} scoped grant${grants.length === 1 ? "" : "s"}?`,
+        { tone: "danger" },
+      ))
+    )
+      return;
+
+    setRevokingScopedGrants(member.key);
+    try {
+      // Sequential, so each revoke runs its own ownership checks without contending.
+      for (const grant of grants) await revokeGrant(spaceId, grant);
+    } catch (err) {
+      useToast().error(err instanceof Error ? err.message : "Failed to revoke grants");
+    } finally {
+      await fetchPermissions();
+      setRevokingScopedGrants(null);
     }
   }
 
@@ -1417,9 +1449,28 @@ export function SpaceMembers() {
                                         ? "Scoped overrides"
                                         : "Scoped access"}
                                     </span>
-                                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600 group-hover:bg-background">
-                                      {getScopedGrants(member).length} grant
-                                      {getScopedGrants(member).length === 1 ? "" : "s"}
+                                    <span class="flex items-center gap-2">
+                                      <Show
+                                        when={getScopedGrants(member).some(canRemoveMember)}
+                                      >
+                                        <button
+                                          type="button"
+                                          disabled={revokingScopedGrants() === member.key}
+                                          class="rounded-md px-2 py-0.5 text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                          onClick={(event) => {
+                                            event.preventDefault();
+                                            void handleRevokeScopedGrants(member);
+                                          }}
+                                        >
+                                          {revokingScopedGrants() === member.key
+                                            ? "Revoking..."
+                                            : "Revoke all"}
+                                        </button>
+                                      </Show>
+                                      <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600 group-hover:bg-background">
+                                        {getScopedGrants(member).length} grant
+                                        {getScopedGrants(member).length === 1 ? "" : "s"}
+                                      </span>
                                     </span>
                                   </summary>
                                   <div class="divide-y divide-neutral-100 border-neutral-100 border-t">
