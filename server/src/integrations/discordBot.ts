@@ -7,7 +7,7 @@
 import { appPrincipal, type Attribution } from "#acl/apps.ts";
 import { runAgentInWorker } from "#agent/agent.ts";
 import type { AgentSpace } from "#agent/tools.ts";
-import type { ChatMessage } from "#api/provider/types.ts";
+import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -15,6 +15,7 @@ import { getExtension } from "#db/space/extensions.ts";
 import { getOAuthIntegrationByExternalAccount } from "#db/space/oauthIntegrations.ts";
 import { getSpaceSecretMetadata, getSpaceSecretValue } from "#db/space/spaceSecrets.ts";
 import { getSpace } from "#db/space/spaces.ts";
+import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 
@@ -97,6 +98,21 @@ export function toolFooter(messages: ChatMessage[], spaces: AgentSpace[]): strin
   return `-# ${footer.length > MAX_FOOTER_LENGTH ? `${footer.slice(0, MAX_FOOTER_LENGTH)}…` : footer}`;
 }
 
+/**
+ * The model connection of the person behind a message, from the first space
+ * where they linked Discord and picked a model; null runs on the instance's.
+ */
+async function linkedAIProvider(
+  spaces: Array<{ id: string; linkedUserId: string | null }>,
+): Promise<AIProvider | null> {
+  for (const space of spaces) {
+    if (!space.linkedUserId) continue;
+    const provider = await resolveUserAIProvider(space.id, space.linkedUserId);
+    if (provider.provider === "integration") return provider;
+  }
+  return null;
+}
+
 /** What the agent is told about where it is: Discord, and the spaces it can act in. */
 function discordContext(spaces: AgentSpace[]): string {
   const where =
@@ -167,8 +183,13 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
     });
   }
 
-  /** Each space with a token crediting this author, as the person they linked there if any. */
-  async function agentSpaces(message: DiscordMessage): Promise<AgentSpace[]> {
+  /**
+   * Each space with a token crediting this author, as the person they linked
+   * there if any; `linkedUserId` is that person.
+   */
+  async function agentSpaces(
+    message: DiscordMessage,
+  ): Promise<Array<AgentSpace & { linkedUserId: string | null }>> {
     const timestamp = Date.now().toString();
     return await Promise.all(
       spaces().map(async (spaceId) => {
@@ -196,6 +217,7 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
             DISCORD_BOT_PRINCIPAL,
             attribution,
           ),
+          linkedUserId: linked?.userId ?? null,
         };
       }),
     );
@@ -215,6 +237,8 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
       ]);
       const [primary] = spaceList;
       if (!primary) throw new Error("No space uses this bot any more");
+      // Pays with the author's own model connection where they linked Discord.
+      const provider = await linkedAIProvider(spaceList);
       const result = await runAgentInWorker({
         chatId: `discord-${message.channel_id}`,
         messages: [
@@ -227,6 +251,7 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
         connectedProviders: [],
         userId: DISCORD_BOT_PRINCIPAL,
         jobToken: primary.jobToken,
+        ...(provider ? { provider } : {}),
         ...(spaceList.length > 1 ? { spaces: spaceList } : {}),
       });
       const footer = toolFooter(result.messages, spaceList);
