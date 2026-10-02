@@ -124,7 +124,7 @@ export function SpaceActivityFeed(props: Props) {
   );
 
   return (
-    <div class="space-y-4">
+    <div class="flex min-h-0 flex-1 flex-col gap-4">
       <div class="flex items-center justify-between">
         <h2 class="text-neutral-500 text-size-large leading-large">
           {t("Space Activity")}
@@ -190,7 +190,7 @@ export function SpaceActivityFeed(props: Props) {
       </Show>
 
       <Show when={!error() && !isLoading() && activities().length > 0}>
-        <div class="@container space-y-4">
+        <div class="@container min-h-0 flex-1 space-y-4 overflow-y-auto">
           <For each={activityGroups()}>
             {(group) => (
               <>

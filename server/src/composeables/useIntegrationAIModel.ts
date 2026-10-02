@@ -9,7 +9,7 @@ export const integrationsQueryKey = (spaceId: string | null | undefined) => [
   spaceId,
 ];
 
-/** Whether the user runs their agent chats on a model an integration provides. */
+/** Whether the user runs their agent chats on a model an integration provides; `undefined` until known. */
 export function useIntegrationAIModel() {
   const { currentSpaceId } = useSpace();
   const { data } = useQuery({
@@ -22,16 +22,17 @@ export function useIntegrationAIModel() {
     enabled: createMemo(() => !!currentSpaceId()),
   });
 
-  return createMemo(
-    () => data()?.connections.some((connection) => connection.aiModel) ?? false,
-  );
+  // Keyed on data rather than isPending: the server never fetches, and both sides must agree for hydration.
+  return createMemo(() => data()?.connections.some((c) => c.aiModel));
 }
 
-/** Whether the agent chat can be used in the current space. */
+/** Whether the agent chat can be used in the current space; `undefined` until known. */
 export function useAgentAvailable() {
   const { currentSpace } = useSpace();
   const runsOnIntegrationModel = useIntegrationAIModel();
-  return createMemo(
-    () => !!currentSpace() && (config().AI_ENABLED === "1" || runsOnIntegrationModel()),
-  );
+  return createMemo(() => {
+    if (!currentSpace()) return false;
+    if (config().AI_ENABLED === "1") return true;
+    return runsOnIntegrationModel();
+  });
 }

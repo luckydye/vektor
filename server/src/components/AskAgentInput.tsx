@@ -5,6 +5,7 @@ import { MessageInput } from "./MessageInput.tsx";
 interface Props {
   spaceId: string;
   placeholder: string;
+  disabled: boolean;
   onSubmit: (message: string) => void;
 }
 
@@ -13,7 +14,7 @@ export function AskAgentInput(props: Props) {
 
   function submit() {
     const message = value().trim();
-    if (!message) return;
+    if (!message || props.disabled) return;
     props.onSubmit(message);
     setValue("");
   }
@@ -31,11 +32,13 @@ export function AskAgentInput(props: Props) {
           mentions
           inlineDocumentReferences
           spaceId={props.spaceId}
+          disabled={props.disabled}
           actions={
             <button
               type="button"
               onClick={submit}
-              class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500"
+              disabled={props.disabled}
+              class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500 disabled:opacity-40"
               title="Send (↵)"
             >
               <Icon class="h-4 w-4" name="send-message" />

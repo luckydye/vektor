@@ -76,7 +76,15 @@ export function useChatSessionHandling(options: {
   async function loadSessions() {
     const spaceId = options.currentSpaceId();
     if (!spaceId) return;
-    setSessions(await api.aiChatSessions.list(spaceId));
+    const loaded = await api.aiChatSessions.list(spaceId);
+    // Sessions created while the list was in flight are not in it yet.
+    setSessions((list) => [
+      ...list.filter(
+        (session) =>
+          session.spaceId === spaceId && !loaded.some((item) => item.id === session.id),
+      ),
+      ...loaded,
+    ]);
   }
 
   async function refreshCurrentSession() {
@@ -173,6 +181,8 @@ export function useChatSessionHandling(options: {
     const spaceId = options.currentSpaceId();
     if (!spaceId || !options.isActive()) return;
     void loadSessions().then(() => {
+      // A chat started while the list loaded must not be covered by the picker.
+      if (currentSessionId()) return;
       if (sessions().length > 0) {
         setShowSessionPicker(true);
       } else if (options.messages().length === 0) {

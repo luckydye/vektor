@@ -13,7 +13,6 @@ import mouthTwo from "#assets/avatars/parts/mouth/mouth-2.svg?raw";
 import mouthThree from "#assets/avatars/parts/mouth/mouth-3.svg?raw";
 import mouthFour from "#assets/avatars/parts/mouth/mouth-4.svg?raw";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
-import avatarZero from "#assets/avatars/zero.svg?raw";
 import extensionIcon from "#assets/icons/extension.svg?raw";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
 import { createCosmeticElement } from "#cosmetics/CosmeticElement.ts";
@@ -47,7 +46,6 @@ const eyesParts = [
   eyesEight,
 ];
 const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
-const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
 // A four-point spark: the agent, as distinct from an extension or bot.
@@ -79,6 +77,21 @@ const avatarStyles = `
        edge rather than shrinking the content box. */
     box-shadow: inset 0 0 0 1px
       color-mix(in srgb, var(--color-neutral-800) 30%, transparent);
+  }
+
+  .avatar-placeholder {
+    background: var(--color-skeleton);
+    box-shadow: none;
+  }
+
+  .avatar-loading {
+    animation: avatar-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes avatar-pulse {
+    50% {
+      opacity: 0.5;
+    }
   }
 
   .avatar-image {
@@ -339,12 +352,12 @@ const AvatarElement =
           const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
           const drawGeneratedAvatar = () => {
             const kind = this.declaredKind;
-            // An id that resolves to nobody gets the neutral face rather than a
-            // person's features: it may be a credential, or an account since
-            // deleted, and inventing a face for either claims a person. A caller
-            // that declared a kind is believed over the lookup.
+            // No id yet is still loading; an id that resolves to nobody stays an
+            // empty circle, since inventing a face for it would claim a person.
             if (!seed || (this.noSuchUser && !kind)) {
-              image.src = defaultAvatar;
+              image.remove();
+              avatar.classList.add("avatar-placeholder");
+              avatar.classList.toggle("avatar-loading", !seed);
               return;
             }
 
@@ -352,6 +365,8 @@ const AvatarElement =
             avatar.style.background = generatedAvatar.color;
             image.src = generatedAvatar.src;
           };
+
+          avatar.appendChild(image);
 
           if (user?.image) {
             // A remote picture can fail for reasons we can't see up front: a
@@ -362,8 +377,6 @@ const AvatarElement =
           } else {
             drawGeneratedAvatar();
           }
-
-          avatar.appendChild(image);
 
           root.appendChild(avatar);
           const frame = createCosmeticElement(user?.appearance?.avatarFrame);

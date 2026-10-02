@@ -13,6 +13,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
+import { mentionsToText } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -137,7 +138,7 @@ export function AIChatPanel(props: Props) {
 
     if (!currentSessionId()) {
       await createSession(
-        (message || attachmentsToUpload[0]?.name || "New chat").slice(0, 60),
+        (mentionsToText(message) || attachmentsToUpload[0]?.name || "New chat").slice(0, 60),
       );
     }
 
@@ -229,7 +230,8 @@ export function AIChatPanel(props: Props) {
     );
   }
 
-  const isAgentConfigured = useAgentAvailable();
+  const agentAvailable = useAgentAvailable();
+  const isAgentConfigured = createMemo(() => agentAvailable() === true);
 
   onCleanup(
     Actions.subscribe("ai-chat:ask", (event) => {

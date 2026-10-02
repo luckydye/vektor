@@ -27,7 +27,7 @@ export function MenuLink(props: Props) {
         props.class,
         // The left padding matches the quick search button's px-3xs plus its 1px
         // border, so every nav icon lines up on the same edge.
-        "button-with-icon inline-flex cursor-pointer items-center rounded-md px-3xs font-normal text-neutral-800 transition-colors hover:transition-none w-full",
+        "button-with-icon inline-flex cursor-pointer items-center rounded-md px-3xs font-normal text-neutral-800 w-full",
         "@max-xs:justify-start",
         props.isActive
           ? "bg-primary-100 text-primary-700"

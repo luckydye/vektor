@@ -48,6 +48,14 @@ markdownRenderer.link = function ({ href, title, tokens }) {
   return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noopener noreferrer">${label}</a>`;
 };
 
+/** Replaces user and document mentions with their `@label`, for plain-text contexts like titles. */
+export function mentionsToText(markdown: string): string {
+  return markdown.replace(
+    /(?:@\[([^\]]+)\]|\[@([^\]]+)\])\((?:mention|doc):(?:\\.|[^)\\])*\)/g,
+    (_, label: string | undefined, atLabel: string | undefined) => `@${label ?? atLabel}`,
+  );
+}
+
 export function renderMessageMarkdown(content: string): string {
   // Markdown carries inline HTML, so the output is sanitized rather than
   // trusted to the renderer overrides above.

@@ -1,4 +1,5 @@
 import {
+  children,
   createEffect,
   createMemo,
   createSignal,
@@ -76,6 +77,8 @@ export function MessageInput(props: Props) {
     },
     props,
   );
+  // Resolved once: reading the JSX getter twice builds the elements twice and breaks hydration.
+  const actions = children(() => merged.actions);
 
   const [editorElement, setEditorElement] = createSignal<RichTextEditorElementApi | null>(
     null,
@@ -325,7 +328,7 @@ export function MessageInput(props: Props) {
             </button>
           </Show>
           <Show
-            when={merged.actions}
+            when={actions()}
             fallback={
               <button
                 type="button"
@@ -338,7 +341,7 @@ export function MessageInput(props: Props) {
               </button>
             }
           >
-            {merged.actions}
+            {actions()}
           </Show>
         </div>
       </div>

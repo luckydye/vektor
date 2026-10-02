@@ -61,10 +61,10 @@ export function SpaceHomeView() {
       {(space) => (
         <FileDropOverlay
           disabled={!userCanUpload()}
-          class="relative flex h-full min-h-screen flex-col overflow-x-hidden"
+          class="relative flex h-dvh flex-col overflow-hidden"
           onSelect={(file) => void uploadDroppedFile(file)}
         >
-          <inset-view class="block h-full space-y-12 p-2xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">
+          <inset-view class="flex min-h-0 flex-1 flex-col gap-12 p-2xs md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">
             <SpaceHomeHeadline
               date={new Intl.DateTimeFormat(locale, {
                 weekday: "long",
@@ -75,9 +75,10 @@ export function SpaceHomeView() {
               name={firstName(user()?.name)}
             />
 
-            <Show when={agentAvailable()}>
+            <Show when={agentAvailable() !== false}>
               <AskAgentInput
                 spaceId={space().id}
+                disabled={agentAvailable() === undefined}
                 placeholder={t("Ask the agent…")}
                 onSubmit={(message) => Actions.emit("ai-chat:ask", { detail: message })}
               />
@@ -87,8 +88,8 @@ export function SpaceHomeView() {
               <RecentDocuments limit={10} />
             </div>
 
-            <div class="mb-20">
-              <SpaceActivityFeed spaceId={space().id} limit={15} />
+            <div class="flex min-h-0 flex-1 flex-col">
+              <SpaceActivityFeed spaceId={space().id} limit={30} />
             </div>
           </inset-view>
         </FileDropOverlay>
