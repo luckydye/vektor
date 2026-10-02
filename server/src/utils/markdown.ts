@@ -48,10 +48,10 @@ markdownRenderer.link = function ({ href, title, tokens }) {
   return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noopener noreferrer">${label}</a>`;
 };
 
-/** Replaces user and document mentions with their `@label`, for plain-text contexts like titles. */
+/** Replaces user and document mentions with their `@label`, for plain-text contexts like titles; a mention cut off by truncation still matches. */
 export function mentionsToText(markdown: string): string {
   return markdown.replace(
-    /(?:@\[([^\]]+)\]|\[@([^\]]+)\])\((?:mention|doc):(?:\\.|[^)\\])*\)/g,
+    /(?:@\[([^\]]+)\]|\[@([^\]]+)\])\((?:mention|doc):(?:\\.|[^)\\])*(?:\)|$)/g,
     (_, label: string | undefined, atLabel: string | undefined) => `@${label ?? atLabel}`,
   );
 }

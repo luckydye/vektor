@@ -6,10 +6,32 @@ import {
   type AIChatSessionListEntry,
   api,
 } from "#api/client.ts";
+import { useQuery, useQueryClient } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
 
 const welcomeMessage = "Hello! I'm here to help you with this document. Ask me anything!";
 
 type SessionStatus = "generating" | "awaiting" | "idle";
+
+export const chatSessionsQueryKey = (spaceId: string | null | undefined) => [
+  "ai-chat-sessions",
+  spaceId,
+];
+
+/** The space's most recently updated chat sessions; `undefined` until loaded. */
+export function useRecentChatSessions(limit: number) {
+  const { currentSpaceId } = useSpace();
+  const { data } = useQuery({
+    queryKey: createMemo(() => chatSessionsQueryKey(currentSpaceId())),
+    queryFn: async () => {
+      const spaceId = currentSpaceId();
+      if (!spaceId) throw new Error("No active space selected");
+      return await api.aiChatSessions.list(spaceId);
+    },
+    enabled: createMemo(() => !!currentSpaceId()),
+  });
+  return createMemo(() => data()?.slice(0, limit));
+}
 
 /** The list's view of a session we happen to hold in full. */
 function toSummary(session: AIChatSession): AIChatSessionListEntry {
@@ -44,6 +66,9 @@ export function useChatSessionHandling(options: {
   scrollToBottom: () => void;
   reconnectSession: (pendingUserMessage: string) => void | Promise<void>;
 }) {
+  const queryClient = useQueryClient();
+  const invalidateSessionList = () =>
+    queryClient.invalidateQueries({ queryKey: chatSessionsQueryKey(options.currentSpaceId()) });
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<AIChatSessionListEntry[]>([]);
   const [showSessionPicker, setShowSessionPicker] = createSignal(false);
@@ -94,6 +119,7 @@ export function useChatSessionHandling(options: {
 
     const refreshed = await api.aiChatSessions.get(spaceId, sessionId);
     if (!refreshed) return;
+    invalidateSessionList();
 
     setSessions((list) =>
       list.map((session) =>
@@ -158,6 +184,7 @@ export function useChatSessionHandling(options: {
     setSessions((list) => [toSummary(session), ...list]);
     setCurrentSessionId(session.id);
     await api.aiChatSessions.save(session);
+    invalidateSessionList();
   }
 
   async function removeSession(id: string) {
@@ -165,6 +192,7 @@ export function useChatSessionHandling(options: {
     if (!session) return;
 
     await api.aiChatSessions.delete(session.spaceId, id);
+    invalidateSessionList();
     setSessions((list) => list.filter((item) => item.id !== id));
     if (currentSessionId() !== id) return;
 

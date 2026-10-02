@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import { createStore } from "solid-js/store";
-import { type AIChatMessage, isUploadAborted } from "#api/client.ts";
+import { type AIChatMessage, type AIChatSessionListEntry, isUploadAborted } from "#api/client.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
@@ -241,6 +241,18 @@ export function AIChatPanel(props: Props) {
       if (isGenerating()) return;
       startNewChat();
       void sendMessage();
+    }),
+  );
+  onCleanup(
+    Actions.subscribe("ai-chat:resume", (event) => {
+      open("ai-chat", { side: "right", width: 380 });
+      void resumeSession(event.detail as AIChatSessionListEntry);
+    }),
+  );
+  onCleanup(
+    Actions.subscribe("ai-chat:sessions", () => {
+      open("ai-chat", { side: "right", width: 380 });
+      setShowSessionPicker(true);
     }),
   );
 

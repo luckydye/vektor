@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { SpaceStore } from "#db/client/store.ts";
 import { aiChatSession } from "#db/schema/space.ts";
+import { mentionsToText } from "#utils/markdown.ts";
 
 export type StoredAIChatSession = {
   id: string;
@@ -62,7 +63,7 @@ function toStoredAIChatSession(
 ): StoredAIChatSession {
   return {
     id: row.id,
-    title: row.title,
+    title: mentionsToText(row.title),
     spaceId: s.spaceId,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
@@ -72,6 +73,7 @@ function toStoredAIChatSession(
   };
 }
 
+/** Titles are flattened on read too: ones saved before creation-time flattening still hold raw mentions. */
 export async function listAIChatSessionSummaries(
   s: SpaceStore,
   userId: string,
@@ -92,7 +94,7 @@ export async function listAIChatSessionSummaries(
 
   return rows.map((row) => ({
     id: row.id,
-    title: row.title,
+    title: mentionsToText(row.title),
     spaceId: s.spaceId,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),

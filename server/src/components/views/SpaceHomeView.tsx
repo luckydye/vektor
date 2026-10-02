@@ -1,39 +1,31 @@
 import { createMemo, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
-import { AskAgentInput } from "#components/AskAgentInput.tsx";
+import { AgentSection } from "#components/AgentSection.tsx";
 import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
 import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
 import { SpaceHomeHeadline } from "#components/SpaceHomeHeadline.tsx";
+import { useRecentChatSessions } from "#composeables/useChatSessionHandling.ts";
 import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useUploads } from "#composeables/useUploads.ts";
-import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { useWeather } from "#composeables/useWeather.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { Actions } from "#utils/actions.ts";
-
-function greetingKey(hour: number): "Good morning" | "Good afternoon" | "Good evening" {
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-function firstName(name: string | undefined): string | undefined {
-  return name?.trim().split(/\s+/)[0] || undefined;
-}
 
 export function SpaceHomeView() {
   const t = useTranslation();
   const locale = useLocale();
-  const user = useUserProfile();
   const now = new Date();
 
   const { currentSpace } = useSpace();
   const { uploadFile } = useUploads();
   const userCanUpload = createMemo(() => canEdit(currentSpace()?.userRole));
   const agentAvailable = useAgentAvailable();
+  const recentSessions = useRecentChatSessions(3);
+  const weather = useWeather();
 
   usePageTitle(null);
 
@@ -65,24 +57,33 @@ export function SpaceHomeView() {
           onSelect={(file) => void uploadDroppedFile(file)}
         >
           <inset-view class="flex min-h-0 flex-1 flex-col gap-12 p-2xs md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">
-            <SpaceHomeHeadline
-              date={new Intl.DateTimeFormat(locale, {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              }).format(now)}
-              greeting={t(greetingKey(now.getHours()))}
-              name={firstName(user()?.name)}
-            />
-
-            <Show when={agentAvailable() !== false}>
-              <AskAgentInput
-                spaceId={space().id}
-                disabled={agentAvailable() === undefined}
-                placeholder={t("Ask the agent…")}
-                onSubmit={(message) => Actions.emit("ai-chat:ask", { detail: message })}
+            <div class="flex flex-col gap-6">
+              <SpaceHomeHeadline
+                date={new Intl.DateTimeFormat(locale, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                }).format(now)}
+                weather={weather()}
               />
-            </Show>
+
+              <Show when={agentAvailable() !== false}>
+                <AgentSection
+                  title={t("Agent")}
+                  viewAllLabel={t("View all")}
+                  placeholder={t("What can I help with?")}
+                  emptyLabel={t("No conversations yet.")}
+                  lang={locale}
+                  spaceId={space().id}
+                  disabled={agentAvailable() === undefined}
+                  sessions={recentSessions()}
+                  rows={3}
+                  onAsk={(message) => Actions.emit("ai-chat:ask", { detail: message })}
+                  onResume={(session) => Actions.emit("ai-chat:resume", { detail: session })}
+                  onViewAll={() => Actions.emit("ai-chat:sessions", {})}
+                />
+              </Show>
+            </div>
 
             <div>
               <RecentDocuments limit={10} />

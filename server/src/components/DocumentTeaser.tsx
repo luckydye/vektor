@@ -57,12 +57,12 @@ export function DocumentTeaser(props: Props) {
         rel={props.doc.fileUrl ? "noopener noreferrer" : undefined}
         class="group block"
       >
-        <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-neutral-100">
+        <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl border border-neutral-100 bg-neutral-50">
           <Show
             when={headerImage()}
             fallback={
               <Icon
-                class="h-10 w-10 text-neutral-400"
+                class="h-10 w-10 text-neutral-300"
                 name={documentTypeIcon(props.doc.type)}
               />
             }

@@ -1,19 +1,39 @@
+import { type JSX, Show } from "solid-js";
+import { useTranslation } from "#composeables/useTranslation.ts";
+import type { Weather } from "#composeables/useWeather.ts";
+
 interface Props {
   date: string;
-  greeting: string;
-  name?: string;
+  weather?: Weather;
+  children?: JSX.Element;
 }
 
 export function SpaceHomeHeadline(props: Props) {
+  const t = useTranslation();
+
   return (
     <header class="pt-4xs">
-      <p class="mb-3 font-semibold text-primary-600 text-size-small uppercase tracking-[0.12em] dark:text-primary-300">
-        {props.date}
-      </p>
-      {/*<h1 class="max-w-[22ch] font-normal font-serif text-neutral-900 text-size-hero leading-hero tracking-[-0.035em] dark:text-neutral-900">
-        {props.greeting}
-        {props.name ? `, ${props.name}` : ""}.
-      </h1>*/}
+      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p class="font-semibold text-neutral-500 text-size-small uppercase tracking-[0.12em] dark:text-neutral-400">
+          {props.date}
+        </p>
+        <Show when={props.weather}>
+          {(weather) => (
+            <p class="text-neutral-500 text-size-small tabular-nums dark:text-neutral-400">
+              {weather().temperature}° {t(weather().condition)}
+              <span class="mx-2" aria-hidden="true">·</span>
+              <span title={`${t("Low")} – ${t("High")}`}>
+                {weather().low}–{weather().high}°
+              </span>
+              <span class="mx-2" aria-hidden="true">·</span>
+              <span title={t("Chance of rain")}>
+                {t("{percent}% rain").replace("{percent}", String(weather().precipitationChance))}
+              </span>
+            </p>
+          )}
+        </Show>
+      </div>
+      {props.children}
     </header>
   );
 }

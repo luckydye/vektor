@@ -20,14 +20,15 @@ export function AskAgentInput(props: Props) {
   }
 
   return (
-    <div class="flex items-start gap-3 rounded-md border border-neutral-100 bg-neutral-10 px-3 py-2">
-      <Icon class="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" name="agent-chat" />
+    <div class="flex items-start gap-3 px-3.5 py-3">
+      <Icon class="mt-0.5 h-5 w-5 shrink-0 text-primary-500" name="agent-chat" />
       <div class="min-w-0 flex-1">
         <MessageInput
           value={value()}
           onInput={setValue}
           onSubmit={submit}
           placeholder={props.placeholder}
+          rows={2}
           autoGrow
           mentions
           inlineDocumentReferences

@@ -4,6 +4,7 @@ mod keychain;
 mod mounts;
 mod palette;
 mod tab_bar;
+mod text_input;
 mod titlebar;
 
 use browser::{
@@ -58,6 +59,7 @@ fn main() {
         }
     });
     app.run(move |cx: &mut App| {
+        text_input::install();
         cx.bind_keys([
             KeyBinding::new("cmd-q", Quit, None),
             KeyBinding::new("cmd-t", NewTab, None),

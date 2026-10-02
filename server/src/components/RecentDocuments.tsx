@@ -41,7 +41,7 @@ export function RecentDocuments(props: Props) {
         </a>
       </div>
 
-      <div class="h-60">
+      <div class="min-h-48">
         <Show
           when={!loading()}
           fallback={
