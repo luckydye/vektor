@@ -5,9 +5,11 @@ use std::{ffi::CStr, os::raw::c_char, sync::OnceLock};
 
 use block2::Block;
 use objc2::ffi::class_addMethod;
+use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
 use objc2::{msg_send, sel};
 use url::{Origin, Url};
+use wry::{WebView, WebViewExtMacOS};
 
 /// WebKit's `WKPermissionDecision`.
 const GRANT: isize = 1;
@@ -15,11 +17,12 @@ const DENY: isize = 2;
 
 static APP_ORIGIN: OnceLock<Origin> = OnceLock::new();
 
-/// Needs a webview to exist first, since wry registers its delegate class on first use.
-pub fn install(origin: &Origin) {
+/// Takes the class from a live webview's delegate, since wry registers it under a generated name.
+pub fn install(webview: &WebView, origin: &Origin) {
     if APP_ORIGIN.set(origin.clone()).is_ok() {
-        let class =
-            AnyClass::get(c"WryWebViewUIDelegate").expect("wry's UI delegate is not registered");
+        let delegate: Option<Retained<AnyObject>> =
+            unsafe { msg_send![&*webview.webview(), UIDelegate] };
+        let class = delegate.expect("wry set no UI delegate").class();
         let imp: unsafe extern "C-unwind" fn(
             &AnyObject,
             Sel,

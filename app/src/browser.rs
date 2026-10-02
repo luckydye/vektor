@@ -479,7 +479,7 @@ impl Browser {
             })
             .build_as_child(window)
             .expect("failed to create webview");
-        geolocation::install(&self.origin);
+        geolocation::install(&webview, &self.origin);
 
         self.tabs.push(Tab {
             id,
