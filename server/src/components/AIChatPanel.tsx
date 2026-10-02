@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import { type AIChatMessage, isUploadAborted } from "#api/client.ts";
 import {
@@ -8,10 +8,10 @@ import {
 } from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
-import { useIntegrationAIModel } from "#composeables/useIntegrationAIModel.ts";
+import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
-import { config } from "#config";
+import { Actions } from "#utils/actions.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
@@ -56,8 +56,9 @@ export function AIChatPanel(props: Props) {
 
   const documentId = () => props.documentId ?? "";
 
-  const { currentSpace, currentSpaceId } = useSpace();
+  const { currentSpaceId } = useSpace();
   const {
+    open,
     toggle: toggleWindow,
     close: closeWindow,
     windows: dockedWindows,
@@ -228,10 +229,18 @@ export function AIChatPanel(props: Props) {
     );
   }
 
-  const runsOnIntegrationModel = useIntegrationAIModel();
-  const isAgentConfigured = createMemo(() => {
-    return !!currentSpace() && (config().AI_ENABLED === "1" || runsOnIntegrationModel());
-  });
+  const isAgentConfigured = useAgentAvailable();
+
+  onCleanup(
+    Actions.subscribe("ai-chat:ask", (event) => {
+      open("ai-chat", { side: "right", width: 380 });
+      setMessageInput(event.detail as string);
+      // A running turn belongs to the current session, so the question waits in the input.
+      if (isGenerating()) return;
+      startNewChat();
+      void sendMessage();
+    }),
+  );
 
   createEffect(
     on(isAgentConfigured, (configured) => {

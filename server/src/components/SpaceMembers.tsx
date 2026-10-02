@@ -1025,29 +1025,29 @@ export function SpaceMembers() {
         <Show when={isLoading() || loadingUsers()}>
           <div class="overflow-hidden rounded-t-md border border-neutral-100 bg-background">
             <div class="grid grid-cols-[minmax(16rem,2fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)_minmax(7rem,0.7fr)_minmax(5rem,0.5fr)] gap-3 border-neutral-100 border-b bg-neutral-50 px-4 py-2.5">
-              <div class="h-3 w-14 animate-pulse rounded bg-neutral-100" />
-              <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
-              <div class="h-3 w-12 animate-pulse rounded bg-neutral-100" />
-              <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
-              <div class="h-3 w-12 animate-pulse justify-self-end rounded bg-neutral-100" />
+              <div class="h-3 w-14 animate-pulse rounded bg-skeleton" />
+              <div class="h-3 w-10 animate-pulse rounded bg-skeleton" />
+              <div class="h-3 w-12 animate-pulse rounded bg-skeleton" />
+              <div class="h-3 w-10 animate-pulse rounded bg-skeleton" />
+              <div class="h-3 w-12 animate-pulse justify-self-end rounded bg-skeleton" />
             </div>
             <For each={[0, 1, 2]}>
               {() => (
                 <div class="grid grid-cols-[minmax(16rem,2fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)_minmax(7rem,0.7fr)_minmax(5rem,0.5fr)] items-center gap-3 border-neutral-100 border-b px-4 py-3 last:border-b-0">
                   <div class="flex items-center gap-3">
-                    <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-neutral-100" />
+                    <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-skeleton" />
                     <div class="space-y-2">
-                      <div class="h-3 w-32 animate-pulse rounded bg-neutral-100" />
-                      <div class="h-2.5 w-44 animate-pulse rounded bg-neutral-100" />
+                      <div class="h-3 w-32 animate-pulse rounded bg-skeleton" />
+                      <div class="h-2.5 w-44 animate-pulse rounded bg-skeleton" />
                     </div>
                   </div>
-                  <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
+                  <div class="h-3 w-10 animate-pulse rounded bg-skeleton" />
                   <div class="space-y-2">
-                    <div class="h-3 w-24 animate-pulse rounded bg-neutral-100" />
-                    <div class="h-2.5 w-28 animate-pulse rounded bg-neutral-100" />
+                    <div class="h-3 w-24 animate-pulse rounded bg-skeleton" />
+                    <div class="h-2.5 w-28 animate-pulse rounded bg-skeleton" />
                   </div>
-                  <div class="h-5 w-14 animate-pulse rounded-full bg-neutral-100" />
-                  <div class="h-3 w-12 animate-pulse justify-self-end rounded bg-neutral-100" />
+                  <div class="h-5 w-14 animate-pulse rounded-full bg-skeleton" />
+                  <div class="h-3 w-12 animate-pulse justify-self-end rounded bg-skeleton" />
                 </div>
               )}
             </For>

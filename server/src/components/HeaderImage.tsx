@@ -42,8 +42,8 @@ export function HeaderImage(props: Props) {
           <div
             class={
               isPortrait()
-                ? "w-full animate-pulse rounded-lg bg-neutral-50"
-                : "h-[240px] w-full animate-pulse rounded-lg bg-neutral-50"
+                ? "w-full animate-pulse rounded-lg bg-skeleton"
+                : "h-[240px] w-full animate-pulse rounded-lg bg-skeleton"
             }
             style={aspectStyle()}
           />

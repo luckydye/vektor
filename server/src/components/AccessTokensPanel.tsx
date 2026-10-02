@@ -252,10 +252,10 @@ export function AccessTokensPanel(props: Props) {
                   <For each={[0, 1, 2]}>
                     {() => (
                       <div class="flex items-center gap-3 px-4 py-2.5">
-                        <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-neutral-100" />
+                        <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-skeleton" />
                         <div class="flex-1 space-y-1.5">
-                          <div class="h-3 w-1/3 animate-pulse rounded bg-neutral-100" />
-                          <div class="h-2.5 w-2/5 animate-pulse rounded bg-neutral-100" />
+                          <div class="h-3 w-1/3 animate-pulse rounded bg-skeleton" />
+                          <div class="h-2.5 w-2/5 animate-pulse rounded bg-skeleton" />
                         </div>
                       </div>
                     )}

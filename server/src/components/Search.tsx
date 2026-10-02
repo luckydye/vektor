@@ -63,8 +63,8 @@ function ListSkeleton(props: { rows: number }) {
             class="flex items-center gap-3 py-2.5 pr-3 pl-[2.375rem]"
             classList={{ "border-neutral-100 border-t": index !== 0 }}
           >
-            <div class="h-4 w-4 shrink-0 rounded bg-neutral-100" />
-            <div class={`h-4 rounded bg-neutral-100 ${widths[index % widths.length]}`} />
+            <div class="h-4 w-4 shrink-0 rounded bg-skeleton" />
+            <div class={`h-4 rounded bg-skeleton ${widths[index % widths.length]}`} />
           </div>
         )}
       </Index>
@@ -79,8 +79,8 @@ function OtherSpacesSkeleton() {
       {() => (
         <div>
           <div class="mb-2 flex animate-pulse items-center gap-2">
-            <div class="h-5 w-5 shrink-0 rounded-sm bg-neutral-200" />
-            <div class="h-3.5 w-28 rounded bg-neutral-200" />
+            <div class="h-5 w-5 shrink-0 rounded-sm bg-skeleton-strong" />
+            <div class="h-3.5 w-28 rounded bg-skeleton-strong" />
           </div>
           <ListSkeleton rows={2} />
         </div>

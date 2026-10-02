@@ -113,9 +113,9 @@ export function ExtensionView(props: Props) {
     <div class="w-full" classList={{ "relative h-full min-h-0 flex-1": props.fill }}>
       <Show when={loading()}>
         <div class="flex flex-col gap-3 p-6">
-          <div class="h-4 w-1/3 animate-pulse rounded bg-neutral-100" />
-          <div class="h-3 w-4/5 animate-pulse rounded bg-neutral-100" />
-          <div class="h-3 w-2/3 animate-pulse rounded bg-neutral-100" />
+          <div class="h-4 w-1/3 animate-pulse rounded bg-skeleton" />
+          <div class="h-3 w-4/5 animate-pulse rounded bg-skeleton" />
+          <div class="h-3 w-2/3 animate-pulse rounded bg-skeleton" />
         </div>
       </Show>
 

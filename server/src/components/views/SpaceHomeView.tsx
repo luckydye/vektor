@@ -1,15 +1,18 @@
 import { createMemo, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
+import { AskAgentInput } from "#components/AskAgentInput.tsx";
 import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
 import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
 import { SpaceHomeHeadline } from "#components/SpaceHomeHeadline.tsx";
+import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
+import { Actions } from "#utils/actions.ts";
 
 function greetingKey(hour: number): "Good morning" | "Good afternoon" | "Good evening" {
   if (hour < 12) return "Good morning";
@@ -30,6 +33,7 @@ export function SpaceHomeView() {
   const { currentSpace } = useSpace();
   const { uploadFile } = useUploads();
   const userCanUpload = createMemo(() => canEdit(currentSpace()?.userRole));
+  const agentAvailable = useAgentAvailable();
 
   usePageTitle(null);
 
@@ -70,6 +74,14 @@ export function SpaceHomeView() {
               greeting={t(greetingKey(now.getHours()))}
               name={firstName(user()?.name)}
             />
+
+            <Show when={agentAvailable()}>
+              <AskAgentInput
+                spaceId={space().id}
+                placeholder={t("Ask the agent…")}
+                onSubmit={(message) => Actions.emit("ai-chat:ask", { detail: message })}
+              />
+            </Show>
 
             <div>
               <RecentDocuments limit={10} />

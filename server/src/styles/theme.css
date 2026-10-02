@@ -25,7 +25,11 @@
   --container-xs: 120px;
   --container-sm: 180px;
 
-  --animate-workflow-progress: workflow-progress 1.8s ease-in-out infinite;
+  /* Alpha over neutral-500 so loading placeholders stay faint on any surface, in both themes. */
+  --color-skeleton: color-mix(in oklab, var(--color-neutral-500) 7%, transparent);
+  --color-skeleton-strong: color-mix(in oklab, var(--color-neutral-500) 11%, transparent);
+
+  --animate-workflow-progress:workflow-progress 1.8s ease-in-out infinite;
 
   @keyframes workflow-progress {
     from {

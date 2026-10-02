@@ -5,6 +5,7 @@
   "e": "document:edit",
   "escape": "document:cancel",
   "mod-l": "revisions:toggle",
+  "mod-j": "ai-chat:toggle",
 
   "mod-b": "format:bold",
   "mod-i": "format:italic",

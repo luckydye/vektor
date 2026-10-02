@@ -1,5 +1,6 @@
 import { createMemo } from "solid-js";
 import { api } from "#api/client.ts";
+import { config } from "#config";
 import { useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
@@ -23,5 +24,14 @@ export function useIntegrationAIModel() {
 
   return createMemo(
     () => data()?.connections.some((connection) => connection.aiModel) ?? false,
+  );
+}
+
+/** Whether the agent chat can be used in the current space. */
+export function useAgentAvailable() {
+  const { currentSpace } = useSpace();
+  const runsOnIntegrationModel = useIntegrationAIModel();
+  return createMemo(
+    () => !!currentSpace() && (config().AI_ENABLED === "1" || runsOnIntegrationModel()),
   );
 }

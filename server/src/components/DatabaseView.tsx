@@ -332,7 +332,7 @@ export function DatabaseView(props: Props) {
                 <thead>
                   <tr class="bg-neutral-50">
                     <th class="px-3 py-2.5" style={{ width: `${NAME_COL_WIDTH}px` }}>
-                      <div class="h-2.5 w-16 rounded-full bg-neutral-200" />
+                      <div class="h-2.5 w-16 rounded-full bg-skeleton-strong" />
                     </th>
                     <For each={[0, 1]}>
                       {() => (
@@ -340,7 +340,7 @@ export function DatabaseView(props: Props) {
                           class="px-3 py-2.5"
                           style={{ width: `${DEFAULT_COL_WIDTH}px` }}
                         >
-                          <div class="h-2.5 w-14 rounded-full bg-neutral-200" />
+                          <div class="h-2.5 w-14 rounded-full bg-skeleton-strong" />
                         </th>
                       )}
                     </For>
@@ -353,7 +353,7 @@ export function DatabaseView(props: Props) {
                       <tr>
                         <td class="px-3 py-2.5">
                           <div
-                            class="h-2.5 rounded-full bg-neutral-100"
+                            class="h-2.5 rounded-full bg-skeleton"
                             style={{ width: `${width * 100}%` }}
                           />
                         </td>

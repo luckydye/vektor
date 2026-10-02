@@ -732,5 +732,6 @@
   "Paste the address you landed on after signing in": "로그인 후 이동한 주소를 붙여넣으세요",
   "Finish connecting": "연결 완료",
   "Failed to load models": "모델을 불러오지 못했습니다",
-  "Failed to update model": "모델을 변경하지 못했습니다"
+  "Failed to update model": "모델을 변경하지 못했습니다",
+  "Ask the agent…": "에이전트에게 질문…"
 }

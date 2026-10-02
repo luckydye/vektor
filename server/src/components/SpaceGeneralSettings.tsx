@@ -42,7 +42,7 @@ function Pending(props: { value: string | undefined; class: string }) {
       when={props.value}
       fallback={
         <span
-          class={`inline-block h-[0.8em] animate-pulse rounded bg-neutral-100 ${props.class}`}
+          class={`inline-block h-[0.8em] animate-pulse rounded bg-skeleton ${props.class}`}
         />
       }
     >

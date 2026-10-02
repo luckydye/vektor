@@ -59,7 +59,7 @@ export function UsersOverview(props: Props) {
       <Show when={props.loading}>
         <div class="space-y-3xs">
           <For each={[0, 1, 2, 3, 4]}>
-            {() => <div class="h-11 animate-pulse rounded-md bg-neutral-100" />}
+            {() => <div class="h-11 animate-pulse rounded-md bg-skeleton" />}
           </For>
         </div>
       </Show>

@@ -43,10 +43,10 @@ export function SpaceSelector(props: Props) {
         when={!props.loading}
         fallback={
           <div class="flex w-full items-start gap-3xs px-4xs py-4xs">
-            <div class="aspect-square w-[2.375rem] flex-none animate-pulse rounded-md bg-neutral-200" />
+            <div class="aspect-square w-[2.375rem] flex-none animate-pulse rounded-md bg-skeleton-strong" />
             <div class="flex flex-1 flex-col gap-1">
-              <div class="h-4 w-25 animate-pulse rounded-sm bg-neutral-200" />
-              <div class="h-3 w-16 animate-pulse rounded-sm bg-neutral-100" />
+              <div class="h-4 w-25 animate-pulse rounded-sm bg-skeleton-strong" />
+              <div class="h-3 w-16 animate-pulse rounded-sm bg-skeleton" />
             </div>
           </div>
         }

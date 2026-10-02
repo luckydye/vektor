@@ -732,5 +732,6 @@
   "Paste the address you landed on after signing in": "Paste the address you landed on after signing in",
   "Finish connecting": "Finish connecting",
   "Failed to load models": "Failed to load models",
-  "Failed to update model": "Failed to update model"
+  "Failed to update model": "Failed to update model",
+  "Ask the agent…": "Ask the agent…"
 }

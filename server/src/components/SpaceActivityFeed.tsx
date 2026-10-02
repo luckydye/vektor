@@ -144,7 +144,7 @@ export function SpaceActivityFeed(props: Props) {
               <>
                 <Show when={i() < 2}>
                   <div
-                    class="h-4 rounded-sm bg-neutral-100 px-1"
+                    class="h-4 rounded-sm bg-skeleton px-1"
                     classList={{ "w-24": i() === 0, "w-20": i() === 1 }}
                   />
                 </Show>
@@ -153,23 +153,23 @@ export function SpaceActivityFeed(props: Props) {
                   <div class="px-3.5 py-3">
                     <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
                       <div class="flex min-w-0 items-center gap-3">
-                        <div class="h-10 w-10 shrink-0 rounded-full bg-neutral-200" />
+                        <div class="h-10 w-10 shrink-0 rounded-full bg-skeleton-strong" />
 
                         <div class="min-w-0 space-y-2">
                           <div class="flex items-center gap-2">
-                            <div class="h-4 w-20 rounded-sm bg-neutral-200" />
-                            <div class="h-4 w-16 rounded-sm bg-neutral-100" />
+                            <div class="h-4 w-20 rounded-sm bg-skeleton-strong" />
+                            <div class="h-4 w-16 rounded-sm bg-skeleton" />
                           </div>
-                          <div class="h-3.5 w-16 rounded-sm bg-neutral-100" />
+                          <div class="h-3.5 w-16 rounded-sm bg-skeleton" />
                         </div>
                       </div>
 
                       <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
                         <Icon
-                          class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
+                          class="h-8 w-8 shrink-0 rounded-md bg-skeleton p-2 text-neutral-500"
                           name="document"
                         />
-                        <div class="h-4 w-32 rounded-sm bg-neutral-100" />
+                        <div class="h-4 w-32 rounded-sm bg-skeleton" />
                       </div>
 
                       <Icon

@@ -202,12 +202,12 @@ export function SpacesOverview(props: Props) {
           <For each={[0, 1, 2, 3]}>
             {() => (
               <div class="overflow-hidden rounded-xl border border-neutral-400/25">
-                <div class="h-14 w-full animate-pulse bg-neutral-200" />
+                <div class="h-14 w-full animate-pulse bg-skeleton-strong" />
                 <div class="px-3xs pb-3xs">
-                  <div class="-mt-7 mb-4xs h-14 w-14 animate-pulse rounded-xl border-2 border-background bg-neutral-200" />
-                  <div class="h-4 w-32 animate-pulse rounded-sm bg-neutral-200" />
-                  <div class="mt-4xs h-3 w-full animate-pulse rounded-sm bg-neutral-100" />
-                  <div class="mt-4xs h-3 w-20 animate-pulse rounded-sm bg-neutral-100" />
+                  <div class="-mt-7 mb-4xs h-14 w-14 animate-pulse rounded-xl border-2 border-background bg-skeleton-strong" />
+                  <div class="h-4 w-32 animate-pulse rounded-sm bg-skeleton-strong" />
+                  <div class="mt-4xs h-3 w-full animate-pulse rounded-sm bg-skeleton" />
+                  <div class="mt-4xs h-3 w-20 animate-pulse rounded-sm bg-skeleton" />
                 </div>
               </div>
             )}

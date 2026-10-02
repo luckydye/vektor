@@ -458,15 +458,15 @@ export function DocumentTree(props: Props) {
             {() => (
               <div class="space-y-1">
                 <div class="flex items-center gap-2 rounded-md p-2">
-                  <div class="h-6 w-6 flex-none animate-pulse rounded-sm bg-neutral-100" />
-                  <div class="h-4 w-24 animate-pulse rounded-sm bg-neutral-100" />
+                  <div class="h-6 w-6 flex-none animate-pulse rounded-sm bg-skeleton" />
+                  <div class="h-4 w-24 animate-pulse rounded-sm bg-skeleton" />
                 </div>
                 <div class="space-y-1 pl-3">
                   <Index each={[0, 1]}>
                     {() => (
                       <div class="flex items-center gap-2 rounded-md p-2">
-                        <div class="h-4 w-4 flex-none animate-pulse rounded-sm bg-neutral-100" />
-                        <div class="h-3 w-32 flex-1 animate-pulse rounded-sm bg-neutral-100" />
+                        <div class="h-4 w-4 flex-none animate-pulse rounded-sm bg-skeleton" />
+                        <div class="h-3 w-32 flex-1 animate-pulse rounded-sm bg-skeleton" />
                       </div>
                     )}
                   </Index>
@@ -655,7 +655,7 @@ export function DocumentTree(props: Props) {
                               <div class="flex items-center gap-1 pl-[0.535rem]">
                                 <div class="w-4 flex-none" />
                                 <div
-                                  class="mx-1.5 my-1 h-4 animate-pulse rounded-sm bg-neutral-100"
+                                  class="mx-1.5 my-1 h-4 animate-pulse rounded-sm bg-skeleton"
                                   style={{ width: width() }}
                                 />
                               </div>

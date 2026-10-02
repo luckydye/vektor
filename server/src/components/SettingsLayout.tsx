@@ -76,7 +76,7 @@ export function SettingsLayout(props: Props) {
                 {(tab) => (
                   <div class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs">
                     <div
-                      class="h-[26px] animate-pulse rounded-md bg-neutral-100/70 px-3xs py-5xs"
+                      class="h-[26px] animate-pulse rounded-md bg-skeleton px-3xs py-5xs"
                       style={{ width: `${tab.label.length * 6 + 24}px` }}
                     />
                   </div>
@@ -84,9 +84,9 @@ export function SettingsLayout(props: Props) {
               </For>
             </div>
             <div class="space-y-3 px-2 py-4">
-              <div class="h-3 w-2/3 animate-pulse rounded bg-neutral-100" />
-              <div class="h-3 w-1/2 animate-pulse rounded bg-neutral-100" />
-              <div class="h-3 w-3/4 animate-pulse rounded bg-neutral-100" />
+              <div class="h-3 w-2/3 animate-pulse rounded bg-skeleton" />
+              <div class="h-3 w-1/2 animate-pulse rounded bg-skeleton" />
+              <div class="h-3 w-3/4 animate-pulse rounded bg-skeleton" />
             </div>
           </>
         }

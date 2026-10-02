@@ -115,8 +115,8 @@ function TreeSkeleton() {
       <For each={[64, 46, 72, 54, 60, 40, 68, 50, 58, 44]}>
         {(width) => (
           <div class="flex items-center gap-2 px-1">
-            <div class="size-3.5 shrink-0 rounded bg-neutral-500/10" />
-            <div class="h-3 rounded bg-neutral-500/10" style={{ width: `${width}%` }} />
+            <div class="size-3.5 shrink-0 rounded bg-skeleton" />
+            <div class="h-3 rounded bg-skeleton" style={{ width: `${width}%` }} />
           </div>
         )}
       </For>

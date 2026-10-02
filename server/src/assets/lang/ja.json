@@ -732,5 +732,6 @@
   "Paste the address you landed on after signing in": "サインイン後に表示されたアドレスを貼り付けてください",
   "Finish connecting": "接続を完了",
   "Failed to load models": "モデルを読み込めませんでした",
-  "Failed to update model": "モデルを更新できませんでした"
+  "Failed to update model": "モデルを更新できませんでした",
+  "Ask the agent…": "エージェントに質問…"
 }

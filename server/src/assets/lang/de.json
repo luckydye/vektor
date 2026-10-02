@@ -732,5 +732,6 @@
   "Paste the address you landed on after signing in": "Füge die Adresse ein, auf der du nach der Anmeldung gelandet bist",
   "Finish connecting": "Verbindung abschließen",
   "Failed to load models": "Modelle konnten nicht geladen werden",
-  "Failed to update model": "Modell konnte nicht geändert werden"
+  "Failed to update model": "Modell konnte nicht geändert werden",
+  "Ask the agent…": "Frag den Agenten…"
 }
