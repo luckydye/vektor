@@ -13,11 +13,11 @@ export function SpaceHomeHeadline(props: Props) {
 
   return (
     <header class="pt-4xs">
-      <h1 class="font-medium text-neutral-800 text-size-display tracking-tight dark:text-neutral-100">
+      <h1 class="font-medium text-neutral-800 text-size-display tracking-tight">
         {props.date}
       </h1>
       {/* Always rendered with one line's height: the weather loads late and must not push the page. */}
-      <p class="mt-1 h-[1lh] text-neutral-500 text-size-medium tabular-nums dark:text-neutral-400">
+      <p class="mt-1 h-[1lh] text-neutral-500 text-size-medium tabular-nums">
         <Show when={props.weather}>
           {(weather) => (
             <>

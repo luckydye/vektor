@@ -11,7 +11,7 @@ interface Props {
 export function SettingsSection(props: Props) {
   return (
     <section class="@container border-neutral-100 border-t py-8 first:border-t-0 first:pt-0">
-      <div class="grid @3xl:grid-cols-[18rem_minmax(0,1fr)] @3xl:gap-12 gap-4">
+      <div class="grid @3xl:grid-cols-[14rem_minmax(0,1fr)] @3xl:gap-10 gap-4">
         <div>
           <h2 class="font-semibold text-neutral-900 text-size-large">{props.title}</h2>
           <Show when={props.description}>
