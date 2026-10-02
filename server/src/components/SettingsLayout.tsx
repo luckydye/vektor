@@ -22,6 +22,7 @@ type ATabsEl = HTMLElement & {
 
 export function SettingsLayout(props: Props) {
   let tabsEl: ATabsEl | undefined;
+  let stickyEl: HTMLDivElement | undefined;
   const initialIndex = Math.max(
     props.tabs.findIndex((tab) => tab.id === props.initialTab),
     0,
@@ -37,11 +38,21 @@ export function SettingsLayout(props: Props) {
     });
   }
 
+  // Once the bar is stuck, the old panel's scroll offset would carry over to the new one.
+  function scrollToPanelStart() {
+    if (!tabsEl || !stickyEl) throw new Error("Tab selected before the tab bar mounted");
+    const stuck =
+      stickyEl.getBoundingClientRect().top > tabsEl.getBoundingClientRect().top - 16;
+    // The stuck bar reports its pinned position, so scroll its non-sticky parent instead.
+    if (stuck) tabsEl.scrollIntoView({ block: "start" });
+  }
+
   function onTabSelected(event: Event) {
     const { index } = (event as CustomEvent<{ index: number }>).detail;
     tabsEl?.selectTabByIndex(index, false);
     if (index !== selectedIndex()) {
       const direction = index > selectedIndex() ? "next" : "previous";
+      scrollToPanelStart();
       setSelectedIndex(index);
       animatePanel(index, direction);
     }
@@ -80,14 +91,17 @@ export function SettingsLayout(props: Props) {
           </>
         }
       >
-        <a-tabs ref={tabsEl} on:tab-selected={onTabSelected}>
-          <TabsList>
-            <For each={props.tabs}>
-              {(tab, index) => (
-                <TabItem selected={index() === initialIndex}>{tab.label}</TabItem>
-              )}
-            </For>
-          </TabsList>
+        {/* Scroll anchoring would follow the old panel's content and undo scrollToPanelStart. */}
+        <a-tabs ref={tabsEl} class="[overflow-anchor:none]" on:tab-selected={onTabSelected}>
+          <div ref={stickyEl} class="sticky top-0 z-10 -mt-4 bg-background pt-4">
+            <TabsList>
+              <For each={props.tabs}>
+                {(tab, index) => (
+                  <TabItem selected={index() === initialIndex}>{tab.label}</TabItem>
+                )}
+              </For>
+            </TabsList>
+          </div>
           <For each={props.tabs}>
             {(tab) => (
               <a-tabs-panel class="block min-w-0">

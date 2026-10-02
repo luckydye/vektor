@@ -461,6 +461,86 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
+      name: "list_series",
+      description:
+        "List the space's time series: name, kind, owning documentId, pointCount and retention.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "read_series_points",
+      description:
+        "Read raw points `{ts, type, fields}` of a time series in [from, to), cursor-paginated. " +
+        "Prefer query_series for counts, trends and statistics.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Series name" },
+          from: { type: "integer", description: "Range start, epoch ms, inclusive" },
+          to: { type: "integer", description: "Range end, epoch ms, exclusive" },
+          filter: {
+            type: "string",
+            description:
+              "Terms ANDed together, e.g. `level:error -host:a speed:>=30 msg:*timeout*`.",
+          },
+          order: {
+            type: "string",
+            enum: ["asc", "desc"],
+            description: "`desc` reads newest first (default asc).",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 10000,
+            description: "Points per page (default 100)",
+          },
+          cursor: { type: "string", description: "Cursor returned by the previous page" },
+        },
+        required: ["name", "from", "to"],
+      },
+    },
+    {
+      name: "query_series",
+      description:
+        "Aggregate a time series over [from, to): bucket by `every` ms, optionally group by a field, " +
+        "and select count/sum/avg/min/max/first/last per bucket.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Series name" },
+          from: { type: "integer", description: "Range start, epoch ms, inclusive" },
+          to: { type: "integer", description: "Range end, epoch ms, exclusive" },
+          every: {
+            type: "integer",
+            description: "Bucket width in ms. Omit for one bucket over the whole range.",
+          },
+          groupBy: { type: "string", description: "Field to group rows by" },
+          select: {
+            type: "array",
+            minItems: 1,
+            maxItems: 32,
+            description:
+              'Aggregates, e.g. [{"fn":"count"},{"fn":"avg","column":"speed"}]. Every fn but count needs a column.',
+            items: {
+              type: "object",
+              properties: {
+                fn: {
+                  type: "string",
+                  enum: ["count", "sum", "avg", "min", "max", "first", "last"],
+                },
+                column: { type: "string" },
+              },
+              required: ["fn"],
+            },
+          },
+          filter: {
+            type: "string",
+            description: "Terms ANDed together, as in read_series_points.",
+          },
+        },
+        required: ["name", "from", "to", "select"],
+      },
+    },
+    {
       name: "list_extensions",
       description:
         "List the enabled extensions in the current space with the jobs each defines: id, name, description, inputs and outputs. " +
@@ -527,22 +607,6 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
             },
           },
         ] satisfies McpTool[])),
-    {
-      name: "get_documentation",
-      description:
-        "Get Vektor documentation for a specific section (api, extensions, permissions) as raw markdown.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          section: {
-            type: "string",
-            enum: ["api", "extensions", "permissions"],
-            description: "The documentation section to retrieve.",
-          },
-        },
-        required: ["section"],
-      },
-    },
     ...(() => {
       // Providers are contributed by installed extensions, so the enum is the
       // set this user has actually connected — there is no built-in list.
@@ -987,6 +1051,47 @@ export async function callTool(
         })}`,
       );
     }
+    case "list_series":
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/series`);
+    case "read_series_points": {
+      const seriesName = expectString(args, "name");
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/series/${encodeURIComponent(seriesName)}/points${buildQuery(
+          {
+            from: expectNumber(args, "from"),
+            to: expectNumber(args, "to"),
+            filter: expectString(args, "filter", { optional: true }),
+            order: expectString(args, "order", { optional: true }),
+            limit: expectNumber(args, "limit", { optional: true }) ?? 100,
+            cursor: expectString(args, "cursor", { optional: true }),
+          },
+        )}`,
+      );
+    }
+    case "query_series": {
+      const seriesName = expectString(args, "name");
+      const groupBy = expectString(args, "groupBy", { optional: true });
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/series/${encodeURIComponent(seriesName)}/query`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify({
+            from: expectNumber(args, "from"),
+            to: expectNumber(args, "to"),
+            every: expectNumber(args, "every", { optional: true }),
+            groupBy: groupBy ? { column: groupBy } : undefined,
+            select: args.select,
+            filter: expectString(args, "filter", { optional: true }),
+          }),
+        },
+      );
+    }
     case "list_extensions": {
       const { extensions } = (await apiRequest(
         config,
@@ -1047,10 +1152,6 @@ export async function callTool(
         `/api/v1/spaces/${config.spaceId}/workflows/schedules/${encodeURIComponent(scheduleId)}`,
         { method: "DELETE", headers: { Origin: new URL(config.apiUrl).origin } },
       );
-    }
-    case "get_documentation": {
-      const section = expectString(args, "section");
-      return await apiRequest(config, `/docs/${section}.md`);
     }
     case "integration_api_request": {
       const provider = expectString(args, "provider");

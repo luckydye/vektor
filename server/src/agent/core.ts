@@ -102,7 +102,7 @@ function describeNow(timeZone: string): string {
   })
     .formatToParts(now)
     .find((part) => part.type === "timeZoneName")?.value;
-  return `It is ${weekday}, ${date} ${time} in the user's time zone ${timeZone} (${offset}); give times in it.`;
+  return `It is ${weekday}, ${date} ${time} in the user's time zone ${timeZone} (${offset}), epoch ms ${now.getTime()}; give times in it.`;
 }
 
 /** Fixed for a session: what changes between turns goes in the turn context instead. */

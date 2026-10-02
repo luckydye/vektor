@@ -3,10 +3,6 @@ title: Build and install an extension
 keywords: extension, plugin, install, manifest, activate, view, job, presence
 ---
 
-Call `get_documentation` with `{"section":"extensions"}` before building an
-extension. It is the canonical, complete API reference. The rules below cover
-the paths most likely to fail.
-
 ## Safety and lifecycle
 
 - Only install when the user explicitly asks.

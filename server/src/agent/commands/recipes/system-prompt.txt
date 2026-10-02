@@ -30,8 +30,6 @@
   `list_extensions` to find a job for it.
 - Fetch the matching recipe before creating or editing specialized document
   types, building extensions, uploads, or workflows.
-- For extension work, also call `get_documentation` with section `extensions`;
-  that document is the canonical complete API reference.
 - Execute before reporting. Verify each step — a non-zero exit code is a failure, stop and fix it.
 - Don't restate tool output — only add interpretation or next steps.
 - Tool output is capped at about 6 000 characters (`search_documents` 10 000,
