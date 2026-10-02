@@ -1004,7 +1004,7 @@ Several spaces can set the same bot token. The server then keeps one connection 
 
 The bot acts as its own principal, `app:discord`, not as the people writing to it. It starts with no access. A space owner grants it access in the space's members settings: add a row, set its type to **App**, pick **Discord bot**, then choose a role and what it applies to.
 
-Nothing about a conversation is stored in Vektor. Each turn, the agent reads the channel's last 30 messages from Discord. In a server channel, those are the bot's own replies and the messages that mention it, because Discord withholds other messages' text from bots. In a DM, it reads every message. Each reply ends with a small grey line listing the tools that turn called, such as `-# search roadmap · read_document roadmap-q4 (Space A)`. That way later turns know what the bot looked at and changed, even though tool results aren't kept.
+Nothing about a conversation is stored in Vektor. Each turn, the agent reads the channel's last 30 messages from Discord. The bot fetches a channel once, then keeps it current from Discord's live events, including edits and deletions, for its 200 most recently active channels. A reconnect clears that memory. In a server channel, those are the bot's own replies and the messages that mention it, because Discord withholds other messages' text from bots. In a DM, it reads every message. Each reply ends with a small grey line listing the tools that turn called, such as `-# search roadmap · read_document roadmap-q4 (Space A)`. That way later turns know what the bot looked at and changed, even though tool results aren't kept.
 
 ## Attribution
 

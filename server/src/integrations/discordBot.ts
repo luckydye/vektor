@@ -33,6 +33,8 @@ const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4012, 4013, 4014]);
 const MAX_MESSAGE_LENGTH = 2000;
 // Earlier messages of the channel the agent sees: the conversation lives in Discord, not in Vektor.
 const HISTORY_LIMIT = 30;
+// Channels whose recent messages are kept in memory, least recently answered dropped first.
+const MAX_CACHED_CHANNELS = 200;
 // Arguments that say what a tool call was about, most telling first.
 const KEY_ARGUMENTS = [
   "query",
@@ -74,6 +76,22 @@ export function splitDiscordMessage(text: string): string[] {
   }
   parts.push(rest);
   return parts;
+}
+
+/** Whether snowflake `a` is older than `b`; ids are time-ordered. */
+function isBefore(a: string, b: string): boolean {
+  return BigInt(a) < BigInt(b);
+}
+
+/** `fresher` and `older` as one list by id, oldest first, keeping the fresher copy and the newest few. */
+export function mergeMessages(
+  older: DiscordMessage[],
+  fresher: DiscordMessage[],
+): DiscordMessage[] {
+  const byId = new Map([...older, ...fresher].map((message) => [message.id, message]));
+  return [...byId.values()]
+    .sort((a, b) => (isBefore(a.id, b.id) ? -1 : 1))
+    .slice(-2 * HISTORY_LIMIT);
 }
 
 /**
@@ -169,13 +187,64 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
     return text ? `@${message.author.username}: ${text}` : null;
   }
 
+  /**
+   * Recent messages per channel, kept current from gateway events so a turn
+   * need not refetch them. Fetched once per channel; Discord stays the source of truth.
+   */
+  const channels = new Map<
+    string,
+    { messages: DiscordMessage[]; loaded: Promise<void> }
+  >();
+
+  function cachedChannel(channelId: string) {
+    const cached = channels.get(channelId);
+    if (cached) {
+      channels.delete(channelId);
+      channels.set(channelId, cached);
+      return cached;
+    }
+    // Created before the fetch returns, so events arriving meanwhile are merged, not lost.
+    const entry = { messages: [] as DiscordMessage[], loaded: Promise.resolve() };
+    entry.loaded = discord(
+      "GET",
+      `/channels/${channelId}/messages?limit=${HISTORY_LIMIT}`,
+    )
+      .then((fetched) => {
+        entry.messages = mergeMessages(fetched as DiscordMessage[], entry.messages);
+      })
+      .catch((error) => {
+        if (channels.get(channelId) === entry) channels.delete(channelId);
+        throw error;
+      });
+    channels.set(channelId, entry);
+    const oldest = channels.keys().next().value;
+    if (channels.size > MAX_CACHED_CHANNELS && oldest) channels.delete(oldest);
+    return entry;
+  }
+
+  /** Applies a gateway message event to its channel, when that channel is cached. */
+  function onMessageEvent(type: string, data: DiscordMessage): void {
+    const entry = channels.get(data.channel_id);
+    if (!entry) return;
+    if (type === "MESSAGE_DELETE") {
+      entry.messages = entry.messages.filter((message) => message.id !== data.id);
+    } else if (type === "MESSAGE_UPDATE") {
+      entry.messages = entry.messages.map((message) =>
+        message.id === data.id ? { ...message, ...data } : message,
+      );
+    } else {
+      entry.messages = mergeMessages(entry.messages, [data]);
+    }
+  }
+
   /** The channel before `message`, oldest first; other people's text is blank unless it mentions the bot. */
   async function channelHistory(message: DiscordMessage): Promise<ChatMessage[]> {
-    const earlier = (await discord(
-      "GET",
-      `/channels/${message.channel_id}/messages?before=${message.id}&limit=${HISTORY_LIMIT}`,
-    )) as DiscordMessage[];
-    return earlier.reverse().flatMap((entry): ChatMessage[] => {
+    const entry = cachedChannel(message.channel_id);
+    await entry.loaded;
+    const earlier = entry.messages
+      .filter((cached) => isBefore(cached.id, message.id))
+      .slice(-HISTORY_LIMIT);
+    return earlier.flatMap((entry): ChatMessage[] => {
       if (entry.author.id === botId)
         return [{ role: "assistant", content: entry.content }];
       const line = authorLine(entry);
@@ -229,9 +298,13 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
         void discord("POST", `/channels/${message.channel_id}/typing`).catch(() => {}),
       8000,
     );
+    void discord("POST", `/channels/${message.channel_id}/typing`).catch(() => {});
     try {
-      await discord("POST", `/channels/${message.channel_id}/typing`);
-      const spaceList = await agentSpaces(message);
+      // History alongside the space lookups; an unlinked author's simply goes unused.
+      const [spaceList, history] = await Promise.all([
+        agentSpaces(message),
+        channelHistory(message),
+      ]);
       const [primary] = spaceList;
       if (!primary) throw new Error("No space uses this bot any more");
       // Only people with a Vektor account behind them get answers.
@@ -242,7 +315,6 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
         );
         return;
       }
-      const history = await channelHistory(message);
       // Pays with the author's own model connection where they linked Discord.
       const provider = await linkedAIProvider(spaceList);
       const result = await runAgentInWorker({
@@ -296,15 +368,22 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
       };
       session = { id: ready.session_id, resumeUrl: ready.resume_gateway_url };
       botId = ready.user.id;
+      // A fresh session missed whatever happened while disconnected.
+      channels.clear();
       appLogger.info("Discord bot connected", {
         bot: ready.user.username,
         spaces: spaces(),
       });
       return;
     }
+    if (type === "MESSAGE_UPDATE" || type === "MESSAGE_DELETE") {
+      onMessageEvent(type, data as DiscordMessage);
+      return;
+    }
     if (type !== "MESSAGE_CREATE") return;
 
     const message = data as DiscordMessage;
+    onMessageEvent(type, message);
     if (message.author.bot) return;
     const isDirect = message.guild_id === undefined;
     if (!isDirect && !message.mentions.some((user) => user.id === botId)) return;
