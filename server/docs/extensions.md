@@ -1000,9 +1000,11 @@ are the `agent.instructions` appended to the system prompt.
 
 With the `discord` extension enabled and a `DISCORD_BOT_TOKEN` space secret set, the server itself connects to Discord and answers @mentions and DMs with the agent. No process outside the server and no access token is involved.
 
+Several spaces can set the same bot token. The server then keeps one connection for that bot, and every message is answered by an agent that works across all of those spaces. It acts in each space with that space's own grants, and is told which spaces it may use. A space joins or leaves the bot by adding or removing its secret, and the server picks that up within 30 seconds.
+
 The bot acts as its own principal, `app:discord`, not as the people writing to it. It starts with no access. A space owner grants it access in the space's members settings: add a row, set its type to **App**, pick **Discord bot**, then choose a role and what it applies to.
 
-Each Discord channel is one conversation, and a thread counts as a channel of its own. The server picks up a new, changed or deleted secret within 30 seconds. A bot token can serve only one space.
+Nothing about a conversation is stored in Vektor. Each turn, the agent reads the channel's last 30 messages from Discord. In a server channel, those are the bot's own replies and the messages that mention it, because Discord withholds other messages' text from bots. In a DM, it reads every message. Each reply ends with a small grey line listing the tools that turn called, such as `-# search roadmap · read_document roadmap-q4 (Space A)`. That way later turns know what the bot looked at and changed, even though tool results aren't kept.
 
 ## Attribution
 

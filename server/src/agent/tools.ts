@@ -18,6 +18,9 @@ type McpTool = {
   };
 };
 
+/** A space the agent may work in, with the token for acting there. */
+export type AgentSpace = { id: string; name: string; jobToken: string };
+
 export type VektorMcpConfig = {
   apiUrl: string;
   spaceId: string;
@@ -25,6 +28,8 @@ export type VektorMcpConfig = {
   accessToken?: string;
   documentId?: string;
   connectedProviders?: string[];
+  /** Every space the agent works in, `spaceId` included; set only when there are several. */
+  spaces?: AgentSpace[];
 };
 
 export function assertObject(value: unknown, label: string): Record<string, unknown> {
@@ -166,6 +171,25 @@ async function apiRequest(
 }
 
 export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
+  const tools = await listSpaceTools(config);
+  if (!config.spaces) return tools;
+  // Every tool acts in one space; with several, each call names which.
+  return tools.map((tool) => ({
+    ...tool,
+    inputSchema: {
+      ...tool.inputSchema,
+      properties: {
+        ...tool.inputSchema.properties,
+        space: {
+          type: "string",
+          description: `Id of the space to act in (default ${config.spaceId}).`,
+        },
+      },
+    },
+  }));
+}
+
+async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
   return [
     {
       name: "list_documents",
@@ -573,6 +597,22 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
   ];
 }
 
+/** The config for acting in `spaceId`, one of the spaces `config` may work in. */
+function spaceConfig(config: VektorMcpConfig, spaceId: unknown): VektorMcpConfig {
+  const space = config.spaces?.find((candidate) => candidate.id === spaceId);
+  if (!space) {
+    throw new Error(
+      `Unknown space "${String(spaceId)}". Available: ${(config.spaces ?? []).map((s) => s.id).join(", ") || config.spaceId}`,
+    );
+  }
+  return {
+    ...config,
+    spaceId: space.id,
+    jobToken: space.jobToken,
+    documentId: undefined,
+  };
+}
+
 export async function uploadFile(
   config: VektorMcpConfig,
   options: {
@@ -708,8 +748,13 @@ function expectStringArray(
   return value;
 }
 
-export async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
-  const args = assertObject(rawArgs ?? {}, "tool arguments");
+export async function callTool(
+  baseConfig: VektorMcpConfig,
+  name: string,
+  rawArgs: unknown,
+) {
+  const { space: spaceId, ...args } = assertObject(rawArgs ?? {}, "tool arguments");
+  const config = spaceId === undefined ? baseConfig : spaceConfig(baseConfig, spaceId);
 
   switch (name) {
     case "list_documents": {

@@ -1,5 +1,6 @@
 import { Bash } from "just-bash";
 import {
+  type AgentSpace,
   callTool as callVektorTool,
   listTools as listVektorTools,
   type VektorMcpConfig,
@@ -389,9 +390,17 @@ async function prepareAgentTurn(options: {
   /** IANA zone the turn context states the time in; UTC when unset. */
   timeZone?: string;
   jobToken: string;
+  spaces?: AgentSpace[];
 }) {
-  const { apiUrl, spaceId, documentId, connectedProviders, userProfile, jobToken } =
-    options;
+  const {
+    apiUrl,
+    spaceId,
+    documentId,
+    connectedProviders,
+    userProfile,
+    jobToken,
+    spaces,
+  } = options;
 
   // Resolve document metadata so the turn context can inline the right
   // editing playbook and avoid suggesting mutations for locked documents.
@@ -419,6 +428,7 @@ async function prepareAgentTurn(options: {
     jobToken,
     documentId,
     connectedProviders,
+    spaces,
   };
   const integrationSurface = await getIntegrationAgentSurface(
     spaceId,
@@ -581,6 +591,8 @@ export async function runAgentPrompt(options: {
   /** Whose credentials a contributed integration command runs under. */
   userId?: string | null;
   jobToken: string;
+  /** Every space the turn works in, `spaceId` included, when there are several. */
+  spaces?: AgentSpace[];
   bash?: Bash;
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;

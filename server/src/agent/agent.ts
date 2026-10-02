@@ -1,6 +1,6 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Bash } from "just-bash";
-import type { VektorMcpConfig } from "#agent/tools.ts";
+import type { AgentSpace, VektorMcpConfig } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import {
   type AgentEvent,
@@ -218,6 +218,8 @@ export async function runAgentInWorker(options: {
   userId?: string | null;
   provider?: AIProvider;
   jobToken: string;
+  /** Every space the turn works in, `spaceId` included, when there are several. */
+  spaces?: AgentSpace[];
   shellSnapshot?: string | null;
   signal?: AbortSignal;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
