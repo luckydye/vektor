@@ -13,13 +13,14 @@ export function SpaceHomeHeadline(props: Props) {
 
   return (
     <header class="pt-4xs">
-      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p class="font-semibold text-neutral-500 text-size-small uppercase tracking-[0.12em] dark:text-neutral-400">
-          {props.date}
-        </p>
+      <h1 class="font-medium text-neutral-800 text-size-display tracking-tight dark:text-neutral-100">
+        {props.date}
+      </h1>
+      {/* Always rendered with one line's height: the weather loads late and must not push the page. */}
+      <p class="mt-1 h-[1lh] text-neutral-500 text-size-medium tabular-nums dark:text-neutral-400">
         <Show when={props.weather}>
           {(weather) => (
-            <p class="text-neutral-500 text-size-small tabular-nums dark:text-neutral-400">
+            <>
               {weather().temperature}° {t(weather().condition)}
               <span class="mx-2" aria-hidden="true">·</span>
               <span title={`${t("Low")} – ${t("High")}`}>
@@ -29,10 +30,10 @@ export function SpaceHomeHeadline(props: Props) {
               <span title={t("Chance of rain")}>
                 {t("{percent}% rain").replace("{percent}", String(weather().precipitationChance))}
               </span>
-            </p>
+            </>
           )}
         </Show>
-      </div>
+      </p>
       {props.children}
     </header>
   );

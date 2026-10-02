@@ -57,33 +57,31 @@ export function SpaceHomeView() {
           onSelect={(file) => void uploadDroppedFile(file)}
         >
           <inset-view class="flex min-h-0 flex-1 flex-col gap-12 p-2xs md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">
-            <div class="flex flex-col gap-6">
-              <SpaceHomeHeadline
-                date={new Intl.DateTimeFormat(locale, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                }).format(now)}
-                weather={weather()}
-              />
+            <SpaceHomeHeadline
+              date={new Intl.DateTimeFormat(locale, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              }).format(now)}
+              weather={weather()}
+            />
 
-              <Show when={agentAvailable() !== false}>
-                <AgentSection
-                  title={t("Agent")}
-                  viewAllLabel={t("View all")}
-                  placeholder={t("What can I help with?")}
-                  emptyLabel={t("No conversations yet.")}
-                  lang={locale}
-                  spaceId={space().id}
-                  disabled={agentAvailable() === undefined}
-                  sessions={recentSessions()}
-                  rows={3}
-                  onAsk={(message) => Actions.emit("ai-chat:ask", { detail: message })}
-                  onResume={(session) => Actions.emit("ai-chat:resume", { detail: session })}
-                  onViewAll={() => Actions.emit("ai-chat:sessions", {})}
-                />
-              </Show>
-            </div>
+            <Show when={agentAvailable() !== false}>
+              <AgentSection
+                title={t("Agent")}
+                viewAllLabel={t("View all")}
+                placeholder={t("What can I help with?")}
+                emptyLabel={t("No conversations yet.")}
+                lang={locale}
+                spaceId={space().id}
+                disabled={agentAvailable() === undefined}
+                sessions={recentSessions()}
+                rows={3}
+                onAsk={(message) => Actions.emit("ai-chat:ask", { detail: message })}
+                onResume={(session) => Actions.emit("ai-chat:resume", { detail: session })}
+                onViewAll={() => Actions.emit("ai-chat:sessions", {})}
+              />
+            </Show>
 
             <div>
               <RecentDocuments limit={10} />
