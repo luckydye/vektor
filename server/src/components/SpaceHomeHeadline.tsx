@@ -21,6 +21,7 @@ export function SpaceHomeHeadline(props: Props) {
         <Show when={props.weather}>
           {(weather) => (
             <>
+              <span class="mr-1.5" aria-hidden="true">{weather().symbol}</span>
               {weather().temperature}° {t(weather().condition)}
               <span class="mx-2" aria-hidden="true">·</span>
               <span title={`${t("Low")} – ${t("High")}`}>
