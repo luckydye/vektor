@@ -1,5 +1,6 @@
 mod browser;
 mod find_bar;
+mod geolocation;
 mod keychain;
 mod mounts;
 mod palette;
@@ -8,17 +9,17 @@ mod text_input;
 mod titlebar;
 
 use browser::{
-    Browser, CloseTab, DismissFind, Find, FindNext, FindPrevious, NewTab, NextTab, PreviousTab,
-    Reload, ToggleDevTools,
+    CloseTab, DismissFind, Find, FindNext, FindPrevious, NewTab, NextTab, PreviousTab, Reload,
+    Session, TabSource, ToggleDevTools, browsers, is_internal, open_browser, route_tab_events,
+    save_session, session_path, window_options,
 };
 use std::borrow::Cow;
 
 use futures::StreamExt;
 
 use gpui::{
-    App, AppContext, Application, AssetSource, Bounds, KeyBinding, Menu, MenuItem, OsAction,
-    SharedString, SystemMenuType, TitlebarOptions, WindowBounds, WindowOptions, actions, point, px,
-    size,
+    App, Application, AssetSource, Bounds, KeyBinding, Menu, MenuItem, OsAction, SharedString,
+    SystemMenuType, actions, point, px, size,
 };
 
 actions!(vektor, [Quit, Copy, Cut, Paste, SelectAll]);
@@ -47,7 +48,9 @@ impl AssetSource for Assets {
 
 fn main() {
     // Baked in at build time, so a plain `cargo build` targets production.
-    let url = option_env!("VEKTOR_URL").unwrap_or("https://app.vektorapp.org").to_string();
+    let url = option_env!("VEKTOR_URL")
+        .unwrap_or("https://app.vektorapp.org")
+        .to_string();
 
     // The browser hands a sign-in back through `vektor-desktop://`, which macOS delivers here,
     // outside any window; the links are relayed to the browser once it exists.
@@ -132,34 +135,56 @@ fn main() {
         })
         .detach();
 
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                size(px(1280.), px(840.)),
-                cx,
-            ))),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Vektor".into()),
-                appears_transparent: true,
-                traffic_light_position: Some(point(px(18.), px(18.))),
-            }),
-            window_min_size: Some(size(px(480.), px(320.))),
-            is_movable: false,
-            ..Default::default()
-        };
-        mounts::init(&url::Url::parse(&url).expect("VEKTOR_URL is not a URL"), cx);
-        let browser = cx
-            .open_window(options, |window, cx| {
-                cx.new(|cx| Browser::new(url, window, cx))
+        cx.on_app_quit(|cx| {
+            save_session(cx);
+            async {}
+        })
+        .detach();
+        let origin = url::Url::parse(&url).expect("VEKTOR_URL is not a URL");
+        mounts::init(&origin, cx);
+        route_tab_events(cx);
+
+        // Tabs saved against another `VEKTOR_URL` are not restored.
+        let origin = origin.origin();
+        let session: Session = mounts::load(session_path());
+        let mut windows: Vec<_> = session
+            .windows
+            .into_iter()
+            .filter_map(|saved| {
+                let active = saved.tabs[..saved.active.min(saved.tabs.len())]
+                    .iter()
+                    .filter(|tab| is_internal(&origin, tab))
+                    .count();
+                let tabs: Vec<_> = saved
+                    .tabs
+                    .into_iter()
+                    .filter(|tab| is_internal(&origin, tab))
+                    .map(TabSource::Url)
+                    .collect();
+                (!tabs.is_empty()).then(|| (active.min(tabs.len() - 1), tabs))
             })
-            .expect("failed to open window");
+            .collect();
+        if windows.is_empty() {
+            windows.push((0, vec![TabSource::Url(url.clone())]));
+        }
+        for (index, (active, tabs)) in windows.into_iter().enumerate() {
+            let cascade = px(32. * index as f32);
+            let mut bounds = Bounds::centered(None, size(px(1280.), px(840.)), cx);
+            bounds.origin += point(cascade, cascade);
+            open_browser(url.clone(), tabs, active, window_options(bounds, true), cx);
+        }
+
+        // Only the window that started a sign-in holds its verifier; the others ignore the link.
         cx.spawn(async move |cx| {
             while let Some(link) = opened_links.next().await {
-                let delivered =
-                    browser.update(cx, |browser, _, cx| browser.complete_sign_in(&link, cx));
-                if delivered.is_err() {
-                    break;
-                }
+                cx.update(|cx| {
+                    for browser in browsers(cx) {
+                        browser
+                            .update(cx, |browser, _, cx| browser.complete_sign_in(&link, cx))
+                            .expect("browser window vanished");
+                    }
+                })
+                .expect("app quit while delivering a sign-in");
             }
         })
         .detach();

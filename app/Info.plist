@@ -31,6 +31,10 @@
       </array>
     </dict>
   </array>
+  <key>NSLocationUsageDescription</key>
+  <string>Vektor shows the weather for your location on your space's home page.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Vektor shows the weather for your location on your space's home page.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

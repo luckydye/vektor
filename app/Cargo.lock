@@ -7503,6 +7503,7 @@ dependencies = [
 name = "vektor-app"
 version = "0.1.0"
 dependencies = [
+ "block2",
  "futures",
  "gpui",
  "hex",

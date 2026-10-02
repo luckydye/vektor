@@ -1,10 +1,18 @@
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    path::PathBuf,
+    rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use futures::{StreamExt, channel::mpsc};
 use gpui::{
-    Context, FocusHandle, IntoElement, KeyDownEvent, MouseButton, Render, SharedString, Window,
-    actions, canvas, div, prelude::*, rgb,
+    App, Bounds, Context, DispatchPhase, FocusHandle, Global, IntoElement, KeyDownEvent,
+    MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
+    TitlebarOptions, Window, WindowBounds, WindowHandle, WindowOptions, actions, canvas, div,
+    point, prelude::*, px, rgb, size,
 };
+use objc2::rc::Retained;
+use objc2_app_kit::NSEvent;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::{Origin, Url};
@@ -17,9 +25,11 @@ use wry::{
 use crate::{
     Paste,
     find_bar::FindBar,
-    mounts::{MountConfig, Mounts, is_plain_name, load, mountpoint, support_dir, write},
+    geolocation,
+    mounts::{MountConfig, Mounts, is_plain_name, mountpoint, support_dir, write},
     palette::Palette,
-    tab_bar::{TabBar, TabLabel},
+    tab_bar::{self, TabBar, TabLabel},
+    titlebar::ns_window,
 };
 
 actions!(
@@ -144,10 +154,12 @@ const CHROME_COLOR_SCRIPT: &str = r##"
 }
 "##;
 
-/// Webview callbacks fire outside gpui's update cycle, so they are funnelled through a channel.
+/// Webview callbacks fire outside gpui's update cycle, so they are funnelled through a channel
+/// and delivered to whichever window holds the tab by then.
 pub enum TabEvent {
     TitleChanged(u64, String),
-    OpenTab(String),
+    /// A link in the tab asked for a new tab, which opens in the same window.
+    OpenTab(u64, String),
     OpenExternal(String),
     LeftOrigin(u64, String),
     FindResult(u64, String),
@@ -190,9 +202,22 @@ pub enum PageMessage {
     },
 }
 
-/// The open tabs, restored on the next launch.
+pub struct TabEvents(pub mpsc::UnboundedSender<TabEvent>);
+
+impl Global for TabEvents {}
+
+/// Tab ids are unique across windows, so events still find a tab that moved to another window.
+static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(0);
+
+/// The open windows and their tabs, restored on the next launch.
 #[derive(Serialize, Deserialize, Default)]
 pub struct Session {
+    #[serde(default)]
+    pub windows: Vec<WindowSession>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WindowSession {
     pub tabs: Vec<String>,
     pub active: usize,
 }
@@ -235,81 +260,151 @@ pub struct Browser {
     pub origin: Origin,
     pub tabs: Vec<Tab>,
     pub active: usize,
-    pub next_id: u64,
-    pub events: mpsc::UnboundedSender<TabEvent>,
     /// Open while the find bar is shown.
     pub find: Option<FindState>,
     pub find_focus: FocusHandle,
     /// Secret of the browser sign-in in progress; only its hash ever leaves the app.
     pub sign_in_verifier: Option<String>,
+    /// Set while a tab of this window is being dragged.
+    pub drag: Option<TabDrag>,
+}
+
+pub struct TabDrag {
+    pub id: u64,
+    /// Where the pointer holds the tab, relative to the tab's top-left corner.
+    pub grab: Point<Pixels>,
+    /// The window the tab was torn off into; it follows the pointer until the drag ends.
+    pub torn: Option<WindowHandle<Browser>>,
+}
+
+/// Where a new window's tabs come from.
+pub enum TabSource {
+    Url(String),
+    /// A live tab moved over from another window, page state and all.
+    Moved(Tab),
+}
+
+pub fn browsers(cx: &App) -> Vec<WindowHandle<Browser>> {
+    cx.windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Browser>())
+        .collect()
+}
+
+pub fn window_options(bounds: Bounds<Pixels>, focus: bool) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            title: Some("Vektor".into()),
+            appears_transparent: true,
+            traffic_light_position: Some(point(px(18.), px(18.))),
+        }),
+        focus,
+        window_min_size: Some(size(px(480.), px(320.))),
+        is_movable: false,
+        ..Default::default()
+    }
+}
+
+pub fn open_browser(
+    url: String,
+    tabs: Vec<TabSource>,
+    active: usize,
+    options: WindowOptions,
+    cx: &mut App,
+) -> WindowHandle<Browser> {
+    cx.open_window(options, |window, cx| {
+        cx.new(|cx| {
+            let mut browser = Browser::new(url, window, cx);
+            for tab in tabs {
+                match tab {
+                    TabSource::Url(url) => browser.open_tab(&url, window, cx),
+                    TabSource::Moved(tab) => browser.adopt_tab(tab, window, cx),
+                }
+            }
+            browser.activate(active, cx);
+            browser
+        })
+    })
+    .expect("failed to open window")
+}
+
+/// Starts delivering webview callbacks to the windows holding their tabs.
+pub fn route_tab_events(cx: &mut App) {
+    let (events, mut receiver) = mpsc::unbounded();
+    cx.set_global(TabEvents(events));
+    cx.spawn(async move |cx| {
+        while let Some(event) = receiver.next().await {
+            cx.update(|cx| deliver(event, cx))
+                .expect("app quit while delivering a tab event");
+        }
+    })
+    .detach();
+}
+
+fn deliver(event: TabEvent, cx: &mut App) {
+    let id = match &event {
+        TabEvent::OpenExternal(url) => return open_external(url, cx),
+        TabEvent::TitleChanged(id, _)
+        | TabEvent::OpenTab(id, _)
+        | TabEvent::LeftOrigin(id, _)
+        | TabEvent::FindResult(id, _)
+        | TabEvent::Page(id, _) => *id,
+    };
+    // Events can land after their tab was closed.
+    let Some(browser) = browsers(cx).into_iter().find(|browser| {
+        browser
+            .read(cx)
+            .is_ok_and(|browser| browser.tabs.iter().any(|tab| tab.id == id))
+    }) else {
+        return;
+    };
+    browser
+        .update(cx, |this, window, cx| match event {
+            TabEvent::OpenExternal(_) => unreachable!("handled above"),
+            TabEvent::TitleChanged(id, title) => this.set_title(id, title, cx),
+            TabEvent::OpenTab(_, url) => this.open_tab(&url, window, cx),
+            TabEvent::LeftOrigin(id, url) => this.return_to_origin(id, &url, cx),
+            TabEvent::FindResult(id, result) => this.set_find_result(id, &result, cx),
+            TabEvent::Page(id, message) => this.handle_page_message(id, message, cx),
+        })
+        .expect("browser window vanished while delivering a tab event");
+}
+
+/// Writes the session of every open window; quitting keeps the windows alive until this runs.
+pub fn save_session(cx: &App) {
+    let windows = browsers(cx)
+        .iter()
+        .map(|browser| browser.read(cx).expect("browser is readable").session())
+        .collect();
+    write(session_path(), &Session { windows });
 }
 
 impl Browser {
     pub fn new(url: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let (events, mut receiver) = mpsc::unbounded();
-        cx.spawn_in(window, async move |this, cx| {
-            while let Some(event) = receiver.next().await {
-                let updated = this.update_in(cx, |this, window, cx| match event {
-                    TabEvent::TitleChanged(id, title) => this.set_title(id, title, cx),
-                    TabEvent::OpenTab(url) => this.open_tab(&url, window, cx),
-                    TabEvent::OpenExternal(url) => open_external(&url, cx),
-                    TabEvent::LeftOrigin(id, url) => this.return_to_origin(id, &url, cx),
-                    TabEvent::FindResult(id, result) => this.set_find_result(id, &result, cx),
-                    TabEvent::Page(id, message) => this.handle_page_message(id, message, cx),
-                });
-                if updated.is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
         cx.observe_global::<Mounts>(|this, cx| this.broadcast_mounts(cx))
             .detach();
-        // Quitting keeps the window alive until here; closing it drops the browser first.
-        cx.on_app_quit(|this, _| {
-            this.save_session();
-            async {}
-        })
-        .detach();
         let this = cx.weak_entity();
         window.on_window_should_close(cx, move |_, cx| {
-            this.update(cx, |this, _| this.save_session())
+            this.update(cx, |this, cx| this.save_if_last(cx))
                 .expect("browser outlives its window");
             true
         });
 
-        let mut browser = Self {
+        Self {
             origin: Url::parse(&url).expect("VEKTOR_URL is not a URL").origin(),
             tabs: Vec::new(),
             active: 0,
-            next_id: 0,
-            events,
-            url: url.clone(),
+            url,
             find: None,
             find_focus: cx.focus_handle(),
             sign_in_verifier: None,
-        };
-        // Tabs saved against another `VEKTOR_URL` are not restored.
-        let session: Session = load(session_path());
-        let mut active = 0;
-        for (index, tab) in session.tabs.iter().enumerate() {
-            if is_internal(&browser.origin, tab) {
-                if index == session.active {
-                    active = browser.tabs.len();
-                }
-                browser.open_tab(tab, window, cx);
-            }
+            drag: None,
         }
-        if browser.tabs.is_empty() {
-            browser.open_tab(&url, window, cx);
-        } else {
-            browser.activate(active, cx);
-        }
-        browser
     }
 
-    pub fn save_session(&self) {
-        let session = Session {
+    pub fn session(&self) -> WindowSession {
+        WindowSession {
             tabs: self
                 .tabs
                 .iter()
@@ -323,20 +418,26 @@ impl Browser {
                 })
                 .collect(),
             active: self.active,
-        };
-        write(session_path(), &session);
+        }
+    }
+
+    /// Closing a window forgets its tabs, unless it is the last one.
+    pub fn save_if_last(&self, cx: &App) {
+        if browsers(cx).len() == 1 {
+            let windows = vec![self.session()];
+            write(session_path(), &Session { windows });
+        }
     }
 
     pub fn open_tab(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let id = self.next_id;
-        self.next_id += 1;
-
-        let titles = self.events.clone();
-        let opener = self.events.clone();
-        let loads = self.events.clone();
+        let id = NEXT_TAB_ID.fetch_add(1, Ordering::Relaxed);
+        let events = &cx.global::<TabEvents>().0;
+        let titles = events.clone();
+        let opener = events.clone();
+        let loads = events.clone();
+        let ipc = events.clone();
         let opener_origin = self.origin.clone();
         let load_origin = self.origin.clone();
-        let ipc = self.events.clone();
         let ipc_origin = self.origin.clone();
         let webview = WebViewBuilder::new()
             .with_url(url)
@@ -362,7 +463,7 @@ impl Browser {
             })
             .with_new_window_req_handler(move |url, _| {
                 let event = if is_internal(&opener_origin, &url) {
-                    TabEvent::OpenTab(url)
+                    TabEvent::OpenTab(id, url)
                 } else {
                     TabEvent::OpenExternal(url)
                 };
@@ -378,6 +479,7 @@ impl Browser {
             })
             .build_as_child(window)
             .expect("failed to create webview");
+        geolocation::install(&self.origin);
 
         self.tabs.push(Tab {
             id,
@@ -386,6 +488,14 @@ impl Browser {
             webview: Rc::new(webview),
             chrome: 0xffffff,
         });
+        self.activate(self.tabs.len() - 1, cx);
+    }
+
+    pub fn adopt_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
+        tab.webview
+            .reparent(Retained::as_ptr(&ns_window(window)).cast_mut())
+            .expect("failed to move webview");
+        self.tabs.push(tab);
         self.activate(self.tabs.len() - 1, cx);
     }
 
@@ -402,19 +512,93 @@ impl Browser {
             .focus()
             .expect("failed to focus webview");
         if self.find.is_some() {
-            self.search(0);
+            self.search(0, cx);
         }
         cx.notify();
     }
 
     pub fn close(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        self.tabs.remove(index);
+        self.remove_tab(index, cx);
         if self.tabs.is_empty() {
-            self.save_session();
+            self.save_if_last(cx);
             window.remove_window();
+        }
+    }
+
+    /// Takes the tab out of this window, keeping the active one selected unless it is the one leaving.
+    pub fn remove_tab(&mut self, index: usize, cx: &mut Context<Self>) -> Tab {
+        let tab = self.tabs.remove(index);
+        if !self.tabs.is_empty() {
+            let active = if index < self.active {
+                self.active - 1
+            } else {
+                self.active
+            };
+            self.activate(active.min(self.tabs.len() - 1), cx);
+        }
+        tab
+    }
+
+    pub fn start_drag(&mut self, index: usize, grab: Point<Pixels>) {
+        self.drag = Some(TabDrag {
+            id: self.tabs[index].id,
+            grab,
+            torn: None,
+        });
+    }
+
+    /// Pulling a tab out of the tab bar moves it into a window of its own under the pointer.
+    pub fn drag_moved(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let drag = self.drag.as_ref().expect("no tab is being dragged");
+        if let Some(torn) = drag.torn {
+            let grab = drag.grab;
+            torn.update(cx, |_, window, _| follow_pointer(grab, window))
+                .expect("torn-off window closed mid-drag");
             return;
         }
-        self.activate(self.active.min(self.tabs.len() - 1), cx);
+        let viewport = window.viewport_size();
+        let in_bar = (px(-24.)..px(72.)).contains(&position.y)
+            && (px(0.)..viewport.width).contains(&position.x);
+        if in_bar || self.tabs.len() == 1 {
+            return;
+        }
+        let index = self
+            .tabs
+            .iter()
+            .position(|tab| tab.id == drag.id)
+            .expect("dragged tab vanished");
+        let grab = drag.grab;
+        let tab = self.remove_tab(index, cx);
+        // The drag goes on in the new window, so this window's preview and drop targets end here.
+        cx.stop_active_drag(window);
+        let bounds = Bounds::new(point(px(0.), px(0.)), window.bounds().size);
+        let torn = open_browser(
+            self.url.clone(),
+            vec![TabSource::Moved(tab)],
+            0,
+            window_options(bounds, false),
+            cx,
+        );
+        torn.update(cx, |_, window, _| follow_pointer(grab, window))
+            .expect("torn-off window closed while opening");
+        self.drag
+            .as_mut()
+            .expect("drag ended while tearing off")
+            .torn = Some(torn);
+    }
+
+    pub fn end_drag(&mut self, cx: &mut Context<Self>) {
+        let drag = self.drag.take().expect("no tab is being dragged");
+        if let Some(torn) = drag.torn {
+            torn.update(cx, |_, window, _| window.activate_window())
+                .expect("torn-off window closed mid-drag");
+        }
+        cx.notify();
     }
 
     pub fn move_tab(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
@@ -578,7 +762,7 @@ impl Browser {
             .focus_parent()
             .expect("failed to focus find bar");
         window.focus(&self.find_focus);
-        self.search(0);
+        self.search(0, cx);
         cx.notify();
     }
 
@@ -598,16 +782,16 @@ impl Browser {
 
     pub fn edit_find(&mut self, edit: impl FnOnce(&mut String), cx: &mut Context<Self>) {
         edit(&mut self.find.as_mut().expect("find bar is closed").query);
-        self.search(0);
+        self.search(0, cx);
         cx.notify();
     }
 
     /// `step` moves between matches; 0 re-runs the query in place.
-    pub fn search(&self, step: i32) {
+    pub fn search(&self, step: i32, cx: &App) {
         let find = self.find.as_ref().expect("find bar is closed");
         let tab = &self.tabs[self.active];
         let id = tab.id;
-        let events = self.events.clone();
+        let events = cx.global::<TabEvents>().0.clone();
         // Rust's debug escaping of a string is a valid JavaScript string literal.
         let script = format!("__vektorFind({:?}, {step})", find.query);
         tab.webview
@@ -667,8 +851,18 @@ impl Browser {
     }
 }
 
+/// Places a torn-off window so its tab sits under the pointer where the tab was grabbed.
+fn follow_pointer(grab: Point<Pixels>, window: &Window) {
+    let tab = tab_bar::first_tab_origin();
+    // AppKit's screen coordinates grow upwards.
+    let mut origin = NSEvent::mouseLocation();
+    origin.x -= f64::from(f32::from(tab.x + grab.x));
+    origin.y += f64::from(f32::from(tab.y + grab.y));
+    ns_window(window).setFrameTopLeftPoint(origin);
+}
+
 /// Only web and mail links leave the app; other schemes could launch arbitrary local apps.
-pub fn open_external(url: &str, cx: &mut Context<Browser>) {
+pub fn open_external(url: &str, cx: &App) {
     if Url::parse(url).is_ok_and(|url| matches!(url.scheme(), "http" | "https" | "mailto")) {
         cx.open_url(url);
     }
@@ -679,6 +873,7 @@ impl Render for Browser {
         let active = self.tabs[self.active].webview.clone();
         let palette = Palette::new(self.tabs[self.active].chrome);
         let entity = cx.entity();
+        let dragging = self.drag.is_some();
 
         div()
             .size_full()
@@ -703,13 +898,13 @@ impl Render for Browser {
             .on_action(cx.listener(|this, _: &Find, window, cx| this.open_find(window, cx)))
             .on_action(
                 cx.listener(|this, _: &FindNext, window, cx| match this.find {
-                    Some(_) => this.search(1),
+                    Some(_) => this.search(1, cx),
                     None => this.open_find(window, cx),
                 }),
             )
             .on_action(
                 cx.listener(|this, _: &FindPrevious, window, cx| match this.find {
-                    Some(_) => this.search(-1),
+                    Some(_) => this.search(-1, cx),
                     None => this.open_find(window, cx),
                 }),
             )
@@ -745,6 +940,15 @@ impl Render for Browser {
                 on_move: Rc::new({
                     let entity = entity.clone();
                     move |from, to, _, cx| entity.update(cx, |this, cx| this.move_tab(from, to, cx))
+                }),
+                on_drag_start: Rc::new({
+                    let entity = entity.clone();
+                    move |index, grab, _, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.start_drag(index, grab);
+                            cx.notify();
+                        })
+                    }
                 }),
                 on_new: Rc::new({
                     let entity = entity.clone();
@@ -786,11 +990,11 @@ impl Render for Browser {
                             palette,
                             on_previous: Rc::new({
                                 let entity = entity.clone();
-                                move |_, cx| entity.read(cx).search(-1)
+                                move |_, cx| entity.read(cx).search(-1, cx)
                             }),
                             on_next: Rc::new({
                                 let entity = entity.clone();
-                                move |_, cx| entity.read(cx).search(1)
+                                move |_, cx| entity.read(cx).search(1, cx)
                             }),
                             on_dismiss: Rc::new({
                                 let entity = entity.clone();
@@ -818,7 +1022,26 @@ impl Render for Browser {
                             })
                             .expect("failed to position webview");
                     },
-                    |_, _, _, _| {},
+                    move |_, _, window, _| {
+                        if !dragging {
+                            return;
+                        }
+                        // Registered for the whole window, so the drag is followed past its edges.
+                        let mover = entity.clone();
+                        window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
+                            if phase == DispatchPhase::Capture {
+                                mover.update(cx, |this, cx| {
+                                    this.drag_moved(event.position, window, cx)
+                                });
+                            }
+                        });
+                        let ender = entity.clone();
+                        window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                            if phase == DispatchPhase::Capture {
+                                ender.update(cx, |this, cx| this.end_drag(cx));
+                            }
+                        });
+                    },
                 )
                 .flex_1()
                 .size_full(),

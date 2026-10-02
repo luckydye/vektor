@@ -41,18 +41,18 @@ export function RecentDocuments(props: Props) {
         </a>
       </div>
 
-      <div class="min-h-48">
+      <div class="min-h-40">
         <Show
           when={!loading()}
           fallback={
             <div class="flex h-full overflow-hidden">
               <Index each={Array.from({ length: count })}>
                 {() => (
-                  <div class="w-60 flex-none pr-4">
-                    <div class="aspect-video animate-pulse rounded-xl bg-skeleton" />
-                    <div class="mt-3 space-y-2">
+                  <div class="w-48 flex-none pr-3">
+                    <div class="aspect-video animate-pulse rounded-lg bg-skeleton" />
+                    <div class="mt-2 space-y-1.5">
                       <div class="h-3 w-20 animate-pulse rounded bg-skeleton" />
-                      <div class="h-5 w-full animate-pulse rounded bg-skeleton" />
+                      <div class="h-4 w-full animate-pulse rounded bg-skeleton" />
                       <div class="h-3 w-3/4 animate-pulse rounded bg-skeleton" />
                     </div>
                   </div>

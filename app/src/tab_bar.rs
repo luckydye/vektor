@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Context, ElementId, IntoElement, MouseButton, Render, RenderOnce, SharedString, Window,
-    div, prelude::*, px, rgba, svg,
+    App, Context, ElementId, IntoElement, MouseButton, Pixels, Point, Render, RenderOnce,
+    SharedString, Window, div, point, prelude::*, px, rgba, svg,
 };
 
 use crate::{palette::Palette, titlebar};
@@ -23,6 +23,8 @@ pub struct TabBar {
     pub on_close: Rc<dyn Fn(usize, &mut Window, &mut App)>,
     /// Moves the tab at the first index to the second.
     pub on_move: Rc<dyn Fn(usize, usize, &mut Window, &mut App)>,
+    /// A tab started being dragged, held at the given point within it.
+    pub on_drag_start: Rc<dyn Fn(usize, Point<Pixels>, &mut Window, &mut App)>,
     pub on_new: Rc<dyn Fn(&mut Window, &mut App)>,
 }
 
@@ -34,10 +36,12 @@ impl RenderOnce for TabBar {
             let on_select = self.on_select.clone();
             let on_close = self.on_close.clone();
             let on_move = self.on_move.clone();
+            let on_drag_start = self.on_drag_start.clone();
             let dragged = DraggedTab {
                 index,
                 title: tab.title.clone(),
                 palette,
+                grab: Point::default(),
             };
 
             div()
@@ -68,7 +72,14 @@ impl RenderOnce for TabBar {
                     cx.stop_propagation();
                     on_select(index, window, cx);
                 })
-                .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+                .on_drag(dragged, move |dragged, grab, window, cx| {
+                    on_drag_start(dragged.index, grab, window, cx);
+                    let dragged = DraggedTab {
+                        grab,
+                        ..dragged.clone()
+                    };
+                    cx.new(|_| dragged)
+                })
                 .drag_over::<DraggedTab>(move |tab, _, _, _| tab.bg(palette.hover))
                 .on_drop(move |dragged: &DraggedTab, window, cx| {
                     on_move(dragged.index, index, window, cx)
@@ -147,17 +158,28 @@ impl RenderOnce for TabBar {
     }
 }
 
+/// Where the first tab sits in a windowed (non-fullscreen) tab bar.
+pub fn first_tab_origin() -> Point<Pixels> {
+    point(px(94.), px(8.))
+}
+
 /// The tab being dragged, rendered under the cursor as the active pill.
 #[derive(Clone)]
 pub struct DraggedTab {
     pub index: usize,
     pub title: SharedString,
     pub palette: Palette,
+    /// Where the pointer holds the tab, relative to its top-left corner.
+    pub grab: Point<Pixels>,
 }
 
 impl Render for DraggedTab {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        // The webview covers everything below the tab bar, so the preview stays level with it.
+        let top = window.mouse_position().y - self.grab.y;
         div()
+            .relative()
+            .top(first_tab_origin().y - top)
             .flex()
             .items_center()
             .h_8()

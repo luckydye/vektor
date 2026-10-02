@@ -46,7 +46,7 @@ export function DocumentTeaser(props: Props) {
       attr:data-document-type={props.doc.type ?? undefined}
       attr:data-space-id={currentSpace()?.id}
       attr:data-document-url={spacePath(currentSpace()?.slug, `/doc/${props.doc.slug}`)}
-      class="block w-60 flex-none pr-4 [&[data-dragging]]:opacity-50"
+      class="block w-48 flex-none pr-3 [&[data-dragging]]:opacity-50"
     >
       {/* biome-ignore lint/a11y/useValidAnchor: href is computed. */}
       <a
@@ -57,12 +57,12 @@ export function DocumentTeaser(props: Props) {
         rel={props.doc.fileUrl ? "noopener noreferrer" : undefined}
         class="group block"
       >
-        <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl border border-neutral-100 bg-neutral-50">
+        <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-neutral-100 bg-neutral-50">
           <Show
             when={headerImage()}
             fallback={
               <Icon
-                class="h-10 w-10 text-neutral-300"
+                class="h-8 w-8 text-neutral-300"
                 name={documentTypeIcon(props.doc.type)}
               />
             }
@@ -76,7 +76,7 @@ export function DocumentTeaser(props: Props) {
             )}
           </Show>
           <Show when={tags().length > 0}>
-            <div class="absolute right-3 bottom-3 left-3 flex min-w-0 max-w-full gap-1.5">
+            <div class="absolute right-2 bottom-2 left-2 flex min-w-0 max-w-full gap-1.5">
               <For each={tags().slice(0, 1)}>
                 {(tag) => (
                   <span
@@ -96,16 +96,16 @@ export function DocumentTeaser(props: Props) {
           </Show>
         </div>
 
-        <div class="mt-3">
-          <p class="mb-1 font-semibold text-neutral-500 text-size-extra-small tabular-nums">
+        <div class="mt-2">
+          <p class="mb-0.5 font-semibold text-neutral-500 text-size-extra-small tabular-nums">
             {formatDate(props.doc.updatedAt, lang)}
           </p>
-          <h4 class="line-clamp-3 font-bold text-primary-700 text-size-medium italic leading-snug transition-colors group-hover:text-primary-500">
+          <h4 class="line-clamp-2 font-bold text-primary-700 text-size-small italic leading-snug transition-colors group-hover:text-primary-500">
             {docTitle(props.doc)}
           </h4>
           <Show when={tags().length > 0}>
             <p
-              class="mt-1.5 line-clamp-2 min-w-0 break-words text-neutral-400 text-size-small"
+              class="mt-1 line-clamp-2 min-w-0 break-words text-neutral-400 text-size-small"
               title={tags().join(" | ")}
             >
               {tags().join(" | ")}

@@ -138,7 +138,7 @@ export function SpaceActivityFeed(props: Props) {
       </Show>
 
       <Show when={!error() && isLoading()}>
-        <div class="@container animate-pulse space-y-4">
+        <div class="@container animate-pulse space-y-3">
           <Index each={[1, 2, 3]}>
             {(i) => (
               <>
@@ -150,12 +150,12 @@ export function SpaceActivityFeed(props: Props) {
                 </Show>
 
                 <div class="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10">
-                  <div class="px-3.5 py-3">
-                    <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
+                  <div class="px-3 py-2">
+                    <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2">
                       <div class="flex min-w-0 items-center gap-3">
-                        <div class="h-10 w-10 shrink-0 rounded-full bg-skeleton-strong" />
+                        <div class="h-8 w-8 shrink-0 rounded-full bg-skeleton-strong" />
 
-                        <div class="min-w-0 space-y-2">
+                        <div class="min-w-0 space-y-1.5">
                           <div class="flex items-center gap-2">
                             <div class="h-4 w-20 rounded-sm bg-skeleton-strong" />
                             <div class="h-4 w-16 rounded-sm bg-skeleton" />
@@ -166,7 +166,7 @@ export function SpaceActivityFeed(props: Props) {
 
                       <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
                         <Icon
-                          class="h-8 w-8 shrink-0 rounded-md bg-skeleton p-2 text-neutral-500"
+                          class="h-7 w-7 shrink-0 rounded-md bg-skeleton p-1.5 text-neutral-500"
                           name="document"
                         />
                         <div class="h-4 w-32 rounded-sm bg-skeleton" />
@@ -190,7 +190,7 @@ export function SpaceActivityFeed(props: Props) {
       </Show>
 
       <Show when={!error() && !isLoading() && activities().length > 0}>
-        <div class="@container min-h-0 flex-1 space-y-4 overflow-y-auto">
+        <div class="@container min-h-0 flex-1 space-y-3 overflow-y-auto">
           <For each={activityGroups()}>
             {(group) => (
               <>
@@ -207,12 +207,12 @@ export function SpaceActivityFeed(props: Props) {
                         href={
                           batch.isPermission ? undefined : getDocumentHref(batch.docId)
                         }
-                        class="block px-3.5 py-3 transition-colors hover:bg-neutral-50"
+                        class="block px-3 py-2 transition-colors hover:bg-neutral-50"
                       >
-                        <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
+                        <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2">
                           <div class="flex min-w-0 items-center gap-3">
                             <vektor-avatar
-                              size="medium"
+                              size="small"
                               attr:user-id={group.actor.userId ?? undefined}
                               attr:app={group.actor.app ?? undefined}
                               prop:user={getUser(group.actor.userId)}
@@ -234,7 +234,7 @@ export function SpaceActivityFeed(props: Props) {
                                   {batch.action}
                                 </span>
                               </div>
-                              <div class="mt-0.5 font-medium text-neutral-500 text-size-small">
+                              <div class="font-medium text-neutral-500 text-size-small">
                                 {getBatchSummary(batch, lang)}
                               </div>
                             </div>
@@ -242,7 +242,7 @@ export function SpaceActivityFeed(props: Props) {
 
                           <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
                             <Icon
-                              class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
+                              class="h-7 w-7 shrink-0 rounded-md bg-neutral-100 p-1.5 text-neutral-500"
                               name={batch.isPermission ? "users" : "document"}
                             />
                             <div class="min-w-0 truncate text-neutral-700 text-size-medium">
