@@ -231,12 +231,18 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
     );
     try {
       await discord("POST", `/channels/${message.channel_id}/typing`);
-      const [history, spaceList] = await Promise.all([
-        channelHistory(message),
-        agentSpaces(message),
-      ]);
+      const spaceList = await agentSpaces(message);
       const [primary] = spaceList;
       if (!primary) throw new Error("No space uses this bot any more");
+      // Only people with a Vektor account behind them get answers.
+      if (spaceList.every((space) => !space.linkedUserId)) {
+        await reply(
+          message,
+          "I only answer people who linked their Discord account in Vektor: Settings → Integrations → Discord.",
+        );
+        return;
+      }
+      const history = await channelHistory(message);
       // Pays with the author's own model connection where they linked Discord.
       const provider = await linkedAIProvider(spaceList);
       const result = await runAgentInWorker({
