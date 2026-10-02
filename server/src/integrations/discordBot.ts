@@ -7,7 +7,7 @@
 import { appPrincipal, type Attribution } from "#acl/apps.ts";
 import { runAgentInWorker } from "#agent/agent.ts";
 import type { AgentSpace } from "#agent/tools.ts";
-import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
+import type { AIProvider, ChatImage, ChatMessage } from "#api/provider/types.ts";
 import { getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -47,6 +47,11 @@ const KEY_ARGUMENTS = [
   "command",
 ];
 const MAX_FOOTER_LENGTH = 400;
+const IMAGE_MEDIA_TYPES = new Set<string>(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+// Discord's attachment links expire after a day; older images are left out rather than refetched.
+const MAX_IMAGE_AGE_MS = 12 * 60 * 60 * 1000;
+const DISCORD_EPOCH = 1420070400000n;
 
 interface DiscordMessage {
   id: string;
@@ -55,6 +60,7 @@ interface DiscordMessage {
   content: string;
   author: { id: string; username: string; global_name?: string | null; bot?: boolean };
   mentions: Array<{ id: string }>;
+  attachments?: Array<{ url: string; content_type?: string; size: number }>;
 }
 
 interface GatewayPayload {
@@ -76,6 +82,31 @@ export function splitDiscordMessage(text: string): string[] {
   }
   parts.push(rest);
   return parts;
+}
+
+/** The images of `message` a model can look at. */
+function imageAttachments(message: DiscordMessage) {
+  return (message.attachments ?? []).filter(
+    (attachment) =>
+      IMAGE_MEDIA_TYPES.has(attachment.content_type ?? "") &&
+      attachment.size <= MAX_IMAGE_BYTES,
+  );
+}
+
+/** Downloads the images of `message`, when it is recent enough for its links to still work. */
+async function messageImages(message: DiscordMessage): Promise<ChatImage[]> {
+  const sentAt = Number((BigInt(message.id) >> 22n) + DISCORD_EPOCH);
+  if (Date.now() - sentAt > MAX_IMAGE_AGE_MS) return [];
+  return await Promise.all(
+    imageAttachments(message).map(async (attachment) => {
+      const res = await fetch(attachment.url);
+      if (!res.ok) throw new Error(`Discord image download failed (${res.status})`);
+      return {
+        mediaType: attachment.content_type as ChatImage["mediaType"],
+        data: Buffer.from(await res.arrayBuffer()).toString("base64"),
+      };
+    }),
+  );
 }
 
 /** Whether snowflake `a` is older than `b`; ids are time-ordered. */
@@ -184,7 +215,14 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
       .replaceAll(`<@${botId}>`, "")
       .replaceAll(`<@!${botId}>`, "")
       .trim();
-    return text ? `@${message.author.username}: ${text}` : null;
+    if (!text && imageAttachments(message).length === 0) return null;
+    return `@${message.author.username}:${text ? ` ${text}` : ""}`;
+  }
+
+  /** `message` as the agent reads it, with its images. */
+  async function userMessage(message: DiscordMessage, line: string): Promise<ChatMessage> {
+    const images = await messageImages(message);
+    return { role: "user", content: line, ...(images.length > 0 ? { images } : {}) };
   }
 
   /**
@@ -244,12 +282,14 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
     const earlier = entry.messages
       .filter((cached) => isBefore(cached.id, message.id))
       .slice(-HISTORY_LIMIT);
-    return earlier.flatMap((entry): ChatMessage[] => {
-      if (entry.author.id === botId)
-        return [{ role: "assistant", content: entry.content }];
-      const line = authorLine(entry);
-      return line ? [{ role: "user", content: line }] : [];
-    });
+    const history = await Promise.all(
+      earlier.map((entry): ChatMessage | null | Promise<ChatMessage> => {
+        if (entry.author.id === botId) return { role: "assistant", content: entry.content };
+        const line = authorLine(entry);
+        return line ? userMessage(entry, line) : null;
+      }),
+    );
+    return history.filter((entry): entry is ChatMessage => entry !== null);
   }
 
   /**
@@ -301,9 +341,10 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
     void discord("POST", `/channels/${message.channel_id}/typing`).catch(() => {});
     try {
       // History alongside the space lookups; an unlinked author's simply goes unused.
-      const [spaceList, history] = await Promise.all([
+      const [spaceList, history, current] = await Promise.all([
         agentSpaces(message),
         channelHistory(message),
+        userMessage(message, line),
       ]);
       const [primary] = spaceList;
       if (!primary) throw new Error("No space uses this bot any more");
@@ -321,7 +362,7 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
         chatId: `discord-${message.channel_id}`,
         messages: [
           ...history,
-          { role: "user", content: line },
+          current,
           { role: "user", content: discordContext(spaceList) },
         ],
         apiUrl: getLocalOrigin(),
