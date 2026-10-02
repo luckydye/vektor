@@ -1,7 +1,7 @@
 mod browser;
 mod find_bar;
-mod geolocation;
 mod keychain;
+mod location;
 mod mounts;
 mod palette;
 mod tab_bar;
@@ -143,6 +143,7 @@ fn main() {
         let origin = url::Url::parse(&url).expect("VEKTOR_URL is not a URL");
         mounts::init(&origin, cx);
         route_tab_events(cx);
+        location::init(cx);
 
         // Tabs saved against another `VEKTOR_URL` are not restored.
         let origin = origin.origin();

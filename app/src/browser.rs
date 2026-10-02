@@ -25,7 +25,7 @@ use wry::{
 use crate::{
     Paste,
     find_bar::FindBar,
-    geolocation,
+    location::{self, LOCATION_SCRIPT},
     mounts::{MountConfig, Mounts, is_plain_name, mountpoint, support_dir, write},
     palette::Palette,
     tab_bar::{self, TabBar, TabLabel},
@@ -164,6 +164,8 @@ pub enum TabEvent {
     LeftOrigin(u64, String),
     FindResult(u64, String),
     Page(u64, PageMessage),
+    /// The app's answer to something the page asked for.
+    Script(u64, String),
 }
 
 /// Messages a page sends with `window.ipc.postMessage(JSON.stringify(message))`.
@@ -199,6 +201,10 @@ pub enum PageMessage {
     },
     RevealMount {
         space_id: String,
+    },
+    /// `navigator.geolocation.getCurrentPosition`, answered through `__vektorLocation`.
+    LocationRequest {
+        id: u64,
     },
 }
 
@@ -349,7 +355,8 @@ fn deliver(event: TabEvent, cx: &mut App) {
         | TabEvent::OpenTab(id, _)
         | TabEvent::LeftOrigin(id, _)
         | TabEvent::FindResult(id, _)
-        | TabEvent::Page(id, _) => *id,
+        | TabEvent::Page(id, _)
+        | TabEvent::Script(id, _) => *id,
     };
     // Events can land after their tab was closed.
     let Some(browser) = browsers(cx).into_iter().find(|browser| {
@@ -367,6 +374,7 @@ fn deliver(event: TabEvent, cx: &mut App) {
             TabEvent::LeftOrigin(id, url) => this.return_to_origin(id, &url, cx),
             TabEvent::FindResult(id, result) => this.set_find_result(id, &result, cx),
             TabEvent::Page(id, message) => this.handle_page_message(id, message, cx),
+            TabEvent::Script(id, script) => this.evaluate(id, &script),
         })
         .expect("browser window vanished while delivering a tab event");
 }
@@ -449,6 +457,7 @@ impl Browser {
             .with_initialization_script(OVERSCROLL_SCRIPT)
             .with_initialization_script(FIND_SCRIPT)
             .with_initialization_script(CHROME_COLOR_SCRIPT)
+            .with_initialization_script(LOCATION_SCRIPT)
             .with_ipc_handler(move |request: Request<String>| {
                 if !is_internal(&ipc_origin, &request.uri().to_string()) {
                     return;
@@ -479,7 +488,6 @@ impl Browser {
             })
             .build_as_child(window)
             .expect("failed to create webview");
-        geolocation::install(&webview, &self.origin);
 
         self.tabs.push(Tab {
             id,
@@ -660,6 +668,7 @@ impl Browser {
             PageMessage::Unmount { space_id } => {
                 cx.update_global::<Mounts, _>(|mounts, _| mounts.unmount(&space_id))
             }
+            PageMessage::LocationRequest { id: request } => location::request(id, request, cx),
             PageMessage::RevealMount { space_id } => {
                 if let Some(entry) = cx.global::<Mounts>().entries.get(&space_id) {
                     cx.reveal_path(&mountpoint(&entry.config));
@@ -728,10 +737,14 @@ impl Browser {
     }
 
     pub fn broadcast_mounts_to(&self, id: u64, cx: &Context<Self>) {
+        self.evaluate(id, &self.mounts_script(cx));
+    }
+
+    pub fn evaluate(&self, id: u64, script: &str) {
         if let Some(tab) = self.tabs.iter().find(|tab| tab.id == id) {
             tab.webview
-                .evaluate_script(&self.mounts_script(cx))
-                .expect("failed to send mounts to page");
+                .evaluate_script(script)
+                .expect("failed to run script in page");
         }
     }
 

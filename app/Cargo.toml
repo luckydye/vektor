@@ -8,7 +8,6 @@ name = "vektor-app"
 path = "src/main.rs"
 
 [dependencies]
-block2 = "0.6"
 futures = "0.3"
 # Compiles shaders at launch, so building needs no Metal toolchain.
 gpui = { version = "0.2.2", features = ["runtime_shaders"] }
@@ -16,6 +15,8 @@ hex = "0.4"
 lfs = { path = "../lfs" }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSEvent", "NSResponder", "NSView", "NSWindow"] }
+objc2-core-location = { version = "0.3", default-features = false, features = ["std", "CLLocationManager", "CLLocationManagerDelegate", "CLLocation", "CLError"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSError", "NSObject"] }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
