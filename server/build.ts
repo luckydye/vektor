@@ -218,9 +218,10 @@ const libsqlNativeAddonPath = getLibsqlNativeAddonPath();
 
 const result = await Bun.build({
   // A worker is its own entrypoint: Bun bundles it separately into the
-  // executable and resolves `new Worker(new URL("./worker.ts", import.meta.url))`
-  // in agent/agent.ts to it. Unlike the serialization worker it needs no
-  // pre-bundling, and its native js-exec addon is embedded like the server's.
+  // executable at `$bunfs/root/src/agent/worker.ts`, its path from this
+  // directory, which agent/agent.ts spawns. Unlike the serialization worker it
+  // needs no pre-bundling, and its native js-exec addon is embedded like the
+  // server's.
   entrypoints: ["./vektor.ts", "./src/agent/worker.ts"],
   compile: true,
   // @ts-expect-error — `outfile` is valid alongside `compile` at runtime (see

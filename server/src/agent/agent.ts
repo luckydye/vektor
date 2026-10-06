@@ -44,9 +44,13 @@ const reservations = new Map<number, SettleAITokens>();
 
 function getWorker(): Worker {
   if (worker) return worker;
-  const spawned = new Worker(new URL("./worker.ts", import.meta.url), {
-    type: "module",
-  });
+  // In the compiled binary every module's import.meta.url is the binary's own
+  // (`$bunfs/root/vektor`), and build.ts embeds the worker entrypoint under its
+  // path from the build root.
+  const workerUrl = import.meta.url.includes("$bunfs")
+    ? new URL("./src/agent/worker.ts", import.meta.url)
+    : new URL("./worker.ts", import.meta.url);
+  const spawned = new Worker(workerUrl, { type: "module" });
   spawned.addEventListener("message", (event: MessageEvent<AgentWorkerResponse>) =>
     handleWorkerMessage(spawned, event.data),
   );
