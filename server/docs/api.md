@@ -244,7 +244,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET/POST | `/spaces/:spaceId/workflows/schedules` | List / create cron schedules for workflow documents |
 | GET/PATCH/DELETE | `/spaces/:spaceId/workflows/schedules/:scheduleId` | Read / update / delete a workflow schedule |
 | GET | `/spaces/:spaceId/ai-chat/sessions` | List the caller's AI chat sessions |
-| GET/PUT/DELETE | `/spaces/:spaceId/ai-chat/sessions/:sessionId` | Read / save / delete an AI chat session |
+| GET/DELETE | `/spaces/:spaceId/ai-chat/sessions/:sessionId` | Read / delete an AI chat session |
 | GET/POST | `/spaces/:spaceId/documents` | List documents (with filters) / create a document |
 | GET/PUT/PATCH/DELETE/POST | `/spaces/:spaceId/documents/:documentId` | Read / replace content / patch metadata / archive-delete / create revision |
 | GET | `/spaces/:spaceId/documents/:documentId/access` | Everyone who can reach the document, and the grant that gets them there |
@@ -262,28 +262,33 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 
 ### `POST /chat/acp`
 
-Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
+Agent Control Protocol JSON-RPC 2.0 endpoint for agent sessions. Sessions live on
+the server; the chat UI and job runs (`agentPrompt`) are both clients of them.
 
 - **Auth**: session, access token or job token, authenticated as viewer-or-above on the
-  space named in `params.spaceId`. A job-to-job call presents `X-Job-Token` plus
-  `X-Space-Id`, which must match `params.spaceId` (else `400`); otherwise the server
-  mints a job token for the caller's identity.
-- **Body**: `{ jsonrpc: "2.0", id?, method, params }`. Supported `method`s:
-  - `session/prompt` — params: `sessionId` (string, required), `spaceId` (string,
-    required), `documentId?` (string), `additionalContext?` (string), `prompt`
-    (non-empty array whose first element has a `text: string` field),
-    `imageAttachments?` (array of `{ key, mediaType }` naming uploads in this space;
-    jpeg/png/gif/webp, ≤20MB each), `attachments?` (array of
-    `{ key, name, type, size }` for non-image files), `messages?` (conversation
-    history, honoured only for a user-less job token). Starts or reattaches to a live
-    agent turn keyed by `spaceId:userId:chatId`; the turn survives client disconnects.
-    For a caller with a user identity, conversation history, user profile and connected
-    OAuth providers are loaded from the DB and the user message is pre-saved before the
-    agent starts.
-  - `session/cancel` — params: `sessionId`, `spaceId` (both required). Aborts the
-    in-progress turn for that key.
+  space named in `params.spaceId`. A session belongs to a user, so a job token must
+  carry one (else `403`); a workflow run's token carries the user who started or
+  scheduled it.
+- **Body**: `{ jsonrpc: "2.0", id?, method, params }`. Every method takes `spaceId`
+  (string, required). Supported `method`s:
+  - `session/new` — params: `title` (non-empty string). Opens an empty session owned by
+    the caller; `source` is `"job"` under a job token, else `"chat"`.
+  - `session/prompt` — params: `sessionId` (string, required), `documentId?` (string),
+    `additionalContext?` (string), `timeZone?` (IANA name), `prompt` (non-empty array
+    whose first element has a `text: string` field), `imageAttachments?` (array of
+    `{ key, mediaType }` naming uploads in this space; jpeg/png/gif/webp, ≤20MB each),
+    `attachments?` (array of `{ key, name, type, size }` for non-image files). Starts a
+    turn on an existing session (`404` if the caller has none by that id, `409` while a
+    turn is running in it). The user message is saved before the agent starts; the turn
+    survives client disconnects.
+  - `session/load` — params: `sessionId`. Attaches to the session's running turn, or one
+    that finished in the last five minutes (`404` if there is none).
+  - `session/cancel` — params: `sessionId`. Aborts the running turn.
+- A turn still running when the server stops is closed with an error message on the
+  next start.
 - Any other `method` → `400`.
-- **Returns** (`session/prompt`): `text/event-stream` — replays buffered
+- **Returns** (`session/new`): `200 { jsonrpc, id, result: { sessionId } }`.
+- **Returns** (`session/prompt`, `session/load`): `text/event-stream` — replays buffered
   `session/update` notifications then streams new ones (`agent_message_chunk`,
   `generic` (`thinking`), `plan`, `tool_call`, `tool_call_update`), ending with a final
   JSON-RPC `result: { stopReason: "end_turn" }` or `error`, then `data: [DONE]`.
@@ -1938,8 +1943,10 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions"
     {
       "id": "chat_2026-08-17-1",
       "title": "Launch plan review",
+      "source": "chat",
       "createdAt": 1755410000000,
-      "updatedAt": 1755428400000
+      "updatedAt": 1755428400000,
+      "lastMessageRole": "assistant"
     }
   ]
 }
@@ -1951,43 +1958,6 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions"
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_2026-08-17-1"
-```
-
-### `PUT /spaces/:spaceId/ai-chat/sessions/:sessionId`
-
-- **Body**: full session object — `id` (must equal path param), `spaceId` (must
-  equal path param), `title` (non-empty string), `createdAt`/`updatedAt` (numbers),
-  `messages` (array), `conversationHistory` (array), `shellSnapshot?` (string or
-  null).
-- **Returns**: `200 { session }` (upsert).
-
-```bash
-curl -sS -X PUT -b "$COOKIE" -H "Content-Type: application/json" \
-  -d '{
-        "id": "chat_2026-08-17-1",
-        "spaceId": "'"$SPACE"'",
-        "title": "Launch plan review",
-        "createdAt": 1755410000000,
-        "updatedAt": 1755428400000,
-        "messages": [{ "role": "user", "content": "Summarise this", "timestamp": 1755428400000 }],
-        "conversationHistory": [{ "role": "user", "content": "Summarise this" }],
-        "shellSnapshot": null
-      }' \
-  "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_2026-08-17-1"
-```
-
-```json
-{
-  "session": {
-    "id": "chat_2026-08-17-1",
-    "title": "Launch plan review",
-    "createdAt": 1755410000000,
-    "updatedAt": 1755428400000,
-    "messages": [{ "role": "user", "content": "Summarise this", "timestamp": 1755428400000 }],
-    "conversationHistory": [{ "role": "user", "content": "Summarise this" }],
-    "shellSnapshot": null
-  }
-}
 ```
 
 ### `DELETE /spaces/:spaceId/ai-chat/sessions/:sessionId`

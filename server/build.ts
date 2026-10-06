@@ -217,7 +217,11 @@ console.log(`[native-embedding] embedding ${embeddingAddonFilename}`);
 const libsqlNativeAddonPath = getLibsqlNativeAddonPath();
 
 const result = await Bun.build({
-  entrypoints: ["./vektor.ts"],
+  // A worker is its own entrypoint: Bun bundles it separately into the
+  // executable and resolves `new Worker(new URL("./worker.ts", import.meta.url))`
+  // in agent/agent.ts to it. Unlike the serialization worker it needs no
+  // pre-bundling, and its native js-exec addon is embedded like the server's.
+  entrypoints: ["./vektor.ts", "./src/agent/worker.ts"],
   compile: true,
   // @ts-expect-error — `outfile` is valid alongside `compile` at runtime (see
   // Bun.build's own docs), but tsc's bundled bun-types doesn't reflect it.

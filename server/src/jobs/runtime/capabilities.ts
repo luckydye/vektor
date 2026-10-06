@@ -408,17 +408,24 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     }) as never,
 
     /**
-     * One turn with the ACP agent. The host streams it, so plan and tool-call
-     * lines reach the run log as they happen.
+     * One turn in an agent session, opening one unless `sessionId` names it.
+     * The host streams it, so plan and tool-call lines reach the run log as
+     * they happen.
      */
-    agentPrompt: ((text: unknown) =>
-      agentPrompt(String(text ?? ""), {
+    agentPrompt: ((text: unknown, options: unknown) => {
+      const sessionId = (options as { sessionId?: unknown } | undefined)?.sessionId;
+      if (sessionId !== undefined && typeof sessionId !== "string") {
+        throw new Error("agentPrompt: options.sessionId must be a string");
+      }
+      return agentPrompt(String(text ?? ""), {
         origin,
         spaceId,
         token,
+        sessionId,
         onLog,
         signal,
-      })) as never,
+      });
+    }) as never,
 
     // ── compute ──────────────────────────────────────────────────────────────
     hash: ((algorithm: unknown, data: unknown) =>

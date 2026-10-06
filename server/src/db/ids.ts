@@ -1,6 +1,7 @@
 const idPrefixes = {
   accessToken: "token",
   category: "category",
+  chatSession: "chat",
   comment: "comment",
   document: "doc",
   emailNotification: "email_notification",

@@ -12,13 +12,8 @@ import {
   callOpenAIResponses,
 } from "#api/provider/openaiCompatible.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
-import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
-import {
-  estimateModelInput,
-  estimateTokens,
-  reserveAITokens,
-} from "#db/space/aiUsage.ts";
+import { estimateModelInput, estimateTokens } from "#db/space/aiUsage.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
@@ -30,10 +25,7 @@ import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import { webSearch, webSearchTool } from "./webSearch.ts";
-import {
-  getIntegrationAgentSurface,
-  type IntegrationAgentCommand,
-} from "./integrations.ts";
+import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 
 export type AgentResult = {
   content: string;
@@ -49,6 +41,23 @@ export type AgentTurnSetup = {
   systemPrompt: string;
   tools: unknown[];
 };
+
+/** Settles a token reservation with what the call actually used. */
+export type SettleAITokens = (actualTokens?: number) => Promise<void>;
+
+/**
+ * What a turn needs from the main thread: the space databases and the job
+ * scheduler. The agent runs in a worker, which reaches these only through here.
+ */
+export interface AgentHost {
+  reserveAITokens(spaceId: string, inputTokens: number): Promise<SettleAITokens>;
+  runIntegrationCommand(request: {
+    command: IntegrationAgentCommand;
+    spaceId: string;
+    userId: string | null;
+    args: string[];
+  }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+}
 
 /** A failed turn, carrying the messages it produced before failing. */
 export class AgentTurnError extends Error {
@@ -67,6 +76,8 @@ export type AgentShellBootstrap = {
   integrationCommands?: IntegrationAgentCommand[];
   /** Whose credentials a contributed command's job runs under. */
   userId?: string | null;
+  /** Runs the contributed commands; required when there are any. */
+  host?: AgentHost;
 };
 
 export type AgentEvent =
@@ -189,16 +200,15 @@ export async function callModel(options: {
   signal?: AbortSignal;
   onText?: (text: string) => void | Promise<void>;
   onThinking?: (text: string) => void | Promise<void>;
+  /** Reserves the call's tokens against the space's weekly budget. */
+  reserveAITokens: (inputTokens: number) => Promise<SettleAITokens>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
   // The space's weekly budget caps the instance's own provider; an
   // integration's usage is billed to the user's account instead.
   if (options.provider.provider === "integration") return callModelProvider(options);
 
   const inputTokens = estimateModelInput(options.messages, options.tools);
-  const settle = await reserveAITokens(
-    await openSpaceStore(options.spaceId),
-    inputTokens,
-  );
+  const settle = await options.reserveAITokens(inputTokens);
   let output = "";
   let thinking = "";
   const trackedOptions = {
@@ -391,6 +401,7 @@ async function prepareAgentTurn(options: {
   timeZone?: string;
   jobToken: string;
   spaces?: AgentSpace[];
+  integrationSurface: IntegrationAgentSurface;
 }) {
   const {
     apiUrl,
@@ -430,10 +441,7 @@ async function prepareAgentTurn(options: {
     connectedProviders,
     spaces,
   };
-  const integrationSurface = await getIntegrationAgentSurface(
-    spaceId,
-    connectedProviders ?? [],
-  );
+  const { integrationSurface } = options;
   const vektorTools = await listVektorTools(mcpConfig);
   const vektorToolNames = new Set(vektorTools.map((tool) => tool.name));
   const tools = [
@@ -593,12 +601,18 @@ export async function runAgentPrompt(options: {
   jobToken: string;
   /** Every space the turn works in, `spaceId` included, when there are several. */
   spaces?: AgentSpace[];
+  /** What the connected integrations add; unset adds nothing. */
+  integrationSurface?: IntegrationAgentSurface;
+  /** Required unless `modelCaller` is given and no integration command is contributed. */
+  host?: AgentHost;
   bash?: Bash;
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   /** Test seam for deterministic provider responses. */
-  modelCaller?: typeof callModel;
+  modelCaller?: (
+    options: Omit<Parameters<typeof callModel>[0], "reserveAITokens">,
+  ) => ReturnType<typeof callModel>;
   /** Unset runs on the instance's provider. */
   provider?: AIProvider;
   /** Receives the turn's setup before its first model call, for the persisted history. */
@@ -607,9 +621,21 @@ export async function runAgentPrompt(options: {
   const { messages, spaceId, bash: providedBash, signal, onChunk, onEvent } = options;
 
   const provider = options.provider ?? getAIProvider();
-  const modelCaller = options.modelCaller ?? callModel;
+  const { host } = options;
+  const modelCaller =
+    options.modelCaller ??
+    ((callOptions: Omit<Parameters<typeof callModel>[0], "reserveAITokens">) => {
+      if (!host) throw new Error("runAgentPrompt needs a host to call the model");
+      return callModel({
+        ...callOptions,
+        reserveAITokens: (inputTokens) => host.reserveAITokens(spaceId, inputTokens),
+      });
+    });
 
-  const prepared = await prepareAgentTurn(options);
+  const prepared = await prepareAgentTurn({
+    ...options,
+    integrationSurface: options.integrationSurface ?? { instructions: [], commands: [] },
+  });
   const { turnContext, tools, mcpConfig, integrationSurface, vektorToolNames } = prepared;
   const systemPrompt = options.systemPrompt ?? prepared.systemPrompt;
   options.onSetup?.({ model: provider.model, systemPrompt, tools });
@@ -617,7 +643,7 @@ export async function runAgentPrompt(options: {
     providedBash ??
     createAgentShell(
       { current: mcpConfig },
-      { integrationCommands: integrationSurface.commands, userId: options.userId },
+      { integrationCommands: integrationSurface.commands, userId: options.userId, host },
     );
   // The turn context follows the input, so it is the first of the turn's own messages and persists with them.
   const agentMessages: ChatMessage[] = [
@@ -842,13 +868,16 @@ export function createAgentShell(
       htmlToCsvCommand,
       htmlTableToCsvCommand,
       uploadCommand(mcpConfigRef),
-      ...(bootstrap?.integrationCommands ?? []).map((command) =>
-        integrationCommand(
-          command,
-          mcpConfigRef.current.spaceId,
-          bootstrap?.userId ?? null,
-        ),
-      ),
+      ...(bootstrap?.integrationCommands ?? []).map((command) => {
+        if (!bootstrap?.host) {
+          throw new Error("Integration commands need a host to run their jobs");
+        }
+        return integrationCommand(command, {
+          host: bootstrap.host,
+          spaceId: mcpConfigRef.current.spaceId,
+          userId: bootstrap.userId ?? null,
+        });
+      }),
       extensionCommand(mcpConfigRef),
       curlCommand,
       jsExecCommand,

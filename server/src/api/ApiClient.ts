@@ -660,10 +660,14 @@ export interface AIChatMessage {
   }>;
 }
 
+/** Who opened a session: the chat UI, or a job such as a workflow run. */
+export type AIChatSessionSource = "chat" | "job";
+
 export interface AIChatSession {
   id: string;
   title: string;
   spaceId: string;
+  source: AIChatSessionSource;
   createdAt: number;
   updatedAt: number;
   messages: AIChatMessage[];
@@ -686,6 +690,7 @@ export interface AIChatSessionListEntry {
   id: string;
   title: string;
   spaceId: string;
+  source: AIChatSessionSource;
   createdAt: number;
   updatedAt: number;
   lastMessageRole: string | null;
@@ -2787,17 +2792,24 @@ export class ApiClient {
       return session;
     },
 
-    save: async (session: AIChatSession): Promise<void> => {
-      await this.apiFetch<{ session: AIChatSession }>(
+    /** Open a session on the server; it picks the id. */
+    create: async (spaceId: string, title: string): Promise<string> => {
+      const { result } = await this.apiFetch<{ result: { sessionId: string } }>(
         this.baseUrl,
-        `/api/v1/spaces/${encodeURIComponent(session.spaceId)}/ai-chat/sessions/${encodeURIComponent(session.id)}`,
+        "/api/v1/chat/acp",
         {
-          method: "PUT",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify(session),
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: crypto.randomUUID(),
+            method: "session/new",
+            params: { spaceId, title },
+          }),
         },
       );
+      return result.sessionId;
     },
 
     delete: async (spaceId: string, sessionId: string): Promise<void> => {

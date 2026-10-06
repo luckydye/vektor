@@ -30,7 +30,11 @@ export function useRecentChatSessions(limit: number) {
     },
     enabled: createMemo(() => !!currentSpaceId()),
   });
-  return createMemo(() => data()?.slice(0, limit));
+  return createMemo(() =>
+    data()
+      ?.filter((session) => session.source === "chat")
+      .slice(0, limit),
+  );
 }
 
 /** The list's view of a session we happen to hold in full. */
@@ -40,6 +44,7 @@ function toSummary(session: AIChatSession): AIChatSessionListEntry {
     id: session.id,
     title: session.title,
     spaceId: session.spaceId,
+    source: session.source,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     lastMessageRole: lastMessage?.role ?? null,
@@ -64,7 +69,8 @@ export function useChatSessionHandling(options: {
   isGenerating: Accessor<boolean>;
   resetDraft: () => void;
   scrollToBottom: () => void;
-  reconnectSession: (pendingUserMessage: string) => void | Promise<void>;
+  /** Attach to the turn the server is running in the current session. */
+  reconnectSession: () => void | Promise<void>;
 }) {
   const queryClient = useQueryClient();
   const invalidateSessionList = () =>
@@ -72,6 +78,11 @@ export function useChatSessionHandling(options: {
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<AIChatSessionListEntry[]>([]);
   const [showSessionPicker, setShowSessionPicker] = createSignal(false);
+  /** Sessions opened by jobs, such as workflow runs, are listed only on request. */
+  const [showJobSessions, setShowJobSessions] = createSignal(false);
+  const visibleSessions = createMemo(() =>
+    sessions().filter((session) => showJobSessions() || session.source === "chat"),
+  );
   const sessionStartedAt = createMemo(() => {
     const session = sessions().find((item) => item.id === currentSessionId());
     return session?.createdAt ?? options.messages()[0]?.timestamp ?? null;
@@ -153,18 +164,9 @@ export function useChatSessionHandling(options: {
     setShowSessionPicker(false);
     options.scrollToBottom();
 
-    // If the session was interrupted while the agent was responding, the history
-    // ends with a user message. Reconnect to that turn (or restart it if the
-    // server already finished) after the restored messages have rendered — which,
-    // in Solid, is as soon as the store write above returns.
-    const conversationHistory = session.conversationHistory as Array<{
-      role: string;
-      content?: string;
-    }>;
-    const lastMessage = conversationHistory.at(-1);
-    if (lastMessage?.role === "user" && typeof lastMessage.content === "string") {
-      const pending = lastMessage.content;
-      void options.reconnectSession(pending);
+    // A session ending on its user message has a turn running on the server.
+    if (session.conversationHistory.at(-1)?.role === "user") {
+      void options.reconnectSession();
     }
   }
 
@@ -172,18 +174,21 @@ export function useChatSessionHandling(options: {
     const spaceId = options.currentSpaceId();
     if (!spaceId) throw new Error("No active space selected");
 
-    const session: AIChatSession = {
-      id: crypto.randomUUID(),
-      title,
-      spaceId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-      conversationHistory: [],
-    };
-    setSessions((list) => [toSummary(session), ...list]);
-    setCurrentSessionId(session.id);
-    await api.aiChatSessions.save(session);
+    const id = await api.aiChatSessions.create(spaceId, title);
+    const now = Date.now();
+    setSessions((list) => [
+      {
+        id,
+        title,
+        spaceId,
+        source: "chat",
+        createdAt: now,
+        updatedAt: now,
+        lastMessageRole: null,
+      },
+      ...list,
+    ]);
+    setCurrentSessionId(id);
     invalidateSessionList();
   }
 
@@ -222,6 +227,9 @@ export function useChatSessionHandling(options: {
   return {
     currentSessionId,
     sessions,
+    visibleSessions,
+    showJobSessions,
+    setShowJobSessions,
     showSessionPicker,
     setShowSessionPicker,
     sessionStartedAt,

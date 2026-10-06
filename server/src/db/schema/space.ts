@@ -352,6 +352,10 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
    * session picker can list a space without reading its transcripts.
    */
   lastMessageRole: text("last_message_role"),
+  /** Who opened the session: the chat UI ("chat") or a job such as a workflow run ("job"). */
+  source: text("source", { enum: ["chat", "job"] })
+    .notNull()
+    .default("chat"),
 });
 
 /** Estimated AI tokens charged to a space for a UTC week (Monday to Monday). */

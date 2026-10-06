@@ -217,6 +217,10 @@ async function auditLogAttribution(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.auditLog.attribution);
 }
 
+async function aiChatSessionSource(db: SpaceDb): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -231,4 +235,5 @@ export const spaceMigrations: Migration[] = [
     up: oauthIntegrationClientAndModel,
   },
   { id: 9, name: "audit-log-attribution", up: auditLogAttribution },
+  { id: 10, name: "ai-chat-session-source", up: aiChatSessionSource },
 ];

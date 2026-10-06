@@ -1,5 +1,5 @@
 /**
- * The `agentPrompt` capability: one turn with the ACP agent, streamed.
+ * The `agentPrompt` capability: one turn in a server-side agent session, streamed.
  *
  * This protocol handling used to live inside the `agent` extension job, which
  * parsed SSE frames and JSON-RPC envelopes in guest code. It belongs on the host
@@ -30,41 +30,58 @@ export interface AgentPromptOptions {
   origin: string;
   spaceId: string;
   token: string;
+  /** The session to continue; unset opens a new one in the run user's chat history. */
+  sessionId?: string;
   onLog: (message: string) => void;
   signal?: AbortSignal;
 }
 
-/** Send one prompt to the agent and resolve with its final text. */
-export async function agentPrompt(
-  text: string,
+async function acpRequest(
+  method: string,
+  params: Record<string, unknown>,
   options: AgentPromptOptions,
-): Promise<string> {
-  const { origin, spaceId, token, onLog, signal } = options;
-  const sessionId = crypto.randomUUID();
+): Promise<{ requestId: string; response: Response }> {
   const requestId = crypto.randomUUID();
-
-  onLog(`Calling ACP agent (sessionId: ${sessionId})`);
-
-  const response = await fetch(`${origin}/api/v1/chat/acp`, {
+  const response = await fetch(`${options.origin}/api/v1/chat/acp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Job-Token": token,
-      "X-Space-Id": spaceId,
+      "X-Job-Token": options.token,
+      "X-Space-Id": options.spaceId,
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: requestId,
-      method: "session/prompt",
-      params: { sessionId, spaceId, prompt: [{ type: "text", text }] },
+      method,
+      params: { spaceId: options.spaceId, ...params },
     }),
-    signal,
+    signal: options.signal,
   });
-
-  if (!response.ok || !response.body) {
-    const detail = await response.text().catch(() => String(response.status));
-    throw new Error(`ACP agent request failed (${response.status}): ${detail}`);
+  if (!response.ok) {
+    throw new Error(
+      `ACP ${method} failed (${response.status}): ${await response.text()}`,
+    );
   }
+  return { requestId, response };
+}
+
+/** Send one prompt to the agent and resolve with its session and final text. */
+export async function agentPrompt(
+  text: string,
+  options: AgentPromptOptions,
+): Promise<{ sessionId: string; text: string }> {
+  const { onLog } = options;
+  if (!text.trim()) throw new Error("agentPrompt: text is required");
+  const sessionId = options.sessionId ?? (await newSession(text, options));
+
+  onLog(`Calling ACP agent (sessionId: ${sessionId})`);
+
+  const { requestId, response } = await acpRequest(
+    "session/prompt",
+    { sessionId, prompt: [{ type: "text", text }] },
+    options,
+  );
+  if (!response.body) throw new Error("ACP session/prompt returned no body");
 
   const collected: string[] = [];
   const decoder = new TextDecoder();
@@ -165,5 +182,19 @@ export async function agentPrompt(
   }
 
   onLog(`Output: ${answer.length} chars`);
-  return answer;
+  return { sessionId, text: answer };
+}
+
+async function newSession(text: string, options: AgentPromptOptions): Promise<string> {
+  const { response } = await acpRequest(
+    "session/new",
+    { title: text.trim().slice(0, 60) },
+    options,
+  );
+  const body = (await response.json()) as { result?: { sessionId?: unknown } };
+  const sessionId = body.result?.sessionId;
+  if (typeof sessionId !== "string") {
+    throw new Error("ACP session/new returned no sessionId");
+  }
+  return sessionId;
 }

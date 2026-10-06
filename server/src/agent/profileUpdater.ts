@@ -1,4 +1,5 @@
 import { openSpaceStore } from "#db/client/store.ts";
+import { reserveAITokens } from "#db/space/aiUsage.ts";
 import { getUserProfile, setUserProfile } from "#db/space/userProfiles.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -78,6 +79,7 @@ async function runProfileUpdate(options: {
     provider,
     messages: [{ role: "user", content: prompt }],
     tools: [],
+    reserveAITokens: (inputTokens) => reserveAITokens(store, inputTokens),
   });
 
   const content = typeof message.content === "string" ? message.content.trim() : "";

@@ -166,58 +166,34 @@ export function useAIChat(options: {
     options.scrollToBottomIfFollowing();
   }
 
-  async function streamAssistantResponse(
-    userMessage: string,
-    responseStartIndex: number,
-    additionalContext = "",
-    imageAttachments: ImageChatAttachment[] = [],
-    attachments: ChatAttachment[] = [],
+  /** Streams a turn of the current session into the transcript. */
+  async function streamTurn(
+    method: "session/prompt" | "session/load",
+    params: Record<string, unknown>,
   ) {
-    const assistantMessageIndex: MessageIndex = { value: null };
-    const thinkingMessageIndex: MessageIndex = { value: null };
     const sessionId = options.currentSessionId();
     const spaceId = options.currentSpaceId();
-    if (!sessionId || !spaceId) return;
-
-    await fetchStreamingCompletion({
-      url: "/api/v1/chat/acp",
-      sessionId,
-      spaceId,
-      documentId: options.documentId() || undefined,
-      userMessage,
-      imageAttachments,
-      attachments,
-      additionalContext: additionalContext || undefined,
-      onEvent: (event) =>
-        applyStreamEvent(
-          event,
-          assistantMessageIndex,
-          thinkingMessageIndex,
-          responseStartIndex,
-        ),
-      signal: abortController?.signal,
-    });
-  }
-
-  async function completeResponse(
-    userMessage: string,
-    additionalContext = "",
-    imageAttachments: ImageChatAttachment[] = [],
-    attachments: ChatAttachment[] = [],
-  ) {
-    if (options.isGenerating() || !options.currentSessionId()) return;
+    if (options.isGenerating() || !sessionId || !spaceId) return;
     options.setIsGenerating(true);
     abortController = new AbortController();
     const responseStartIndex = options.messages().length;
+    const assistantMessageIndex: MessageIndex = { value: null };
+    const thinkingMessageIndex: MessageIndex = { value: null };
 
     try {
-      await streamAssistantResponse(
-        userMessage,
-        responseStartIndex,
-        additionalContext,
-        imageAttachments,
-        attachments,
-      );
+      await fetchStreamingCompletion({
+        url: "/api/v1/chat/acp",
+        method,
+        params: { sessionId, spaceId, ...params },
+        onEvent: (event) =>
+          applyStreamEvent(
+            event,
+            assistantMessageIndex,
+            thinkingMessageIndex,
+            responseStartIndex,
+          ),
+        signal: abortController.signal,
+      });
       await options.refreshCurrentSession();
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -238,11 +214,25 @@ export function useAIChat(options: {
     }
   }
 
-  async function reconnectSession(pendingUserMessage: string) {
-    await completeResponse(
-      pendingUserMessage,
-      buildDocumentReferenceContext(pendingUserMessage),
-    );
+  async function completeResponse(
+    userMessage: string,
+    additionalContext = "",
+    imageAttachments: ImageChatAttachment[] = [],
+    attachments: ChatAttachment[] = [],
+  ) {
+    await streamTurn("session/prompt", {
+      documentId: options.documentId() || undefined,
+      prompt: [{ type: "text", text: userMessage }],
+      imageAttachments,
+      attachments,
+      additionalContext: additionalContext || undefined,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+  }
+
+  /** Attach to the turn the server is running in the current session. */
+  async function reconnectSession() {
+    await streamTurn("session/load", {});
   }
 
   function cancelGeneration() {
