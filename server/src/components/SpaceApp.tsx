@@ -237,10 +237,13 @@ export function SpaceApp(props: Props) {
       <div
         id="root"
         class="relative mx-auto origin-top overflow-x-clip"
-        style={layoutStyle()}
+        style={{
+          ...layoutStyle(),
+          background: drawerReveal.progress() === 0 ? undefined : "black",
+        }}
       >
         <div
-          class="main-content relative h-full min-h-screen transition-[transform,filter] md:transition-none"
+          class="main-content relative h-full min-h-screen bg-background transition-[transform,filter] md:transition-none"
           style={{
             transform:
               drawerReveal.progress() === 0
