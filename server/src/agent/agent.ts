@@ -50,18 +50,24 @@ function getWorker(): Worker {
   spawned.addEventListener("message", (event: MessageEvent<AgentWorkerResponse>) =>
     handleWorkerMessage(spawned, event.data),
   );
-  spawned.addEventListener("error", (event) => {
-    appLogger.error("Agent worker crashed", { message: event.message });
-    // The sessions' shells die with it; each session's next turn restores its
-    // shell from the snapshot saved with the session.
-    if (worker === spawned) worker = null;
+  // The sessions' shells die with the worker; each session's next turn
+  // restores its shell from the snapshot saved with the session.
+  const fail = (reason: string) => {
+    if (worker !== spawned) return;
+    worker = null;
     spawned.terminate();
     reservations.clear();
     for (const [turnId, turn] of turns) {
       turns.delete(turnId);
-      turn.reject(new Error(`Agent worker crashed: ${event.message}`));
+      turn.reject(new Error(reason));
     }
+  };
+  spawned.addEventListener("error", (event) => {
+    appLogger.error("Agent worker crashed", { message: event.message });
+    fail(`Agent worker crashed: ${event.message}`);
   });
+  // A worker can also end without an error; its turns would otherwise never settle.
+  spawned.addEventListener("close", () => fail("Agent worker exited"));
   // An idle worker must not keep a CLI or test process alive.
   spawned.unref();
   worker = spawned;
@@ -69,8 +75,9 @@ function getWorker(): Worker {
 }
 
 export function stopAgentWorker(): void {
-  worker?.terminate();
+  const stopping = worker;
   worker = null;
+  stopping?.terminate();
 }
 
 function handleWorkerMessage(source: Worker, message: AgentWorkerResponse): void {
