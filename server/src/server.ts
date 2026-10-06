@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { dev } from "astro";
 import { Hono } from "hono";
 import { stopSerializationPool } from "#documents/serializationPool.ts";
+import { stopAgentWorker } from "./agent/agent.ts";
 import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter, isGitPath } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
@@ -337,6 +338,7 @@ async function shutdown(reason: string, exitCode = 0) {
   stopDiscordBots();
   stopEmailNotificationWorker();
   stopSerializationPool();
+  stopAgentWorker();
 
   forcedShutdownTimer = setTimeout(() => {
     appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });

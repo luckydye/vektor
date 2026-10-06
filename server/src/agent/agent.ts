@@ -1,210 +1,160 @@
-import { gunzipSync, gzipSync } from "node:zlib";
-import type { Bash } from "just-bash";
-import type { AgentSpace, VektorMcpConfig } from "#agent/tools.ts";
+import type { AgentSpace } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
+import { appLogger } from "#observability/logger.ts";
 import {
   type AgentEvent,
   type AgentResult,
-  type AgentShellBootstrap,
+  AgentTurnError,
   type AgentTurnSetup,
-  createAgentShell,
-  runAgentPrompt,
+  type SettleAITokens,
 } from "./core.ts";
+import { mainThreadAgentHost } from "./host.ts";
 import { getIntegrationAgentSurface } from "./integrations.ts";
+import type {
+  AgentHostCall,
+  AgentWorkerProvider,
+  AgentWorkerRequest,
+  AgentWorkerResponse,
+} from "./worker.ts";
 
 export type { AgentEvent, AgentResult, AgentTurnSetup, ChatMessage };
 
-type AgentSession = {
-  bash: Bash;
-  mcpConfigRef: { current: VektorMcpConfig };
-  connectedProviders: string[];
-  updatedAt: number;
+/**
+ * The main thread's side of the agent worker (`worker.ts`). Turns run there,
+ * one worker for all of them so a session's shell stays where its turns run;
+ * this side forwards their events and answers what they need from the
+ * databases and the job scheduler.
+ */
+
+type PendingTurn = {
+  resolve: (result: AgentResult) => void;
+  reject: (error: Error) => void;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  onSetup?: (setup: AgentTurnSetup) => void;
+  /** Answers the worker's token requests for an integration provider. */
+  provider?: AIProvider;
 };
 
-type SerializedShellEntry =
-  | {
-      path: string;
-      type: "file";
-      contentBase64: string;
-      mode: number;
-      mtime: number;
-    }
-  | {
-      path: string;
-      type: "directory";
-      mode: number;
-      mtime: number;
-    }
-  | {
-      path: string;
-      type: "symlink";
-      target: string;
-      mode: number;
-      mtime: number;
-    };
+let worker: Worker | null = null;
+let nextTurnId = 1;
+let nextReservationId = 1;
+const turns = new Map<number, PendingTurn>();
+/** Token reservations a worker made and has yet to settle. */
+const reservations = new Map<number, SettleAITokens>();
 
-type SerializedShellState = {
-  version: 1;
-  cwd: string;
-  env: Record<string, string>;
-  entries: SerializedShellEntry[];
-};
-
-const sessionStore = new Map<string, AgentSession>();
-const SESSION_TTL_MS = 1000 * 60 * 60;
-
-function getSessionKey(options: {
-  chatId: string;
-  spaceId: string;
-  documentId?: string;
-}): string {
-  return `${options.spaceId}:${options.documentId ?? ""}:${options.chatId}`;
-}
-
-function sweepExpiredSessions(now: number) {
-  for (const [key, session] of sessionStore.entries()) {
-    if (now - session.updatedAt > SESSION_TTL_MS) {
-      sessionStore.delete(key);
-    }
-  }
-}
-
-async function captureShellState(bash: Bash): Promise<string> {
-  const entries: SerializedShellEntry[] = [];
-  for (const path of bash.fs.getAllPaths().sort()) {
-    const stat = await bash.fs.lstat(path);
-    const mtime = stat.mtime.getTime();
-    if (stat.isSymbolicLink) {
-      entries.push({
-        path,
-        type: "symlink",
-        target: await bash.fs.readlink(path),
-        mode: stat.mode,
-        mtime,
-      });
-      continue;
-    }
-    if (stat.isDirectory) {
-      entries.push({
-        path,
-        type: "directory",
-        mode: stat.mode,
-        mtime,
-      });
-      continue;
-    }
-    entries.push({
-      path,
-      type: "file",
-      contentBase64: Buffer.from(await bash.fs.readFileBuffer(path)).toString("base64"),
-      mode: stat.mode,
-      mtime,
-    });
-  }
-
-  const state: SerializedShellState = {
-    version: 1,
-    cwd: bash.getCwd(),
-    env: bash.getEnv(),
-    entries,
-  };
-  return gzipSync(Buffer.from(JSON.stringify(state), "utf-8")).toString("base64");
-}
-
-function parseShellState(snapshot: string): SerializedShellState {
-  return JSON.parse(
-    gunzipSync(Buffer.from(snapshot, "base64")).toString("utf-8"),
-  ) as SerializedShellState;
-}
-
-async function restoreShellState(bash: Bash, state: SerializedShellState) {
-  const sortedEntries = [...state.entries].sort((left, right) =>
-    left.path.localeCompare(right.path),
+function getWorker(): Worker {
+  if (worker) return worker;
+  const spawned = new Worker(new URL("./worker.ts", import.meta.url), {
+    type: "module",
+  });
+  spawned.addEventListener("message", (event: MessageEvent<AgentWorkerResponse>) =>
+    handleWorkerMessage(spawned, event.data),
   );
-  for (const entry of sortedEntries) {
-    if (entry.type === "directory") {
-      await bash.fs.mkdir(entry.path, { recursive: true });
-      await bash.fs.chmod(entry.path, entry.mode);
-      await bash.fs.utimes(entry.path, new Date(entry.mtime), new Date(entry.mtime));
-      continue;
+  spawned.addEventListener("error", (event) => {
+    appLogger.error("Agent worker crashed", { message: event.message });
+    // The sessions' shells die with it; each session's next turn restores its
+    // shell from the snapshot saved with the session.
+    if (worker === spawned) worker = null;
+    spawned.terminate();
+    reservations.clear();
+    for (const [turnId, turn] of turns) {
+      turns.delete(turnId);
+      turn.reject(new Error(`Agent worker crashed: ${event.message}`));
     }
-    if (entry.type === "symlink") {
-      await bash.fs.symlink(entry.target, entry.path);
-      await bash.fs.chmod(entry.path, entry.mode);
-      await bash.fs.utimes(entry.path, new Date(entry.mtime), new Date(entry.mtime));
-      continue;
+  });
+  // An idle worker must not keep a CLI or test process alive.
+  spawned.unref();
+  worker = spawned;
+  return spawned;
+}
+
+export function stopAgentWorker(): void {
+  worker?.terminate();
+  worker = null;
+}
+
+function handleWorkerMessage(source: Worker, message: AgentWorkerResponse): void {
+  if (message.type === "hostCall") {
+    void answerHostCall(source, message);
+    return;
+  }
+
+  const turn = turns.get(message.turnId);
+  if (!turn) throw new Error(`Agent worker reported unknown turn ${message.turnId}`);
+
+  if (message.type === "event") {
+    void turn.onEvent?.(message.event);
+  } else if (message.type === "setup") {
+    turn.onSetup?.(message.setup);
+  } else if (message.type === "done") {
+    turns.delete(message.turnId);
+    turn.resolve(message.result);
+  } else {
+    turns.delete(message.turnId);
+    if (message.aborted) {
+      const error = new Error(message.error);
+      error.name = "AbortError";
+      turn.reject(error);
+    } else if (message.messages) {
+      turn.reject(new AgentTurnError(message.error, message.messages));
+    } else {
+      turn.reject(new Error(message.error));
     }
-    await bash.fs.writeFile(
-      entry.path,
-      Buffer.from(entry.contentBase64, "base64"),
-      "binary",
-    );
-    await bash.fs.chmod(entry.path, entry.mode);
-    await bash.fs.utimes(entry.path, new Date(entry.mtime), new Date(entry.mtime));
   }
 }
 
-async function getOrCreateSession(options: {
-  chatId: string;
-  apiUrl: string;
-  spaceId: string;
-  documentId?: string;
-  jobToken: string;
-  connectedProviders: string[];
-  userId?: string | null;
-  shellSnapshot?: string | null;
-}): Promise<AgentSession> {
-  const now = Date.now();
-  sweepExpiredSessions(now);
-  const key = getSessionKey(options);
-  const existing = sessionStore.get(key);
-  if (existing) {
-    existing.mcpConfigRef.current = {
-      apiUrl: options.apiUrl,
-      spaceId: options.spaceId,
-      jobToken: options.jobToken,
-      documentId: options.documentId,
-      connectedProviders: options.connectedProviders,
-    };
-    existing.updatedAt = now;
-    return existing;
-  }
-
-  const parsedShellState = options.shellSnapshot
-    ? parseShellState(options.shellSnapshot)
-    : null;
-  const integrationSurface = await getIntegrationAgentSurface(
-    options.spaceId,
-    options.connectedProviders,
+async function answerHostCall(
+  source: Worker,
+  message: { callId: number } & AgentHostCall,
+): Promise<void> {
+  const request: AgentWorkerRequest = await callHost(message).then(
+    (value) => ({ type: "hostResult", callId: message.callId, ok: true, value }),
+    (error: unknown) => ({
+      type: "hostResult",
+      callId: message.callId,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }),
   );
-  const bootstrap = {
-    cwd: parsedShellState?.cwd,
-    env: parsedShellState?.env,
-    integrationCommands: integrationSurface.commands,
-    userId: options.userId ?? null,
-  } satisfies AgentShellBootstrap;
-  const mcpConfigRef = {
-    current: {
-      apiUrl: options.apiUrl,
-      spaceId: options.spaceId,
-      jobToken: options.jobToken,
-      documentId: options.documentId,
-      connectedProviders: options.connectedProviders,
-    } satisfies VektorMcpConfig,
-  };
-  const session = {
-    bash: createAgentShell(mcpConfigRef, bootstrap),
-    mcpConfigRef,
-    connectedProviders: options.connectedProviders,
-    updatedAt: now,
-  };
-  sessionStore.set(key, session);
-  if (parsedShellState) {
-    await restoreShellState(session.bash, parsedShellState);
-  }
-  return session;
+  source.postMessage(request);
 }
 
+async function callHost(call: AgentHostCall): Promise<unknown> {
+  switch (call.method) {
+    case "reserveAITokens": {
+      const settle = await mainThreadAgentHost.reserveAITokens(...call.args);
+      const reservationId = nextReservationId++;
+      reservations.set(reservationId, settle);
+      return reservationId;
+    }
+    case "settleAITokens": {
+      const [reservationId, actualTokens] = call.args;
+      const settle = reservations.get(reservationId);
+      if (!settle) throw new Error(`Unknown token reservation ${reservationId}`);
+      reservations.delete(reservationId);
+      await settle(actualTokens);
+      return null;
+    }
+    case "runIntegrationCommand":
+      return mainThreadAgentHost.runIntegrationCommand(...call.args);
+    case "integrationAccessToken": {
+      const provider = turns.get(call.args[0])?.provider;
+      if (provider?.provider !== "integration") {
+        throw new Error(`Turn ${call.args[0]} has no integration provider`);
+      }
+      return provider.accessToken();
+    }
+  }
+}
+
+/** An integration provider's token stays here; the worker asks for it per call. */
+function toWorkerProvider(provider?: AIProvider): AgentWorkerProvider | undefined {
+  if (provider?.provider !== "integration") return provider;
+  const { accessToken: _accessToken, ...data } = provider;
+  return data;
+}
+
+/** Runs one agent turn in the agent worker. */
 export async function runAgentInWorker(options: {
   chatId: string;
   messages: ChatMessage[];
@@ -225,15 +175,32 @@ export async function runAgentInWorker(options: {
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   onSetup?: (setup: AgentTurnSetup) => void;
 }): Promise<AgentResult> {
-  const session = await getOrCreateSession(options);
-  const result = await runAgentPrompt({
-    ...options,
-    connectedProviders: session.connectedProviders,
-    bash: session.bash,
-  });
-  session.updatedAt = Date.now();
-  return {
-    ...result,
-    shellSnapshot: await captureShellState(session.bash),
-  };
+  const { signal, onEvent, onSetup, provider, ...request } = options;
+  const integrationSurface = await getIntegrationAgentSurface(
+    options.spaceId,
+    options.connectedProviders,
+  );
+  signal?.throwIfAborted();
+
+  const turnId = nextTurnId++;
+  const target = getWorker();
+  const abort = () => target.postMessage({ type: "abort", turnId });
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    return await new Promise<AgentResult>((resolve, reject) => {
+      turns.set(turnId, { resolve, reject, onEvent, onSetup, provider });
+      const message: AgentWorkerRequest = {
+        type: "run",
+        turnId,
+        request: {
+          ...request,
+          integrationSurface,
+          provider: toWorkerProvider(provider),
+        },
+      };
+      target.postMessage(message);
+    });
+  } finally {
+    signal?.removeEventListener("abort", abort);
+  }
 }

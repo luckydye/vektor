@@ -5,7 +5,6 @@
 
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
-import type { ChatMessage } from "#api/provider/types.ts";
 import { resolveConfig } from "./resolve.ts";
 
 const useColor = process.stdout.isTTY === true;
@@ -173,36 +172,22 @@ export async function streamAcpPrompt(
   return accumulatedText;
 }
 
-async function runTurn(
+/** Sends a non-streaming ACP request and returns its JSON-RPC result. */
+async function acpCall<T>(
   host: string,
-  spaceId: string,
-  sessionId: string,
   authHeaders: Record<string, string>,
-  history: ChatMessage[],
-  userText: string,
-  documentId: string | undefined,
-  signal: AbortSignal,
-): Promise<ChatMessage[]> {
-  const reply = await streamAcpPrompt(
-    host,
-    authHeaders,
-    {
-      sessionId,
-      spaceId,
-      ...(documentId ? { documentId } : {}),
-      messages: history,
-      prompt: [{ type: "text", text: userText }],
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    },
-    renderUpdate,
-    signal,
-  );
-
-  return [
-    ...history,
-    { role: "user", content: userText },
-    { role: "assistant", content: reply },
-  ];
+  method: string,
+  params: Record<string, unknown>,
+): Promise<T> {
+  const res = await fetch(`${host}/api/v1/chat/acp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify({ jsonrpc: "2.0", id: randomUUID(), method, params }),
+  });
+  if (!res.ok) {
+    throw new Error(`ACP ${method} failed (${res.status}): ${await res.text()}`);
+  }
+  return ((await res.json()) as { result: T }).result;
 }
 
 export async function commandAgent(options: AgentCliOptions): Promise<void> {
@@ -210,15 +195,14 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
   const authHeaders: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};
-  const sessionId = randomUUID();
-
   let documentId: string | undefined;
   if (options.doc) {
     const resolved = await resolveDocument(host, spaceId, authHeaders, options.doc);
     documentId = resolved.id;
   }
 
-  let history: ChatMessage[] = [];
+  /** Opened on the first turn, titled by its message. */
+  let sessionId: string | null = null;
 
   process.stdout.write(
     c.dim(
@@ -227,18 +211,35 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
   );
 
   async function doTurn(userText: string): Promise<void> {
+    sessionId ??= (
+      await acpCall<{ sessionId: string }>(host, authHeaders, "session/new", {
+        spaceId,
+        title: userText.slice(0, 60),
+      })
+    ).sessionId;
+    const turnSessionId = sessionId;
     const controller = new AbortController();
-    const onInterrupt = () => controller.abort();
+    // The turn runs on the server; aborting the stream alone would leave it running.
+    const onInterrupt = () => {
+      controller.abort();
+      void acpCall(host, authHeaders, "session/cancel", {
+        spaceId,
+        sessionId: turnSessionId,
+      });
+    };
     process.once("SIGINT", onInterrupt);
     try {
-      history = await runTurn(
+      await streamAcpPrompt(
         host,
-        spaceId,
-        sessionId,
         authHeaders,
-        history,
-        userText,
-        documentId,
+        {
+          sessionId,
+          spaceId,
+          ...(documentId ? { documentId } : {}),
+          prompt: [{ type: "text", text: userText }],
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+        renderUpdate,
         controller.signal,
       );
       process.stdout.write("\n");
