@@ -36,34 +36,17 @@ export async function* parseSSEStream(
 }
 
 /**
- * Sends a JSON-RPC `session/prompt` request to the ACP endpoint and streams
- * back `session/update` notifications, mapping each to a `ChatStreamEvent`.
+ * Sends a streaming JSON-RPC request to the ACP endpoint and maps the
+ * `session/update` notifications it streams back to `ChatStreamEvent`s.
  *
- * Request format (Agent Client Protocol):
- *   { jsonrpc: "2.0", id, method: "session/prompt",
- *     params: { sessionId, spaceId, documentId?, prompt: [{type:"text",text}], imageAttachments?, attachments?, additionalContext? } }
- *
- * The server manages conversation history; the caller only provides the new
- * user message.
+ * `session/prompt` starts a turn in a server-side session and streams it;
+ * `session/load` attaches to the session's running turn, replaying it so far.
+ * The server holds the conversation; a prompt carries only the new message.
  */
 export async function fetchStreamingCompletion(options: {
   url: string;
-  sessionId: string;
-  spaceId: string;
-  documentId?: string;
-  userMessage: string;
-  imageAttachments?: Array<{
-    key: string;
-    mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-  }>;
-  attachments?: Array<{
-    key: string;
-    name: string;
-    type: string;
-    size: number;
-    isImage: boolean;
-  }>;
-  additionalContext?: string;
+  method: "session/prompt" | "session/load";
+  params: { sessionId: string; spaceId: string } & Record<string, unknown>;
   onEvent?: (event: ChatStreamEvent) => void;
   signal?: AbortSignal;
 }): Promise<{ stopReason: string }> {
@@ -76,17 +59,8 @@ export async function fetchStreamingCompletion(options: {
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: requestId,
-      method: "session/prompt",
-      params: {
-        sessionId: options.sessionId,
-        spaceId: options.spaceId,
-        documentId: options.documentId,
-        prompt: [{ type: "text", text: options.userMessage }],
-        imageAttachments: options.imageAttachments,
-        attachments: options.attachments,
-        additionalContext: options.additionalContext,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
+      method: options.method,
+      params: options.params,
     }),
     signal: options.signal,
   });

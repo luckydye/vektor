@@ -1,12 +1,16 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { SpaceStore } from "#db/client/store.ts";
+import { createId } from "#db/ids.ts";
 import { aiChatSession } from "#db/schema/space.ts";
 import { mentionsToText } from "#utils/markdown.ts";
+
+export type AIChatSessionSource = (typeof aiChatSession.$inferSelect)["source"];
 
 export type StoredAIChatSession = {
   id: string;
   title: string;
   spaceId: string;
+  source: AIChatSessionSource;
   createdAt: number;
   updatedAt: number;
   messages: unknown[];
@@ -27,15 +31,13 @@ export type AIChatSessionSummary = {
   spaceId: string;
   createdAt: number;
   updatedAt: number;
-  /** Role of the last turn: "user" means the session is awaiting a reply. */
+  source: AIChatSessionSource;
+  /** Role of the last turn: "user" means a turn is running. */
   lastMessageRole: string | null;
 };
 
-export type AIChatSessionInput = {
-  id: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
+/** A session's transcript after a turn; title, owner and source never change. */
+export type AIChatSessionUpdate = {
   messages: unknown[];
   conversationHistory: unknown[];
   shellSnapshot?: string | null;
@@ -65,6 +67,7 @@ function toStoredAIChatSession(
     id: row.id,
     title: mentionsToText(row.title),
     spaceId: s.spaceId,
+    source: row.source,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     messages: parseJsonArray(row.messages, "messages"),
@@ -82,6 +85,7 @@ export async function listAIChatSessionSummaries(
     .select({
       id: aiChatSession.id,
       title: aiChatSession.title,
+      source: aiChatSession.source,
       createdAt: aiChatSession.createdAt,
       updatedAt: aiChatSession.updatedAt,
       // The status dot needs the last turn's role, not the turns, so the role is
@@ -96,6 +100,7 @@ export async function listAIChatSessionSummaries(
     id: row.id,
     title: mentionsToText(row.title),
     spaceId: s.spaceId,
+    source: row.source,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     lastMessageRole: row.lastMessageRole ?? null,
@@ -115,44 +120,82 @@ export async function getAIChatSession(
   return row ? toStoredAIChatSession(s, row) : null;
 }
 
-export async function upsertAIChatSession(
+/** Open an empty session; the server picks its id. */
+export async function createAIChatSession(
   s: SpaceStore,
   userId: string,
-  session: AIChatSessionInput,
+  session: { title: string; source: AIChatSessionSource },
 ): Promise<StoredAIChatSession> {
-  const existing = await getAIChatSession(s, session.id, userId);
-  const values = {
-    id: session.id,
-    title: session.title,
-    createdBy: userId,
-    createdAt: existing ? new Date(existing.createdAt) : new Date(session.createdAt),
-    updatedAt: new Date(session.updatedAt),
-    messages: JSON.stringify(session.messages),
-    conversationHistory: JSON.stringify(session.conversationHistory),
-    lastMessageRole: lastMessageRoleOf(session.conversationHistory),
-    shellSnapshot:
-      session.shellSnapshot === undefined
-        ? (existing?.shellSnapshot ?? null)
-        : session.shellSnapshot,
-  };
-
-  if (existing) {
-    const [updated] = await s.db
-      .update(aiChatSession)
-      .set(values)
-      .where(and(eq(aiChatSession.id, session.id), eq(aiChatSession.createdBy, userId)))
-      .returning();
-    if (!updated) {
-      throw new Error("Failed to update AI chat session");
-    }
-    return toStoredAIChatSession(s, updated);
-  }
-
-  const [created] = await s.db.insert(aiChatSession).values(values).returning();
+  const now = new Date();
+  const [created] = await s.db
+    .insert(aiChatSession)
+    .values({
+      id: createId("chatSession"),
+      title: session.title,
+      source: session.source,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+      messages: "[]",
+      conversationHistory: "[]",
+    })
+    .returning();
   if (!created) {
     throw new Error("Failed to create AI chat session");
   }
   return toStoredAIChatSession(s, created);
+}
+
+export async function updateAIChatSession(
+  s: SpaceStore,
+  sessionId: string,
+  userId: string,
+  session: AIChatSessionUpdate,
+): Promise<void> {
+  const [updated] = await s.db
+    .update(aiChatSession)
+    .set({
+      updatedAt: new Date(),
+      messages: JSON.stringify(session.messages),
+      conversationHistory: JSON.stringify(session.conversationHistory),
+      lastMessageRole: lastMessageRoleOf(session.conversationHistory),
+      ...(session.shellSnapshot === undefined
+        ? {}
+        : { shellSnapshot: session.shellSnapshot }),
+    })
+    .where(and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)))
+    .returning({ id: aiChatSession.id });
+  if (!updated) {
+    throw new Error(`AI chat session ${sessionId} not found`);
+  }
+}
+
+/**
+ * Close every turn a previous process left running. Turns live in that
+ * process's memory, so after a restart a session ending on its user message
+ * has no agent behind it. Call before the server takes requests: past that
+ * point a session ending on a user message may have a live turn.
+ */
+export async function failInterruptedAIChatTurns(s: SpaceStore): Promise<void> {
+  const rows = await s.db
+    .select()
+    .from(aiChatSession)
+    .where(eq(aiChatSession.lastMessageRole, "user"));
+  const content = "Sorry, this response was interrupted by a server restart.";
+
+  for (const row of rows) {
+    const session = toStoredAIChatSession(s, row);
+    await updateAIChatSession(s, session.id, row.createdBy, {
+      messages: [
+        ...session.messages,
+        { role: "assistant", content, timestamp: Date.now() },
+      ],
+      conversationHistory: [
+        ...session.conversationHistory,
+        { role: "assistant", content },
+      ],
+    });
+  }
 }
 
 export async function deleteAIChatSession(

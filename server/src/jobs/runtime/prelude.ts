@@ -188,7 +188,7 @@ export const PRELUDE = String.raw`
     return makeResponse(raw);
   };
 
-  g.agentPrompt = (text) => call("agentPrompt", text);
+  g.agentPrompt = (text, options) => call("agentPrompt", text, options);
 
   // URL, URLSearchParams, crypto, structuredClone, TextEncoder/TextDecoder and
   // btoa/atob are provided by the engine, not here: they are platform primitives

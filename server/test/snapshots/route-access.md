@@ -52,7 +52,6 @@
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | DELETE | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | GET | 401 | 403 | 404 | 404 | 404 |  |
-| `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | PUT | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/audit-logs` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories` | POST | 401 | 403 | 403 | 400 | 400 |  |

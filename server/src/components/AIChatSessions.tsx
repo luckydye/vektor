@@ -5,7 +5,13 @@ import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Icon } from "./Icon.tsx";
 
 interface Props {
+  /** The sessions to list, after the job-session filter. */
   sessions: AIChatSessionListEntry[];
+  /** Whether any session exists, listed or not. */
+  hasSessions: boolean;
+  /** Whether sessions opened by jobs, such as workflow runs, are listed. */
+  showJobSessions: boolean;
+  onUpdateShowJobSessions?: (value: boolean) => void;
   currentSessionId: string | null;
   /** Where the current session's latest model context can be inspected. */
   contextUrl: string | null;
@@ -24,7 +30,7 @@ export function AIChatSessions(props: Props) {
     <>
       <Show when={!props.showPicker}>
         <div class="flex shrink-0 items-center gap-3 border-neutral-100 border-b bg-neutral-10 px-3 py-4">
-          <Show when={props.sessions.length > 0}>
+          <Show when={props.hasSessions}>
             <button
               type="button"
               onClick={() => props.onUpdateShowPicker?.(true)}
@@ -69,6 +75,16 @@ export function AIChatSessions(props: Props) {
             <p class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wide">
               Recent conversations
             </p>
+            <label class="flex items-center gap-1.5 text-neutral-500 text-size-small">
+              <input
+                type="checkbox"
+                checked={props.showJobSessions}
+                onChange={(event) =>
+                  props.onUpdateShowJobSessions?.(event.currentTarget.checked)
+                }
+              />
+              Workflows
+            </label>
             <button
               type="button"
               onClick={() => props.onNewChat?.()}

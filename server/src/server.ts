@@ -8,7 +8,10 @@ import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter, isGitPath } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
+import { listActiveSpaceIds } from "./db/auth/spaceIndex.ts";
 import { initializeDatabases } from "./db/client/db.ts";
+import { openSpaceStore } from "./db/client/store.ts";
+import { failInterruptedAIChatTurns } from "./db/space/aiChatSessions.ts";
 import { startDiscordBots, stopDiscordBots } from "./integrations/discordBot.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 import {
@@ -39,6 +42,12 @@ const app = new Hono<ApiBindings>();
 // Database schema preparation and local-file reconciliation must complete
 // before requests or background workers can observe the space index.
 await initializeDatabases();
+
+// Agent turns live in process memory, so one a previous process left running
+// has no agent behind it. Before listening: afterwards a turn may be live.
+for (const spaceId of await listActiveSpaceIds()) {
+  await failInterruptedAIChatTurns(await openSpaceStore(spaceId));
+}
 
 // The OpenAPI schema (served at `/api/v1/openapi.json`) is generated ahead of
 // time for a compiled instance: `task compile` runs

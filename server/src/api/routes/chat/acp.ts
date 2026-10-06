@@ -11,21 +11,27 @@ import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import {
   badRequestResponse,
   errorResponse,
+  forbiddenResponse,
+  notFoundResponse,
   parseJsonBody,
-  unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { AIProvider, ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
-import type { ApiRouteHandler } from "#api/server/types.ts";
+import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getAIChatSession, upsertAIChatSession } from "#db/space/aiChatSessions.ts";
+import {
+  type AIChatSessionSource,
+  createAIChatSession,
+  getAIChatSession,
+  updateAIChatSession,
+} from "#db/space/aiChatSessions.ts";
 import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
 import { getUserProfile } from "#db/space/userProfiles.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
-import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
+import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import { isTimeZone } from "#utils/dateFormat.ts";
 
@@ -145,24 +151,22 @@ async function hydrateMessageImages(
 
 // Agent run types
 
-type AgentRunResult = Awaited<ReturnType<typeof runAgentInWorker>>;
-
 /**
  * A live agent turn, owned by the server rather than by any client connection.
- * A disconnect mid-turn (reload, network blip) does not stop the agent: the
- * next request with the same key re-attaches, replays the events so far, then
- * switches to live delivery. Completed turns linger for
- * ACTIVE_TURN_RETENTION_MS so a reconnect just after the agent finishes still
- * gets the result instead of re-running it.
+ * A disconnect mid-turn (reload, network blip) does not stop the agent: a
+ * `session/load` re-attaches, replays the events so far, then switches to live
+ * delivery. Finished turns linger for ACTIVE_TURN_RETENTION_MS so a load just
+ * after the agent finishes still gets the result.
  */
 type ActiveChatTurn = {
   /** All events emitted so far; replayed to late-joining clients. */
   events: AgentEvent[];
   /** Callbacks for clients that are currently subscribed to live events. */
   listeners: Set<(event: AgentEvent) => void>;
-  /** Resolves when the agent worker finishes (or errors). */
+  /** Resolves once the turn is finished and saved. */
   promise: Promise<void>;
-  result: AgentRunResult | null;
+  /** Set once the turn is saved to its session; until then the session is busy. */
+  done: boolean;
   error: string | null;
   /** Null until the turn builds it; a turn failing before that sent nothing. */
   setup: AgentTurnSetup | null;
@@ -173,7 +177,7 @@ type ActiveChatTurn = {
 
 // Turn registry
 
-/** Keyed by `spaceId:userId:chatId`. */
+/** Keyed by `spaceId:userId:sessionId`. */
 const activeChatTurns = new Map<string, ActiveChatTurn>();
 
 /** How long a completed turn stays in the map so reconnecting clients can catch up. */
@@ -184,10 +188,10 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 
 function getActiveTurnKey(options: {
   spaceId: string;
-  userId: string | null;
-  chatId: string;
+  userId: string;
+  sessionId: string;
 }): string {
-  return [options.spaceId, options.userId ?? "job", options.chatId].join(":");
+  return [options.spaceId, options.userId, options.sessionId].join(":");
 }
 
 /**
@@ -319,18 +323,54 @@ function createTurnMessagesFromEvents(
 }
 
 /**
+ * Saves the user's message before the agent starts, so the session shows it
+ * while the turn runs and lists as awaiting a reply.
+ */
+async function saveUserMessage(options: {
+  spaceId: string;
+  sessionId: string;
+  userId: string;
+  userText: string;
+  userAttachments: ChatAttachment[];
+  /** The conversation the turn runs on, user message included. */
+  requestMessages: ChatMessage[];
+}) {
+  const store = await openSpaceStore(options.spaceId);
+  const session = await getAIChatSession(store, options.sessionId, options.userId);
+  if (!session) throw new Error(`AI chat session ${options.sessionId} not found`);
+
+  await updateAIChatSession(store, options.sessionId, options.userId, {
+    messages: [
+      ...session.messages,
+      {
+        role: "user",
+        content: options.userText,
+        timestamp: Date.now(),
+        ...(options.userAttachments.length
+          ? { attachments: options.userAttachments }
+          : {}),
+      },
+    ],
+    conversationHistory: [
+      ...(session.conversationHistory as ChatMessage[]).filter(
+        (message) => message.role === "system",
+      ),
+      ...options.requestMessages,
+    ],
+  });
+}
+
+/**
  * Appends a finished turn to the session: its display messages in streaming
  * order, and its model messages to the conversation history, led by the system
- * prompt the turn sent. The history must
- * end with an assistant message, otherwise opening the session would treat the
- * turn as one to reconnect and run again.
+ * prompt the turn sent. The history must end with an assistant message,
+ * otherwise the session would list as still awaiting a reply.
  */
 async function persistChatTurn(options: {
   spaceId: string;
-  chatId: string;
+  sessionId: string;
   userId: string;
   requestMessages: ChatMessage[];
-  userAttachments: ChatAttachment[];
   events: AgentEvent[];
   /** The turn's own messages, as the model sent and received them. */
   turnMessages: ChatMessage[];
@@ -338,40 +378,18 @@ async function persistChatTurn(options: {
   fallbackContent: string | null;
   /** Ends both logs after the turn's messages, e.g. the error that stopped it. */
   closingContent?: string;
-  /** The text the user sent, for the display log when it was not pre-saved. */
-  userText: string;
   /** Leads the stored history as its system message, with the model and tools beside it. */
   setup: AgentTurnSetup | null;
   shellSnapshot?: string | null;
 }) {
   const store = await openSpaceStore(options.spaceId);
-  const session = await getAIChatSession(store, options.chatId, options.userId);
-  if (!session) return;
-
-  // The user message is pre-saved before the agent starts, except under a job
-  // token; add it only when it is missing so the log never shows it twice.
-  const alreadyHasUserMessage =
-    (session.messages as Array<{ role?: string }>).at(-1)?.role === "user";
-  const userMessage = alreadyHasUserMessage
-    ? null
-    : {
-        role: "user",
-        content: options.userText,
-        timestamp: Date.now(),
-        ...(options.userAttachments.length
-          ? { attachments: options.userAttachments }
-          : {}),
-      };
+  const session = await getAIChatSession(store, options.sessionId, options.userId);
+  if (!session) throw new Error(`AI chat session ${options.sessionId} not found`);
   const closing = options.closingContent;
 
-  await upsertAIChatSession(store, options.userId, {
-    id: session.id,
-    title: session.title,
-    createdAt: session.createdAt,
-    updatedAt: Date.now(),
+  await updateAIChatSession(store, options.sessionId, options.userId, {
     messages: [
-      ...(session.messages as unknown[]),
-      ...(userMessage ? [userMessage] : []),
+      ...session.messages,
       ...createTurnMessagesFromEvents(options.events, options.fallbackContent),
       ...(closing
         ? [{ role: "assistant", content: closing, timestamp: Date.now() }]
@@ -508,7 +526,7 @@ function createStreamingResponse(
           for (const event of turn.events) {
             sendAgentEvent(event);
           }
-          if (!turn.result && !turn.error) {
+          if (!turn.done) {
             turn.listeners.add(listener);
             await turn.promise;
           }
@@ -570,16 +588,17 @@ function createStreamingResponse(
 // Turn management
 
 /**
- * Returns the existing in-progress (or recently completed) turn for the given
- * key, or starts a fresh agent run and registers it.
+ * Starts an agent turn on a session and registers it. The check for a running
+ * turn and the registration happen without an await between them, so two
+ * prompts on one session cannot both start.
  *
  * The agent worker is started without the HTTP request's AbortSignal so that
  * a client disconnect does not kill the agent.
  */
-function getOrStartActiveChatTurn(options: {
+function startChatTurn(options: {
   key: string;
-  userId: string | null;
-  chatId: string;
+  userId: string;
+  sessionId: string;
   /** The conversation as the model gets it, with images hydrated. */
   messages: ChatMessage[];
   /** The same conversation as persisted: image references, not bytes. */
@@ -593,30 +612,23 @@ function getOrStartActiveChatTurn(options: {
   /** The session's stored system prompt; unset on its first turn. */
   systemPrompt?: string;
   connectedProviders: string[];
-  /** Unset runs the turn on the instance's provider. */
-  provider?: AIProvider;
+  provider: AIProvider;
   apiUrl: string;
   spaceId: string;
   documentId?: string;
   jobToken: string;
-  shellSnapshot?: string | null;
+  shellSnapshot: string | null;
 }): ActiveChatTurn {
-  const existing = activeChatTurns.get(options.key);
-  if (existing && !existing.result && !existing.error) {
-    // Turn is still in progress — reconnect this client to it.
-    existing.updatedAt = Date.now();
-    return existing;
+  if (activeChatTurns.get(options.key)?.done === false) {
+    throw errorResponse("A turn is already running in this session", 409);
   }
-  // No in-progress turn (either none exists, or the previous one for this
-  // session already completed).  Fall through to start a fresh turn.
-  // Overwriting the map entry replaces any lingering completed turn.
 
   const turnAbortController = new AbortController();
   const turn: ActiveChatTurn = {
     events: [],
     listeners: new Set(),
     promise: Promise.resolve(),
-    result: null,
+    done: false,
     error: null,
     setup: null,
     updatedAt: Date.now(),
@@ -624,135 +636,156 @@ function getOrStartActiveChatTurn(options: {
   };
   activeChatTurns.set(options.key, turn);
 
-  turn.promise = runAgentInWorker({
-    chatId: options.chatId,
-    messages: options.messages,
-    userProfile: options.userProfile,
-    timeZone: options.timeZone,
-    systemPrompt: options.systemPrompt,
-    connectedProviders: options.connectedProviders,
-    provider: options.provider,
-    userId: options.userId,
-    apiUrl: options.apiUrl,
+  const persisted = {
     spaceId: options.spaceId,
-    documentId: options.documentId,
-    jobToken: options.jobToken,
-    shellSnapshot: options.shellSnapshot,
-    signal: turnAbortController.signal,
-    onEvent: (event) => {
-      emitTurnEvent(turn, event);
-    },
-    onSetup: (setup) => {
-      turn.setup = setup;
-    },
-  })
-    .then(async (result) => {
-      turn.result = result;
-      turn.updatedAt = Date.now();
-      if (options.userId !== null) {
+    sessionId: options.sessionId,
+    userId: options.userId,
+    requestMessages: options.sessionMessages,
+  };
+
+  turn.promise = (async () => {
+    await saveUserMessage({
+      ...persisted,
+      userText: options.userText,
+      userAttachments: options.userAttachments,
+    });
+
+    let result: Awaited<ReturnType<typeof runAgentInWorker>>;
+    try {
+      result = await runAgentInWorker({
+        chatId: options.sessionId,
+        messages: options.messages,
+        userProfile: options.userProfile,
+        timeZone: options.timeZone,
+        systemPrompt: options.systemPrompt,
+        connectedProviders: options.connectedProviders,
+        provider: options.provider,
+        userId: options.userId,
+        apiUrl: options.apiUrl,
+        spaceId: options.spaceId,
+        documentId: options.documentId,
+        jobToken: options.jobToken,
+        shellSnapshot: options.shellSnapshot,
+        signal: turnAbortController.signal,
+        onEvent: (event) => {
+          emitTurnEvent(turn, event);
+        },
+        onSetup: (setup) => {
+          turn.setup = setup;
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        const partialText = turn.events
+          .flatMap((event) => (event.type === "text" ? [event.text] : []))
+          .join("");
+        const stoppedMessage = partialText.trim() || "Response stopped by user.";
         await persistChatTurn({
-          spaceId: options.spaceId,
-          chatId: options.chatId,
-          userId: options.userId,
-          requestMessages: options.sessionMessages,
-          userAttachments: options.userAttachments,
+          ...persisted,
           events: turn.events,
           setup: turn.setup,
-          userText: options.userText,
-          turnMessages: result.messages,
-          fallbackContent: result.content,
-          shellSnapshot: result.shellSnapshot ?? null,
+          turnMessages: [{ role: "assistant", content: stoppedMessage }],
+          fallbackContent: stoppedMessage,
         });
-        // Schedule a profile update after idle.  Fetch the freshly-persisted
-        // session so the updater has the complete display message history.
-        const updatedSession = await getAIChatSession(
-          await openSpaceStore(options.spaceId),
-          options.chatId,
-          options.userId,
-        );
-        if (updatedSession) {
-          scheduleProfileUpdate({
-            spaceId: options.spaceId,
-            userId: options.userId,
-            sessionMessages: updatedSession.messages as unknown[],
-          });
-        }
+        return;
       }
-    })
-    .catch(async (error) => {
-      const isAbort = error instanceof Error && error.name === "AbortError";
-      if (isAbort) {
-        if (options.userId !== null) {
-          try {
-            const partialText = turn.events
-              .flatMap((event) => (event.type === "text" ? [event.text] : []))
-              .join("");
-            const stoppedMessage = partialText.trim() || "Response stopped by user.";
-            await persistChatTurn({
-              spaceId: options.spaceId,
-              chatId: options.chatId,
-              userId: options.userId,
-              requestMessages: options.sessionMessages,
-              userAttachments: options.userAttachments,
-              events: turn.events,
-              setup: turn.setup,
-              userText: options.userText,
-              turnMessages: [{ role: "assistant", content: stoppedMessage }],
-              fallbackContent: stoppedMessage,
-            });
-          } catch (persistError) {
-            appLogger.warn("Failed to persist cancelled chat turn", {
-              chatId: options.chatId,
-              spaceId: options.spaceId,
-              error: persistError,
-            });
-          }
-        }
-      } else {
-        appLogger.error("Chat turn failed", {
-          chatId: options.chatId,
-          spaceId: options.spaceId,
-          error,
-        });
-        turn.error = error instanceof Error ? error.message : "Agent request failed";
-        // A failed save of a completed turn lands here too; that turn is not the failure.
-        if (options.userId !== null && !turn.result) {
-          try {
-            await persistChatTurn({
-              spaceId: options.spaceId,
-              chatId: options.chatId,
-              userId: options.userId,
-              requestMessages: options.sessionMessages,
-              userAttachments: options.userAttachments,
-              events: turn.events,
-              setup: turn.setup,
-              userText: options.userText,
-              turnMessages: error instanceof AgentTurnError ? error.messages : [],
-              fallbackContent: null,
-              closingContent: `Sorry, I encountered an error: ${error.message}`,
-            });
-          } catch (persistError) {
-            appLogger.warn("Failed to persist failed chat turn", {
-              chatId: options.chatId,
-              spaceId: options.spaceId,
-              error: persistError,
-            });
-          }
-        }
-      }
-      turn.updatedAt = Date.now();
+      appLogger.error("Chat turn failed", {
+        sessionId: options.sessionId,
+        spaceId: options.spaceId,
+        error,
+      });
+      turn.error = error instanceof Error ? error.message : "Agent request failed";
+      await persistChatTurn({
+        ...persisted,
+        events: turn.events,
+        setup: turn.setup,
+        turnMessages: error instanceof AgentTurnError ? error.messages : [],
+        fallbackContent: null,
+        closingContent: `Sorry, I encountered an error: ${turn.error}`,
+      });
+      return;
+    }
+
+    await persistChatTurn({
+      ...persisted,
+      events: turn.events,
+      setup: turn.setup,
+      turnMessages: result.messages,
+      fallbackContent: result.content,
+      shellSnapshot: result.shellSnapshot ?? null,
+    });
+    // Schedule a profile update after idle.  Fetch the freshly-persisted
+    // session so the updater has the complete display message history.
+    const updatedSession = await getAIChatSession(
+      await openSpaceStore(options.spaceId),
+      options.sessionId,
+      options.userId,
+    );
+    if (updatedSession) {
+      scheduleProfileUpdate({
+        spaceId: options.spaceId,
+        userId: options.userId,
+        sessionMessages: updatedSession.messages as unknown[],
+      });
+    }
+  })()
+    .catch((error) => {
+      appLogger.error("Failed to save chat turn", {
+        sessionId: options.sessionId,
+        spaceId: options.spaceId,
+        error,
+      });
+      turn.error ??= error instanceof Error ? error.message : "Failed to save chat turn";
     })
     .finally(() => {
+      turn.done = true;
+      turn.updatedAt = Date.now();
       scheduleActiveTurnCleanup(options.key, turn);
     });
 
   return turn;
 }
 
-// POST handler
+// Request handling
 
 /**
- * Run an agent turn over the Agent Client Protocol
+ * The user a request acts for, and the job token its agent turn runs with.
+ * A session always belongs to a user, so a user-less job token is refused.
+ */
+async function authenticateAgentCaller(
+  context: ApiContext,
+  spaceId: string,
+): Promise<{ userId: string; jobToken: string; source: AIChatSessionSource }> {
+  const { credentials } = context.var;
+  const auth = await authenticateJobTokenOrSpaceRole(
+    credentials,
+    spaceId,
+    Permission.VIEWER,
+  );
+  const userId = auth.type === "user" ? auth.user.id : auth.userId;
+  if (!userId) {
+    throw forbiddenResponse("Agent sessions belong to a user; this job token has none");
+  }
+  if (credentials.jobToken) {
+    return { userId, jobToken: credentials.jobToken, source: "job" };
+  }
+  return {
+    userId,
+    jobToken: createJobToken(spaceId, Date.now().toString(), userId, { app: "agent" }),
+    source: "chat",
+  };
+}
+
+function requireStringParam(params: Record<string, unknown>, name: string): string {
+  const value = params[name];
+  if (!value || typeof value !== "string") {
+    throw badRequestResponse(`params.${name} is required`);
+  }
+  return value;
+}
+
+/**
+ * Agent sessions over the Agent Client Protocol
  *
  * @tag AI
  * @jobToken
@@ -768,23 +801,34 @@ export const POST: ApiRouteHandler = (context) =>
 
       const requestId = body.id ?? null;
       const params = (body.params ?? {}) as Record<string, unknown>;
+      const spaceId = requireStringParam(params, "spaceId");
+
+      if (body.method === "session/new") {
+        const title = requireStringParam(params, "title").trim();
+        if (!title) return badRequestResponse("params.title is required");
+        const { userId, source } = await authenticateAgentCaller(context, spaceId);
+        const session = await createAIChatSession(await openSpaceStore(spaceId), userId, {
+          title,
+          source,
+        });
+        return Response.json({
+          jsonrpc: "2.0",
+          id: requestId,
+          result: { sessionId: session.id },
+        });
+      }
+
+      const sessionId = requireStringParam(params, "sessionId");
+      const { userId, jobToken } = await authenticateAgentCaller(context, spaceId);
+      const key = getActiveTurnKey({ spaceId, userId, sessionId });
 
       if (body.method === "session/prompt") {
-        const sessionId = params.sessionId;
-        const spaceId = params.spaceId;
         const documentId = params.documentId;
         const prompt = params.prompt;
         const imageAttachments = parseImageAttachments(params.imageAttachments);
-        const attachmentInput = params.attachments;
         const additionalContext = params.additionalContext;
         const timeZone = params.timeZone;
 
-        if (!sessionId || typeof sessionId !== "string") {
-          return badRequestResponse("params.sessionId is required");
-        }
-        if (!spaceId || typeof spaceId !== "string") {
-          return badRequestResponse("params.spaceId is required");
-        }
         if (documentId !== undefined && typeof documentId !== "string") {
           return badRequestResponse("params.documentId must be a string");
         }
@@ -799,7 +843,7 @@ export const POST: ApiRouteHandler = (context) =>
             "params.imageAttachments must contain valid image uploads",
           );
         }
-        const chatAttachments = parseChatAttachments(attachmentInput, spaceId);
+        const chatAttachments = parseChatAttachments(params.attachments, spaceId);
         if (chatAttachments === null) {
           return badRequestResponse(
             "params.attachments must contain valid uploaded files",
@@ -817,75 +861,28 @@ export const POST: ApiRouteHandler = (context) =>
 
         const userText = (prompt[0] as { text: string }).text;
 
-        let jobToken: string;
-        let userId: string | null = null;
+        const store = await openSpaceStore(spaceId);
+        const session = await getAIChatSession(store, sessionId, userId);
+        if (!session) throw notFoundResponse("AI chat session");
 
-        const providedJobToken = context.req.raw.headers.get("X-Job-Token");
-        if (providedJobToken) {
-          // Job-to-job: verify and reuse the provided token as-is.
-          const headerSpaceId = context.req.raw.headers.get("X-Space-Id");
-          if (!headerSpaceId || !verifyJobToken(providedJobToken, headerSpaceId)) {
-            throw unauthorizedResponse();
-          }
-          if (headerSpaceId !== spaceId) {
-            return badRequestResponse("spaceId does not match job token scope");
-          }
-          const parsed = parseJobToken(providedJobToken, spaceId);
-          if (!parsed) throw unauthorizedResponse();
-          jobToken = providedJobToken;
-        } else {
-          // Session cookie or Bearer token: server mints the job token.
-          const auth = await authenticateJobTokenOrSpaceRole(
-            context.var.credentials,
-            spaceId,
-            Permission.VIEWER,
-          );
-          userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
-          jobToken = createJobToken(spaceId, Date.now().toString(), userId, {
-            app: "agent",
-          });
-        }
-
-        // Load existing conversation history, user profile, and connected integrations from DB.
-        const persistedSession =
-          userId === null
-            ? null
-            : await getAIChatSession(await openSpaceStore(spaceId), sessionId, userId);
-        const storedHistory = (persistedSession?.conversationHistory ??
-          (userId === null && Array.isArray(params.messages)
-            ? params.messages
-            : [])) as ChatMessage[];
         // The system message is fixed for the session: every turn resends the stored one.
+        const storedHistory = session.conversationHistory as ChatMessage[];
         const storedSystem = storedHistory.filter((message) => message.role === "system");
         const history = storedHistory.filter((message) => message.role !== "system");
-        const [userProfile, oauthIntegrations] = await Promise.all([
-          userId !== null
-            ? getUserProfile(await openSpaceStore(spaceId), userId).catch(() => null)
-            : Promise.resolve(null),
-          userId !== null
-            ? listOAuthIntegrationsForUser(await openSpaceStore(spaceId), userId).catch(
-                () => [],
-              )
-            : Promise.resolve([]),
+        const [userProfile, oauthIntegrations, provider] = await Promise.all([
+          getUserProfile(store, userId).catch(() => null),
+          listOAuthIntegrationsForUser(store, userId).catch(() => []),
+          resolveUserAIProvider(spaceId, userId),
         ]);
-        const connectedProviders = oauthIntegrations.map((i) => i.provider);
 
-        // If the history already ends with a user message it means the session
-        // was interrupted mid-turn (the user message was pre-saved below but
-        // the agent never completed).  In that case we reconnect as-is rather
-        // than appending the user message a second time.
-        const lastHistoryRole = history.at(-1)?.role;
-        const messages: ChatMessage[] =
-          lastHistoryRole === "user"
-            ? history
-            : [
-                ...history,
-                {
-                  role: "user",
-                  content: userText,
-                  ...(imageAttachments.length ? { imageAttachments } : {}),
-                },
-              ];
+        const messages: ChatMessage[] = [
+          ...history,
+          {
+            role: "user",
+            content: userText,
+            ...(imageAttachments.length ? { imageAttachments } : {}),
+          },
+        ];
         const agentMessages = additionalContext
           ? [
               ...messages,
@@ -905,39 +902,10 @@ export const POST: ApiRouteHandler = (context) =>
           );
         }
 
-        // Pre-save the user message to the session BEFORE starting the agent.
-        // This ensures that if the page is reloaded mid-turn the history shows
-        // the pending message and getSessionStatus returns "awaiting".
-        if (userId !== null && persistedSession && lastHistoryRole !== "user") {
-          try {
-            await upsertAIChatSession(await openSpaceStore(spaceId), userId, {
-              id: persistedSession.id,
-              title: persistedSession.title,
-              createdAt: persistedSession.createdAt,
-              updatedAt: Date.now(),
-              messages: [
-                ...(persistedSession.messages as unknown[]),
-                {
-                  role: "user",
-                  content: userText,
-                  timestamp: Date.now(),
-                  ...(chatAttachments.length ? { attachments: chatAttachments } : {}),
-                },
-              ],
-              conversationHistory: [...storedSystem, ...messages],
-              shellSnapshot: persistedSession.shellSnapshot ?? null,
-            });
-          } catch {
-            // Non-fatal — the turn still runs; worst case the user message
-            // won't appear in history until the turn completes normally.
-          }
-        }
-
-        const key = getActiveTurnKey({ spaceId, userId, chatId: sessionId });
-        const turn = getOrStartActiveChatTurn({
+        const turn = startChatTurn({
           key,
           userId,
-          chatId: sessionId,
+          sessionId,
           messages: modelMessages,
           sessionMessages: agentMessages,
           userText,
@@ -945,57 +913,32 @@ export const POST: ApiRouteHandler = (context) =>
           userAttachments: chatAttachments,
           userProfile: userProfile ?? undefined,
           timeZone,
-          connectedProviders,
-          provider:
-            userId === null ? undefined : await resolveUserAIProvider(spaceId, userId),
+          connectedProviders: oauthIntegrations.map((i) => i.provider),
+          provider,
           apiUrl: getLocalOrigin(),
           spaceId,
           documentId: typeof documentId === "string" ? documentId : undefined,
           jobToken,
-          shellSnapshot: persistedSession?.shellSnapshot ?? null,
+          shellSnapshot: session.shellSnapshot,
         });
 
         return createStreamingResponse(turn, requestId, sessionId);
       }
 
-      if (body.method === "session/cancel") {
-        const sessionId = params.sessionId;
-        const spaceId = params.spaceId;
-
-        if (!sessionId || typeof sessionId !== "string") {
-          return badRequestResponse("params.sessionId is required");
-        }
-        if (!spaceId || typeof spaceId !== "string") {
-          return badRequestResponse("params.spaceId is required");
-        }
-
-        let userId: string | null = null;
-
-        const cancelJobToken = context.req.raw.headers.get("X-Job-Token");
-        if (cancelJobToken) {
-          const headerSpaceId = context.req.raw.headers.get("X-Space-Id");
-          if (!headerSpaceId || !verifyJobToken(cancelJobToken, headerSpaceId)) {
-            throw unauthorizedResponse();
-          }
-          if (headerSpaceId !== spaceId) {
-            return badRequestResponse("spaceId does not match job token scope");
-          }
-        } else {
-          const auth = await authenticateJobTokenOrSpaceRole(
-            context.var.credentials,
-            spaceId,
-            Permission.VIEWER,
-          );
-          userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
-        }
-
-        const key = getActiveTurnKey({ spaceId, userId, chatId: sessionId });
+      if (body.method === "session/load") {
+        const session = await getAIChatSession(
+          await openSpaceStore(spaceId),
+          sessionId,
+          userId,
+        );
+        if (!session) throw notFoundResponse("AI chat session");
         const turn = activeChatTurns.get(key);
-        if (turn) {
-          turn.abort();
-          activeChatTurns.delete(key);
-        }
+        if (!turn) throw notFoundResponse("Running turn");
+        return createStreamingResponse(turn, requestId, sessionId);
+      }
 
+      if (body.method === "session/cancel") {
+        activeChatTurns.get(key)?.abort();
         return Response.json({
           jsonrpc: "2.0",
           id: requestId,

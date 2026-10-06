@@ -780,12 +780,24 @@ to add one is to add it to the host's capability table — not to import it.
 | `getSecret` | Space secrets |
 | `fetch` | The public internet. Loopback and private ranges are refused |
 | `apiFetch` | This instance's own API, authenticated as the run |
-| `agentPrompt` | One ACP agent turn, with progress streamed to the log |
+| `agentPrompt` | One agent turn, with progress streamed to the log |
 | `zip`, `spreadsheet`, `hash`, `hmac` | Archive, spreadsheet and digest helpers, run natively |
 | `image` | Decode, resize and re-encode images, run natively |
 | `scratch`, `exec` | A private directory, and the allowlisted conversion tools |
 | `jobCache` | Disk cache, isolated per job id |
 | `sleep`, `setTimeout` | Timers |
+
+`agentPrompt` runs its turn in a server-side agent session owned by the run's
+user, so the conversation shows up in their chat history (behind the
+"Workflows" filter). Without a `sessionId` it opens a new session; pass the
+returned one to continue it:
+
+```ts
+const { sessionId, text } = await agentPrompt("Summarize yesterday's changes");
+const { text: draft } = await agentPrompt("Draft a doc from that", { sessionId });
+```
+
+A run needs a user for this: one started by nobody cannot call it.
 
 Prefer the native helpers over bundling a library: `spreadsheet.toRows()` reads
 XLSX and CSV, while `zip.read()` handles archives, without shipping a large

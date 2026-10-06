@@ -76,7 +76,7 @@ export function AIChatPanel(props: Props) {
   const [isUploadingFiles, setIsUploadingFiles] = createSignal(false);
   const [uploadError, setUploadError] = createSignal("");
 
-  let reconnectSession = async (_pendingUserMessage: string) => {};
+  let reconnectSession = async () => {};
 
   function resetSessionDraft() {
     setUploadError("");
@@ -86,6 +86,9 @@ export function AIChatPanel(props: Props) {
   const {
     currentSessionId,
     sessions,
+    visibleSessions,
+    showJobSessions,
+    setShowJobSessions,
     showSessionPicker,
     setShowSessionPicker,
     sessionStartedAt,
@@ -103,7 +106,7 @@ export function AIChatPanel(props: Props) {
     isGenerating,
     resetDraft: resetSessionDraft,
     scrollToBottom: () => messagesRef()?.scrollToBottom(),
-    reconnectSession: (pendingUserMessage) => reconnectSession(pendingUserMessage),
+    reconnectSession: () => reconnectSession(),
   });
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
@@ -292,7 +295,10 @@ export function AIChatPanel(props: Props) {
     >
       <div class="flex h-full flex-col bg-neutral-50">
         <AIChatSessions
-          sessions={sessions()}
+          sessions={visibleSessions()}
+          hasSessions={sessions().length > 0}
+          showJobSessions={showJobSessions()}
+          onUpdateShowJobSessions={setShowJobSessions}
           currentSessionId={currentSessionId()}
           contextUrl={contextUrl()}
           showPicker={showSessionPicker()}
