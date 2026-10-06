@@ -39,32 +39,32 @@ const MAX_RELEASE_DURATION = 300;
 // that closes one drawer never opens the one on the other side.
 const openDrawers = new Set<symbol>();
 
-interface Shift {
-  /** px the drawer pushes the page by, positive to the right. */
-  shift: number;
+interface Reveal {
+  /** How far the drawer is revealed, from 0 to 1. */
+  progress: number;
   isDragging: boolean;
 }
 
 // Replaced rather than mutated on every write: `Map.set` is invisible to a signal.
-const [shifts, setShifts] = createSignal<ReadonlyMap<symbol, Shift>>(new Map());
+const [reveals, setReveals] = createSignal<ReadonlyMap<symbol, Reveal>>(new Map());
 
-// Written from each drawer's effect, so it must not read `shifts()` itself: the
+// Written from each drawer's effect, so it must not read `reveals()` itself: the
 // effect would track the signal it writes and re-run forever. The setter's
 // callback reads the current map untracked.
-function writeShift(id: symbol, shift: Shift | null) {
-  setShifts((current) => {
+function writeReveal(id: symbol, reveal: Reveal | null) {
+  setReveals((current) => {
     const next = new Map(current);
-    if (shift) next.set(id, shift);
+    if (reveal) next.set(id, reveal);
     else next.delete(id);
     return next;
   });
 }
 
-/** How far the side drawers push the page aside, for the page's parallax. */
-export function useDrawerShift() {
+/** How far the side drawers are revealed, for the page to recede behind them. */
+export function useDrawerReveal() {
   return {
-    shift: () => [...shifts().values()].reduce((sum, entry) => sum + entry.shift, 0),
-    isDragging: () => [...shifts().values()].some((entry) => entry.isDragging),
+    progress: () => Math.max(0, ...[...reveals().values()].map((entry) => entry.progress)),
+    isDragging: () => [...reveals().values()].some((entry) => entry.isDragging),
   };
 }
 
@@ -269,8 +269,8 @@ export function useSwipeDrawer(options: Options) {
 
   if (axis === "x") {
     createEffect(() => {
-      const revealed = isDragging() ? offset() : options.isOpen() ? options.size() : 0;
-      writeShift(id, { shift: direction * revealed, isDragging: isDragging() });
+      const revealed = isDragging() ? offset() / options.size() : options.isOpen() ? 1 : 0;
+      writeReveal(id, { progress: revealed, isDragging: isDragging() });
     });
   }
 
@@ -288,7 +288,7 @@ export function useSwipeDrawer(options: Options) {
       document.removeEventListener("touchend", end, true);
       document.removeEventListener("touchcancel", end, true);
       applyOpenState(false);
-      writeShift(id, null);
+      writeReveal(id, null);
     });
   });
 

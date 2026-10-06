@@ -14,7 +14,7 @@ import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
 import { usePopoverSheets } from "#composeables/usePopoverSheets.ts";
-import { useDrawerShift } from "#composeables/useSwipeDrawer.ts";
+import { useDrawerReveal } from "#composeables/useSwipeDrawer.ts";
 import { LocaleContext } from "#composeables/useTranslation.ts";
 import {
   DocumentContextContext,
@@ -119,7 +119,7 @@ export function SpaceApp(props: Props) {
   const toast = useToast();
   const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
   const [hasMounted, setHasMounted] = createSignal(false);
-  const drawerShift = useDrawerShift();
+  const drawerReveal = useDrawerReveal();
   usePopoverSheets();
 
   const [showOrganizationTour, setShowOrganizationTour] = createSignal(false);
@@ -240,14 +240,18 @@ export function SpaceApp(props: Props) {
         style={layoutStyle()}
       >
         <div
-          class="main-content relative h-full min-h-screen transition-transform md:transition-none"
+          class="main-content relative h-full min-h-screen transition-[transform,filter] md:transition-none"
           style={{
             transform:
-              drawerShift.shift() === 0
+              drawerReveal.progress() === 0
                 ? undefined
-                : `translateX(${drawerShift.shift() / 6}px)`,
-            "will-change": drawerShift.shift() === 0 ? undefined : "transform",
-            transition: drawerShift.isDragging() ? "none" : undefined,
+                : `scale(${1 - drawerReveal.progress() * 0.05})`,
+            filter:
+              drawerReveal.progress() === 0
+                ? undefined
+                : `brightness(${1 - drawerReveal.progress() * 0.3})`,
+            "will-change": drawerReveal.progress() === 0 ? undefined : "transform, filter",
+            transition: drawerReveal.isDragging() ? "none" : undefined,
           }}
         >
           <DockedWindowLayout />
