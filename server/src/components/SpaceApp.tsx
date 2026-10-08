@@ -236,10 +236,15 @@ export function SpaceApp(props: Props) {
     <>
       <div
         id="root"
-        class="relative mx-auto origin-top overflow-x-clip"
+        class="relative mx-auto origin-top overflow-x-clip transition-colors md:transition-none"
         style={{
           ...layoutStyle(),
-          background: drawerReveal.progress() === 0 ? undefined : "black",
+          // Matches the page's brightness filter so the gap around the scaled page blends in.
+          background:
+            drawerReveal.progress() === 0
+              ? undefined
+              : `color-mix(in srgb, var(--color-background) ${100 - drawerReveal.progress() * 30}%, black)`,
+          transition: drawerReveal.isDragging() ? "none" : undefined,
         }}
       >
         <div
