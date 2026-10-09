@@ -69,6 +69,7 @@ import {
   type ScreenSize,
   type SnapGuide,
   scaleHandle,
+  tidyLayout,
   snapDragOffset as snapDrag,
   snapRotation,
   unionBounds,
@@ -2213,6 +2214,67 @@ export function createCanvasController(
     clearSelection();
   }
 
+  /**
+   * The selected elements a tidy-up lays out, or null for fewer than two. A
+   * selected section's contents ride along with it rather than being laid out.
+   */
+  function tidyItems() {
+    if (state.selectedIds.size < 2) return null;
+    const riders = new Set<string>();
+    for (const id of state.selectedIds) {
+      const shape = shapesById().get(id);
+      if (!shape || !isContainerShape(shape) || !canMoveShape(shape)) continue;
+      const contents = getContainerContents(shape);
+      for (const item of [...contents.shapes, ...contents.strokes]) riders.add(item.id);
+    }
+    const items = [...state.selectedIds].flatMap((id) => {
+      const element = riders.has(id) ? null : elementHandle(id);
+      return element?.canMove && element.bounds ? [{ id, bounds: element.bounds }] : [];
+    });
+    return items.length < 2 ? null : items;
+  }
+
+  function moveElement(id: string, dx: number, dy: number) {
+    const shape = shapesById().get(id);
+    if (shape) {
+      if (isContainerShape(shape)) {
+        const contents = getContainerContents(shape);
+        for (const item of contents.shapes)
+          updateShapeFrame(item.id, { x: item.x + dx, y: item.y + dy });
+        for (const item of contents.strokes)
+          translateStroke(item.id, item.points, dx, dy);
+      }
+      updateShapeFrame(id, { x: shape.frame.x + dx, y: shape.frame.y + dy });
+      return;
+    }
+    const stroke = strokesById().get(id);
+    if (!stroke) throw new Error(`Cannot move unknown canvas element ${id}`);
+    translateStroke(id, stroke.points, dx, dy);
+  }
+
+  /** Rearranges the selection into non-overlapping rows. */
+  function tidySelection() {
+    const items = tidyItems();
+    if (!items) return;
+    const positions = tidyLayout(
+      items.map((item) => item.bounds),
+      32,
+    );
+    ydoc.transact(() => {
+      items.forEach((item, index) => {
+        const target = positions[index];
+        moveElement(item.id, target.x - item.bounds.x, target.y - item.bounds.y);
+      });
+    });
+  }
+
+  /** Screen point above the middle of a multi-selection, for its toolbar. */
+  function selectionToolbarPosition() {
+    const bounds = selectedGroupBounds();
+    if (!bounds) return null;
+    return worldToScreen({ x: bounds.x + bounds.width / 2, y: bounds.y });
+  }
+
   // Snapshots the start positions of everything that should move with a shape
   // drag: the whole current selection, plus the contents of any selected
   // section. Strokes are deduped against section contents so a stroke that is
@@ -3572,6 +3634,12 @@ export function createCanvasController(
       t("Lock the selected elements"),
       lockSelectedElements,
     );
+    registerAction(
+      "canvas:tidy",
+      t("Tidy up"),
+      t("Arrange the selected elements so they do not overlap"),
+      tidySelection,
+    );
     registerAction("canvas:fit", t("Fit view"), t("Frame all content"), () => fitView(), [
       "f",
     ]);
@@ -3766,6 +3834,8 @@ export function createCanvasController(
     elementChromePosition,
     transformControlPositions,
     selectionScaleControlPosition,
+    selectionToolbarPosition,
+    canTidySelection: () => tidyItems() != null,
     worldToScreen,
 
     // commands
@@ -3793,6 +3863,7 @@ export function createCanvasController(
     pasteFromContextMenu,
     uploadFromContextMenu,
     deleteSelection,
+    tidySelection,
     stopActiveEdit,
     finishChromeEditing,
     setActiveEditorRef,

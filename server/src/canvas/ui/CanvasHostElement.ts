@@ -534,6 +534,29 @@ function transformControls(view: CanvasView) {
   `;
 }
 
+/** Actions for a multi-selection, floating above its box. */
+function selectionToolbar(view: CanvasView) {
+  const position = view.selectionToolbarPosition();
+  if (!position || !view.canTidySelection()) return nothing;
+  return html`
+    <div
+      class="canvas-selection-toolbar"
+      style=${styleMap({ transform: `translate(${position.x}px, ${position.y}px)` })}
+      @pointerdown=${stopPointer}
+    >
+      <button
+        type="button"
+        class="canvas-tool"
+        aria-label=${t("Tidy up")}
+        data-tooltip=${t("Tidy up")}
+        @click=${() => view.tidySelection()}
+      >
+        ${svgIcon(iconMarkup("tidy-up"), "svg-icon canvas-tool-icon")}
+      </button>
+    </div>
+  `;
+}
+
 const handleAt = (point: { x: number; y: number }) => ({
   left: `${point.x}px`,
   top: `${point.y}px`,
@@ -737,6 +760,8 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
         }
 
         ${transformControls(view)}
+
+        ${selectionToolbar(view)}
 
         ${
           lockPosition

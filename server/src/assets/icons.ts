@@ -125,6 +125,7 @@ export { default as textToolIcon } from "#assets/icons/text-tool.svg?raw";
 export { default as thinkingIcon } from "./icons/thinking.svg?raw";
 export { default as underlineIcon } from "#assets/icons/underline.svg?raw";
 export { default as undoIcon } from "#assets/icons/undo.svg?raw";
+export { default as tidyUpIcon } from "#assets/icons/tidy-up.svg?raw";
 export { default as unlockElementIcon } from "./icons/unlock-element.svg?raw";
 export { default as uploadFileIcon } from "#assets/icons/upload-file.svg?raw";
 export { default as usersIcon } from "./icons/users.svg?raw";

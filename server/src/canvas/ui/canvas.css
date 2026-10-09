@@ -385,6 +385,23 @@ vektor-canvas {
   translate: 8px 8px;
 }
 
+.canvas-selection-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 9;
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 10px;
+  background: var(--canvas-toolbar-bg);
+  padding: 4px;
+  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
+  pointer-events: auto;
+  /* Centered, and clear of the rotate handle above the selection. */
+  translate: -50% calc(-100% - 36px);
+}
+
 .canvas-note-colors {
   display: flex;
   align-items: center;

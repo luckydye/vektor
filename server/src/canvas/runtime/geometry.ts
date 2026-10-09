@@ -70,6 +70,39 @@ export function unionBounds(rects: readonly Rect[]): Rect | null {
 }
 
 /**
+ * New top-left corners that pack boxes into gap-separated rows, in reading order.
+ * Rows wrap so the result is roughly square, starting at the boxes' current corner.
+ */
+export function tidyLayout(boxes: readonly Rect[], gap: number): CanvasPoint[] {
+  const origin = unionBounds(boxes);
+  if (!origin) return [];
+  const area = boxes.reduce(
+    (sum, box) => sum + (box.width + gap) * (box.height + gap),
+    0,
+  );
+  const rowWidth = Math.max(Math.sqrt(area), ...boxes.map((box) => box.width));
+  const order = boxes
+    .map((box, index) => ({ box, index }))
+    .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+
+  const positions: CanvasPoint[] = [];
+  let x = origin.x;
+  let y = origin.y;
+  let rowHeight = 0;
+  for (const { box, index } of order) {
+    if (x > origin.x && x + box.width > origin.x + rowWidth) {
+      x = origin.x;
+      y += rowHeight + gap;
+      rowHeight = 0;
+    }
+    positions[index] = { x, y };
+    x += box.width + gap;
+    rowHeight = Math.max(rowHeight, box.height);
+  }
+  return positions;
+}
+
+/**
  * Handles keep a fixed size on screen, so their offset from the shape shrinks
  * as the viewport zooms in. These convert that screen-space gap back to world
  * units before projecting, which is why the scale has to be passed in.
