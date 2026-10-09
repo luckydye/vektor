@@ -127,7 +127,7 @@ export function SpaceActivityFeed(props: Props) {
   return (
     <div class="flex min-h-0 flex-1 flex-col gap-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-neutral-500 text-size-large leading-large">
+        <h2 class="text-neutral-500 text-size-medium">
           {t("Space Activity")}
         </h2>
         <Show when={props.viewAllHref}>
@@ -207,7 +207,7 @@ export function SpaceActivityFeed(props: Props) {
             {(group) => (
               <>
                 <Show when={group.showBucket}>
-                  <div class="px-1 font-medium text-neutral-500 text-size-small">
+                  <div class="px-1 font-medium text-neutral-300 text-size-small">
                     {group.bucketLabel}
                   </div>
                 </Show>
