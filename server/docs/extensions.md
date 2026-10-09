@@ -480,8 +480,10 @@ export function activate(ctx: ExtensionContext): void {
   Call `progress(image)` to show a quick low-resolution pass before the final
   one resolves. A rejected job is shown to the user and not retried until the
   data changes.
-- When several extensions edit one image, their processors run in registration
-  order, each receiving the previous one's output as `source`.
+- When several extensions edit one image, their processors run by `order`
+  (lower first, ties in registration order), each receiving the previous one's
+  output as `source`. Put retouching that reads raw pixels before colour
+  grading: then a grading change does not change its input or void its caches.
 - The panel header has an eye toggle that writes `disabled: true` into your
   slot; while it is set, your processor is skipped and the image paints
   unedited. Keep that key free in your own data.

@@ -126,12 +126,18 @@ export interface CanvasImageProcessInput {
 
 /**
  * Replaces an image's pixels on shapes that carry data in the owner's slot.
- * Several processors on one image run in registration order, each on the last one's output.
+ * Several processors on one image run by `order`, each on the last one's output.
  */
 export interface CanvasImageProcessor {
   id: string;
   owner: string;
   types: readonly CanvasShapeType[];
+  /**
+   * Lower runs first; ties keep registration order. Work that reads the raw
+   * pixels (retouching) belongs before colour grading, so a grading change
+   * leaves its input, and anything it cached, untouched.
+   */
+  order?: number;
   process: (input: CanvasImageProcessInput) => Promise<TexImageSource>;
 }
 
@@ -180,12 +186,14 @@ export function createCanvasPlugins() {
 
     /** The processors whose owners have enabled data on `shape`, in the order they run. */
     processorsFor: (shape: CanvasShape): CanvasImageProcessor[] =>
-      [...processors.values()].filter(
-        (processor) =>
-          processor.types.includes(shape.type) &&
-          shape.data[pluginDataKey(processor.owner)] !== undefined &&
-          !slotDisabled(shape, processor.owner),
-      ),
+      [...processors.values()]
+        .filter(
+          (processor) =>
+            processor.types.includes(shape.type) &&
+            shape.data[pluginDataKey(processor.owner)] !== undefined &&
+            !slotDisabled(shape, processor.owner),
+        )
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
 
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
