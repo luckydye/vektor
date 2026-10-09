@@ -1,4 +1,13 @@
-import { createEffect, For, on, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { PEN_COLORS } from "#canvas/extensions/drawTool.ts";
 import {
   type CanvasEditMode,
@@ -23,109 +32,150 @@ export function CanvasProperties(props: { chrome: CanvasChrome }) {
   const selectedId = frame(() => view()?.selectedShape()?.id);
   const elementProperties = frame(() => view()?.selectedElementProperties() ?? []);
   const inspectors = frame(() => view()?.selectedInspectors() ?? []);
+  const hasAppearance = () =>
+    shapePalette() !== undefined || hasStrokes() || elementProperties().length > 0;
+
+  // One tab per panel, like Blender's sidebar. The chosen tab is kept while the
+  // selection changes, and falls back to the first one a shape does not offer.
+  // Stable objects, so the strip is not rebuilt on every painted frame.
+  const appearanceTab = { id: APPEARANCE, title: t("Appearance") };
+  const tabs = createMemo((): readonly { id: string; title: string }[] => [
+    ...(hasAppearance() ? [appearanceTab] : []),
+    ...inspectors(),
+  ]);
+  const [chosenTab, setChosenTab] = createSignal(APPEARANCE);
+  const activeTab = () =>
+    tabs().some((tab) => tab.id === chosenTab()) ? chosenTab() : tabs()[0]?.id;
+  const activeInspector = () =>
+    inspectors().find((inspector) => inspector.id === activeTab());
 
   return (
     <Show when={visible()}>
-      <aside
-        class="canvas-properties-sidebar"
-        aria-label={t("Appearance")}
-        onPointerDown={swallowPointer}
-      >
-        <h2 class="canvas-properties-sidebar-title">{t("Appearance")}</h2>
+      <div class="canvas-properties" onPointerDown={swallowPointer}>
+        <aside
+          class="canvas-properties-sidebar"
+          aria-label={tabs().find((tab) => tab.id === activeTab())?.title}
+        >
+          <Show when={activeTab() === APPEARANCE}>
+            <h2 class="canvas-properties-sidebar-title">{t("Appearance")}</h2>
 
-        <Show when={shapePalette()}>
-          {(palette) => (
-            <section
-              class="canvas-property-section"
-              aria-label={`${t(palette().label)} color`}
-            >
-              <span class="canvas-property-label">{t("Color")}</span>
-              <div class="canvas-property-colors">
-                <For each={palette().palette}>
-                  {(color) => (
-                    <button
-                      type="button"
-                      classList={{
-                        "canvas-color-swatch": true,
-                        "canvas-color-swatch-none": color === "transparent",
-                        active: selectedColor() === color,
+            <Show when={shapePalette()}>
+              {(palette) => (
+                <section
+                  class="canvas-property-section"
+                  aria-label={`${t(palette().label)} color`}
+                >
+                  <span class="canvas-property-label">{t("Color")}</span>
+                  <div class="canvas-property-colors">
+                    <For each={palette().palette}>
+                      {(color) => (
+                        <button
+                          type="button"
+                          classList={{
+                            "canvas-color-swatch": true,
+                            "canvas-color-swatch-none": color === "transparent",
+                            active: selectedColor() === color,
+                          }}
+                          style={{ background: color }}
+                          aria-label={`${t(palette().label)} color ${color}`}
+                          onClick={() =>
+                            run((canvas) =>
+                              canvas.setSelectedElementColor(palette().type, color),
+                            )
+                          }
+                        />
+                      )}
+                    </For>
+                  </div>
+                </section>
+              )}
+            </Show>
+
+            <Show when={hasStrokes()}>
+              <section class="canvas-property-section" aria-label={t("Pen color")}>
+                <span class="canvas-property-label">{t("Color")}</span>
+                <div class="canvas-property-colors">
+                  <For each={PEN_COLORS}>
+                    {(color) => (
+                      <button
+                        type="button"
+                        classList={{
+                          "canvas-color-swatch": true,
+                          active: strokeColor() === color,
+                        }}
+                        style={{ background: color }}
+                        aria-label={`${t("Set pen color")} ${color}`}
+                        onClick={() =>
+                          run((canvas) => canvas.setSelectedStrokeColor(color))
+                        }
+                      />
+                    )}
+                  </For>
+                </div>
+              </section>
+            </Show>
+
+            <For each={elementProperties()}>
+              {(property) => (
+                <section class="canvas-property-section">
+                  <label class="canvas-property-toggle">
+                    <input
+                      type="checkbox"
+                      checked={view()?.elementPropertyValue(property)}
+                      onChange={(event) => {
+                        const id = selectedId();
+                        const checked = event.currentTarget.checked;
+                        if (id)
+                          run((canvas) =>
+                            canvas.updateShapeData(id, { [property.id]: checked }),
+                          );
                       }}
-                      style={{ background: color }}
-                      aria-label={`${t(palette().label)} color ${color}`}
-                      onClick={() =>
-                        run((canvas) =>
-                          canvas.setSelectedElementColor(palette().type, color),
-                        )
-                      }
                     />
-                  )}
-                </For>
-              </div>
-            </section>
-          )}
-        </Show>
-
-        <Show when={hasStrokes()}>
-          <section class="canvas-property-section" aria-label={t("Pen color")}>
-            <span class="canvas-property-label">{t("Color")}</span>
-            <div class="canvas-property-colors">
-              <For each={PEN_COLORS}>
-                {(color) => (
-                  <button
-                    type="button"
-                    classList={{
-                      "canvas-color-swatch": true,
-                      active: strokeColor() === color,
-                    }}
-                    style={{ background: color }}
-                    aria-label={`${t("Set pen color")} ${color}`}
-                    onClick={() => run((canvas) => canvas.setSelectedStrokeColor(color))}
-                  />
-                )}
-              </For>
-            </div>
-          </section>
-        </Show>
-
-        <For each={elementProperties()}>
-          {(property) => (
-            <section class="canvas-property-section">
-              <label class="canvas-property-toggle">
-                <input
-                  type="checkbox"
-                  checked={view()?.elementPropertyValue(property)}
-                  onChange={(event) => {
-                    const id = selectedId();
-                    const checked = event.currentTarget.checked;
-                    if (id)
-                      run((canvas) =>
-                        canvas.updateShapeData(id, { [property.id]: checked }),
-                      );
-                  }}
-                />
-                <span class="canvas-property-label">{t(property.label)}</span>
-              </label>
-            </section>
-          )}
-        </For>
-
-        <Show when={selectedId()} keyed>
-          {(shapeId) => (
-            <For each={inspectors()}>
-              {(inspector) => (
-                <InspectorMount
-                  chrome={props.chrome}
-                  inspector={inspector}
-                  shapeId={shapeId}
-                />
+                    <span class="canvas-property-label">{t(property.label)}</span>
+                  </label>
+                </section>
               )}
             </For>
-          )}
+          </Show>
+
+          <Show when={selectedId()} keyed>
+            {(shapeId) => (
+              <Show when={activeInspector()} keyed>
+                {(inspector) => (
+                  <InspectorMount
+                    chrome={props.chrome}
+                    inspector={inspector}
+                    shapeId={shapeId}
+                  />
+                )}
+              </Show>
+            )}
+          </Show>
+        </aside>
+
+        <Show when={tabs().length > 1}>
+          <div class="canvas-properties-tabs" role="tablist" aria-orientation="vertical">
+            <For each={tabs()}>
+              {(tab) => (
+                <button
+                  type="button"
+                  role="tab"
+                  class="canvas-properties-tab"
+                  aria-selected={tab.id === activeTab()}
+                  onClick={() => setChosenTab(tab.id)}
+                >
+                  {tab.title}
+                </button>
+              )}
+            </For>
+          </div>
         </Show>
-      </aside>
+      </div>
     </Show>
   );
 }
+
+const APPEARANCE = "appearance";
 
 /** An extension's panel, in a shadow root so its styles and ours stay apart. */
 function InspectorMount(props: {
@@ -174,7 +224,7 @@ function InspectorMount(props: {
   return (
     <section class="canvas-property-section" aria-label={inspector.title}>
       <div class="canvas-property-head">
-        <span class="canvas-property-label">{inspector.title}</span>
+        <h2 class="canvas-properties-sidebar-title">{inspector.title}</h2>
         <button
           type="button"
           class="canvas-property-eye"

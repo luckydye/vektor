@@ -142,15 +142,29 @@ vektor-canvas {
   backdrop-filter: blur(8px);
 }
 
-/* Tall panels (an extension inspector) scroll inside the canvas instead of running off it. */
-.canvas-properties-sidebar {
+/* The panel and its tab strip; only they take pointer input, not the gap below. */
+.canvas-properties {
   position: absolute;
   top: 72px;
   right: 16px;
+  bottom: 16px;
   z-index: 11;
   display: flex;
-  width: min(224px, calc(100% - 32px));
-  max-height: calc(100% - 72px - 16px);
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.canvas-properties > * {
+  pointer-events: auto;
+}
+
+/* Tall panels (an extension inspector) scroll inside the canvas instead of running off it. */
+.canvas-properties-sidebar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(224px, calc(100vw - 64px));
+  max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   flex-direction: column;
@@ -165,6 +179,38 @@ vektor-canvas {
 
 .canvas-properties-sidebar > * {
   flex-shrink: 0;
+}
+
+/* Blender-style tabs hanging off the panel's right edge. */
+.canvas-properties-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: -1px;
+  padding-top: 12px;
+}
+
+.canvas-properties-tab {
+  border: 1px solid var(--canvas-toolbar-border);
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: var(--canvas-toolbar-bg);
+  padding: 10px 5px;
+  color: var(--canvas-muted);
+  font-size: 12px;
+  font-weight: 600;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+  transition: color 120ms;
+}
+
+.canvas-properties-tab:hover {
+  color: var(--canvas-text);
+}
+
+.canvas-properties-tab[aria-selected="true"] {
+  color: var(--canvas-text);
+  box-shadow: inset 2px 0 0 var(--canvas-tool-active-text);
 }
 
 .canvas-properties-sidebar-title {
