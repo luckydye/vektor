@@ -1,6 +1,7 @@
 import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
 import { animatesImages, drawAnimatedImage } from "#canvas/render/animatedImage.ts";
 import { sameOriginMediaUrl } from "#canvas/render/imageSource.ts";
+import { cachedImage, loadedImage } from "#canvas/render/images.ts";
 import { drawImage, drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
 import { svgImage } from "#canvas/render/svgImage.ts";
 import { drawTextLayout, lineLayout } from "#canvas/render/text.ts";
@@ -97,8 +98,6 @@ function parseMediaData(
   };
 }
 
-const imageCache = new Map<string, HTMLImageElement | "loading" | "error">();
-
 function mediaSource(shape: CanvasShape) {
   return typeof shape.data.src === "string" ? shape.data.src : "";
 }
@@ -109,11 +108,10 @@ function mediaAlt(shape: CanvasShape) {
 
 function cachedImageFallback(src: string): HTMLImageElement | null {
   for (let index = IMAGE_RESIZE_TIERS.length - 1; index >= 0; index--) {
-    const cached = imageCache.get(resizeImageUrl(src, IMAGE_RESIZE_TIERS[index]));
-    if (cached instanceof HTMLImageElement) return cached;
+    const cached = cachedImage(resizeImageUrl(src, IMAGE_RESIZE_TIERS[index]));
+    if (cached) return cached;
   }
-  const cached = imageCache.get(src);
-  return cached instanceof HTMLImageElement ? cached : null;
+  return cachedImage(src);
 }
 
 function isGifSrc(src: string): boolean {
@@ -134,25 +132,8 @@ function paintImage(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelp
 
   const targetPixels = Math.ceil(shape.frame.width * helpers.scale * helpers.dpr);
   const tieredSrc = resizeImageUrl(src, targetPixels);
-  const cached = imageCache.get(tieredSrc);
-  if (!cached) {
-    imageCache.set(tieredSrc, "loading");
-    const image = new Image();
-    image.src = sameOriginMediaUrl(tieredSrc);
-    image
-      .decode()
-      .then(() => {
-        imageCache.set(tieredSrc, image);
-        helpers.invalidate();
-      })
-      .catch(() => {
-        imageCache.set(tieredSrc, "error");
-        helpers.invalidate();
-      });
-  }
-
-  const displayImage =
-    cached instanceof HTMLImageElement ? cached : cachedImageFallback(src);
+  const loaded = loadedImage(tieredSrc, helpers.invalidate);
+  const displayImage = loaded ?? cachedImageFallback(src);
   if (displayImage) drawImage(gpu, displayImage, quad);
   else drawRoundedRect(gpu, quad, { fill: [0.5, 0.5, 0.5, 0.15] });
 }

@@ -3,7 +3,7 @@
  * pixel size it is drawn at (in power-of-two steps), for painting as a texture.
  */
 
-import { loadedImage } from "#canvas/render/images.ts";
+import { loadedImage, sizedSvgUrl } from "#canvas/render/images.ts";
 
 const urls = new Map<string, string>();
 
@@ -18,16 +18,7 @@ export function svgImage(
   const key = `${size}|${color}|${markup}`;
   let url = urls.get(key);
   if (!url) {
-    // The HTML parser puts inline icon markup in the SVG namespace even without
-    // an xmlns, and the XML serializer then writes it out.
-    const root = new DOMParser()
-      .parseFromString(markup.replace(/currentColor/g, color), "text/html")
-      .querySelector("svg");
-    if (!root) throw new Error("Icon markup has no SVG");
-    root.setAttribute("width", String(size));
-    root.setAttribute("height", String(size));
-    const svg = new XMLSerializer().serializeToString(root);
-    url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    url = sizedSvgUrl(markup, size, color);
     urls.set(key, url);
   }
   return loadedImage(url, invalidate);

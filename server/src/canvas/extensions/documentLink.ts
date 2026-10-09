@@ -42,17 +42,6 @@ function shapeDocumentAddress(shape: CanvasShape) {
   return typeof shape.data.docAddress === "string" ? shape.data.docAddress : undefined;
 }
 
-const parsedAddresses = new Map<string, ParsedVektorDocumentAddress | null>();
-
-// Painting asks for a card's address many times a frame; parsing builds URLs.
-function parsedShapeAddress(shape: CanvasShape) {
-  const address = shapeDocumentAddress(shape);
-  if (!address) return null;
-  return remembered(parsedAddresses, address, 4096, () =>
-    parseVektorDocumentAddress(address),
-  );
-}
-
 function shapeSource(shape: CanvasShape) {
   return typeof shape.data.src === "string" ? shape.data.src : undefined;
 }
@@ -330,7 +319,7 @@ function cardGeometry(
   const documentId = documents.isRemote(shape)
     ? ""
     : documents.documentIdForShape(shape) || "";
-  const html = documentBodyHtml({
+  const html = cachedBodyHtml({
     status: documents.shapeStatus(shape) as DocumentPreviewStatus,
     type,
     content: documents.shapeContent(shape),
@@ -490,6 +479,24 @@ function bodyHit(
   return { task: task?.index ?? null, href: link?.href ?? null };
 }
 
+const bodyHtml = new Map<string, { status: string; type: string; html: string }>();
+
+// Sanitizing a document's HTML is costly, so it runs once per content, not per
+// paint. Workflow summaries are small and change with their run.
+function cachedBodyHtml(params: Parameters<typeof documentBodyHtml>[0]): string {
+  if (params.workflow) return documentBodyHtml(params);
+  const type = params.type ?? "";
+  const cached = remembered(bodyHtml, params.content, 1024, () => ({
+    status: params.status,
+    type,
+    html: documentBodyHtml(params),
+  }));
+  if (cached.status === params.status && cached.type === type) return cached.html;
+  const html = documentBodyHtml(params);
+  bodyHtml.set(params.content, { status: params.status, type, html });
+  return html;
+}
+
 // Hit tests only need the card's geometry, which colours do not change.
 const geometryOnly = { color: () => "#000", invalidate: () => {} };
 
@@ -551,7 +558,7 @@ export const CanvasDocumentLink = CanvasElement.create({
     };
   },
 
-  isValid: (shape) => Boolean(parsedShapeAddress(shape)),
+  isValid: (shape) => Boolean(parseVektorDocumentAddress(shapeDocumentAddress(shape))),
   addRender() {
     return {
       paint: paintDocument,
@@ -709,14 +716,16 @@ function initialDocumentPreview(
 }
 
 function documentIdForShape(shape: CanvasShape): string | undefined {
-  return parsedShapeAddress(shape)?.documentId;
+  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.documentId;
 }
 
 function documentSpaceIdForShape(
   shape: CanvasShape,
   fallbackSpaceId: string,
 ): string | undefined {
-  return parsedShapeAddress(shape)?.spaceId || fallbackSpaceId;
+  return (
+    parseVektorDocumentAddress(shapeDocumentAddress(shape))?.spaceId || fallbackSpaceId
+  );
 }
 
 // Swaps the document segment of a document href, keeping origin and space path.
@@ -730,11 +739,13 @@ function siblingDocumentHref(href: string, documentId: string): string {
 }
 
 function documentHrefForShape(shape: CanvasShape): string | undefined {
-  return parsedShapeAddress(shape)?.href ?? shapeSource(shape);
+  return (
+    parseVektorDocumentAddress(shapeDocumentAddress(shape))?.href ?? shapeSource(shape)
+  );
 }
 
 export function documentAddressForShape(shape: CanvasShape): string | undefined {
-  return parsedShapeAddress(shape)?.address;
+  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.address;
 }
 
 // A document address (or bare URL) whose origin differs from this instance —

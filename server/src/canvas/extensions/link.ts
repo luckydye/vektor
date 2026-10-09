@@ -2,11 +2,12 @@ import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/url-metadata.ts";
 import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
 import { loadedImage } from "#canvas/render/images.ts";
+import { remembered } from "#canvas/render/lru.ts";
 import { drawImage, drawRoundedRect } from "#canvas/render/primitives.ts";
 import { type RichTextTheme, richTextLayout } from "#canvas/render/richText.ts";
 import { drawTextLayout, lineLayout } from "#canvas/render/text.ts";
 import type { TextLayout } from "#canvas/render/textLayout.ts";
-import { containQuad, drawVideo } from "#canvas/render/video.ts";
+import { containQuad, drawVideo, videoFailed } from "#canvas/render/video.ts";
 import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
 import type { CanvasPaintHelpers, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
@@ -130,7 +131,13 @@ function domainFromUrl(url: string): string {
 
 // The tweet text and its "— Name (@handle) date" byline, from the oEmbed
 // blockquote; the card draws them natively instead of loading widgets.js.
+const tweets = new Map<string, { html: string; byline: string }>();
+
 function tweetParts(html: string) {
+  return remembered(tweets, html, 256, () => parseTweet(html));
+}
+
+function parseTweet(html: string) {
   const quote = new DOMParser()
     .parseFromString(html, "text/html")
     .querySelector("blockquote");
@@ -249,7 +256,8 @@ function paintLink(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpe
       radius: [7 * helpers.scale, 7 * helpers.scale, 0, 0],
       fill: parseColor(helpers.color("--canvas-handle-bg")),
     });
-    if (metadata?.video) {
+    // A preview's "video" is sometimes an embed page; then its image stands in.
+    if (metadata?.video && !videoFailed(metadata.video)) {
       drawVideo(gpu, metadata.video, frame, helpers.requestFrame);
     } else if (metadata?.image) {
       const loaded = loadedImage(metadata.image, helpers.invalidate);

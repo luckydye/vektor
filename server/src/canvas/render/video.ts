@@ -15,6 +15,8 @@ interface VideoStream {
   pauseTimer: ReturnType<typeof setTimeout> | null;
   // Repaints for whoever drew the video since its last frame.
   waiting: Set<() => void>;
+  // The source cannot be played (e.g. it is a page, not a media file).
+  failed: boolean;
 }
 
 const streams = new Map<string, VideoStream>();
@@ -34,7 +36,12 @@ function streamFor(src: string): VideoStream {
     paintedAt: 0,
     pauseTimer: null,
     waiting: new Set(),
+    failed: false,
   };
+  video.addEventListener("error", () => {
+    stream.failed = true;
+    for (const invalidate of stream.waiting) invalidate();
+  });
   const onFrame = () => {
     stream.frame++;
     for (const invalidate of stream.waiting) invalidate();
@@ -46,11 +53,21 @@ function streamFor(src: string): VideoStream {
   return stream;
 }
 
-function play(video: HTMLVideoElement) {
-  video.play().catch((error: unknown) => {
+function play(stream: VideoStream) {
+  stream.video.play().catch((error: unknown) => {
     // A pause() interrupting a pending play() is expected.
-    if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    if (error instanceof DOMException && error.name === "NotSupportedError") {
+      stream.failed = true;
+      return;
+    }
+    throw error;
   });
+}
+
+/** Whether `src` turned out not to be playable. */
+export function videoFailed(src: string): boolean {
+  return streams.get(src)?.failed === true;
 }
 
 function pauseWhenIdle(stream: VideoStream, delay: number) {
@@ -126,9 +143,10 @@ export function drawVideo(
 ): boolean {
   const stream = streamFor(src);
   const { video } = stream;
+  if (stream.failed) return false;
   stream.paintedAt = performance.now();
   stream.waiting.add(invalidate);
-  if (video.paused) play(video);
+  if (video.paused) play(stream);
   if (!stream.pauseTimer) pauseWhenIdle(stream, 1000);
   if (stream.frame === 0 || video.videoWidth === 0 || video.videoHeight === 0)
     return false;

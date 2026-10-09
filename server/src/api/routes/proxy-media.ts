@@ -3,8 +3,8 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { SsrfError, safeFetch } from "#utils/ssrf.ts";
 
-// Only relay content types the canvas can display. Raster images only: an SVG
-// served from our origin is a document that can run script.
+// Only relay content types the canvas can display. An SVG is a document that
+// could run script, which the sandbox CSP on every response forbids.
 const ALLOWED_CONTENT_TYPE_PREFIXES = ["video/", "audio/"];
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
@@ -15,6 +15,7 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/bmp",
   "image/x-icon",
   "image/vnd.microsoft.icon",
+  "image/svg+xml",
 ]);
 
 const HEADERS_TO_FORWARD = [

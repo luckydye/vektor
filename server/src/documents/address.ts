@@ -32,11 +32,24 @@ export function createVektorDocumentAddress(input: {
   return address.toString();
 }
 
+const parsedAddresses = new Map<string, Readonly<ParsedVektorDocumentAddress> | null>();
+
+/**
+ * Memoized: a canvas asks for the same card addresses many times a frame. The
+ * result is shared, so it is frozen.
+ */
 export function parseVektorDocumentAddress(
   address: string | null | undefined,
-): ParsedVektorDocumentAddress | null {
+): Readonly<ParsedVektorDocumentAddress> | null {
   if (!address) return null;
+  if (parsedAddresses.has(address)) return parsedAddresses.get(address) ?? null;
+  if (parsedAddresses.size >= 4096) parsedAddresses.clear();
+  const parsed = parseAddress(address);
+  parsedAddresses.set(address, parsed && Object.freeze(parsed));
+  return parsed;
+}
 
+function parseAddress(address: string): ParsedVektorDocumentAddress | null {
   let parsed: URL;
   try {
     parsed = new URL(address);

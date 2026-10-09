@@ -2,7 +2,7 @@
  * Painted text: a `TextLayout` placed on screen. Glyphs are drawn straight from
  * their outlines with Eric Lengyel's Slug algorithm — each fragment casts a
  * horizontal and a vertical ray through the glyph's quadratic curves — so text
- * stays sharp at every zoom with no atlas. One instanced draw per font face.
+ * stays sharp at every zoom with no atlas. One instanced draw per layout.
  */
 
 import type { FontFace } from "#canvas/render/fonts.ts";
@@ -45,41 +45,81 @@ interface CurveStore {
   used: number;
   dirty: boolean;
   glyphs: Map<string, { start: number; count: number }>;
-  vao: WebGLVertexArrayObject;
-  instances: WebGLBuffer;
 }
 
 function curveStore(gpu: CanvasGpu): CurveStore {
   const cached = gpu.resources.named.get("textCurves") as CurveStore | undefined;
   if (cached) return cached;
-  const { gl } = gpu;
-  const texture = gl.createTexture();
-  const vao = gl.createVertexArray();
-  const instances = gl.createBuffer();
-  if (!texture || !vao || !instances) throw new Error("Text resource allocation failed");
-  gl.bindVertexArray(vao);
-  gl.bindBuffer(gl.ARRAY_BUFFER, instances);
-  const stride = INSTANCE_FLOATS * 4;
-  const attributes = [4, 3, 2, 4];
-  let offset = 0;
-  attributes.forEach((size, location) => {
-    gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location, size, gl.FLOAT, false, stride, offset * 4);
-    gl.vertexAttribDivisor(location, 1);
-    offset += size;
-  });
-  gl.bindVertexArray(null);
+  const texture = gpu.gl.createTexture();
+  if (!texture) throw new Error("Text resource allocation failed");
   const store: CurveStore = {
     texture,
     data: new Float32Array(CURVE_TEXTURE_WIDTH * 4 * 4),
     used: 0,
     dirty: true,
     glyphs: new Map(),
-    vao,
-    instances,
   };
   gpu.resources.named.set("textCurves", store);
   return store;
+}
+
+interface GlyphBatch {
+  vao: WebGLVertexArrayObject;
+  count: number;
+}
+
+// A layout's glyph instances, built and uploaded once: layouts are cached and
+// immutable, and placement on screen is only uniforms.
+function glyphBatch(gpu: CanvasGpu, layout: TextLayout, store: CurveStore): GlyphBatch {
+  const cached = gpu.resources.objects.get(layout) as GlyphBatch | undefined;
+  if (cached) return cached;
+  const faces = new Set(layout.glyphs.map((glyph) => glyph.face));
+  const fonts = fontFaces(faces, () => {});
+  if (!fonts) throw new Error("Text is laid out before its fonts have loaded");
+  const instances: number[] = [];
+  for (const glyph of layout.glyphs) {
+    const font = fonts.get(glyph.face);
+    if (!font) throw new Error(`Font ${glyph.face} is not loaded`);
+    const outline = font.glyph(glyph.index);
+    if (outline.curves.length === 0) continue;
+    const curves = glyphCurves(store, `${glyph.face}:${glyph.index}`, outline.curves);
+    const { x0, y0, x1, y1 } = outline.bounds;
+    const alpha = glyph.color[3];
+    instances.push(
+      x0,
+      y0,
+      x1,
+      y1,
+      glyph.x,
+      glyph.y,
+      glyph.size,
+      curves.start,
+      curves.count,
+      glyph.color[0] * alpha,
+      glyph.color[1] * alpha,
+      glyph.color[2] * alpha,
+      alpha,
+    );
+  }
+  const { gl } = gpu;
+  const vao = gl.createVertexArray();
+  const buffer = gl.createBuffer();
+  if (!vao || !buffer) throw new Error("Text resource allocation failed");
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(instances), gl.STATIC_DRAW);
+  const stride = INSTANCE_FLOATS * 4;
+  let offset = 0;
+  [4, 3, 2, 4].forEach((size, location) => {
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, size, gl.FLOAT, false, stride, offset * 4);
+    gl.vertexAttribDivisor(location, 1);
+    offset += size;
+  });
+  gl.bindVertexArray(null);
+  const batch = { vao, count: instances.length / INSTANCE_FLOATS };
+  gpu.resources.objects.set(layout, batch);
+  return batch;
 }
 
 function glyphCurves(store: CurveStore, key: string, curves: Float32Array) {
@@ -287,37 +327,9 @@ export function drawTextLayout(
   }
   if (layout.glyphs.length === 0) return;
 
-  const faces = new Set(layout.glyphs.map((glyph) => glyph.face));
-  const fonts = fontFaces(faces, () => {});
-  if (!fonts) throw new Error("Text is laid out before its fonts have loaded");
   const store = curveStore(gpu);
-  const byFace = new Map<FontFace, number[]>();
-  for (const glyph of layout.glyphs) {
-    const font = fonts.get(glyph.face);
-    if (!font) throw new Error(`Font ${glyph.face} is not loaded`);
-    const outline = font.glyph(glyph.index);
-    if (outline.curves.length === 0) continue;
-    const curves = glyphCurves(store, `${glyph.face}:${glyph.index}`, outline.curves);
-    const { x0, y0, x1, y1 } = outline.bounds;
-    const alpha = glyph.color[3];
-    const list = byFace.get(glyph.face) ?? [];
-    byFace.set(glyph.face, list);
-    list.push(
-      x0,
-      y0,
-      x1,
-      y1,
-      glyph.x,
-      glyph.y,
-      glyph.size,
-      curves.start,
-      curves.count,
-      glyph.color[0] * alpha,
-      glyph.color[1] * alpha,
-      glyph.color[2] * alpha,
-      alpha,
-    );
-  }
+  const batch = glyphBatch(gpu, layout, store);
+  if (batch.count === 0) return;
 
   if (store.dirty) {
     gl.bindTexture(gl.TEXTURE_2D, store.texture);
@@ -354,12 +366,8 @@ export function drawTextLayout(
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, store.texture);
   gl.uniform1i(program.uniform("u_curves"), 0);
-  gl.bindVertexArray(store.vao);
-  gl.bindBuffer(gl.ARRAY_BUFFER, store.instances);
-  for (const instances of byFace.values()) {
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(instances), gl.DYNAMIC_DRAW);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, instances.length / INSTANCE_FLOATS);
-  }
+  gl.bindVertexArray(batch.vao);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, batch.count);
   gl.bindVertexArray(null);
 }
 
