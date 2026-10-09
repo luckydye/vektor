@@ -1,6 +1,7 @@
 import { createEffect, For, on, onCleanup, onMount, Show } from "solid-js";
 import { PEN_COLORS } from "#canvas/extensions/drawTool.ts";
 import {
+  type CanvasEditMode,
   type CanvasInspector,
   createInspectorHandle,
   slotDisabled,
@@ -142,6 +143,7 @@ function InspectorMount(props: {
   });
   let host!: HTMLDivElement;
   let handle: ReturnType<typeof createInspectorHandle> | null = null;
+  let editMode: CanvasEditMode | null = null;
 
   onMount(() => {
     const container = document.createElement("div");
@@ -154,10 +156,19 @@ function InspectorMount(props: {
         return shape;
       },
       write: (patch) => run((canvas) => canvas.updateShapeData(shapeId, patch)),
+      beginEdit: (mode) => {
+        editMode = mode;
+        run((canvas) => canvas.beginEditMode(shapeId, mode));
+      },
     });
     const mounted = handle;
     createEffect(on(updatedAt, () => mounted.notify(), { defer: true }));
     onCleanup(inspector.render(container, mounted));
+    // A mode started from this panel ends with it.
+    onCleanup(() => {
+      const mode = editMode;
+      if (mode) run((canvas) => canvas.endEditMode(mode));
+    });
   });
 
   return (

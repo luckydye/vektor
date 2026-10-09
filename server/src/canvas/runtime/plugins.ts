@@ -3,7 +3,11 @@
  * extensions. Element types stay compile-time: a shape whose type is missing
  * at load is pruned from the document.
  */
-import type { CanvasShape, CanvasShapeType } from "#canvas/runtime/extensionApi.ts";
+import type {
+  CanvasPointerGestureCancelReason,
+  CanvasShape,
+  CanvasShapeType,
+} from "#canvas/runtime/extensionApi.ts";
 
 /** What an inspector reads and writes; its data is the owner's slot on the shape. */
 export interface CanvasInspectorHandle {
@@ -13,7 +17,82 @@ export interface CanvasInspectorHandle {
   update: (patch: Record<string, unknown>) => void;
   /** Fires when the shape changes, locally or from a peer. */
   subscribe: (listener: () => void) => () => void;
+  /**
+   * Hands pointer input over the inspected shape to `mode` until it exits: on
+   * Escape, a selection or tool change, the shape's deletion, or the panel closing.
+   */
+  beginEdit: (mode: CanvasEditMode) => void;
 }
+
+/** A point in the shape's own space: 0..1 across its frame, rotation removed. */
+export type CanvasLocalPoint = { x: number; y: number };
+
+export interface CanvasEditPointer {
+  local: CanvasLocalPoint;
+  /** Coalesced samples since the last event, oldest first, ending at `local`. */
+  samples: readonly (CanvasLocalPoint & { pressure: number })[];
+  /** Whether `local` lies within the frame. */
+  inside: boolean;
+  /** Modifiers, button and pointer type. */
+  event: PointerEvent;
+}
+
+/** What an edit mode can do while it runs. */
+export interface CanvasEditModeSession {
+  shape: () => CanvasShape;
+  /** Screen pixels per local unit, horizontally and vertically, at the current zoom. */
+  scale: () => { x: number; y: number };
+  /** A CSS cursor for the canvas, such as a data-URL brush ring; null for the default. */
+  setCursor: (cursor: string | null) => void;
+  /** Drawing over the shape that is never stored or exported; replaces the previous set. */
+  setOverlay: (items: readonly CanvasOverlayItem[]) => void;
+  exit: () => void;
+}
+
+/**
+ * Pointer handling for one shape, such as a brush. Panning (middle or right
+ * button) and wheel zoom stay with the canvas.
+ */
+export interface CanvasEditMode {
+  onPointerDown: (input: CanvasEditPointer, session: CanvasEditModeSession) => void;
+  onPointerMove: (input: CanvasEditPointer, session: CanvasEditModeSession) => void;
+  onPointerUp: (input: CanvasEditPointer, session: CanvasEditModeSession) => void;
+  onCancel?: (reason: CanvasPointerGestureCancelReason, session: CanvasEditModeSession) => void;
+  /** The pointer moved with no button held; null when it left the canvas. */
+  onHover?: (input: CanvasEditPointer | null, session: CanvasEditModeSession) => void;
+  /** A key while active, other than Escape (which exits). Return true when handled. */
+  onKey?: (event: KeyboardEvent, session: CanvasEditModeSession) => boolean;
+  /** The zoom changed, so anything sized in screen pixels needs redoing. */
+  onView?: (session: CanvasEditModeSession) => void;
+  onExit?: () => void;
+}
+
+/**
+ * Positions are local. A path's `width` and a circle's `radius` are local too
+ * (fractions of the frame width) unless `unit` is "screen"; `strokeWidth` is
+ * always screen pixels.
+ */
+export type CanvasOverlayItem = { unit?: "local" | "screen" } & (
+  | { kind: "path"; points: readonly CanvasLocalPoint[]; width: number; color: string }
+  | {
+      kind: "circle";
+      center: CanvasLocalPoint;
+      radius: number;
+      fill?: string;
+      stroke?: string;
+      strokeWidth?: number;
+    }
+  | {
+      kind: "rect";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      fill?: string;
+      stroke?: string;
+      strokeWidth?: number;
+    }
+);
 
 /** A panel shown while a single shape of one of `types` is selected. */
 export interface CanvasInspector {
@@ -119,6 +198,7 @@ export function createInspectorHandle(options: {
   owner: string;
   shape: () => CanvasShape;
   write: (patch: Record<string, unknown>) => void;
+  beginEdit: (mode: CanvasEditMode) => void;
 }): CanvasInspectorHandle & { notify: () => void } {
   const key = pluginDataKey(options.owner);
   const listeners = new Set<() => void>();
@@ -127,6 +207,7 @@ export function createInspectorHandle(options: {
   return {
     shape: options.shape,
     data,
+    beginEdit: options.beginEdit,
     update(patch) {
       options.write({ [key]: { ...data<Record<string, unknown>>(), ...patch } });
     },

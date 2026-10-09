@@ -17,7 +17,7 @@ import {
 } from "#canvas/extensions/shape.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
-import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
+import { buildFreehandStroke, FREEHAND_STYLE } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
 import { pendingImageLoads } from "#canvas/render/images.ts";
 import { drawActiveStroke, drawStrokes, type InkOffset } from "#canvas/render/ink.ts";
@@ -114,7 +114,14 @@ import {
   screenPoint as screenPointIn,
   type ViewportControls,
 } from "#canvas/runtime/input.ts";
-import type { CanvasPlugins } from "#canvas/runtime/plugins.ts";
+import type {
+  CanvasEditMode,
+  CanvasEditModeSession,
+  CanvasEditPointer,
+  CanvasLocalPoint,
+  CanvasOverlayItem,
+  CanvasPlugins,
+} from "#canvas/runtime/plugins.ts";
 import {
   type CanvasExtensionManager,
   createCanvasExtensionManager,
@@ -387,6 +394,14 @@ export function createCanvasController(
     hoverRegion: null as { shapeId: string; region: string } | null,
     // The box a drag-to-create tool is sizing, in world units.
     draftRect: null as Rect | null,
+    // An extension's pointer handling for one shape, such as a healing brush.
+    editMode: null as {
+      shapeId: string;
+      mode: CanvasEditMode;
+      session: CanvasEditModeSession;
+      cursor: string | null;
+      overlay: readonly CanvasOverlayItem[];
+    } | null,
     // A text field an element paints in its chrome, with the hidden input's selection.
     textEdit: null as
       | (CanvasTextEdit & { selectionStart: number; selectionEnd: number })
@@ -1634,6 +1649,7 @@ export function createCanvasController(
   // a local colored cursor that matches the color broadcast to collaborators.
   const viewportCursor = () => {
     if (state.isPanning) return "grabbing";
+    if (state.editMode) return state.editMode.cursor ?? "crosshair";
     return state.hoverCursor ?? makeCanvasCursor(host.cursorColor);
   };
 
@@ -1872,6 +1888,7 @@ export function createCanvasController(
     drawSnapGuides(target, activeSnapGuides, "#2563eb");
     drawCanvasSelections(target, selection);
     drawFoundShape(target);
+    if (state.editMode) drawEditOverlay(target, state.editMode);
     if (state.draftRect) drawDraft(target, state.draftRect);
     const marquee = state.marqueeRect;
     if (marquee) {
@@ -3080,6 +3097,145 @@ export function createCanvasController(
     });
   }
 
+  // --- edit modes ---------------------------------------------------------
+
+  function beginEditMode(shapeId: string, mode: CanvasEditMode) {
+    if (shapesById().get(shapeId)?.locked) return;
+    exitEditMode();
+    const shape = () => {
+      const found = shapesById().get(shapeId);
+      if (!found) throw new Error(`Edited shape ${shapeId} is gone`);
+      return found;
+    };
+    const current = () => (state.editMode?.session === session ? state.editMode : null);
+    const session: CanvasEditModeSession = {
+      shape,
+      scale: () => {
+        const bounds = shapeBounds(shape());
+        const { scale } = transform();
+        return { x: bounds.width * scale, y: bounds.height * scale };
+      },
+      setCursor: (cursor) => {
+        const active = current();
+        if (!active) return;
+        state.editMode = { ...active, cursor };
+        invalidate();
+      },
+      setOverlay: (overlay) => {
+        const active = current();
+        if (!active) return;
+        state.editMode = { ...active, overlay };
+        renderOverlay();
+      },
+      exit: () => {
+        if (current()) exitEditMode();
+      },
+    };
+    state.editMode = { shapeId, mode, session, cursor: null, overlay: [] };
+    invalidate();
+  }
+
+  function exitEditMode() {
+    const active = state.editMode;
+    if (!active) return;
+    state.editMode = null;
+    if (activeToolPointerGesture) cancelToolPointerGesture("cancelled");
+    active.mode.onExit?.();
+    invalidate();
+    renderOverlay();
+  }
+
+  /** A pointer in the edited shape's own space: 0..1 across the frame. */
+  function editPointer(
+    shape: CanvasShape,
+    world: CanvasPoint,
+    samples: readonly { world: CanvasPoint; event: PointerEvent }[],
+    event: PointerEvent,
+  ): CanvasEditPointer {
+    const bounds = shapeBounds(shape);
+    const toLocal = (point: CanvasPoint) => {
+      const local = localPointInShape(bounds, point);
+      return { x: local.x / bounds.width, y: local.y / bounds.height };
+    };
+    const local = toLocal(world);
+    return {
+      local,
+      samples: samples.map((sample) => ({
+        ...toLocal(sample.world),
+        pressure: sample.event.pressure,
+      })),
+      inside: local.x >= 0 && local.x <= 1 && local.y >= 0 && local.y <= 1,
+      event,
+    };
+  }
+
+  function startEditGesture(event: PointerEvent) {
+    const active = state.editMode;
+    if (!active) return;
+    const { mode, session } = active;
+    const input = (gesture: CanvasPointerGestureEvent) =>
+      editPointer(session.shape(), gesture.world, gesture.samples, gesture.event);
+    beginPointerGesture(event, {
+      onMove: (gesture) => mode.onPointerMove(input(gesture), session),
+      onEnd: (gesture) => mode.onPointerUp(input(gesture), session),
+      onCancel: (reason) => mode.onCancel?.(reason, session),
+    });
+    mode.onPointerDown(input(pointerGestureEvent(event)), session);
+    event.preventDefault();
+  }
+
+  /** Paints an edit mode's overlay over its shape, in the overlay pass only. */
+  function drawEditOverlay(target: CanvasGpu, active: NonNullable<typeof state.editMode>) {
+    const shape = shapesById().get(active.shapeId);
+    if (!shape) return;
+    const bounds = shapeBounds(shape);
+    const { scale } = transform();
+    const world = (point: CanvasLocalPoint) =>
+      pointOnRotatedShape(bounds, { x: point.x * bounds.width, y: point.y * bounds.height });
+    const screen = (point: CanvasLocalPoint) => worldToScreen(world(point));
+    // Local lengths are fractions of the frame width.
+    const pixels = (value: number, unit: "local" | "screen" = "local") =>
+      unit === "screen" ? value : value * bounds.width * scale;
+    const paint = (item: { fill?: string; stroke?: string; strokeWidth?: number }) => ({
+      fill: item.fill ? parseColor(item.fill) : undefined,
+      stroke: item.stroke ? parseColor(item.stroke) : undefined,
+      strokeWidth: item.strokeWidth ?? 1,
+    });
+    for (const item of active.overlay) {
+      if (item.kind === "path") {
+        // Ink is drawn in world units and covers each pixel once, so a
+        // translucent brush preview does not darken where it overlaps itself.
+        const stroke = buildFreehandStroke(item.points.map(world), {
+          style: { width: pixels(item.width, item.unit) / scale, color: item.color, opacity: 1 },
+        });
+        drawActiveStroke(target, stroke, item.color);
+      } else if (item.kind === "circle") {
+        const center = screen(item.center);
+        const radius = pixels(item.radius, item.unit);
+        drawRoundedRect(
+          target,
+          rectQuad(center.x - radius, center.y - radius, radius * 2, radius * 2),
+          { radius, ...paint(item) },
+        );
+      } else {
+        const center = screen({ x: item.x + item.width / 2, y: item.y + item.height / 2 });
+        const width = item.width * bounds.width * scale;
+        const height = item.height * bounds.height * scale;
+        drawRoundedRect(
+          target,
+          rectQuad(
+            center.x - width / 2,
+            center.y - height / 2,
+            width,
+            height,
+            (bounds.rotation * Math.PI) / 180,
+          ),
+          paint(item),
+        );
+      }
+    }
+  }
+
   /** Ends the painted text edit, applying it unless cancelled; safe to call twice. */
   function finishTextEdit(commit: boolean) {
     const edit = state.textEdit;
@@ -3115,6 +3271,11 @@ export function createCanvasController(
     if (event.button === 1 || event.button === 2) {
       startPan(event);
       event.preventDefault();
+      return;
+    }
+
+    if (state.editMode) {
+      startEditGesture(event);
       return;
     }
 
@@ -3313,6 +3474,15 @@ export function createCanvasController(
     if (moveToolPointerGesture(event)) {
       schedulePresenceUpdate();
       event.preventDefault();
+      return;
+    }
+
+    const editing = state.editMode;
+    const edited = editing && shapesById().get(editing.shapeId);
+    if (editing && edited && !dragState) {
+      const sample = [{ world: localPointer, event }];
+      editing.mode.onHover?.(editPointer(edited, localPointer, sample, event), editing.session);
+      schedulePresenceUpdate();
       return;
     }
 
@@ -3702,6 +3872,7 @@ export function createCanvasController(
   }
 
   function handlePointerLeave() {
+    state.editMode?.mode.onHover?.(null, state.editMode.session);
     state.hoverCursor = null;
     setHoverRegion(null);
     localPointer = null;
@@ -3843,11 +4014,25 @@ export function createCanvasController(
    * beat the global `escape` binding — hence handled locally.
    */
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key !== "Escape") return;
-    const target = event.target as HTMLElement | null;
+    // The origin, not `target`: keys typed into an inspector's shadow root
+    // retarget to its host and would otherwise reach the edit mode.
+    const origin = event.composedPath()[0];
+    const target = origin instanceof HTMLElement ? origin : null;
     // document-view hosts the embedded document editor; shadow-DOM events
     // retarget to the host element, so closest() must match the host itself.
     if (target?.closest("textarea, input, select, document-view")) return;
+    const editing = state.editMode;
+    if (editing && event.key === "Escape") {
+      exitEditMode();
+      event.preventDefault();
+      return;
+    }
+    if (editing?.mode.onKey?.(event, editing.session)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (event.key !== "Escape") return;
     if (cancelToolPointerGesture("escape") || cancelTransformDrag()) {
       event.preventDefault();
     }
@@ -3878,6 +4063,7 @@ export function createCanvasController(
     watch("cursorColor", host.cursorColor, () => updatePresence());
 
     watch("camera", state.camera, () => {
+      state.editMode?.mode.onView?.(state.editMode.session);
       if (!state.isCameraMoving) state.isCameraMoving = true;
       if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
       cameraMoveTimer = setTimeout(() => {
@@ -3889,6 +4075,8 @@ export function createCanvasController(
     watch("selection", state.selectedIds, (ids) => {
       const edit = state.textEdit;
       if (edit && (ids.size !== 1 || !ids.has(edit.shapeId))) finishTextEdit(true);
+      const mode = state.editMode;
+      if (mode && (ids.size !== 1 || !ids.has(mode.shapeId))) exitEditMode();
       updatePresence();
     });
 
@@ -3898,7 +4086,10 @@ export function createCanvasController(
     });
 
     watch("activeTool", state.activeTool, (tool) => {
-      if (tool !== "select") stopActiveEdit();
+      if (tool !== "select") {
+        stopActiveEdit();
+        exitEditMode();
+      }
     });
 
     watch("shapes:edit", state.shapes, () => {
@@ -3907,6 +4098,7 @@ export function createCanvasController(
       if (state.textEdit && !shapesById().has(state.textEdit.shapeId)) {
         finishTextEdit(false);
       }
+      if (state.editMode && !shapesById().has(state.editMode.shapeId)) exitEditMode();
     });
 
     watch("gridType", host.gridType, (value) => applyGridType(value), {
@@ -4260,6 +4452,11 @@ export function createCanvasController(
       state.menu = null;
     },
     finishTextEdit,
+    beginEditMode,
+    /** Ends `mode` if it is still the one running, e.g. when its panel closes. */
+    endEditMode: (mode: CanvasEditMode) => {
+      if (state.editMode?.mode === mode) exitEditMode();
+    },
     /** Mirrors the hidden input into the painted field. */
     updateTextEdit: (value: string, selectionStart: number, selectionEnd: number) => {
       const edit = state.textEdit;

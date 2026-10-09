@@ -484,6 +484,42 @@ export function activate(ctx: ExtensionContext): void {
   slot; while it is set, your processor is skipped and the image paints
   unedited. Keep that key free in your own data.
 - Registrations are removed automatically when the extension unloads.
+
+### Edit modes
+
+An inspector can hand the pointer over its shape to an **edit mode**, for tools
+such as a healing brush. While it runs, presses over the canvas go to the mode
+instead of selecting or moving; panning (middle or right button) and wheel zoom
+keep working. It ends on Escape, a selection or tool change, the shape's
+deletion, or when the panel closes.
+
+```ts
+button.onclick = () =>
+  handle.beginEdit({
+    onPointerDown(input, session) { stroke = [input.local]; },
+    onPointerMove(input, session) {
+      stroke.push(...input.samples);
+      session.setOverlay([{ kind: "path", points: stroke, width: radius * 2, color: "rgba(224,36,94,.35)" }]);
+    },
+    onPointerUp(input, session) {
+      session.setOverlay([]);
+      handle.update({ strokes: [...strokes, { points: stroke, radius }] });
+    },
+    onHover(input, session) {
+      session.setOverlay(input ? [{ kind: "circle", center: input.local, radius, stroke: "#fff" }] : []);
+    },
+    onKey(event) { /* "[" / "]" resize the brush */ return false; },
+  });
+```
+
+- Points are **local**: 0..1 across the shape's frame with rotation removed, so
+  strokes stored in the slot apply to the preview and the original alike.
+- `session.scale()` converts local units to screen pixels at the current zoom;
+  `onView` fires when it changes.
+- `session.setCursor(css)` replaces the canvas cursor, e.g. a data-URL ring.
+- `session.setOverlay(items)` draws paths, circles and rects over the shape in
+  the overlay pass; they are never stored or exported. A translucent path covers
+  each pixel once.
 - Large assets such as `.wasm` binaries are served with their proper MIME type;
   a package may be up to 64 MB.
 
