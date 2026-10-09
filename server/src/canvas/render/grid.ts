@@ -21,77 +21,80 @@ function levelFadeAlpha(screenSpacing: number, minScreenSpacing: number): number
   return Math.min(1, (screenSpacing - minScreenSpacing) / minScreenSpacing);
 }
 
-const FULLSCREEN_VERTEX = `
+// One small quad per dot or line, so only the grid's own pixels are shaded
+// rather than every pixel on screen. Instances count columns, then rows.
+const GRID_VERTEX = `
+uniform int u_dots;
+uniform int u_columns;
+uniform vec2 u_first;
+uniform float u_spacing;
+uniform float u_width;
+out vec2 v_local;
 void main() {
-  gl_Position = vec4(vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.0 - 1.0, 0.0, 1.0);
+  vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.0 - 1.0;
+  float pad = 1.0 / u_dpr;
+  if (u_dots == 1) {
+    vec2 cell = vec2(gl_InstanceID % u_columns, gl_InstanceID / u_columns);
+    vec2 center = u_first + cell * u_spacing;
+    v_local = corner * (u_width + pad);
+    gl_Position = screenToClip(center + v_local);
+    return;
+  }
+  // Lines snap to CSS pixel centres, so a 1px line stays crisp at every dpr.
+  bool vertical = gl_InstanceID < u_columns;
+  float index = float(vertical ? gl_InstanceID : gl_InstanceID - u_columns);
+  float at = floor((vertical ? u_first.x : u_first.y) + index * u_spacing + 0.5) + 0.5;
+  float across = corner.x * (u_width * 0.5 + pad);
+  v_local = vec2(across, 0.0);
+  vec2 point = vertical
+    ? vec2(at + across, (corner.y * 0.5 + 0.5) * u_screen.y)
+    : vec2((corner.y * 0.5 + 0.5) * u_screen.x, at + across);
+  gl_Position = screenToClip(point);
 }
 `;
 
-// Lines snap to CSS pixel centres like the old 2D grid, so a 1px line stays
-// crisp at every dpr; dots are centred on the exact intersections.
 const GRID_FRAGMENT = `
 uniform int u_dots;
-uniform float u_originY;
-uniform int u_count;
-uniform float u_size[2];
-uniform float u_lineWidth[2];
-uniform vec4 u_color[2];
+uniform float u_width;
+uniform vec4 u_color;
+in vec2 v_local;
 out vec4 outColor;
-
-float lineCoverage(float s, float offset, float spacing, float width) {
-  float k = floor((s - offset) / spacing + 0.5);
-  float line = floor(k * spacing + offset + 0.5) + 0.5;
-  return clamp(width * u_dpr * 0.5 + 0.5 - abs(s - line) * u_dpr, 0.0, 1.0);
-}
-
 void main() {
-  // gl_FragCoord counts from the framebuffer's bottom, below the viewport.
-  vec2 s = vec2(gl_FragCoord.x, u_screen.y * u_dpr - (gl_FragCoord.y - u_originY)) / u_dpr;
-  vec4 color = vec4(0.0);
-  for (int i = 0; i < 2; i++) {
-    if (i >= u_count) break;
-    float spacing = u_size[i] * u_view.x;
-    float coverage;
-    if (u_dots == 1) {
-      vec2 cell = floor((s - u_view.yz) / spacing + 0.5) * spacing + u_view.yz;
-      coverage = clamp(u_lineWidth[i] * u_dpr + 0.5 - length(s - cell) * u_dpr, 0.0, 1.0);
-    } else {
-      coverage = max(
-        lineCoverage(s.x, u_view.y, spacing, u_lineWidth[i]),
-        lineCoverage(s.y, u_view.z, spacing, u_lineWidth[i])
-      );
-    }
-    vec4 layer = u_color[i] * coverage;
-    color = layer + color * (1.0 - layer.a);
-  }
-  outColor = color;
+  float coverage = u_dots == 1
+    ? clamp(u_width * u_dpr + 0.5 - length(v_local) * u_dpr, 0.0, 1.0)
+    : clamp(u_width * u_dpr * 0.5 + 0.5 - abs(v_local.x) * u_dpr, 0.0, 1.0);
+  outColor = u_color * coverage;
 }
 `;
 
 function drawLevels(gpu: CanvasGpu, levels: readonly WorldGridLevel[], dots: boolean) {
   const { gl } = gpu;
-  const visible = levels
-    .map((level) => ({
-      level,
-      alpha: levelFadeAlpha(
-        level.size * gpu.view.transform.scale,
-        level.minScreenSpacing,
-      ),
-    }))
-    .filter(({ alpha }) => alpha > 0);
-  if (visible.length === 0) return;
-  if (visible.length > 2) throw new Error("The grid shader draws at most two levels");
-
-  const program = useProgram(gpu, "grid", FULLSCREEN_VERTEX, GRID_FRAGMENT);
+  const { transform, screen } = gpu.view;
+  const program = useProgram(gpu, "grid", GRID_VERTEX, GRID_FRAGMENT);
   gl.uniform1i(program.uniform("u_dots"), dots ? 1 : 0);
-  gl.uniform1f(program.uniform("u_originY"), gpu.originY);
-  gl.uniform1i(program.uniform("u_count"), visible.length);
-  visible.forEach(({ level, alpha }, index) => {
-    gl.uniform1f(program.uniform(`u_size[${index}]`), level.size);
-    gl.uniform1f(program.uniform(`u_lineWidth[${index}]`), level.lineWidth);
-    setColor(gpu, program.uniform(`u_color[${index}]`), parseColor(level.color), alpha);
-  });
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  for (const level of levels) {
+    const spacing = level.size * transform.scale;
+    const alpha = levelFadeAlpha(spacing, level.minScreenSpacing);
+    if (alpha <= 0) continue;
+    // The first line or dot at or before the screen's top-left corner.
+    const first = {
+      x: Math.floor(-transform.dx / spacing) * spacing + transform.dx,
+      y: Math.floor(-transform.dy / spacing) * spacing + transform.dy,
+    };
+    const columns = Math.ceil((screen.width - first.x) / spacing) + 1;
+    const rows = Math.ceil((screen.height - first.y) / spacing) + 1;
+    gl.uniform1i(program.uniform("u_columns"), columns);
+    gl.uniform2f(program.uniform("u_first"), first.x, first.y);
+    gl.uniform1f(program.uniform("u_spacing"), spacing);
+    gl.uniform1f(program.uniform("u_width"), level.lineWidth);
+    setColor(gpu, program.uniform("u_color"), parseColor(level.color), alpha);
+    gl.drawArraysInstanced(
+      gl.TRIANGLE_STRIP,
+      0,
+      4,
+      dots ? columns * rows : columns + rows,
+    );
+  }
 }
 
 export function drawWorldGrid(gpu: CanvasGpu, levels: readonly WorldGridLevel[]) {

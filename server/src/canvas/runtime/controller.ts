@@ -1840,17 +1840,37 @@ export function createCanvasController(
    * The overlay above the DOM world: the stroke under the pen, snap guides and
    * selection outlines — an outline around a card must not be covered by it.
    */
+  let overlayPainted = false;
   function renderOverlay() {
     const canvas = dom.overlay;
     const target = canvas ? gpuView() : null;
     if (!canvas || !target) return;
+
+    // Most frames have nothing above the DOM world; skipping the pass spares the
+    // GPU a full-screen multisampled clear and resolve.
+    const selection = selectionSnapshot();
+    const empty =
+      !activeFreehandStroke &&
+      activeSnapGuides.length === 0 &&
+      selection.selectedIds.size === 0 &&
+      selection.remoteSelectedStrokeIds.every((remote) => remote.ids.size === 0) &&
+      selection.remoteSelectedShapeBounds.length === 0 &&
+      !foundShape &&
+      !state.draftRect &&
+      !state.marqueeRect;
+    if (empty) {
+      if (overlayPainted) canvas.getContext("bitmaprenderer")?.transferFromImageBitmap(null);
+      overlayPainted = false;
+      return;
+    }
+    overlayPainted = true;
 
     beginPass(target, { transform: transform(), screen: state.screen, dpr });
     if (activeFreehandStroke) {
       drawActiveStroke(target, activeFreehandStroke, defaultInkColor());
     }
     drawSnapGuides(target, activeSnapGuides, "#2563eb");
-    drawCanvasSelections(target, selectionSnapshot());
+    drawCanvasSelections(target, selection);
     drawFoundShape(target);
     if (state.draftRect) drawDraft(target, state.draftRect);
     const marquee = state.marqueeRect;

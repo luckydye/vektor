@@ -31,8 +31,16 @@ export interface CanvasGpu {
   lost: boolean;
   /** Backing stores grow in `backingSize` steps instead of matching every resize. */
   bucketed: boolean;
+  maxSamples: number;
   /** Device-pixel row the pass's viewport starts at: its content sits at the top. */
   originY: number;
+  /** The program last bound, so a repeat bind is skipped. */
+  boundProgram: CanvasProgram | null;
+  /**
+   * Draws queued for one instanced call, and the program they use. Binding any
+   * other program, changing the scissor or presenting flushes them first.
+   */
+  pending: { key: string; flush: () => void } | null;
   /** The active `withScissor` rect in screen CSS px, or null when unclipped. */
   scissor: ScreenRect | null;
 }
@@ -41,6 +49,8 @@ type ScreenRect = { x: number; y: number; width: number; height: number };
 
 export interface CanvasProgram {
   program: WebGLProgram;
+  /** The pass view its shared uniforms were last set for. */
+  view: CanvasView | null;
   uniform: (name: string) => WebGLUniformLocation | null;
 }
 
@@ -91,7 +101,10 @@ export function createCanvasGpu(onRestored: () => void, bucketed = false): Canva
     },
     lost: false,
     bucketed,
+    maxSamples: gl.getParameter(gl.MAX_SAMPLES) as number,
     originY: 0,
+    boundProgram: null,
+    pending: null,
     scissor: null,
   };
   canvas.addEventListener("webglcontextlost", (event) => {
@@ -101,6 +114,8 @@ export function createCanvasGpu(onRestored: () => void, bucketed = false): Canva
   canvas.addEventListener("webglcontextrestored", () => {
     gpu.lost = false;
     gpu.resources = createResources();
+    gpu.boundProgram = null;
+    gpu.pending = null;
     onRestored();
   });
   liveGpus.add(gpu);
@@ -118,10 +133,16 @@ interface MultisampleTarget {
   stencil: WebGLRenderbuffer;
   width: number;
   height: number;
+  samples: number;
 }
 
 // Every pass draws here and is resolved into the canvas on present.
-function multisampleTarget(gpu: CanvasGpu, width: number, height: number) {
+function multisampleTarget(
+  gpu: CanvasGpu,
+  width: number,
+  height: number,
+  samples: number,
+) {
   const { gl } = gpu;
   let target = gpu.resources.named.get("multisample") as MultisampleTarget | undefined;
   if (!target) {
@@ -130,12 +151,11 @@ function multisampleTarget(gpu: CanvasGpu, width: number, height: number) {
     const stencil = gl.createRenderbuffer();
     if (!framebuffer || !color || !stencil)
       throw new Error("Framebuffer allocation failed");
-    target = { framebuffer, color, stencil, width: 0, height: 0 };
+    target = { framebuffer, color, stencil, width: 0, height: 0, samples: 0 };
     gpu.resources.named.set("multisample", target);
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-  if (target.width !== width || target.height !== height) {
-    const samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) as number);
+  if (target.width !== width || target.height !== height || target.samples !== samples) {
     gl.bindRenderbuffer(gl.RENDERBUFFER, target.color);
     gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
     gl.bindRenderbuffer(gl.RENDERBUFFER, target.stencil);
@@ -164,6 +184,7 @@ function multisampleTarget(gpu: CanvasGpu, width: number, height: number) {
     }
     target.width = width;
     target.height = height;
+    target.samples = samples;
   }
   return target;
 }
@@ -171,6 +192,7 @@ function multisampleTarget(gpu: CanvasGpu, width: number, height: number) {
 /** Clears the drawing buffer for a new pass at the given camera. */
 export function beginPass(gpu: CanvasGpu, view: CanvasView) {
   const { gl, canvas } = gpu;
+  flushPending(gpu);
   gpu.view = view;
   const width = Math.max(1, Math.round(view.screen.width * view.dpr));
   const height = Math.max(1, Math.round(view.screen.height * view.dpr));
@@ -179,7 +201,9 @@ export function beginPass(gpu: CanvasGpu, view: CanvasView) {
     canvas.width = backing.width;
     canvas.height = backing.height;
   }
-  multisampleTarget(gpu, backing.width, backing.height);
+  // Dense screens hide jaggies, and their fill cost is four times higher.
+  const samples = Math.min(view.dpr >= 2 ? 2 : 4, gpu.maxSamples);
+  multisampleTarget(gpu, backing.width, backing.height, samples);
   gpu.originY = backing.height - height;
   gl.viewport(0, gpu.originY, width, height);
   gpu.scissor = null;
@@ -209,6 +233,7 @@ export function withScissor(gpu: CanvasGpu, rect: ScreenRect, paint: () => void)
   );
   if (right <= x || bottom <= y) return;
   const apply = (clip: ScreenRect) => {
+    flushPending(gpu);
     const { dpr, screen } = gpu.view;
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(
@@ -225,7 +250,10 @@ export function withScissor(gpu: CanvasGpu, rect: ScreenRect, paint: () => void)
   } finally {
     gpu.scissor = outer;
     if (outer) apply(outer);
-    else gl.disable(gl.SCISSOR_TEST);
+    else {
+      flushPending(gpu);
+      gl.disable(gl.SCISSOR_TEST);
+    }
   }
 }
 
@@ -239,6 +267,7 @@ export function presentPass(gpu: CanvasGpu, target: HTMLCanvasElement) {
 
 /** Resolves the samples into `gpu.canvas`, where they can be read or encoded. */
 export function resolvePass(gpu: CanvasGpu) {
+  flushPending(gpu);
   const { gl, canvas } = gpu;
   const multisample = gpu.resources.named.get("multisample") as MultisampleTarget;
   gl.disable(gl.SCISSOR_TEST);
@@ -311,6 +340,7 @@ export function useProgram(
     const locations = new Map<string, WebGLUniformLocation | null>();
     cached = {
       program,
+      view: null,
       uniform: (name) => {
         if (!locations.has(name))
           locations.set(name, gl.getUniformLocation(program, name));
@@ -319,12 +349,26 @@ export function useProgram(
     };
     gpu.resources.programs.set(key, cached);
   }
-  gl.useProgram(cached.program);
-  const { transform, screen, dpr } = gpu.view;
-  gl.uniform3f(cached.uniform("u_view"), transform.scale, transform.dx, transform.dy);
-  gl.uniform2f(cached.uniform("u_screen"), screen.width, screen.height);
-  gl.uniform1f(cached.uniform("u_dpr"), dpr);
+  if (gpu.pending && gpu.pending.key !== key) flushPending(gpu);
+  if (gpu.boundProgram !== cached) {
+    gl.useProgram(cached.program);
+    gpu.boundProgram = cached;
+  }
+  if (cached.view !== gpu.view) {
+    const { transform, screen, dpr } = gpu.view;
+    gl.uniform3f(cached.uniform("u_view"), transform.scale, transform.dx, transform.dy);
+    gl.uniform2f(cached.uniform("u_screen"), screen.width, screen.height);
+    gl.uniform1f(cached.uniform("u_dpr"), dpr);
+    cached.view = gpu.view;
+  }
   return cached;
+}
+
+/** Draws whatever is queued for an instanced call. */
+export function flushPending(gpu: CanvasGpu) {
+  const pending = gpu.pending;
+  gpu.pending = null;
+  pending?.flush();
 }
 
 /** Sets a premultiplied colour uniform from a straight colour and extra alpha. */

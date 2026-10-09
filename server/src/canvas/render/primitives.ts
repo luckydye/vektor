@@ -1,11 +1,12 @@
 /**
- * Screen-space primitives every layer and extension paints with. Each is one
- * quad generated from `gl_VertexID`, so none of them owns a vertex buffer, and
- * edges are anti-aliased analytically rather than by MSAA.
+ * Screen-space primitives every layer and extension paints with. Each is a quad
+ * generated from `gl_VertexID`, its edges anti-aliased analytically rather than
+ * by MSAA; rounded rects queue up and draw as one instanced call.
  */
 
 import {
   type CanvasGpu,
+  flushPending,
   type Rgba,
   setColor,
   textureFor,
@@ -71,27 +72,105 @@ function setQuad(
   gl.uniform2f(program.uniform("u_axisY"), quad.axisY.x, quad.axisY.y);
 }
 
+// Rounded rects are instanced: a painter draws many in a row (cards, chips,
+// rules), and one call per rect spent the frame on uniform updates.
+const RECT_FLOATS = 20;
+
+const RECT_VERTEX = `
+layout(location = 0) in vec2 a_origin;
+layout(location = 1) in vec2 a_axisX;
+layout(location = 2) in vec2 a_axisY;
+layout(location = 3) in vec4 a_radius;
+layout(location = 4) in vec4 a_fill;
+layout(location = 5) in vec4 a_stroke;
+// Stroke width, then the CSS pixels around the quad kept for anti-aliasing.
+layout(location = 6) in vec2 a_stroked;
+out vec2 v_local;
+flat out vec2 v_size;
+flat out vec4 v_radius;
+flat out vec4 v_fill;
+flat out vec4 v_stroke;
+flat out float v_strokeWidth;
+void main() {
+  vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1);
+  vec2 size = vec2(length(a_axisX), length(a_axisY));
+  vec2 local = mix(vec2(-a_stroked.y), size + a_stroked.y, corner);
+  v_local = local;
+  v_size = size;
+  v_radius = a_radius;
+  v_fill = a_fill;
+  v_stroke = a_stroke;
+  v_strokeWidth = a_stroked.x;
+  gl_Position = screenToClip(a_origin + normalize(a_axisX) * local.x + normalize(a_axisY) * local.y);
+}
+`;
+
 const ROUNDED_RECT_FRAGMENT = `
-uniform vec2 u_size;
-// Corner radii: top-left, top-right, bottom-right, bottom-left.
-uniform vec4 u_radius;
-uniform vec4 u_fill;
-uniform vec4 u_stroke;
-uniform float u_strokeWidth;
 in vec2 v_local;
+flat in vec2 v_size;
+// Corner radii: top-left, top-right, bottom-right, bottom-left.
+flat in vec4 v_radius;
+flat in vec4 v_fill;
+flat in vec4 v_stroke;
+flat in float v_strokeWidth;
 out vec4 outColor;
 void main() {
-  vec2 half_ = u_size * 0.5;
+  vec2 half_ = v_size * 0.5;
   vec2 p = v_local - half_;
-  float r = p.x > 0.0 ? (p.y > 0.0 ? u_radius.z : u_radius.y) : (p.y > 0.0 ? u_radius.w : u_radius.x);
+  float r = p.x > 0.0 ? (p.y > 0.0 ? v_radius.z : v_radius.y) : (p.y > 0.0 ? v_radius.w : v_radius.x);
   vec2 q = abs(p) - half_ + r;
   float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
   float fill = clamp(0.5 - d * u_dpr, 0.0, 1.0);
-  float stroke = clamp(u_strokeWidth * u_dpr * 0.5 + 0.5 - abs(d) * u_dpr, 0.0, 1.0);
-  vec4 color = u_fill * fill;
-  outColor = u_stroke * stroke + color * (1.0 - u_stroke.a * stroke);
+  float stroke = clamp(v_strokeWidth * u_dpr * 0.5 + 0.5 - abs(d) * u_dpr, 0.0, 1.0);
+  vec4 color = v_fill * fill;
+  outColor = v_stroke * stroke + color * (1.0 - v_stroke.a * stroke);
 }
 `;
+
+interface RectBatch {
+  vao: WebGLVertexArrayObject;
+  buffer: WebGLBuffer;
+  data: Float32Array;
+  count: number;
+}
+
+function rectBatch(gpu: CanvasGpu): RectBatch {
+  const cached = gpu.resources.named.get("rectBatch") as RectBatch | undefined;
+  if (cached) return cached;
+  const { gl } = gpu;
+  const vao = gl.createVertexArray();
+  const buffer = gl.createBuffer();
+  if (!vao || !buffer) throw new Error("Rect batch allocation failed");
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  let offset = 0;
+  [2, 2, 2, 4, 4, 4, 2].forEach((size, location) => {
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, size, gl.FLOAT, false, RECT_FLOATS * 4, offset * 4);
+    gl.vertexAttribDivisor(location, 1);
+    offset += size;
+  });
+  gl.bindVertexArray(null);
+  const batch = { vao, buffer, data: new Float32Array(RECT_FLOATS * 256), count: 0 };
+  gpu.resources.named.set("rectBatch", batch);
+  return batch;
+}
+
+function flushRects(gpu: CanvasGpu, batch: RectBatch) {
+  if (batch.count === 0) return;
+  const { gl } = gpu;
+  useProgram(gpu, "roundedRect", RECT_VERTEX, ROUNDED_RECT_FRAGMENT);
+  gl.bindVertexArray(batch.vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, batch.buffer);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    batch.data.subarray(0, batch.count * RECT_FLOATS),
+    gl.DYNAMIC_DRAW,
+  );
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, batch.count);
+  gl.bindVertexArray(null);
+  batch.count = 0;
+}
 
 /** Fills and/or strokes a rounded rect; the stroke is centred on the edge. */
 export function drawRoundedRect(
@@ -106,33 +185,44 @@ export function drawRoundedRect(
     alpha?: number;
   },
 ) {
-  const { gl } = gpu;
-  const program = useProgram(gpu, "roundedRect", QUAD_VERTEX, ROUNDED_RECT_FRAGMENT);
+  const batch = rectBatch(gpu);
+  if (gpu.pending?.key !== "roundedRect") {
+    flushPending(gpu);
+    gpu.pending = { key: "roundedRect", flush: () => flushRects(gpu, batch) };
+  }
+  if ((batch.count + 1) * RECT_FLOATS > batch.data.length) {
+    const grown = new Float32Array(batch.data.length * 2);
+    grown.set(batch.data);
+    batch.data = grown;
+  }
   const width = Math.hypot(quad.axisX.x, quad.axisX.y);
   const height = Math.hypot(quad.axisY.x, quad.axisY.y);
   const strokeWidth = options.stroke ? (options.strokeWidth ?? 1) : 0;
-  setQuad(gpu, program, quad);
-  gl.uniform1f(program.uniform("u_pad"), strokeWidth / 2 + 1);
-  gl.uniform2f(program.uniform("u_size"), width, height);
   const radius = options.radius ?? 0;
   const radii = typeof radius === "number" ? [radius, radius, radius, radius] : radius;
   const limit = Math.min(width, height) / 2;
-  gl.uniform4f(
-    program.uniform("u_radius"),
-    Math.min(radii[0], limit),
-    Math.min(radii[1], limit),
-    Math.min(radii[2], limit),
-    Math.min(radii[3], limit),
+  const premultiplied = (color: Rgba | undefined) => {
+    if (!color) return [0, 0, 0, 0];
+    const a = color[3] * (options.alpha ?? 1);
+    return [color[0] * a, color[1] * a, color[2] * a, a];
+  };
+  batch.data.set(
+    [
+      quad.origin.x,
+      quad.origin.y,
+      quad.axisX.x,
+      quad.axisX.y,
+      quad.axisY.x,
+      quad.axisY.y,
+      ...radii.map((r) => Math.min(r, limit)),
+      ...premultiplied(options.fill),
+      ...premultiplied(options.stroke),
+      strokeWidth,
+      strokeWidth / 2 + 1,
+    ],
+    batch.count * RECT_FLOATS,
   );
-  setColor(gpu, program.uniform("u_fill"), options.fill ?? [0, 0, 0, 0], options.alpha);
-  setColor(
-    gpu,
-    program.uniform("u_stroke"),
-    options.stroke ?? [0, 0, 0, 0],
-    options.alpha,
-  );
-  gl.uniform1f(program.uniform("u_strokeWidth"), strokeWidth);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  batch.count++;
 }
 
 const IMAGE_FRAGMENT = `
