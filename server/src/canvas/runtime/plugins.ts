@@ -23,6 +23,11 @@ export interface CanvasInspectorHandle {
    * Returns its session, or null when the shape is locked.
    */
   beginEdit: (mode: CanvasEditMode) => CanvasEditModeSession | null;
+  /**
+   * Resizes the shape as one undoable edit, e.g. to the aspect ratio of what a
+   * processor now outputs. Kept above the type's minimum size.
+   */
+  setSize: (size: { width: number; height: number }) => void;
 }
 
 /** A point in the shape's own space: 0..1 across its frame, rotation removed. */
@@ -209,6 +214,7 @@ export function createInspectorHandle(options: {
   shape: () => CanvasShape;
   write: (patch: Record<string, unknown>) => void;
   beginEdit: (mode: CanvasEditMode) => CanvasEditModeSession | null;
+  setSize: (size: { width: number; height: number }) => void;
 }): CanvasInspectorHandle & { notify: () => void } {
   const key = pluginDataKey(options.owner);
   const listeners = new Set<() => void>();
@@ -218,6 +224,7 @@ export function createInspectorHandle(options: {
     shape: options.shape,
     data,
     beginEdit: options.beginEdit,
+    setSize: options.setSize,
     update(patch) {
       options.write({ [key]: { ...data<Record<string, unknown>>(), ...patch } });
     },

@@ -578,18 +578,21 @@ export function createCanvasController(
       state.textEdit = { ...edit, selectionStart: 0, selectionEnd: edit.value.length };
       renderScene();
     },
-    resizeShape: (id, size) => {
-      const shape = shapesById().get(id);
-      if (!shape) return;
-      const { minSize } = extensionManager.get(shape.type).defaults;
-      ydoc.transact(() =>
-        updateShapeFrame(id, {
-          width: Math.round(Math.max(minSize.width, size.width)),
-          height: Math.round(Math.max(minSize.height, size.height)),
-        }),
-      );
-    },
+    resizeShape: (id, size) => resizeShape(id, size),
   });
+
+  /** One undoable resize, kept above the type's minimum; locked shapes are left alone. */
+  function resizeShape(id: string, size: CanvasSize) {
+    const shape = shapesById().get(id);
+    if (!shape) return;
+    const { minSize } = extensionManager.get(shape.type).defaults;
+    ydoc.transact(() =>
+      updateShapeFrame(id, {
+        width: Math.round(Math.max(minSize.width, size.width)),
+        height: Math.round(Math.max(minSize.height, size.height)),
+      }),
+    );
+  }
   const uploadPlaceholders = extensionRuntime.uploadPlaceholders;
 
   const remoteCanvasPresences = () => host.presenceProfiles ?? [];
@@ -4478,6 +4481,7 @@ export function createCanvasController(
     /** One undoable edit; locked shapes are left alone. */
     updateShapeData: (id: string, patch: Record<string, unknown>) =>
       ydoc.transact(() => hostContext.updateData(id, patch)),
+    resizeShape,
     pickShapeLibraryItem,
     contextMenuEntries,
     closeMenu: () => {

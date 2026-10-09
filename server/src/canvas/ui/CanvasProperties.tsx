@@ -210,6 +210,7 @@ function InspectorMount(props: {
         editMode = mode;
         return run((canvas) => canvas.beginEditMode(shapeId, mode)) ?? null;
       },
+      setSize: (size) => run((canvas) => canvas.resizeShape(shapeId, size)),
     });
     const mounted = handle;
     createEffect(on(updatedAt, () => mounted.notify(), { defer: true }));
