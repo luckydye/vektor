@@ -31,6 +31,7 @@ void main() {
 // crisp at every dpr; dots are centred on the exact intersections.
 const GRID_FRAGMENT = `
 uniform int u_dots;
+uniform float u_originY;
 uniform int u_count;
 uniform float u_size[2];
 uniform float u_lineWidth[2];
@@ -44,7 +45,8 @@ float lineCoverage(float s, float offset, float spacing, float width) {
 }
 
 void main() {
-  vec2 s = vec2(gl_FragCoord.x, u_screen.y * u_dpr - gl_FragCoord.y) / u_dpr;
+  // gl_FragCoord counts from the framebuffer's bottom, below the viewport.
+  vec2 s = vec2(gl_FragCoord.x, u_screen.y * u_dpr - (gl_FragCoord.y - u_originY)) / u_dpr;
   vec4 color = vec4(0.0);
   for (int i = 0; i < 2; i++) {
     if (i >= u_count) break;
@@ -82,6 +84,7 @@ function drawLevels(gpu: CanvasGpu, levels: readonly WorldGridLevel[], dots: boo
 
   const program = useProgram(gpu, "grid", FULLSCREEN_VERTEX, GRID_FRAGMENT);
   gl.uniform1i(program.uniform("u_dots"), dots ? 1 : 0);
+  gl.uniform1f(program.uniform("u_originY"), gpu.originY);
   gl.uniform1i(program.uniform("u_count"), visible.length);
   visible.forEach(({ level, alpha }, index) => {
     gl.uniform1f(program.uniform(`u_size[${index}]`), level.size);

@@ -149,6 +149,8 @@
   "Fit to view": "화면에 맞추기",
   "Section headline": "섹션 제목",
   "Clip contents": "내용 자르기",
+  "Show edits": "편집 표시",
+  "Hide edits": "편집 숨기기",
   "Resize": "크기 조정",
   "Scale selection": "선택 영역 크기 조절",
   "Copy": "복사",
@@ -745,5 +747,8 @@
   "High": "최고",
   "Low": "최저",
   "Chance of rain": "강수 확률",
-  "{percent}% rain": "강수 확률 {percent}%"
+  "{percent}% rain": "강수 확률 {percent}%",
+  "Tidy up": "정리",
+  "Clear selection": "선택 해제",
+  "Selection": "선택"
 }

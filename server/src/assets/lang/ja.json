@@ -149,6 +149,8 @@
   "Fit to view": "表示に合わせる",
   "Section headline": "セクション見出し",
   "Clip contents": "内容をクリップ",
+  "Show edits": "編集を表示",
+  "Hide edits": "編集を非表示",
   "Resize": "サイズ変更",
   "Scale selection": "選択範囲を拡大縮小",
   "Copy": "コピー",
@@ -745,5 +747,8 @@
   "High": "最高気温",
   "Low": "最低気温",
   "Chance of rain": "降水確率",
-  "{percent}% rain": "降水確率 {percent}%"
+  "{percent}% rain": "降水確率 {percent}%",
+  "Tidy up": "整列",
+  "Clear selection": "選択を解除",
+  "Selection": "選択"
 }

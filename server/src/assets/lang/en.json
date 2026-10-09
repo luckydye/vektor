@@ -149,6 +149,8 @@
   "Fit to view": "Fit to view",
   "Section headline": "Section headline",
   "Clip contents": "Clip contents",
+  "Show edits": "Show edits",
+  "Hide edits": "Hide edits",
   "Resize": "Resize",
   "Scale selection": "Scale selection",
   "Copy": "Copy",
@@ -745,5 +747,8 @@
   "High": "High",
   "Low": "Low",
   "Chance of rain": "Chance of rain",
-  "{percent}% rain": "{percent}% rain"
+  "{percent}% rain": "{percent}% rain",
+  "Tidy up": "Tidy up",
+  "Clear selection": "Clear selection",
+  "Selection": "Selection"
 }

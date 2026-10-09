@@ -550,22 +550,50 @@ function transformControls(view: CanvasView) {
 /** Actions for a multi-selection, floating above its box. */
 function selectionToolbar(view: CanvasView) {
   const position = view.selectionToolbarPosition();
-  if (!position || !view.canTidySelection()) return nothing;
+  if (!position) return nothing;
+  const action = (label: string, icon: unknown, run: () => void) => html`
+    <button
+      type="button"
+      class="canvas-selection-action"
+      aria-label=${label}
+      data-tooltip=${label}
+      @click=${run}
+    >
+      ${icon}
+    </button>
+  `;
   return html`
     <div
       class="canvas-selection-toolbar"
+      role="toolbar"
+      aria-label=${t("Selection")}
       style=${styleMap({ transform: `translate(${position.x}px, ${position.y}px)` })}
       @pointerdown=${stopPointer}
     >
-      <button
-        type="button"
-        class="canvas-tool"
-        aria-label=${t("Tidy up")}
-        data-tooltip=${t("Tidy up")}
-        @click=${() => view.tidySelection()}
-      >
-        ${svgIcon(iconMarkup("tidy-up"), "svg-icon canvas-tool-icon")}
-      </button>
+      ${
+        view.canTidySelection()
+          ? html`${action(
+              t("Tidy up"),
+              svgIcon(iconMarkup("tidy-up"), "svg-icon canvas-selection-icon"),
+              () => view.tidySelection(),
+            )}<div class="canvas-selection-rule"></div>`
+          : nothing
+      }
+      ${action(
+        t("Cut"),
+        html`<svg class="canvas-selection-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8.5 7.5 11 8M8.5 16.5l11-8"/></svg>`,
+        () => view.cutSelectionToClipboard(),
+      )}
+      ${action(
+        t("Delete"),
+        html`<svg class="canvas-selection-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7M6.5 7l.8 12.1A1.5 1.5 0 0 0 8.8 20.5h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7M10 11v6M14 11v6"/></svg>`,
+        () => view.deleteSelection(),
+      )}
+      ${action(
+        t("Clear selection"),
+        html`<svg class="canvas-selection-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5V5.5A1.5 1.5 0 0 1 5.5 4h3M15.5 4h3A1.5 1.5 0 0 1 20 5.5v3M20 15.5v3a1.5 1.5 0 0 1-1.5 1.5h-3M8.5 20h-3A1.5 1.5 0 0 1 4 18.5v-3"/><path d="m9 9 6 6M15 9l-6 6"/></svg>`,
+        () => view.clearSelection(),
+      )}
     </div>
   `;
 }

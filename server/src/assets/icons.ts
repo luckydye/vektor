@@ -56,6 +56,7 @@ export { default as editEntryIcon } from "#assets/icons/edit-entry.svg?raw";
 export { default as enableNotificationsIcon } from "#assets/icons/enable-notifications.svg?raw";
 export { default as extensionIcon } from "#assets/icons/extension.svg?raw";
 export { default as eyeIcon } from "./icons/eye.svg?raw";
+export { default as eyeOffIcon } from "./icons/eye-off.svg?raw";
 export { default as fileIcon } from "./icons/file.svg?raw";
 export { default as fileAttachmentIcon } from "#assets/icons/file-attachment.svg?raw";
 export { default as fitViewToElementsIcon } from "#assets/icons/fit-view-to-elements.svg?raw";

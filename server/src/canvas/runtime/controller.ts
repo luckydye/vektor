@@ -28,6 +28,7 @@ import { drawTextLayout, lineLayout, middlePlacement } from "#canvas/render/text
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "#canvas/render/theme.ts";
 import { type CanvasTileView, compositeTiles } from "#canvas/render/tiles.ts";
 import {
+  backingSize,
   beginPass,
   type CanvasGpu,
   createCanvasGpu,
@@ -81,12 +82,12 @@ import {
   normalizeRotation,
   pointInRotatedShape,
   pointOnRotatedShape,
+  RESIZE_HANDLES,
   type Rect,
+  type ResizeHandle,
   rectContains,
   rectIntersection,
   rectsIntersect,
-  RESIZE_HANDLES,
-  type ResizeHandle,
   resizeRotatedShape,
   rotatedShapeBounds,
   rotateVector,
@@ -731,7 +732,10 @@ export function createCanvasController(
    */
   function edgeHandlePositions(element: CanvasElementHandle) {
     const shape = element.kind === "shape" ? shapesById().get(element.id) : undefined;
-    if (!shape || extensionManager.get(shape.type).behavior.transform.handles !== "edges") {
+    if (
+      !shape ||
+      extensionManager.get(shape.type).behavior.transform.handles !== "edges"
+    ) {
       return [];
     }
     const bounds = shapeBounds(shape);
@@ -1727,7 +1731,7 @@ export function createCanvasController(
   // canvases exist, and rebuilt from scratch after a context loss.
   let gpu: CanvasGpu | null = null;
   function gpuView() {
-    gpu ??= createCanvasGpu(renderInk);
+    gpu ??= createCanvasGpu(renderInk, true);
     return gpu.lost ? null : gpu;
   }
 
@@ -1990,7 +1994,9 @@ export function createCanvasController(
       textEdit: (id) =>
         options.chrome && state.textEdit?.shapeId === id ? state.textEdit : null,
       hoveredRegion: (id) =>
-        options.chrome && state.hoverRegion?.shapeId === id ? state.hoverRegion.region : null,
+        options.chrome && state.hoverRegion?.shapeId === id
+          ? state.hoverRegion.region
+          : null,
       chromePosition: elementChromePosition,
       chromeSize: elementChromeSize,
     };
@@ -2077,19 +2083,18 @@ export function createCanvasController(
       height: Math.max(1, Math.round(rect?.height ?? 1)),
     };
     dpr = window.devicePixelRatio || 1;
-    const scene = dom.scene;
-    if (scene) {
-      scene.width = Math.round(state.screen.width * dpr);
-      scene.height = Math.round(state.screen.height * dpr);
-      scene.style.width = `${state.screen.width}px`;
-      scene.style.height = `${state.screen.height}px`;
-    }
-    const overlay = dom.overlay;
-    if (overlay) {
-      overlay.width = Math.round(state.screen.width * dpr);
-      overlay.height = Math.round(state.screen.height * dpr);
-      overlay.style.width = `${state.screen.width}px`;
-      overlay.style.height = `${state.screen.height}px`;
+    const backing = backingSize(state.screen, dpr);
+    for (const canvas of [dom.scene, dom.overlay]) {
+      if (
+        !canvas ||
+        (canvas.width === backing.width && canvas.height === backing.height)
+      ) {
+        continue;
+      }
+      canvas.width = backing.width;
+      canvas.height = backing.height;
+      canvas.style.width = `${backing.width / dpr}px`;
+      canvas.style.height = `${backing.height / dpr}px`;
     }
     renderInk();
   }
@@ -2690,7 +2695,11 @@ export function createCanvasController(
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   }
 
-  function startShapeResize(shape: CanvasShape, event: PointerEvent, handle: ResizeHandle) {
+  function startShapeResize(
+    shape: CanvasShape,
+    event: PointerEvent,
+    handle: ResizeHandle,
+  ) {
     if (event.button !== 0 || !canMoveShape(shape)) return;
     selectOnly(shape.id);
     // Text auto-sizes to its content, so drive off its measured box.
@@ -3025,7 +3034,8 @@ export function createCanvasController(
   // Repaints only when the hovered region changes, which chrome styles by.
   function setHoverRegion(region: { shapeId: string; region: string } | null) {
     const current = state.hoverRegion;
-    if (current?.shapeId === region?.shapeId && current?.region === region?.region) return;
+    if (current?.shapeId === region?.shapeId && current?.region === region?.region)
+      return;
     state.hoverRegion = region;
     renderScene();
   }
@@ -4209,6 +4219,7 @@ export function createCanvasController(
     selectionScaleControlPosition,
     selectionToolbarPosition,
     canTidySelection: () => tidyItems() != null,
+    clearSelection,
     worldToScreen,
 
     // commands

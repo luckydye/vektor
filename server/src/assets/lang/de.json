@@ -149,6 +149,8 @@
   "Fit to view": "An Ansicht anpassen",
   "Section headline": "Abschnittsüberschrift",
   "Clip contents": "Inhalt beschneiden",
+  "Show edits": "Bearbeitungen einblenden",
+  "Hide edits": "Bearbeitungen ausblenden",
   "Resize": "Größe ändern",
   "Scale selection": "Auswahl skalieren",
   "Copy": "Kopieren",
@@ -745,5 +747,8 @@
   "High": "Höchstwert",
   "Low": "Tiefstwert",
   "Chance of rain": "Regenwahrscheinlichkeit",
-  "{percent}% rain": "{percent}% Regen"
+  "{percent}% rain": "{percent}% Regen",
+  "Tidy up": "Aufräumen",
+  "Clear selection": "Auswahl aufheben",
+  "Selection": "Auswahl"
 }

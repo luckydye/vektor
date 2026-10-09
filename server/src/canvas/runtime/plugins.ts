@@ -32,6 +32,11 @@ export interface CanvasImageProcessInput {
   /** The resolution tier being painted: a preview on screen, the original on export. */
   sourceUrl: string;
   signal: AbortSignal;
+  /**
+   * Shows an intermediate result, such as a low-resolution pass, while the job
+   * goes on. Ignored once the job is aborted; the resolved value replaces it.
+   */
+  progress: (image: TexImageSource) => void;
 }
 
 /** Replaces an image's pixels on shapes that carry data in the owner's slot. */
@@ -45,6 +50,15 @@ export interface CanvasImageProcessor {
 /** Where an owner keeps its per-shape data, top-level so owners never collide. */
 export function pluginDataKey(owner: string): string {
   return `extension:${owner}`;
+}
+
+/**
+ * The one field the engine reads inside a slot: `disabled: true` keeps the edit
+ * but paints the image without it, toggled by the inspector's eye.
+ */
+export function slotDisabled(shape: CanvasShape, owner: string): boolean {
+  const slot = shape.data[pluginDataKey(owner)];
+  return typeof slot === "object" && slot !== null && "disabled" in slot && slot.disabled === true;
 }
 
 export function createCanvasPlugins() {
@@ -81,7 +95,8 @@ export function createCanvasPlugins() {
       const matches = [...processors.values()].filter(
         (processor) =>
           processor.types.includes(shape.type) &&
-          shape.data[pluginDataKey(processor.owner)] !== undefined,
+          shape.data[pluginDataKey(processor.owner)] !== undefined &&
+          !slotDisabled(shape, processor.owner),
       );
       if (matches.length > 1) {
         throw new Error(

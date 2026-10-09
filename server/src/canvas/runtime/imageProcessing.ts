@@ -56,13 +56,19 @@ export function createImageProcessing(options: {
     current.inflight?.abort();
     const controller = new AbortController();
     current.inflight = controller;
-    processor.process({ shape, params, sourceUrl, signal: controller.signal }).then(
+    const show = (output: TexImageSource) => {
+      if (current.output) releaseTexture(current.output);
+      current.output = output;
+      invalidate();
+    };
+    const progress = (output: TexImageSource) => {
+      if (!controller.signal.aborted) show(output);
+    };
+    processor.process({ shape, params, sourceUrl, signal: controller.signal, progress }).then(
       (output) => {
         if (controller.signal.aborted) return;
         current.inflight = null;
-        if (current.output) releaseTexture(current.output);
-        current.output = output;
-        invalidate();
+        show(output);
       },
       (error) => {
         if (controller.signal.aborted) return;

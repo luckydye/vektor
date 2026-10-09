@@ -1,7 +1,12 @@
 import { createEffect, For, on, onCleanup, onMount, Show } from "solid-js";
 import { PEN_COLORS } from "#canvas/extensions/drawTool.ts";
-import { type CanvasInspector, createInspectorHandle } from "#canvas/runtime/plugins.ts";
+import {
+  type CanvasInspector,
+  createInspectorHandle,
+  slotDisabled,
+} from "#canvas/runtime/plugins.ts";
 import { type CanvasChrome, swallowPointer } from "#canvas/ui/Canvas.tsx";
+import { Icon } from "#components/Icon.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function CanvasProperties(props: { chrome: CanvasChrome }) {
@@ -127,15 +132,21 @@ function InspectorMount(props: {
   inspector: CanvasInspector;
   shapeId: string;
 }) {
+  const t = useTranslation();
   const { view, frame, run } = props.chrome; // solid-reactivity-ok: stable object
   const { inspector, shapeId } = props; // solid-reactivity-ok: keyed by the parent
   const updatedAt = frame(() => view()?.shapeById(shapeId)?.updatedAt);
+  const disabled = frame(() => {
+    const shape = view()?.shapeById(shapeId);
+    return shape ? slotDisabled(shape, inspector.owner) : false;
+  });
   let host!: HTMLDivElement;
+  let handle: ReturnType<typeof createInspectorHandle> | null = null;
 
   onMount(() => {
     const container = document.createElement("div");
     host.attachShadow({ mode: "open" }).append(container);
-    const handle = createInspectorHandle({
+    handle = createInspectorHandle({
       owner: inspector.owner,
       shape: () => {
         const shape = view()?.shapeById(shapeId);
@@ -144,13 +155,26 @@ function InspectorMount(props: {
       },
       write: (patch) => run((canvas) => canvas.updateShapeData(shapeId, patch)),
     });
-    createEffect(on(updatedAt, () => handle.notify(), { defer: true }));
-    onCleanup(inspector.render(container, handle));
+    const mounted = handle;
+    createEffect(on(updatedAt, () => mounted.notify(), { defer: true }));
+    onCleanup(inspector.render(container, mounted));
   });
 
   return (
     <section class="canvas-property-section" aria-label={inspector.title}>
-      <span class="canvas-property-label">{inspector.title}</span>
+      <div class="canvas-property-head">
+        <span class="canvas-property-label">{inspector.title}</span>
+        <button
+          type="button"
+          class="canvas-property-eye"
+          aria-pressed={!disabled()}
+          aria-label={disabled() ? t("Show edits") : t("Hide edits")}
+          title={disabled() ? t("Show edits") : t("Hide edits")}
+          onClick={() => handle?.update({ disabled: !disabled() })}
+        >
+          <Icon name={disabled() ? "eye-off" : "eye"} />
+        </button>
+      </div>
       <div ref={host} />
     </section>
   );

@@ -142,13 +142,17 @@ vektor-canvas {
   backdrop-filter: blur(8px);
 }
 
+/* Tall panels (an extension inspector) scroll inside the canvas instead of running off it. */
 .canvas-properties-sidebar {
   position: absolute;
-  top: 140px;
+  top: 72px;
   right: 16px;
   z-index: 11;
   display: flex;
   width: min(224px, calc(100% - 32px));
+  max-height: calc(100% - 72px - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   flex-direction: column;
   gap: 16px;
   border: 1px solid var(--canvas-toolbar-border);
@@ -157,6 +161,10 @@ vektor-canvas {
   padding: 14px;
   box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
+}
+
+.canvas-properties-sidebar > * {
+  flex-shrink: 0;
 }
 
 .canvas-properties-sidebar-title {
@@ -189,6 +197,36 @@ vektor-canvas {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.canvas-property-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.canvas-property-eye {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--canvas-muted);
+  cursor: pointer;
+}
+
+.canvas-property-eye .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.canvas-property-eye:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-property-eye[aria-pressed="false"] {
+  color: var(--canvas-tool-active-text);
 }
 
 .canvas-property-toggle {
@@ -435,15 +473,64 @@ vektor-canvas {
   left: 0;
   z-index: 9;
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: 1px;
   border: 1px solid var(--canvas-toolbar-border);
-  border-radius: 10px;
+  border-radius: 20px;
   background: var(--canvas-toolbar-bg);
-  padding: 4px;
-  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
+  padding: 3px;
+  box-shadow: 0 3px 14px var(--canvas-toolbar-shadow);
   pointer-events: auto;
   /* Centered, and clear of the rotate handle above the selection. */
   translate: -50% calc(-100% - 36px);
+}
+
+.canvas-selection-action {
+  display: inline-flex;
+  height: 30px;
+  min-width: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  padding: 0 7px;
+  color: var(--canvas-muted);
+  cursor: pointer;
+}
+
+.canvas-selection-action:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-selection-action:active {
+  scale: 0.97;
+}
+
+.canvas-selection-icon {
+  width: 16px;
+  height: 16px;
+}
+
+svg.canvas-selection-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.canvas-selection-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-selection-rule {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--canvas-toolbar-border);
 }
 
 .canvas-note-colors {

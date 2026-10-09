@@ -29,6 +29,10 @@ export interface CanvasGpu {
   resources: CanvasGpuResources;
   view: CanvasView;
   lost: boolean;
+  /** Backing stores grow in `backingSize` steps instead of matching every resize. */
+  bucketed: boolean;
+  /** Device-pixel row the pass's viewport starts at: its content sits at the top. */
+  originY: number;
   /** The active `withScissor` rect in screen CSS px, or null when unclipped. */
   scissor: ScreenRect | null;
 }
@@ -51,7 +55,19 @@ function createResources(): CanvasGpuResources {
   return { programs: new Map(), objects: new WeakMap(), named: new Map() };
 }
 
-export function createCanvasGpu(onRestored: () => void): CanvasGpu {
+/**
+ * Device-pixel size of the canvases behind a screen, in 256px steps, so a
+ * viewport animating its size reallocates only every 256px. Passes draw the
+ * exact screen into its top-left; the viewport element clips the rest.
+ */
+export function backingSize(screen: { width: number; height: number }, dpr: number) {
+  return {
+    width: Math.ceil((screen.width * dpr) / 256) * 256,
+    height: Math.ceil((screen.height * dpr) / 256) * 256,
+  };
+}
+
+export function createCanvasGpu(onRestored: () => void, bucketed = false): CanvasGpu {
   const canvas = new OffscreenCanvas(1, 1);
   // Anti-aliasing comes from our own multisampled framebuffer: some engines
   // ignore `antialias` on an OffscreenCanvas.
@@ -74,6 +90,8 @@ export function createCanvasGpu(onRestored: () => void): CanvasGpu {
       dpr: 1,
     },
     lost: false,
+    bucketed,
+    originY: 0,
     scissor: null,
   };
   canvas.addEventListener("webglcontextlost", (event) => {
@@ -156,12 +174,14 @@ export function beginPass(gpu: CanvasGpu, view: CanvasView) {
   gpu.view = view;
   const width = Math.max(1, Math.round(view.screen.width * view.dpr));
   const height = Math.max(1, Math.round(view.screen.height * view.dpr));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
+  const backing = gpu.bucketed ? backingSize(view.screen, view.dpr) : { width, height };
+  if (canvas.width !== backing.width || canvas.height !== backing.height) {
+    canvas.width = backing.width;
+    canvas.height = backing.height;
   }
-  multisampleTarget(gpu, width, height);
-  gl.viewport(0, 0, width, height);
+  multisampleTarget(gpu, backing.width, backing.height);
+  gpu.originY = backing.height - height;
+  gl.viewport(0, gpu.originY, width, height);
   gpu.scissor = null;
   gl.disable(gl.SCISSOR_TEST);
   gl.disable(gl.STENCIL_TEST);
@@ -193,7 +213,7 @@ export function withScissor(gpu: CanvasGpu, rect: ScreenRect, paint: () => void)
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(
       Math.floor(clip.x * dpr),
-      Math.floor((screen.height - clip.y - clip.height) * dpr),
+      gpu.originY + Math.floor((screen.height - clip.y - clip.height) * dpr),
       Math.ceil(clip.width * dpr),
       Math.ceil(clip.height * dpr),
     );
@@ -222,17 +242,21 @@ export function resolvePass(gpu: CanvasGpu) {
   const { gl, canvas } = gpu;
   const multisample = gpu.resources.named.get("multisample") as MultisampleTarget;
   gl.disable(gl.SCISSOR_TEST);
+  const { screen, dpr } = gpu.view;
+  const width = Math.max(1, Math.round(screen.width * dpr));
+  const height = Math.max(1, Math.round(screen.height * dpr));
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, multisample.framebuffer);
   gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  // A multisample resolve needs matching rects; the pass drew at the top.
   gl.blitFramebuffer(
     0,
+    gpu.originY,
+    width,
+    gpu.originY + height,
     0,
-    canvas.width,
-    canvas.height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
+    gpu.originY,
+    width,
+    gpu.originY + height,
     gl.COLOR_BUFFER_BIT,
     gl.NEAREST,
   );
