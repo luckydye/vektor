@@ -14,6 +14,7 @@ import "#canvas/ui/PresenceCursorElement.ts";
 import "#canvas/ui/canvas.css";
 import { html, nothing, type TemplateResult } from "lit-html";
 import { classMap } from "lit-html/directives/class-map.js";
+import { guard } from "lit-html/directives/guard.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
 import { ref } from "lit-html/directives/ref.js";
 import { repeat } from "lit-html/directives/repeat.js";
@@ -830,17 +831,24 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
             (shape) => shapeArticle(view, shape),
           )}
           <ul class="canvas-text-mirror" aria-label=${t("Canvas")}>
-            ${repeat(
-              view.findableShapes(),
-              (item) => item.id,
-              (item) => html`<li
-                aria-label=${item.label}
-                data-shape-id=${item.id}
-                style=${styleMap(item.style)}
-              >
-                <div hidden="until-found" data-find-shape-id=${item.id}>${item.text}</div>
-              </li>`,
-            )}
+            ${
+              // World-space, under the transformed world: it only changes with
+              // the shapes (and which one is edited as live DOM), not the camera,
+              // and would otherwise be diffed on every pointer move.
+              guard([view.state.shapes, view.state.activeEditSession], () =>
+                repeat(
+                  view.findableShapes(),
+                  (item) => item.id,
+                  (item) => html`<li
+                    aria-label=${item.label}
+                    data-shape-id=${item.id}
+                    style=${styleMap(item.style)}
+                  >
+                    <div hidden="until-found" data-find-shape-id=${item.id}>${item.text}</div>
+                  </li>`,
+                ),
+              )
+            }
           </ul>
           ${repeat(
             view.uploadPlaceholders(),
