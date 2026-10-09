@@ -2,6 +2,7 @@
  * Processed image outputs, one job per shape and resolution tier. A job starts
  * only when its parameters change, and the newest request wins.
  */
+import { sameOriginMediaUrl } from "#canvas/render/imageSource.ts";
 import { releaseTexture } from "#canvas/render/webgl.ts";
 import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { type CanvasPlugins, pluginDataKey } from "#canvas/runtime/plugins.ts";
@@ -34,15 +35,18 @@ export function createImageProcessing(options: {
     sourceUrl: string,
     invalidate: () => void,
   ): TexImageSource | null {
-    const processor = options.plugins.processorFor(shape);
+    const processors = options.plugins.processorsFor(shape);
     const key = `${shape.id}|${sourceUrl}`;
-    if (!processor) {
+    if (processors.length === 0) {
       const stale = jobs.get(key);
       if (stale) drop(key, stale);
       return null;
     }
-    const params = shape.data[pluginDataKey(processor.owner)];
-    const paramsKey = `${processor.id}|${JSON.stringify(params)}`;
+    const steps = processors.map((processor) => ({
+      processor,
+      params: shape.data[pluginDataKey(processor.owner)],
+    }));
+    const paramsKey = JSON.stringify(steps.map(({ processor, params }) => [processor.id, params]));
     let job = jobs.get(key);
     if (!job) {
       job = { shapeId: shape.id, paramsKey: "", output: null, inflight: null };
@@ -56,22 +60,49 @@ export function createImageProcessing(options: {
     current.inflight?.abort();
     const controller = new AbortController();
     current.inflight = controller;
+    const { signal } = controller;
     const show = (output: TexImageSource) => {
       if (current.output) releaseTexture(current.output);
       current.output = output;
       invalidate();
     };
-    const progress = (output: TexImageSource) => {
-      if (!controller.signal.aborted) show(output);
+
+    // Each step works on the previous one's pixels. Only the last step's
+    // progress is shown: an earlier one's is not the finished chain.
+    const run = async () => {
+      const response = await fetch(sameOriginMediaUrl(sourceUrl), { signal });
+      if (!response.ok) throw new Error(`Loading the image failed: ${response.status}`);
+      let source = await createImageBitmap(await response.blob());
+      let sourceKey = sourceUrl;
+      let output: TexImageSource = source;
+      for (const [index, { processor, params }] of steps.entries()) {
+        const last = index === steps.length - 1;
+        output = await processor.process({
+          shape,
+          params,
+          source,
+          sourceKey,
+          signal,
+          progress: (image) => {
+            if (last && !signal.aborted) show(image);
+          },
+        });
+        signal.throwIfAborted();
+        if (!last) {
+          source = await createImageBitmap(output);
+          sourceKey = `${sourceKey}|${processor.id}:${JSON.stringify(params)}`;
+        }
+      }
+      return output;
     };
-    processor.process({ shape, params, sourceUrl, signal: controller.signal, progress }).then(
+    run().then(
       (output) => {
-        if (controller.signal.aborted) return;
+        if (signal.aborted) return;
         current.inflight = null;
         show(output);
       },
       (error) => {
-        if (controller.signal.aborted) return;
+        if (signal.aborted) return;
         current.inflight = null;
         options.reportError(error);
       },

@@ -18,9 +18,7 @@ export function activate(ctx) {
 
   ctx.canvas.processors.register("invert", {
     types: ["image"],
-    async process({ params, sourceUrl, signal }) {
-      const response = await fetch(sourceUrl, { signal });
-      const bitmap = await createImageBitmap(await response.blob());
+    async process({ params, source: bitmap }) {
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const context = canvas.getContext("2d");
       context.drawImage(bitmap, 0, 0);

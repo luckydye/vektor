@@ -109,8 +109,13 @@ export interface CanvasImageProcessInput {
   shape: CanvasShape;
   /** The owner's slot on the shape. */
   params: unknown;
-  /** The resolution tier being painted: a preview on screen, the original on export. */
-  sourceUrl: string;
+  /**
+   * The pixels to work on: the image at the tier being painted (a preview on
+   * screen, the original on export), or the previous processor's output.
+   */
+  source: ImageBitmap;
+  /** Names `source`'s content, so work on it can be cached; it changes when the pixels do. */
+  sourceKey: string;
   signal: AbortSignal;
   /**
    * Shows an intermediate result, such as a low-resolution pass, while the job
@@ -119,7 +124,10 @@ export interface CanvasImageProcessInput {
   progress: (image: TexImageSource) => void;
 }
 
-/** Replaces an image's pixels on shapes that carry data in the owner's slot. */
+/**
+ * Replaces an image's pixels on shapes that carry data in the owner's slot.
+ * Several processors on one image run in registration order, each on the last one's output.
+ */
 export interface CanvasImageProcessor {
   id: string;
   owner: string;
@@ -170,21 +178,14 @@ export function createCanvasPlugins() {
     inspectorsFor: (type: CanvasShapeType) =>
       [...inspectors.values()].filter((inspector) => inspector.types.includes(type)),
 
-    /** The processor whose owner has data on `shape`; there is no chaining. */
-    processorFor(shape: CanvasShape): CanvasImageProcessor | null {
-      const matches = [...processors.values()].filter(
+    /** The processors whose owners have enabled data on `shape`, in the order they run. */
+    processorsFor: (shape: CanvasShape): CanvasImageProcessor[] =>
+      [...processors.values()].filter(
         (processor) =>
           processor.types.includes(shape.type) &&
           shape.data[pluginDataKey(processor.owner)] !== undefined &&
           !slotDisabled(shape, processor.owner),
-      );
-      if (matches.length > 1) {
-        throw new Error(
-          `Shape ${shape.id} has data for several image processors: ${matches.map((p) => p.id).join(", ")}`,
-        );
-      }
-      return matches[0] ?? null;
-    },
+      ),
 
     subscribe(listener: () => void): () => void {
       listeners.add(listener);

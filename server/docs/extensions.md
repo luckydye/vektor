@@ -462,9 +462,8 @@ export function activate(ctx: ExtensionContext): void {
 
   ctx.canvas.processors.register("adjust", {
     types: ["image"],
-    async process({ params, sourceUrl, signal }) {
-      const image = await createImageBitmap(await (await fetch(sourceUrl, { signal })).blob());
-      return applyAdjustments(image, params); // any TexImageSource
+    async process({ params, source }) {
+      return applyAdjustments(source, params); // any TexImageSource
     },
   });
 }
@@ -475,11 +474,14 @@ export function activate(ctx: ExtensionContext): void {
   a peer's.
 - **Processors** run only for shapes that have data in your slot, once per
   change of that data and resolution tier; a newer request aborts the older
-  one. On screen `sourceUrl` is a preview tier (at most 1280px), and when a
+  one. On screen `source` is a preview tier (at most 1280px), and when a
   section is exported it is the original, so heavy pipelines only run at full
-  resolution on export. Call `progress(image)` to show a quick low-resolution
-  pass before the final one resolves. A rejected job is shown to the user and not retried
-  until the data changes. Only one extension may have data on a given image.
+  resolution on export. `sourceKey` names those pixels, for caching work on them.
+  Call `progress(image)` to show a quick low-resolution pass before the final
+  one resolves. A rejected job is shown to the user and not retried until the
+  data changes.
+- When several extensions edit one image, their processors run in registration
+  order, each receiving the previous one's output as `source`.
 - The panel header has an eye toggle that writes `disabled: true` into your
   slot; while it is set, your processor is skipped and the image paints
   unedited. Keep that key free in your own data.
