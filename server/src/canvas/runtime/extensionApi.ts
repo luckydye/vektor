@@ -464,8 +464,6 @@ export interface CanvasElementExtension {
       host: CanvasExtensionHost,
       hit: { region: CanvasHitRegion; local: CanvasPoint; event: PointerEvent },
     ) => void;
-    /** Wheel over the shape; return true to keep the canvas from panning. */
-    wheel?: (shape: CanvasShape, host: CanvasExtensionHost, event: WheelEvent) => boolean;
     prepare?: {
       key: (shape: CanvasShape, host: CanvasExtensionHost) => string | null;
       run: (shape: CanvasShape, host: CanvasExtensionHost) => void;

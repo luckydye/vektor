@@ -69,21 +69,39 @@ export function unionBounds(rects: readonly Rect[]): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+// Whether the boxes already follow one another along an axis without real
+// overlap — an existing column or row, which tidying should keep.
+function isSequence(boxes: readonly Rect[], axis: "x" | "y"): boolean {
+  const size = axis === "x" ? "width" : "height";
+  const sorted = [...boxes].sort((a, b) => a[axis] - b[axis]);
+  return sorted.every((box, index) => {
+    if (index === 0) return true;
+    const previous = sorted[index - 1];
+    const tolerance = Math.min(previous[size], box[size]) * 0.25;
+    return box[axis] >= previous[axis] + previous[size] - tolerance;
+  });
+}
+
 /**
  * New top-left corners that pack boxes into gap-separated rows, in reading order.
- * Rows wrap so the result is roughly square, starting at the boxes' current corner.
+ * A column or row stays one; anything else becomes a wide grid of about √(2n)
+ * boxes per row, which suits landscape screens.
  */
 export function tidyLayout(boxes: readonly Rect[], gap: number): CanvasPoint[] {
   const origin = unionBounds(boxes);
   if (!origin) return [];
-  const area = boxes.reduce(
-    (sum, box) => sum + (box.width + gap) * (box.height + gap),
-    0,
-  );
-  const rowWidth = Math.max(Math.sqrt(area), ...boxes.map((box) => box.width));
+  const widest = Math.max(...boxes.map((box) => box.width));
+  const averageWidth = boxes.reduce((sum, box) => sum + box.width, 0) / boxes.length;
+  const column = isSequence(boxes, "y");
+  const row = !column && isSequence(boxes, "x");
+  const rowWidth = column
+    ? widest
+    : row
+      ? Number.POSITIVE_INFINITY
+      : Math.max(Math.ceil(Math.sqrt(boxes.length * 2)) * (averageWidth + gap), widest);
   const order = boxes
     .map((box, index) => ({ box, index }))
-    .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+    .sort((a, b) => (row ? a.box.x - b.box.x : a.box.y - b.box.y || a.box.x - b.box.x));
 
   const positions: CanvasPoint[] = [];
   let x = origin.x;

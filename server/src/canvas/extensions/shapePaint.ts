@@ -4,6 +4,7 @@
  * painted note matches the live `<rich-text-editor>` mounted while editing.
  */
 
+import { remembered } from "#canvas/render/lru.ts";
 import type { ScreenQuad } from "#canvas/render/primitives.ts";
 import type { RichTextTheme } from "#canvas/render/richText.ts";
 import { richTextLayout } from "#canvas/render/richText.ts";
@@ -39,13 +40,7 @@ const markdownHtml = new Map<string, string>();
 
 export function shapeMarkdownHtml(shape: CanvasShape): string {
   const text = typeof shape.data.text === "string" ? shape.data.text : "";
-  let html = markdownHtml.get(text);
-  if (html === undefined) {
-    html = renderMessageMarkdown(text);
-    if (markdownHtml.size > 512) markdownHtml.clear();
-    markdownHtml.set(text, html);
-  }
-  return html;
+  return remembered(markdownHtml, text, 4096, () => renderMessageMarkdown(text));
 }
 
 export function shapeTextLayout(

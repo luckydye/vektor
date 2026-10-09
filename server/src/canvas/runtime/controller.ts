@@ -20,6 +20,7 @@ import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
 import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
 import { drawActiveStroke, drawStrokes, type InkOffset } from "#canvas/render/ink.ts";
+import { drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
 import { drawCanvasSelections } from "#canvas/render/selectionLayer.ts";
 import { drawSnapGuides } from "#canvas/render/snapGuides.ts";
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "#canvas/render/theme.ts";
@@ -29,6 +30,7 @@ import {
   type CanvasGpu,
   createCanvasGpu,
   destroyCanvasGpu,
+  parseColor,
   presentPass,
 } from "#canvas/render/webgl.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
@@ -1228,6 +1230,42 @@ export function createCanvasController(
    *
    * Shapes are marked `hidden=until-found` so native find can reach their text.
    */
+  // The shape a find-in-page match revealed, outlined while it fades out.
+  let foundShape: { id: string; at: number } | null = null;
+  const FOUND_FADE_MS = 1500;
+
+  function drawFoundShape(target: CanvasGpu) {
+    const found = foundShape;
+    const shape = found && shapesById().get(found.id);
+    if (!found || !shape) return;
+    const fade = 1 - (performance.now() - found.at) / FOUND_FADE_MS;
+    if (fade <= 0) {
+      foundShape = null;
+      return;
+    }
+    const { scale, dx, dy } = transform();
+    const bounds = shapeBounds(shape);
+    const pad = 6;
+    drawRoundedRect(
+      target,
+      rectQuad(
+        bounds.x * scale + dx - pad,
+        bounds.y * scale + dy - pad,
+        bounds.width * scale + pad * 2,
+        bounds.height * scale + pad * 2,
+        (bounds.rotation * Math.PI) / 180,
+      ),
+      {
+        radius: 10,
+        fill: [0.96, 0.62, 0.04, 0.12],
+        stroke: [0.96, 0.62, 0.04, 1],
+        strokeWidth: 3,
+        alpha: fade,
+      },
+    );
+    scheduleInkRender();
+  }
+
   function handleBrowserFindMatch(event: Event) {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -1238,6 +1276,8 @@ export function createCanvasController(
     if (!article || !shape) return;
 
     moveToShape(shape);
+    foundShape = { id: shape.id, at: performance.now() };
+    scheduleInkRender();
 
     // The browser removes hidden=until-found after beforematch. Restore the
     // marker once it has finished revealing this match so advancing to another
@@ -1656,6 +1696,20 @@ export function createCanvasController(
     }
     drawSnapGuides(target, activeSnapGuides, "#2563eb");
     drawCanvasSelections(target, selectionSnapshot());
+    drawFoundShape(target);
+    const marquee = state.marqueeRect;
+    if (marquee) {
+      drawRoundedRect(
+        target,
+        rectQuad(marquee.x, marquee.y, marquee.width, marquee.height),
+        {
+          radius: 2,
+          fill: [0.145, 0.388, 0.922, 0.1],
+          stroke: parseColor("#2563eb"),
+          strokeWidth: 1,
+        },
+      );
+    }
     presentPass(target, canvas);
   }
 
@@ -2657,15 +2711,6 @@ export function createCanvasController(
     );
   }
 
-  // Wheel over a shape that scrolls its own content (a document preview).
-  function wheelShape(event: WheelEvent): boolean {
-    const hit = hitTestShape(screenToWorld(screenPoint(event)));
-    const wheel = hit && extensionManager.get(hit.shape.type).events?.wheel;
-    if (!hit || !wheel || !wheel(hit.shape, extHost, event)) return false;
-    renderScene();
-    return true;
-  }
-
   /** Text the browser's find-in-page and screen readers see for painted shapes. */
   function findableShapes() {
     return canvasShapes().map((shape) => {
@@ -3000,10 +3045,12 @@ export function createCanvasController(
         };
         state.marqueeRect = rect;
         applyMarqueeSelection(drag, rect);
+        scheduleInkRender();
         schedulePresenceUpdate();
       },
       end() {
         state.marqueeRect = null;
+        renderOverlay();
       },
     },
 
@@ -3710,7 +3757,6 @@ export function createCanvasController(
         renderInk();
       },
       onTwoFingerTap: undo,
-      onWheel: wheelShape,
       minZoom: 0.15,
       maxZoom: 10,
     });

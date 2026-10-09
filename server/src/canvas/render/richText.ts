@@ -6,6 +6,7 @@
 
 import { type FontFace, fontFaces } from "#canvas/render/fonts.ts";
 import { loadedImage } from "#canvas/render/images.ts";
+import { remembered } from "#canvas/render/lru.ts";
 import {
   type BlockSpacing,
   layoutText,
@@ -191,7 +192,7 @@ export function richTextBlocks(html: string, theme: RichTextTheme): TextBlock[] 
   const walk = (element: Element, context: BlockContext, state: InlineState) => {
     let pending: TextRun[] = [];
     const flush = () => {
-      if (pending.some((run) => run.text.trim() !== "") || context.marker) {
+      if (pending.some((run) => run.text.trim() !== "")) {
         pushText(pending, context, {
           size: state.style.size,
           margin: theme.blockMargin,
@@ -328,11 +329,21 @@ export function richTextBlocks(html: string, theme: RichTextTheme): TextBlock[] 
                 text: tag === "OL" ? `${number++}.` : BULLETS[depth % BULLETS.length],
                 style: { ...state.style, color: theme.muted, face: "regular" },
               };
-        walk(
-          item,
-          { ...context, indent: context.indent + theme.listIndent, item: true, marker },
-          state,
-        );
+        const itemContext = {
+          ...context,
+          indent: context.indent + theme.listIndent,
+          item: true,
+          marker,
+        };
+        walk(item, itemContext, state);
+        // An item with no text still shows its marker, on an empty line.
+        if (itemContext.marker) {
+          pushText([], itemContext, {
+            size: state.style.size,
+            margin: theme.blockMargin,
+            lineHeight: theme.lineHeight,
+          });
+        }
       }
       return;
     }
@@ -398,7 +409,9 @@ export function richTextBlocks(html: string, theme: RichTextTheme): TextBlock[] 
   return blocks;
 }
 
-const layouts = new Map<string, TextLayout>();
+// Keyed by the HTML string itself, which is the same instance frame to frame,
+// so a hit never rebuilds a key from a long document.
+const layouts = new Map<string, Map<string, TextLayout | null>>();
 
 /**
  * `html` laid out at `width` with the given theme, cached; null until its fonts
@@ -410,8 +423,9 @@ export function richTextLayout(
   width: number,
   invalidate: () => void,
 ): TextLayout | null {
-  const key = `${JSON.stringify(theme)}|${width}|${imageRevision}|${html}`;
-  const cached = layouts.get(key);
+  const variants = remembered(layouts, html, 4096, () => new Map());
+  const key = `${JSON.stringify(theme)}|${width}|${imageRevision}`;
+  const cached = variants.get(key);
   if (cached) return cached;
   const blocks = richTextBlocks(html, theme);
   const faces = new Set<FontFace>(["regular"]);
@@ -419,9 +433,11 @@ export function richTextLayout(
     if (block.kind === "text") {
       for (const run of block.runs) faces.add(run.style.face);
       if (block.marker?.kind === "text") faces.add(block.marker.style.face);
+      if (block.marker?.kind === "checkbox") faces.add("bold");
     }
-    if (block.kind === "row")
+    if (block.kind === "row") {
       for (const cell of block.cells) for (const run of cell) faces.add(run.style.face);
+    }
   }
   const fonts = fontFaces(faces, invalidate);
   if (!fonts) return null;
@@ -435,8 +451,9 @@ export function richTextLayout(
       return image ? image.naturalWidth / image.naturalHeight : null;
     },
   });
-  if (layouts.size > 256) layouts.clear();
-  layouts.set(key, layout);
+  // A few themes and widths per text: painted, measured, resized.
+  if (variants.size > 8) variants.clear();
+  variants.set(key, layout);
   return layout;
 }
 

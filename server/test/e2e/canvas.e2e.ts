@@ -157,10 +157,14 @@ test("draws the marquee while dragging across empty space", async ({ page }) => 
     await page.mouse.move(startX - step * 12, startY + step * 26);
   }
 
-  await expect(page.locator(".canvas-marquee")).toBeVisible();
+  await expect
+    .poll(() => paintedPixels(page, "canvas-overlay"), {
+      message: "the marquee is painted on the overlay while dragging",
+    })
+    .toBeGreaterThan(0);
 
   await page.mouse.up();
-  await expect(page.locator(".canvas-marquee")).toHaveCount(0);
+  await expect.poll(() => paintedPixels(page, "canvas-overlay")).toBe(0);
 });
 
 test("repaints while a shape is dragged", async ({ page }) => {

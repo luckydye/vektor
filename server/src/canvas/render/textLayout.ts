@@ -428,6 +428,18 @@ export function layoutText(
           strokeWidth: 1.25,
         });
         layout.checkboxes.push({ index: block.marker.index, ...box });
+        if (block.marker.checked) {
+          const style: TextStyle = { face: "bold", size: size * 0.8, color: "#ffffff" };
+          const [tick] = shape([{ text: "✓", style }], fonts);
+          layout.glyphs.push({
+            face: style.face,
+            index: tick.glyph,
+            x: box.x + (size - tick.advance) / 2,
+            y: box.y + size * 0.78,
+            size: style.size,
+            color: parseColor(style.color),
+          });
+        }
       }
       y += height;
     }

@@ -392,7 +392,7 @@ const svgIcon = (markup: string, className = "svg-icon") =>
 // Editors whose session props were assigned; lit re-runs `ref` every render.
 const mountedEditors = new WeakSet<Element>();
 
-/** Keeps chrome clicks away from the viewport marquee. */
+/** Keeps chrome clicks away from the viewport's marquee selection. */
 const stopPointer = (event: Event) => event.stopPropagation();
 
 /**
@@ -673,7 +673,6 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
   const chromeShape = view.editingChromeShape();
   const lockPosition = view.hoveredLockedElementPosition();
   const localPointer = view.state.localPointerScreen;
-  const marquee = view.state.marqueeRect;
 
   return html`
     <div class=${classMap({ "canvas-root": true, "is-dark": view.state.isDarkMode })}>
@@ -828,20 +827,6 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
             ></canvas-presence-cursor>`;
           },
         )}
-
-        ${
-          marquee
-            ? html`<div
-                class="canvas-marquee"
-                style=${styleMap({
-                  left: `${marquee.x}px`,
-                  top: `${marquee.y}px`,
-                  width: `${marquee.width}px`,
-                  height: `${marquee.height}px`,
-                })}
-              ></div>`
-            : nothing
-        }
 
         ${contextMenu(view)}
       </div>

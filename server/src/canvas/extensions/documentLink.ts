@@ -2,6 +2,7 @@ import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import type { LinkMetadata } from "#api/routes/url-metadata.ts";
 import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
 import { loadedImage } from "#canvas/render/images.ts";
+import { remembered } from "#canvas/render/lru.ts";
 import { drawImage, drawRoundedRect } from "#canvas/render/primitives.ts";
 import { type RichTextTheme, richTextLayout } from "#canvas/render/richText.ts";
 import { svgImage } from "#canvas/render/svgImage.ts";
@@ -39,6 +40,17 @@ export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
 
 function shapeDocumentAddress(shape: CanvasShape) {
   return typeof shape.data.docAddress === "string" ? shape.data.docAddress : undefined;
+}
+
+const parsedAddresses = new Map<string, ParsedVektorDocumentAddress | null>();
+
+// Painting asks for a card's address many times a frame; parsing builds URLs.
+function parsedShapeAddress(shape: CanvasShape) {
+  const address = shapeDocumentAddress(shape);
+  if (!address) return null;
+  return remembered(parsedAddresses, address, 4096, () =>
+    parseVektorDocumentAddress(address),
+  );
 }
 
 function shapeSource(shape: CanvasShape) {
@@ -237,8 +249,13 @@ const HEADER = 52;
 const BODY_PADDING = { top: 12, x: 14, bottom: 16 };
 const OPEN_BUTTON = 24;
 
+// Icon markup is parsed from source on every call; paints reuse one copy.
+let documentIcon: string | null = null;
+let openIcon: string | null = null;
+const DOCUMENT_ICON = () => (documentIcon ??= iconMarkup("document"));
+const OPEN_ICON = () => (openIcon ??= iconMarkup("chevron-right-thin"));
+
 const workflowPreviews = new Map<string, WorkflowPreviewState>();
-const bodyScroll = new Map<string, number>();
 
 function workflowPreview(spaceId: string, documentId: string, invalidate: () => void) {
   const key = `${spaceId}:${documentId}`;
@@ -345,7 +362,7 @@ function paintDocument(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintH
   });
 
   const icon = svgImage(
-    iconMarkup("document"),
+    DOCUMENT_ICON(),
     helpers.color("--canvas-doc-accent"),
     18 * pixels,
     helpers.invalidate,
@@ -389,7 +406,7 @@ function paintDocument(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintH
     );
   }
   const chevron = svgImage(
-    iconMarkup("chevron-right-thin"),
+    OPEN_ICON(),
     helpers.color("--canvas-muted"),
     16 * pixels,
     helpers.invalidate,
@@ -428,17 +445,16 @@ function paintDocument(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintH
 
   const geometry = cardGeometry(shape, helpers.host, helpers);
   if (!geometry.layout) return;
-  const scroll = bodyScroll.get(shape.id) ?? 0;
   drawTextLayout(
     gpu,
     geometry.layout,
     shapePlacement(
       shape,
       helpers,
-      { x: 1 + BODY_PADDING.x, y: geometry.bodyTop + BODY_PADDING.top - scroll },
+      { x: 1 + BODY_PADDING.x, y: geometry.bodyTop + BODY_PADDING.top },
       {
         x: -BODY_PADDING.x,
-        y: scroll - BODY_PADDING.top,
+        y: -BODY_PADDING.top,
         width: geometry.contentWidth + BODY_PADDING.x * 2,
         height: geometry.bodyHeight,
       },
@@ -458,8 +474,7 @@ function bodyHit(
   const layout = geometry.layout;
   if (!layout) return { task: null, href: null };
   const x = local.x - 1 - BODY_PADDING.x;
-  const y =
-    local.y - geometry.bodyTop - BODY_PADDING.top + (bodyScroll.get(shape.id) ?? 0);
+  const y = local.y - geometry.bodyTop - BODY_PADDING.top;
   const pad = 4;
   const task = layout.checkboxes.find(
     (box) =>
@@ -536,7 +551,7 @@ export const CanvasDocumentLink = CanvasElement.create({
     };
   },
 
-  isValid: (shape) => Boolean(parseVektorDocumentAddress(shapeDocumentAddress(shape))),
+  isValid: (shape) => Boolean(parsedShapeAddress(shape)),
   addRender() {
     return {
       paint: paintDocument,
@@ -592,19 +607,6 @@ export const CanvasDocumentLink = CanvasElement.create({
           return;
         }
         openEditor(shape, host, body.task);
-      },
-      // The preview scrolls inside the card instead of panning the canvas.
-      wheel: (shape, host, event) => {
-        const geometry = cardGeometry(shape, host, geometryOnly);
-        const overflow =
-          (geometry.layout?.height ?? 0) +
-          BODY_PADDING.top +
-          BODY_PADDING.bottom -
-          geometry.bodyHeight;
-        if (overflow <= 0) return false;
-        const current = bodyScroll.get(shape.id) ?? 0;
-        bodyScroll.set(shape.id, Math.min(overflow, Math.max(0, current + event.deltaY)));
-        return true;
       },
     };
   },
@@ -707,16 +709,14 @@ function initialDocumentPreview(
 }
 
 function documentIdForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.documentId;
+  return parsedShapeAddress(shape)?.documentId;
 }
 
 function documentSpaceIdForShape(
   shape: CanvasShape,
   fallbackSpaceId: string,
 ): string | undefined {
-  return (
-    parseVektorDocumentAddress(shapeDocumentAddress(shape))?.spaceId || fallbackSpaceId
-  );
+  return parsedShapeAddress(shape)?.spaceId || fallbackSpaceId;
 }
 
 // Swaps the document segment of a document href, keeping origin and space path.
@@ -730,13 +730,11 @@ function siblingDocumentHref(href: string, documentId: string): string {
 }
 
 function documentHrefForShape(shape: CanvasShape): string | undefined {
-  return (
-    parseVektorDocumentAddress(shapeDocumentAddress(shape))?.href ?? shapeSource(shape)
-  );
+  return parsedShapeAddress(shape)?.href ?? shapeSource(shape);
 }
 
 export function documentAddressForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.address;
+  return parsedShapeAddress(shape)?.address;
 }
 
 // A document address (or bare URL) whose origin differs from this instance —

@@ -7,6 +7,7 @@
 
 import type { FontFace } from "#canvas/render/fonts.ts";
 import { fontFaces } from "#canvas/render/fonts.ts";
+import { remembered } from "#canvas/render/lru.ts";
 import {
   drawRoundedRect,
   drawTexture,
@@ -376,23 +377,22 @@ export function lineLayout(
 ): TextLayout | null {
   const key = `${style.face}|${style.size}|${style.color}|${maxWidth}|${text}`;
   const cached = singleLines.get(key);
-  if (cached) return cached;
+  if (cached) return remembered(singleLines, key, 4096, () => cached);
   const fonts = fontFaces([style.face], invalidate);
   if (!fonts) return null;
-  const layout = layoutText(
-    [
-      {
-        kind: "text",
-        runs: [{ text, style }],
-        spacing: { marginTop: 0, marginBottom: 0, indent: 0, lineHeight: 1.2 },
-      },
-    ],
-    fonts,
-    { width: maxWidth, imageAspect: () => null },
+  return remembered(singleLines, key, 4096, () =>
+    layoutText(
+      [
+        {
+          kind: "text",
+          runs: [{ text, style }],
+          spacing: { marginTop: 0, marginBottom: 0, indent: 0, lineHeight: 1.2 },
+        },
+      ],
+      fonts,
+      { width: maxWidth, imageAspect: () => null },
+    ),
   );
-  if (singleLines.size > 512) singleLines.clear();
-  singleLines.set(key, layout);
-  return layout;
 }
 
 /** Placement that puts a layout's middle line at `at`, like `textBaseline = "middle"`. */
