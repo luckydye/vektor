@@ -28,6 +28,7 @@ const MIME_TYPES: Record<string, string> = {
   woff2: "font/woff2",
   ttf: "font/ttf",
   txt: "text/plain",
+  wasm: "application/wasm",
 };
 
 function getMimeType(filePath: string): string {

@@ -35,6 +35,13 @@ async function decode(url: string): Promise<HTMLImageElement> {
   return sized;
 }
 
+/** Images still decoding, so an export can wait for them. */
+export function pendingImageLoads(): number {
+  let pending = 0;
+  for (const state of images.values()) if (state === "loading") pending++;
+  return pending;
+}
+
 /** The decoded image if it has already loaded, without starting a load. */
 export function cachedImage(src: string): HTMLImageElement | null {
   const cached = images.get(src);

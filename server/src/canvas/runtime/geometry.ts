@@ -43,6 +43,15 @@ export function rectContains(outer: Rect, inner: Rect): boolean {
   );
 }
 
+/** The overlap of two rects, or null when they do not overlap. */
+export function rectIntersection(a: Rect, b: Rect): Rect | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
+}
+
 /** The axis-aligned box around a freehand stroke, or null if it has no points. */
 export function strokeBounds(points: readonly CanvasPoint[]): Rect | null {
   if (points.length === 0) return null;
@@ -287,24 +296,43 @@ export function localPointInShape(shape: CanvasRect, point: CanvasPoint): Canvas
   return { x: local.x + shape.width / 2, y: local.y + shape.height / 2 };
 }
 
-export function resizeRotatedShapeFromBottomRight(params: {
-  fixedTopLeft: CanvasPoint;
+/** Which edge or corner a resize drags: -1 the start side, 1 the end side, 0 untouched. */
+export type ResizeHandle = { x: -1 | 0 | 1; y: -1 | 0 | 1 };
+
+export const RESIZE_HANDLES: readonly ResizeHandle[] = [
+  { x: -1, y: -1 },
+  { x: 0, y: -1 },
+  { x: 1, y: -1 },
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 0, y: 1 },
+  { x: -1, y: 1 },
+  { x: -1, y: 0 },
+];
+
+/**
+ * Resizes a rotated box by one handle, keeping the opposite edge or corner in
+ * place. An aspect lock only applies to corners.
+ */
+export function resizeRotatedShape(params: {
+  initial: CanvasRect;
+  handle: ResizeHandle;
   pointer: CanvasPoint;
-  rotation: number;
   minSize: { width: number; height: number };
   aspect?: number;
 }): Pick<CanvasRect, "x" | "y" | "width" | "height"> {
-  const pointerInLocalSpace = rotateVector(
-    {
-      x: params.pointer.x - params.fixedTopLeft.x,
-      y: params.pointer.y - params.fixedTopLeft.y,
-    },
-    -params.rotation,
+  const { initial, handle } = params;
+  const topLeft = rotatedShapeCorners(initial)[0];
+  const local = rotateVector(
+    { x: params.pointer.x - topLeft.x, y: params.pointer.y - topLeft.y },
+    -initial.rotation,
   );
+  const span = (side: -1 | 0 | 1, at: number, size: number) =>
+    side === 1 ? at : side === -1 ? size - at : size;
 
-  let width = pointerInLocalSpace.x;
-  let height = pointerInLocalSpace.y;
-  if (params.aspect) {
+  let width = span(handle.x, local.x, initial.width);
+  let height = span(handle.y, local.y, initial.height);
+  if (params.aspect && handle.x !== 0 && handle.y !== 0) {
     width = Math.max(width, height * params.aspect, params.minSize.width);
     height = width / params.aspect;
     if (height < params.minSize.height) {
@@ -316,14 +344,17 @@ export function resizeRotatedShapeFromBottomRight(params: {
     height = Math.max(params.minSize.height, height);
   }
 
-  const centerOffset = rotateVector({ x: width / 2, y: height / 2 }, params.rotation);
-  const center = {
-    x: params.fixedTopLeft.x + centerOffset.x,
-    y: params.fixedTopLeft.y + centerOffset.y,
-  };
+  // The new box in the old one's local space: a start-side handle moves the
+  // start edge, so the box ends where the old one did.
+  const left = handle.x === -1 ? initial.width - width : 0;
+  const top = handle.y === -1 ? initial.height - height : 0;
+  const centerOffset = rotateVector(
+    { x: left + width / 2, y: top + height / 2 },
+    initial.rotation,
+  );
   return {
-    x: center.x - width / 2,
-    y: center.y - height / 2,
+    x: topLeft.x + centerOffset.x - width / 2,
+    y: topLeft.y + centerOffset.y - height / 2,
     width,
     height,
   };

@@ -98,7 +98,7 @@ A Vektor server installing from a registry:
 1. resolves the version through `<id>.json` (never trusts a caller-supplied URL),
 2. resolves `downloadUrl` against its configured base and downloads it,
    rejecting a URL or a redirect that leaves that origin,
-3. caps the body at 5 MB — the same limit as a direct upload,
+3. caps the body at 64 MB — the same limit as a direct upload,
 4. verifies `sha256` before the bytes reach the unzipper,
 5. re-extracts and re-validates `manifest.json` from the package itself, and
 6. stores it with `source: "marketplace"`, `sourceRef: "<id>@<version>"`,

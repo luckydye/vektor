@@ -13,6 +13,7 @@ import {
 import { authorizeExtensionInstall } from "#api/routes/spaces/extensionAuth.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
 import {
   createExtension,
   type ExtensionManifest,
@@ -125,10 +126,10 @@ export const POST: ApiRouteHandler = (context) =>
         return badRequestResponse("Extension must be a zip file");
       }
 
-      // Max 5MB for extension packages
-      const MAX_SIZE = 5 * 1024 * 1024;
-      if (file.size > MAX_SIZE) {
-        return badRequestResponse("Extension package exceeds maximum size of 5MB");
+      if (file.size > MAX_PACKAGE_ARCHIVE_BYTES) {
+        return badRequestResponse(
+          `Extension package exceeds maximum size of ${MAX_PACKAGE_ARCHIVE_BYTES / 1024 / 1024}MB`,
+        );
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());

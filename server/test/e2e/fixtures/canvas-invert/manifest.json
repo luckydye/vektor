@@ -1,0 +1,7 @@
+{
+  "id": "canvas-invert",
+  "name": "Canvas invert",
+  "version": "1.0.0",
+  "description": "Test fixture: an image inspector and processor that inverts colours.",
+  "entries": { "frontend": "index.js" }
+}

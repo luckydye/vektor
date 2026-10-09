@@ -29,7 +29,11 @@ export interface CanvasGpu {
   resources: CanvasGpuResources;
   view: CanvasView;
   lost: boolean;
+  /** The active `withScissor` rect in screen CSS px, or null when unclipped. */
+  scissor: ScreenRect | null;
 }
+
+type ScreenRect = { x: number; y: number; width: number; height: number };
 
 export interface CanvasProgram {
   program: WebGLProgram;
@@ -70,6 +74,7 @@ export function createCanvasGpu(onRestored: () => void): CanvasGpu {
       dpr: 1,
     },
     lost: false,
+    scissor: null,
   };
   canvas.addEventListener("webglcontextlost", (event) => {
     event.preventDefault();
@@ -157,6 +162,7 @@ export function beginPass(gpu: CanvasGpu, view: CanvasView) {
   }
   multisampleTarget(gpu, width, height);
   gl.viewport(0, 0, width, height);
+  gpu.scissor = null;
   gl.disable(gl.SCISSOR_TEST);
   gl.disable(gl.STENCIL_TEST);
   gl.colorMask(true, true, true, true);
@@ -167,11 +173,53 @@ export function beginPass(gpu: CanvasGpu, view: CanvasView) {
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 }
 
+/**
+ * Paints with drawing limited to `rect` (screen CSS px), intersected with any
+ * clip already active, and restores that clip afterwards.
+ */
+export function withScissor(gpu: CanvasGpu, rect: ScreenRect, paint: () => void) {
+  const { gl } = gpu;
+  const outer = gpu.scissor;
+  const x = Math.max(rect.x, outer?.x ?? -Infinity);
+  const y = Math.max(rect.y, outer?.y ?? -Infinity);
+  const right = Math.min(rect.x + rect.width, outer ? outer.x + outer.width : Infinity);
+  const bottom = Math.min(
+    rect.y + rect.height,
+    outer ? outer.y + outer.height : Infinity,
+  );
+  if (right <= x || bottom <= y) return;
+  const apply = (clip: ScreenRect) => {
+    const { dpr, screen } = gpu.view;
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(
+      Math.floor(clip.x * dpr),
+      Math.floor((screen.height - clip.y - clip.height) * dpr),
+      Math.ceil(clip.width * dpr),
+      Math.ceil(clip.height * dpr),
+    );
+  };
+  gpu.scissor = { x, y, width: right - x, height: bottom - y };
+  apply(gpu.scissor);
+  try {
+    paint();
+  } finally {
+    gpu.scissor = outer;
+    if (outer) apply(outer);
+    else gl.disable(gl.SCISSOR_TEST);
+  }
+}
+
 /** Resolves the samples and hands the finished pass to an on-page canvas. */
 export function presentPass(gpu: CanvasGpu, target: HTMLCanvasElement) {
-  const { gl, canvas } = gpu;
   const context = target.getContext("bitmaprenderer");
   if (!context) throw new Error("bitmaprenderer context unavailable");
+  resolvePass(gpu);
+  context.transferFromImageBitmap(gpu.canvas.transferToImageBitmap());
+}
+
+/** Resolves the samples into `gpu.canvas`, where they can be read or encoded. */
+export function resolvePass(gpu: CanvasGpu) {
+  const { gl, canvas } = gpu;
   const multisample = gpu.resources.named.get("multisample") as MultisampleTarget;
   gl.disable(gl.SCISSOR_TEST);
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, multisample.framebuffer);
@@ -189,7 +237,6 @@ export function presentPass(gpu: CanvasGpu, target: HTMLCanvasElement) {
     gl.NEAREST,
   );
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  context.transferFromImageBitmap(gpu.canvas.transferToImageBitmap());
 }
 
 /**

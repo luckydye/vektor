@@ -115,10 +115,12 @@ export type CanvasElementTransform = {
   rotate: boolean;
   // Locks width/height ratio while resizing (image/video).
   aspectLocked?: boolean;
+  /** "edges": eight handles on the border, like a design-tool frame, instead of one corner grip. */
+  handles?: "edges";
 };
 
-// How a shape enters edit mode after creation. The host either focuses the
-// extension element itself or opens its registered painted-chrome editor.
+// How a shape enters edit mode after creation: its own element's editor, or a
+// painted edit of its chrome through `events.editChrome`.
 type CanvasEditOnCreate = "element" | "chrome";
 
 // Optional toolbar entry contributed by an element. The host merges these with
@@ -181,7 +183,10 @@ export interface CanvasToolContext {
   setActiveStroke: (stroke: FreehandStroke | null) => void;
   insertStroke: (stroke: CanvasStrokeSnapshot) => void;
   selectStroke: (id: string) => void;
-  createElement: (type: CanvasShapeType, at: CanvasPoint) => void;
+  /** Places a new shape at `at`; with `size`, that is its top-left and box. */
+  createElement: (type: CanvasShapeType, at: CanvasPoint, size?: CanvasSize) => void;
+  /** The dashed box a drag-to-create shows; null hides it. World units. */
+  setDraftRect: (rect: CanvasRect | null) => void;
   setActiveTool: (tool: CanvasToolId) => void;
   /**
    * Current value of one of the active tool's declared `properties`.
@@ -225,6 +230,14 @@ export type CanvasToolProperty =
       default: number;
     };
 
+/** A control an element contributes to the properties panel; its value lives in `shape.data[id]`. */
+export type CanvasElementProperty = {
+  kind: "toggle";
+  id: string;
+  label: TranslationKey;
+  default: boolean;
+};
+
 // A canvas tool (draw, shape, …). The host dispatches an empty-canvas pointerdown
 // for the active non-select tool to onPointerDown. `select` stays the engine
 // default; element-creating tools (note/text/section) are derived from their
@@ -252,6 +265,47 @@ export interface CanvasToolExtension {
    * `CanvasToolContext.property`.
    */
   properties?: readonly CanvasToolProperty[];
+}
+
+/** A text entry in a menu an element opens from its own chrome. */
+export interface CanvasMenuEntry {
+  id: string;
+  label: string;
+  checked?: boolean;
+  run: () => void;
+}
+
+/**
+ * A text field an element paints in its own chrome, such as a section title.
+ * The engine owns keys, focus and selection; the element draws the result.
+ */
+export interface CanvasTextEdit {
+  shapeId: string;
+  /** Which of the element's fields, e.g. "title"; painting asks by it. */
+  field: string;
+  /** The field's accessible name. */
+  label: TranslationKey;
+  value: string;
+  commit: (value: string) => void;
+}
+
+/** An edit in progress, as painting draws it. */
+export interface CanvasTextEditState {
+  field: string;
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+/** What an export renders: a world region at `scale` output pixels per unit. */
+export interface CanvasExportOptions {
+  region: CanvasRect;
+  scale: number;
+  format: "png" | "jpg";
+  /** File name without extension. */
+  name: string;
+  /** A shape left out, such as the frame being exported. */
+  exclude?: string;
 }
 
 /**
@@ -312,6 +366,22 @@ export interface CanvasExtensionHost {
   beginEdit: (session: CanvasEditSession) => void;
   openUrl: (url: string) => void;
   service: <T>(key: symbol) => T;
+  /** Opens a text menu at a pointer position; picking an entry closes it. */
+  openMenu: (at: CanvasClientPoint, entries: readonly CanvasMenuEntry[]) => void;
+  /** Renders a region off-screen and downloads it; failures are reported to the user. */
+  exportRegion: (options: CanvasExportOptions) => void;
+  /** Starts a painted text edit; Enter or leaving it commits, Escape cancels. */
+  editText: (edit: CanvasTextEdit) => void;
+  /** One undoable resize, kept above the type's minimum; locked shapes are left alone. */
+  resizeShape: (id: string, size: CanvasSize) => void;
+  /** One undoable edit of a shape's data; locked shapes are left alone. */
+  updateData: (id: string, patch: Record<string, unknown>) => void;
+  /** Pixels a registered processor made for this image tier, or null to paint the source. */
+  processedImage: (
+    shape: CanvasShape,
+    sourceUrl: string,
+    invalidate: () => void,
+  ) => TexImageSource | null;
 }
 
 // Engine services passed to an element's paint() hook. The host owns the GL
@@ -324,6 +394,8 @@ export interface CanvasPaintHelpers {
   dx: number;
   dy: number;
   dpr: number;
+  /** False while exporting: titles and controls frame content but are not part of it. */
+  chrome: boolean;
   // Repaints the scene, e.g. once an image or font has loaded.
   invalidate: () => void;
   // Paints again on the next animation frame; call every paint while animating.
@@ -336,7 +408,10 @@ export interface CanvasPaintHelpers {
   // Section title chrome (shared geometry stays host-owned so hit-testing and
   // the inline title editor agree with what is painted).
   chromeTextColor: string;
-  isEditingChrome: (id: string) => boolean;
+  /** The painted text edit open on `shapeId`, or null. */
+  textEdit: (shapeId: string) => CanvasTextEditState | null;
+  /** The region of `shapeId` under the pointer, or null; for hover styling. */
+  hoveredRegion: (shapeId: string) => string | null;
   chromePosition: (shape: CanvasShape) => CanvasPoint;
   chromeSize: (shape: CanvasShape) => CanvasSize;
 }
@@ -349,6 +424,7 @@ type CanvasHitRegion = string;
 // (images above sections above the backdrop) and calls hitTest per shape.
 export interface CanvasHitTestHelpers {
   worldToScreen: (point: CanvasPoint) => CanvasPoint;
+  t: (key: TranslationKey) => string;
   chromePosition: (shape: CanvasShape) => CanvasPoint;
   chromeSize: (shape: CanvasShape) => CanvasSize;
 }
@@ -372,6 +448,8 @@ export interface CanvasElementExtension {
     tool?: CanvasElementTool;
     editOnCreate?: CanvasEditOnCreate;
     doubleClick?: boolean;
+    /** The tool sizes the new shape by dragging; a click still places the default size. */
+    dragToSize?: boolean;
     palette?: readonly string[];
   };
   render: {
@@ -418,8 +496,8 @@ export interface CanvasElementExtension {
       background?: boolean;
       style?: (shape: CanvasShape) => Record<string, string>;
     };
+    /** Screen-space chrome painted outside the frame, such as a section's title row. */
     chrome?: {
-      editorTag: string;
       position: (
         shape: CanvasShape,
         helpers: { scale: number; worldToScreen: (point: CanvasPoint) => CanvasPoint },
@@ -447,6 +525,8 @@ export interface CanvasElementExtension {
     container?: {
       containsBounds: (container: CanvasShape, bounds: CanvasRect) => boolean;
       containsPoint: (container: CanvasShape, point: CanvasPoint) => boolean;
+      /** Whether contents are cut to the container's frame, which must stay axis-aligned. */
+      clips?: (container: CanvasShape) => boolean;
     };
   };
   storage?: {
@@ -464,6 +544,12 @@ export interface CanvasElementExtension {
       host: CanvasExtensionHost,
       hit: { region: CanvasHitRegion; local: CanvasPoint; event: PointerEvent },
     ) => void;
+    /**
+     * Starts editing what the element paints around itself, such as a section
+     * title: on create with `editOnCreate: "chrome"`, and on double-clicking its
+     * "title" region.
+     */
+    editChrome?: (shape: CanvasShape, host: CanvasExtensionHost) => void;
     prepare?: {
       key: (shape: CanvasShape, host: CanvasExtensionHost) => string | null;
       run: (shape: CanvasShape, host: CanvasExtensionHost) => void;
@@ -472,6 +558,8 @@ export interface CanvasElementExtension {
   input?: Partial<
     Record<CanvasInputKind, CanvasInputHandler | readonly CanvasInputHandler[]>
   >;
+  /** Controls shown in the properties panel while one shape of this type is selected. */
+  properties?: readonly CanvasElementProperty[];
   /**
    * Extra context-menu entries for a single selected shape of this type.
    *
@@ -530,6 +618,7 @@ interface CanvasElementConfig<TOptions, TStorage> {
   addCreation?: Method<TOptions, TStorage, NonNullable<Element["creation"]>>;
   addEvents?: Method<TOptions, TStorage, NonNullable<Element["events"]>>;
   addInput?: Method<TOptions, TStorage, NonNullable<Element["input"]>>;
+  addProperties?: Method<TOptions, TStorage, readonly CanvasElementProperty[]>;
 
   /** Behaviour rather than config, so these keep their names and get `this`. */
   isValid?: (this: ExtensionThis<TOptions, TStorage>, shape: CanvasShape) => boolean;
@@ -586,6 +675,7 @@ function buildElement<TOptions, TStorage>(
     creation: config.addCreation?.call(self),
     events: config.addEvents?.call(self),
     input: config.addInput?.call(self),
+    properties: config.addProperties?.call(self),
     isValid:
       config.isValid && ((shape: CanvasShape) => config.isValid?.call(self, shape)),
     contextMenu:

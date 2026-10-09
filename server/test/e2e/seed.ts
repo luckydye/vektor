@@ -11,6 +11,10 @@
  * the clock is frozen browser-side instead — see `fixture.ts`.
  */
 
+import { readFileSync } from "node:fs";
+import { getNativeImage } from "#files/native.ts";
+import { createZipBuffer } from "#utils/zip.ts";
+
 export const SEED = {
   space: { name: "Visual Fixture", slug: "visual" },
   documents: [
@@ -86,6 +90,31 @@ export const SEED = {
       },
     ],
   },
+  /**
+   * A clipping section with a solid red image hanging off its right edge. The
+   * image's centre is inside, so the section holds it and cuts the overhang.
+   */
+  platformCanvas: {
+    title: "Platform canvas fixture",
+    image: { width: 400, height: 200, rgb: [220, 40, 40] as const },
+    shapes: [
+      {
+        id: "shape-fixture-clip-section",
+        type: "section",
+        frame: { x: 0, y: 0, width: 400, height: 300, rotation: 0 },
+        style: { color: "#bfdbfe" },
+        data: { text: "Clip", clip: true },
+        updatedAt: 1_000,
+      },
+      {
+        id: "shape-fixture-image",
+        type: "image",
+        frame: { x: 100, y: 50, width: 400, height: 200, rotation: 0 },
+        style: { color: "transparent" },
+        updatedAt: 2_000,
+      },
+    ],
+  },
 } as const;
 
 export interface SeededSpace {
@@ -94,6 +123,7 @@ export interface SeededSpace {
   documentSlugs: string[];
   canvasSlug: string;
   secondCanvasSlug: string;
+  platformCanvasSlug: string;
 }
 
 export async function seed(baseUrl: string): Promise<SeededSpace> {
@@ -145,11 +175,56 @@ export async function seed(baseUrl: string): Promise<SeededSpace> {
     }),
   });
 
+  const native = await getNativeImage();
+  if (!native) throw new Error("The platform fixture needs the native image addon");
+  const { width, height, rgb } = SEED.platformCanvas.image;
+  const png = Buffer.from(native.encodeSolid(width, height, ...rgb, "png", 80));
+  const upload = await fetch(`${api}/spaces/${space.id}/uploads?filename=fixture.png`, {
+    method: "POST",
+    headers: { "Content-Type": "image/png" },
+    body: png,
+  });
+  if (!upload.ok) throw new Error(`upload -> ${upload.status}`);
+  const { url } = await upload.json();
+  // Gives images an inspector and processor, so the platform suite can drive both.
+  const fixture = new URL("./fixtures/canvas-invert/", import.meta.url);
+  const extension = new FormData();
+  extension.append(
+    "file",
+    new Blob([
+      createZipBuffer(
+        ["manifest.json", "index.js"].map((name) => ({
+          name,
+          data: readFileSync(new URL(name, fixture)),
+        })),
+      ),
+    ]),
+    "canvas-invert.zip",
+  );
+  const installed = await fetch(`${api}/spaces/${space.id}/extensions`, {
+    method: "POST",
+    body: extension,
+  });
+  if (!installed.ok) throw new Error(`extension install -> ${installed.status}`);
+
+  const { document: platformCanvas } = await post(`/spaces/${space.id}/documents`, {
+    title: SEED.platformCanvas.title,
+    type: "canvas",
+    content: JSON.stringify({
+      version: 1,
+      shapes: SEED.platformCanvas.shapes.map((shape) =>
+        shape.type === "image" ? { ...shape, data: { src: url, alt: "fixture" } } : shape,
+      ),
+      strokes: [],
+    }),
+  });
+
   return {
     spaceId: space.id,
     slug: space.slug,
     documentSlugs,
     canvasSlug: canvas.slug,
     secondCanvasSlug: secondCanvas.slug,
+    platformCanvasSlug: platformCanvas.slug,
   };
 }

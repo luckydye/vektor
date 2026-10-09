@@ -230,3 +230,26 @@ export function drawLine(
   gl.uniform1f(program.uniform("u_dash"), options.dash ?? 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
+
+/** A one-pixel dashed outline in screen px, for a box that is not a shape yet. */
+export function drawDashedRect(
+  gpu: CanvasGpu,
+  rect: { x: number; y: number; width: number; height: number },
+  color: Rgba,
+) {
+  const dash = 4;
+  const gap = 3;
+  const edge = (x: number, y: number, length: number, horizontal: boolean) => {
+    for (let at = 0; at < length; at += dash + gap) {
+      const size = Math.min(dash, length - at);
+      const quad = horizontal
+        ? rectQuad(x + at, y - 0.5, size, 1)
+        : rectQuad(x - 0.5, y + at, 1, size);
+      drawRoundedRect(gpu, quad, { fill: color });
+    }
+  };
+  edge(rect.x, rect.y, rect.width, true);
+  edge(rect.x, rect.y + rect.height, rect.width, true);
+  edge(rect.x, rect.y, rect.height, false);
+  edge(rect.x + rect.width, rect.y, rect.height, false);
+}

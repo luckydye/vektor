@@ -75,6 +75,7 @@ export function CanvasView(props: Props) {
           documentId={documentId()}
           spaceId={props.spaceId}
           ydoc={collaboration.ydoc()}
+          plugins={extensions.canvasPlugins}
           presenceProfiles={presenceProfiles()}
           onPresence={handlePresence}
         />

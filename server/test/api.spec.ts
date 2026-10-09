@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LOCAL_USER_ID } from "#config";
 import { createJobToken } from "#jobs/jobToken.ts";
@@ -271,6 +272,36 @@ describe("API Tests - Extensions", () => {
     );
     expect(enableResponse.status).toBe(200);
     expect((await enableResponse.json()).enabled).toBe(true);
+  });
+
+  it("accepts a package past 5MB and serves its wasm as application/wasm", async () => {
+    const archive = createZipBuffer([
+      {
+        name: "manifest.json",
+        data: Buffer.from(
+          JSON.stringify({ id: "wasm-test", name: "Wasm Test", version: "1.0.0", entries: {} }),
+        ),
+      },
+      { name: "pipeline.wasm", data: Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]) },
+      // Incompressible, so the archive itself is past the old 5MB ceiling.
+      { name: "weights.bin", data: randomBytes(6 * 1024 * 1024) },
+    ]);
+    const form = new FormData();
+    form.append(
+      "file",
+      new File([new Uint8Array(archive)], "wasm-test.zip", { type: "application/zip" }),
+    );
+    const upload = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/extensions`, {
+      method: "POST",
+      body: form,
+    });
+    expect(upload.status).toBe(201);
+
+    const asset = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/extensions/wasm-test/assets/pipeline.wasm`,
+    );
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get("content-type")).toBe("application/wasm");
   });
 });
 

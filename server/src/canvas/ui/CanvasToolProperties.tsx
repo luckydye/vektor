@@ -133,6 +133,7 @@ export function CanvasToolProperties(props: { chrome: CanvasChrome }) {
                       type="button"
                       classList={{
                         "canvas-color-swatch": true,
+                        "canvas-color-swatch-none": color === "transparent",
                         active: activeColors()[palette.type] === color,
                       }}
                       style={{ background: color }}

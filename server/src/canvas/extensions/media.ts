@@ -132,8 +132,9 @@ function paintImage(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelp
 
   const targetPixels = Math.ceil(shape.frame.width * helpers.scale * helpers.dpr);
   const tieredSrc = resizeImageUrl(src, targetPixels);
-  const loaded = loadedImage(tieredSrc, helpers.invalidate);
-  const displayImage = loaded ?? cachedImageFallback(src);
+  const processed = helpers.host.processedImage(shape, tieredSrc, helpers.invalidate);
+  const displayImage =
+    processed ?? loadedImage(tieredSrc, helpers.invalidate) ?? cachedImageFallback(src);
   if (displayImage) drawImage(gpu, displayImage, quad);
   else drawRoundedRect(gpu, quad, { fill: [0.5, 0.5, 0.5, 0.15] });
 }

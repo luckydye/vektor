@@ -50,6 +50,7 @@ import type {
   CanvasShape,
   CanvasShapeType,
   CanvasSize,
+  CanvasToolContext,
   CanvasToolExtension,
   CanvasToolId,
   CanvasToolProperty,
@@ -67,6 +68,43 @@ type CanvasColorPalette = {
   label: TranslationKey;
   palette: readonly string[];
 };
+
+/** Below this many screen px a drag counts as a click and places the default size. */
+const DRAG_TO_CREATE_THRESHOLD = 6;
+
+/**
+ * Sizes a new shape by the dragged box, showing it as a draft meanwhile. Shift
+ * keeps it square.
+ */
+function dragToCreate(
+  type: CanvasShapeType,
+  origin: CanvasPoint,
+  event: PointerEvent,
+  context: CanvasToolContext,
+) {
+  const draft = (point: CanvasPoint, square: boolean) => {
+    let width = Math.abs(point.x - origin.x);
+    let height = Math.abs(point.y - origin.y);
+    if (square) width = height = Math.max(width, height);
+    return {
+      x: point.x < origin.x ? origin.x - width : origin.x,
+      y: point.y < origin.y ? origin.y - height : origin.y,
+      width,
+      height,
+    };
+  };
+  context.beginPointerGesture(event, {
+    onMove: ({ world, event }) => context.setDraftRect(draft(world, event.shiftKey)),
+    onEnd: ({ world, event }) => {
+      context.setDraftRect(null);
+      const rect = draft(world, event.shiftKey);
+      const reach = Math.max(rect.width, rect.height) * context.viewportScale();
+      if (reach < DRAG_TO_CREATE_THRESHOLD) context.createElement(type, origin);
+      else context.createElement(type, rect, rect);
+    },
+    onCancel: () => context.setDraftRect(null),
+  });
+}
 
 type CanvasExtensionManagerOptions = {
   elements?: readonly CanvasElementExtension[];
@@ -108,7 +146,9 @@ export class CanvasExtensionManager {
     if (toolId) {
       this.#tools.set(toolId, {
         id: toolId,
-        onPointerDown: (at, _event, context) => context.createElement(extension.type, at),
+        onPointerDown: extension.creation?.dragToSize
+          ? (at, event, context) => dragToCreate(extension.type, at, event, context)
+          : (at, _event, context) => context.createElement(extension.type, at),
       });
     }
     return this;
@@ -318,6 +358,12 @@ type CanvasExtensionRuntimeOptions = {
   spaces: () => ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
   uploadFile: CanvasUploader;
   createCollaboration?: CanvasCollaborationFactory;
+  processedImage: CanvasExtensionHost["processedImage"];
+  openMenu: CanvasExtensionHost["openMenu"];
+  exportRegion: CanvasExtensionHost["exportRegion"];
+  updateData: CanvasExtensionHost["updateData"];
+  editText: CanvasExtensionHost["editText"];
+  resizeShape: CanvasExtensionHost["resizeShape"];
 };
 
 function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
@@ -354,6 +400,12 @@ function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
     beginEdit: options.beginEdit,
     createCollaboration: options.createCollaboration,
     openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
+    processedImage: options.processedImage,
+    openMenu: options.openMenu,
+    exportRegion: options.exportRegion,
+    updateData: options.updateData,
+    editText: options.editText,
+    resizeShape: options.resizeShape,
     service: <T>(key: symbol) => {
       if (!services.has(key))
         throw new Error("Canvas extension service is not registered");

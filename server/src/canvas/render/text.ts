@@ -11,6 +11,7 @@ import { remembered } from "#canvas/render/lru.ts";
 import {
   drawRoundedRect,
   drawTexture,
+  rectQuad,
   type ScreenQuad,
 } from "#canvas/render/primitives.ts";
 import {
@@ -419,4 +420,39 @@ export function middlePlacement(
     scale,
     rotation,
   };
+}
+
+/**
+ * A single line being edited: selection, text and caret, centred on `at.y`.
+ * `at.x` is where the text starts, or with `align: "end"` where it ends.
+ */
+export function drawTextField(
+  gpu: CanvasGpu,
+  edit: { value: string; selectionStart: number; selectionEnd: number },
+  style: TextStyle,
+  at: CanvasPoint & { align?: "start" | "end" },
+  invalidate: () => void,
+) {
+  // Until the font loads, an estimate of 7px per character.
+  const widthOf = (text: string) =>
+    text ? (lineLayout(text, style, invalidate)?.width ?? text.length * 7) : 0;
+  const x = at.align === "end" ? at.x - widthOf(edit.value) : at.x;
+  const start = Math.min(edit.selectionStart, edit.selectionEnd);
+  const end = Math.max(edit.selectionStart, edit.selectionEnd);
+  const startX = x + widthOf(edit.value.slice(0, start));
+  const lineHeight = style.size * 1.3;
+  const top = at.y - lineHeight / 2;
+  if (end > start) {
+    const width = x + widthOf(edit.value.slice(0, end)) - startX;
+    drawRoundedRect(gpu, rectQuad(startX, top, width, lineHeight), {
+      fill: [0.145, 0.388, 0.922, 0.25],
+    });
+  }
+  const layout = edit.value ? lineLayout(edit.value, style, invalidate) : null;
+  if (layout) drawTextLayout(gpu, layout, middlePlacement(layout, { x, y: at.y }, 1));
+  if (end === start) {
+    drawRoundedRect(gpu, rectQuad(startX, top, 1, lineHeight), {
+      fill: [0.145, 0.388, 0.922, 1],
+    });
+  }
 }

@@ -62,7 +62,9 @@ export function drawCanvasSelections(gpu: CanvasGpu, selection: CanvasSelectionS
 
 function drawShapeOutline(gpu: CanvasGpu, bounds: OutlineBounds, color: string) {
   const { transform } = gpu.view;
-  const expand = bounds.type === "section" ? 4 : 2;
+  // A section's outline lies exactly on its border, where its handles sit.
+  const frame = bounds.type === "section";
+  const expand = frame ? 0 : 2;
   const width = bounds.width * transform.scale + expand * 2;
   const height = bounds.height * transform.scale + expand * 2;
   const cx = (bounds.x + bounds.width / 2) * transform.scale + transform.dx;
@@ -76,6 +78,6 @@ function drawShapeOutline(gpu: CanvasGpu, bounds: OutlineBounds, color: string) 
       height,
       ((bounds.rotation ?? 0) * Math.PI) / 180,
     ),
-    { stroke: parseColor(color), strokeWidth: 1.5 },
+    { stroke: parseColor(color), strokeWidth: frame ? 1 : 1.5 },
   );
 }

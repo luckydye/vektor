@@ -8,7 +8,7 @@
  */
 
 import { drawImage, rectQuad } from "#canvas/render/primitives.ts";
-import { type CanvasGpu, releaseTexture } from "#canvas/render/webgl.ts";
+import { type CanvasGpu, releaseTexture, withScissor } from "#canvas/render/webgl.ts";
 import type { CanvasPoint, Rect } from "#canvas/runtime/geometry.ts";
 
 /**
@@ -65,48 +65,47 @@ export function compositeTiles(
   tiles: readonly (CanvasTile | null)[],
   clip: CanvasTileClip | null,
 ): void {
-  const { gl } = gpu;
-  const { transform: t, screen, dpr } = gpu.view;
-  let center: CanvasPoint | null = null;
-  if (clip) {
-    const sx = (origin.x + clip.x) * t.scale + t.dx;
-    const sy = (origin.y + clip.y) * t.scale + t.dy;
-    const sw = clip.width * t.scale;
-    const sh = clip.height * t.scale;
-    if (sw <= 0 || sh <= 0) return;
-    // The clip stays axis-aligned on screen; a rotated clip counter-rotates the
-    // tiles inside it instead.
-    gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(
-      Math.floor(sx * dpr),
-      Math.floor((screen.height - sy - sh) * dpr),
-      Math.ceil(sw * dpr),
-      Math.ceil(sh * dpr),
-    );
-    if (clip.rotation !== 0) center = { x: sx + sw / 2, y: sy + sh / 2 };
+  const { transform: t } = gpu.view;
+  const draw = (center: CanvasPoint | null) => {
+    const cos = Math.cos(-(clip?.rotation ?? 0));
+    const sin = Math.sin(-(clip?.rotation ?? 0));
+    for (const tile of tiles) {
+      if (!tile) continue;
+      const quad = rectQuad(
+        (origin.x + tile.x) * t.scale + t.dx,
+        (origin.y + tile.y) * t.scale + t.dy,
+        tile.width * t.scale,
+        tile.height * t.scale,
+      );
+      if (quad.axisX.x <= 0 || quad.axisY.y <= 0) continue;
+      drawImage(
+        gpu,
+        tile.image,
+        center
+          ? {
+              origin: rotateAbout(quad.origin, center, cos, sin),
+              axisX: rotateAbout(quad.axisX, { x: 0, y: 0 }, cos, sin),
+              axisY: rotateAbout(quad.axisY, { x: 0, y: 0 }, cos, sin),
+            }
+          : quad,
+      );
+    }
+  };
+  if (!clip) {
+    draw(null);
+    return;
   }
-  const cos = Math.cos(-(clip?.rotation ?? 0));
-  const sin = Math.sin(-(clip?.rotation ?? 0));
-  for (const tile of tiles) {
-    if (!tile) continue;
-    const quad = rectQuad(
-      (origin.x + tile.x) * t.scale + t.dx,
-      (origin.y + tile.y) * t.scale + t.dy,
-      tile.width * t.scale,
-      tile.height * t.scale,
-    );
-    if (quad.axisX.x <= 0 || quad.axisY.y <= 0) continue;
-    drawImage(
-      gpu,
-      tile.image,
-      center
-        ? {
-            origin: rotateAbout(quad.origin, center, cos, sin),
-            axisX: rotateAbout(quad.axisX, { x: 0, y: 0 }, cos, sin),
-            axisY: rotateAbout(quad.axisY, { x: 0, y: 0 }, cos, sin),
-          }
-        : quad,
-    );
-  }
-  gl.disable(gl.SCISSOR_TEST);
+  const rect = {
+    x: (origin.x + clip.x) * t.scale + t.dx,
+    y: (origin.y + clip.y) * t.scale + t.dy,
+    width: clip.width * t.scale,
+    height: clip.height * t.scale,
+  };
+  // The clip stays axis-aligned on screen; a rotated clip counter-rotates the
+  // tiles inside it instead.
+  const center =
+    clip.rotation !== 0
+      ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+      : null;
+  withScissor(gpu, rect, () => draw(center));
 }

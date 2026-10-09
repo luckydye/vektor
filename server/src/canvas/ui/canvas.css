@@ -31,6 +31,7 @@ vektor-canvas {
   --canvas-tool-active-border: #bfdbfe;
   --canvas-tool-active-text: #1d4ed8;
   --canvas-divider-color: #e5e7eb;
+  --canvas-frame-border: #9ca3af;
   --canvas-grid-minor: rgba(15, 23, 42, 0.07);
   --canvas-grid-major: rgba(15, 23, 42, 0.13);
   --canvas-ink-color: #111827;
@@ -39,9 +40,6 @@ vektor-canvas {
   --canvas-handle-bg: rgba(15, 23, 42, 0.08);
   --canvas-section-bg: rgba(219, 234, 254, 0.08);
   --canvas-section-border: rgba(37, 99, 235, 0.55);
-  --canvas-section-title-bg: #eff6ff;
-  --canvas-section-title-focus-bg: #ffffff;
-  --canvas-section-title-border: rgba(37, 99, 235, 0.28);
   --canvas-section-title-text: #1e3a8a;
   --canvas-image-bg: #ffffff;
   --canvas-doc-bg: #ffffff;
@@ -77,6 +75,7 @@ vektor-canvas {
     --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
     --canvas-tool-active-text: #bfdbfe;
     --canvas-divider-color: rgba(255, 255, 255, 0.12);
+    --canvas-frame-border: rgba(255, 255, 255, 0.4);
     --canvas-grid-minor: rgba(255, 255, 255, 0.07);
     --canvas-grid-major: rgba(255, 255, 255, 0.13);
     --canvas-ink-color: #f3f4f6;
@@ -85,9 +84,6 @@ vektor-canvas {
     --canvas-handle-bg: rgba(255, 255, 255, 0.12);
     --canvas-section-bg: rgba(96, 165, 250, 0.09);
     --canvas-section-border: rgba(147, 197, 253, 0.62);
-    --canvas-section-title-bg: #172033;
-    --canvas-section-title-focus-bg: #111827;
-    --canvas-section-title-border: rgba(147, 197, 253, 0.36);
     --canvas-section-title-text: #dbeafe;
     --canvas-image-bg: #111827;
     --canvas-doc-bg: #1a1d24;
@@ -193,6 +189,13 @@ vektor-canvas {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.canvas-property-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 
 .canvas-tool {
@@ -365,6 +368,47 @@ vektor-canvas {
   outline-offset: 2px;
 }
 
+/* Behind a painted text edit: holds focus, keys and selection, never seen. */
+.canvas-text-capture {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  min-width: 96px;
+  flex-direction: column;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 10px;
+  background: var(--canvas-toolbar-bg);
+  padding: 4px;
+  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.canvas-menu-item {
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--canvas-text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.canvas-menu-item:hover,
+.canvas-menu-item.active {
+  background: var(--canvas-divider-color);
+}
+
 .canvas-context-menu {
   position: absolute;
   top: 0;
@@ -499,6 +543,17 @@ vektor-canvas {
   cursor: pointer;
 }
 
+/* No colour: a slash across an empty swatch. */
+.canvas-color-swatch-none {
+  background-image: linear-gradient(
+    to top right,
+    transparent calc(50% - 1px),
+    #ef4444 calc(50% - 1px),
+    #ef4444 calc(50% + 1px),
+    transparent calc(50% + 1px)
+  ) !important;
+}
+
 .canvas-color-swatch.active {
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
@@ -520,11 +575,6 @@ vektor-canvas {
 }
 
 /* Re-enable text selection inside editable shape content. */
-.canvas-section-title {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
 .canvas-world {
   position: absolute;
   inset: 0;
@@ -772,41 +822,6 @@ vektor-canvas {
   line-height: 1.4;
 }
 
-.canvas-section-title-overlay {
-  position: absolute;
-  z-index: 6;
-  display: flex;
-  cursor: move;
-  pointer-events: auto;
-  transform-origin: 0 0;
-}
-
-.canvas-section-title {
-  box-sizing: border-box;
-  field-sizing: content;
-  max-width: 100%;
-  border: 1px solid
-    color-mix(in srgb, var(--canvas-section-color, #60a5fa) 48%, transparent);
-  border-radius: 6px;
-  background: color-mix(
-    in srgb,
-    var(--canvas-section-color, #60a5fa) 10%,
-    var(--canvas-toolbar-bg)
-  );
-  padding: 3px 8px;
-  color: var(--canvas-text);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 750;
-  line-height: 1.2;
-  outline: none;
-}
-
-.canvas-section-title:focus {
-  border-color: var(--canvas-section-color, #60a5fa);
-  background: var(--canvas-toolbar-bg);
-}
-
 .canvas-shape-textwrap {
   display: flex;
   min-width: 0;
@@ -897,6 +912,28 @@ vektor-canvas {
 
 .canvas-rotate-handle:active {
   cursor: grabbing;
+}
+
+.canvas-edge-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #2563eb;
+  background: #fff;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+/* A grab area wider than the drawn square. */
+.canvas-edge-handle::after {
+  position: absolute;
+  inset: -5px;
+  content: "";
+}
+
+.canvas-edge-handle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .canvas-resize-handle::before {

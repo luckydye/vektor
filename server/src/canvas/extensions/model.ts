@@ -1,5 +1,10 @@
 import { drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
-import { type CanvasGpu, parseColor, useProgram } from "#canvas/render/webgl.ts";
+import {
+  type CanvasGpu,
+  parseColor,
+  useProgram,
+  withScissor,
+} from "#canvas/render/webgl.ts";
 import type { CanvasPaintHelpers, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import { loadMesh } from "#components/model-viewer/load.ts";
@@ -122,19 +127,13 @@ function modelMatrices(mesh: Mesh, aspect: number) {
 }
 
 function paintModel(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
-  const { gl, canvas } = gpu;
-  const { screen, dpr } = gpu.view;
+  const { gl } = gpu;
+  const { screen } = gpu.view;
   const x = shape.frame.x * helpers.scale + helpers.dx;
   const y = shape.frame.y * helpers.scale + helpers.dy;
   const width = shape.frame.width * helpers.scale;
   const height = shape.frame.height * helpers.scale;
-  const clampX = (value: number) => Math.min(canvas.width, Math.max(0, value));
-  const clampY = (value: number) => Math.min(canvas.height, Math.max(0, value));
-  const left = clampX(Math.floor(x * dpr));
-  const right = clampX(Math.ceil((x + width) * dpr));
-  const top = clampY(Math.floor(y * dpr));
-  const bottom = clampY(Math.ceil((y + height) * dpr));
-  if (right <= left || bottom <= top) return;
+  if (width <= 0 || height <= 0) return;
 
   const mesh = meshFor(modelSource(shape), helpers);
   if (typeof mesh === "string") {
@@ -159,16 +158,15 @@ function paintModel(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelp
   gl.uniformMatrix4fv(program.uniform("u_mvp"), false, multiply(place, mvp));
   gl.uniformMatrix4fv(program.uniform("u_model"), false, model);
   const buffers = meshBuffers(gpu, mesh);
-  gl.enable(gl.SCISSOR_TEST);
-  gl.scissor(left, canvas.height - bottom, right - left, bottom - top);
-  gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST);
-  gl.depthFunc(gl.LESS);
-  gl.bindVertexArray(buffers.vao);
-  gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_INT, 0);
-  gl.bindVertexArray(null);
-  gl.disable(gl.DEPTH_TEST);
-  gl.disable(gl.SCISSOR_TEST);
+  withScissor(gpu, { x, y, width, height }, () => {
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    gl.bindVertexArray(buffers.vao);
+    gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_INT, 0);
+    gl.bindVertexArray(null);
+    gl.disable(gl.DEPTH_TEST);
+  });
   helpers.requestFrame();
 }
 

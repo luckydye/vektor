@@ -131,6 +131,8 @@ The context object passed to `activate` and `deactivate`:
 | `suggestions` | `Suggestions` | Suggestion provider registration |
 | `getActiveEditor()` | `() => Editor \| null` | Returns the active TipTap editor instance |
 | `collaboration` | `{ ydoc: Y.Doc; clientId: number } \| null` | Active Yjs document and peer ID; null outside canvas/editor |
+| `presence` | `Presence` | Ephemeral extension presence rooms |
+| `canvas` | `Canvas` | Inspector panels and image processors for canvas elements |
 
 ## Actions
 
@@ -432,6 +434,54 @@ export function activate({ collaboration }: ExtensionContext): void {
 ```
 
 `collaboration` is `null` when no canvas or document is open. Always guard against it.
+
+## Canvas
+
+Extensions can add a panel to the canvas properties sidebar and replace the
+pixels an image paints. Both keep their data in one slot per extension on the
+shape, `shape.data["extension:<extensionId>"]`, so it syncs to every peer and
+undoes like any other edit.
+
+```ts
+export function activate(ctx: ExtensionContext): void {
+  ctx.canvas.inspectors.register("adjust", {
+    types: ["image"],
+    title: "Adjust",
+    render(container, handle) {
+      const input = document.createElement("input");
+      input.type = "range";
+      const sync = () => {
+        input.value = String(handle.data<{ exposure?: number }>()?.exposure ?? 0);
+      };
+      input.oninput = () => handle.update({ exposure: Number(input.value) });
+      container.append(input);
+      sync();
+      return handle.subscribe(sync);
+    },
+  });
+
+  ctx.canvas.processors.register("adjust", {
+    types: ["image"],
+    async process({ params, sourceUrl, signal }) {
+      const image = await createImageBitmap(await (await fetch(sourceUrl, { signal })).blob());
+      return applyAdjustments(image, params); // any TexImageSource
+    },
+  });
+}
+```
+
+- **Inspectors** render into a shadow root while one shape of a listed type is
+  selected. `handle.subscribe` fires on every change to the shape, including
+  a peer's.
+- **Processors** run only for shapes that have data in your slot, once per
+  change of that data and resolution tier; a newer request aborts the older
+  one. On screen `sourceUrl` is a preview tier (at most 1280px), and when a
+  section is exported it is the original, so heavy pipelines only run at full
+  resolution on export. A rejected job is shown to the user and not retried
+  until the data changes. Only one extension may have data on a given image.
+- Registrations are removed automatically when the extension unloads.
+- Large assets such as `.wasm` binaries are served with their proper MIME type;
+  a package may be up to 64 MB.
 
 ## Extension presence rooms
 

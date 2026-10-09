@@ -1,6 +1,12 @@
 import type { Editor } from "@tiptap/core";
 import type * as Y from "yjs";
 import { api, type ExtensionInfo, type ExtensionRoute } from "#api/client.ts";
+// Not the canvas barrel: editor extensions import this module and run on the server.
+import {
+  type CanvasImageProcessor,
+  type CanvasInspector,
+  createCanvasPlugins,
+} from "#canvas/runtime/plugins.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { extensionPresenceRoom, type PresenceMessage } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
@@ -80,6 +86,17 @@ export type ExtensionContext = {
     register: (id: string, provider: SuggestionProvider) => void;
     unregister: (id: string) => void;
   };
+  /** Panels and image processors for canvas elements; data lives in the shape's `extension:<id>` slot. */
+  canvas: {
+    inspectors: {
+      register: (id: string, inspector: Omit<CanvasInspector, "id" | "owner">) => void;
+      unregister: (id: string) => void;
+    };
+    processors: {
+      register: (id: string, processor: Omit<CanvasImageProcessor, "id" | "owner">) => void;
+      unregister: (id: string) => void;
+    };
+  };
   /** Returns the active editor instance, or null if no editor is active */
   getActiveEditor: () => Editor | null;
   /**
@@ -115,6 +132,8 @@ type LoadedExtension = {
   registeredActions: Set<string>;
   registeredViews: Map<string, ViewRenderFn>;
   registeredSuggestions: Set<string>;
+  registeredInspectors: Set<string>;
+  registeredProcessors: Set<string>;
   viewCleanup: (() => void) | null;
 };
 
@@ -147,6 +166,8 @@ export class Extensions {
   currentRoute: string | null = null;
   activeYdoc: Y.Doc | null = null;
   activeDocumentId: string | null = null;
+  /** Shared by every canvas, so registrations outlive canvas navigation. */
+  readonly canvasPlugins = createCanvasPlugins();
 
   private readonly globalLoaded: LoadedExtension = {
     info: { id: "vektor" } as ExtensionInfo,
@@ -155,6 +176,8 @@ export class Extensions {
     registeredActions: new Set(),
     registeredViews: new Map(),
     registeredSuggestions: new Set(),
+    registeredInspectors: new Set(),
+    registeredProcessors: new Set(),
     viewCleanup: null,
   };
 
@@ -316,6 +339,8 @@ export class Extensions {
       registeredActions: new Set(),
       registeredViews: new Map(),
       registeredSuggestions: new Set(),
+      registeredInspectors: new Set(),
+      registeredProcessors: new Set(),
       viewCleanup: null,
     };
 
@@ -386,6 +411,9 @@ export class Extensions {
       unregisterSuggestionProvider(suggestionId);
     }
 
+    for (const id of loaded.registeredInspectors) this.canvasPlugins.unregisterInspector(id);
+    for (const id of loaded.registeredProcessors) this.canvasPlugins.unregisterProcessor(id);
+
     this.loaded.delete(extensionId);
   }
 
@@ -431,6 +459,9 @@ export class Extensions {
     }
 
     const instance = this;
+    const scoped = (id: string) =>
+      id.startsWith(`${extensionId}.`) ? id : `${extensionId}.${id}`;
+    const plugins = this.canvasPlugins;
     return {
       extensionId,
       spaceId: this.spaceId,
@@ -472,6 +503,32 @@ export class Extensions {
           const fullId = id.startsWith(`${extensionId}.`) ? id : `${extensionId}.${id}`;
           loaded.registeredSuggestions.delete(fullId);
           unregisterSuggestionProvider(fullId);
+        },
+      },
+      canvas: {
+        inspectors: {
+          register: (id, inspector) => {
+            const fullId = scoped(id);
+            plugins.registerInspector({ ...inspector, id: fullId, owner: extensionId });
+            loaded.registeredInspectors.add(fullId);
+          },
+          unregister: (id) => {
+            const fullId = scoped(id);
+            loaded.registeredInspectors.delete(fullId);
+            plugins.unregisterInspector(fullId);
+          },
+        },
+        processors: {
+          register: (id, processor) => {
+            const fullId = scoped(id);
+            plugins.registerProcessor({ ...processor, id: fullId, owner: extensionId });
+            loaded.registeredProcessors.add(fullId);
+          },
+          unregister: (id) => {
+            const fullId = scoped(id);
+            loaded.registeredProcessors.delete(fullId);
+            plugins.unregisterProcessor(fullId);
+          },
         },
       },
       getActiveEditor,

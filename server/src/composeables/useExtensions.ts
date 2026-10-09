@@ -7,6 +7,7 @@ import {
   type ExtensionRouteMenuItem,
 } from "#api/client.ts";
 import { extensions } from "#extensions/manager.ts";
+import { downloadBlob } from "#utils/download.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
@@ -138,13 +139,10 @@ export function useExtensions() {
   const downloadPackage = async (extensionId: string) => {
     const spaceId = currentSpaceId();
     if (!spaceId) return;
-    const blob = await api.extensions.downloadPackage(spaceId, extensionId);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${extensionId}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(
+      await api.extensions.downloadPackage(spaceId, extensionId),
+      `${extensionId}.zip`,
+    );
   };
 
   return {

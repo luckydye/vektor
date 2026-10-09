@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { marketplaceOrigin } from "#config";
+import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
 import { appLogger } from "#observability/logger.ts";
 import { parseHttpUrl, SsrfError, safeFetch, type ValidatedUrl } from "#utils/ssrf.ts";
 
@@ -14,8 +15,7 @@ import { parseHttpUrl, SsrfError, safeFetch, type ValidatedUrl } from "#utils/ss
 /** Bumped by the registry when the wire format breaks; also part of the path. */
 const REGISTRY_BASE_PATH = "/api/extensions/v1";
 
-/** Same ceiling as a direct upload, so a store install cannot smuggle a bigger one. */
-const MAX_PACKAGE_BYTES = 5 * 1024 * 1024;
+const PACKAGE_TOO_LARGE = `Extension package exceeds the maximum size of ${MAX_PACKAGE_ARCHIVE_BYTES / 1024 / 1024}MB`;
 
 /** Metadata is small; a registry that stalls must not hold a request open. */
 const METADATA_TIMEOUT_MS = 10_000;
@@ -323,15 +323,15 @@ export async function downloadRegistryPackage(
     );
   }
 
-  if (version.size > MAX_PACKAGE_BYTES) {
-    throw new RegistryError("Extension package exceeds the maximum size of 5MB", 400);
+  if (version.size > MAX_PACKAGE_ARCHIVE_BYTES) {
+    throw new RegistryError(PACKAGE_TOO_LARGE, 400);
   }
 
   const response = await registryFetch(
     resolveRegistryUrl(version.downloadUrl, requireRegistry()),
     PACKAGE_TIMEOUT_MS,
   );
-  const buffer = await readCapped(response, MAX_PACKAGE_BYTES);
+  const buffer = await readCapped(response, MAX_PACKAGE_ARCHIVE_BYTES);
 
   const digest = createHash("sha256").update(buffer).digest("hex");
   if (digest !== version.sha256) {
@@ -357,7 +357,7 @@ async function readCapped(response: Response, limit: number): Promise<Buffer> {
   const declared = Number(response.headers.get("content-length") ?? "0");
   if (declared > limit) {
     await response.body?.cancel().catch(() => {});
-    throw new RegistryError("Extension package exceeds the maximum size of 5MB", 400);
+    throw new RegistryError(PACKAGE_TOO_LARGE, 400);
   }
 
   const reader = response.body?.getReader();
@@ -372,7 +372,7 @@ async function readCapped(response: Response, limit: number): Promise<Buffer> {
     total += value.byteLength;
     if (total > limit) {
       await reader.cancel().catch(() => {});
-      throw new RegistryError("Extension package exceeds the maximum size of 5MB", 400);
+      throw new RegistryError(PACKAGE_TOO_LARGE, 400);
     }
     chunks.push(value);
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   pointInRotatedShape,
-  resizeRotatedShapeFromBottomRight,
+  resizeRotatedShape,
   rotatedShapeBounds,
   rotatedShapeCorners,
   rotationFromPointer,
@@ -31,10 +31,10 @@ describe("canvas transform geometry", () => {
 
   it("resizes a rotated shape while keeping its opposite corner fixed", () => {
     const fixedTopLeft = rotatedShapeCorners(shape)[0];
-    const resized = resizeRotatedShapeFromBottomRight({
-      fixedTopLeft,
+    const resized = resizeRotatedShape({
+      initial: shape,
+      handle: { x: 1, y: 1 },
       pointer: { x: 120, y: 300 },
-      rotation: 90,
       minSize: { width: 20, height: 20 },
     });
 
@@ -45,5 +45,20 @@ describe("canvas transform geometry", () => {
     const topLeft = rotatedShapeCorners({ ...resized, rotation: 90 })[0];
     expect(topLeft.x).toBeCloseTo(fixedTopLeft.x);
     expect(topLeft.y).toBeCloseTo(fixedTopLeft.y);
+  });
+
+  it("resizes from the start edge, keeping the opposite edge in place", () => {
+    const box = { x: 0, y: 0, width: 100, height: 50, rotation: 0 };
+    const resized = resizeRotatedShape({
+      initial: box,
+      handle: { x: -1, y: 0 },
+      pointer: { x: -20, y: 999 },
+      minSize: { width: 10, height: 10 },
+    });
+
+    expect(resized.x).toBeCloseTo(-20);
+    expect(resized.y).toBeCloseTo(0);
+    expect(resized.width).toBeCloseTo(120);
+    expect(resized.height).toBeCloseTo(50);
   });
 });

@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
 import { type Unzipped, unzipSync } from "#utils/zip.ts";
 
+/** Compressed bytes an uploaded or store-installed package archive may take. */
+export const MAX_PACKAGE_ARCHIVE_BYTES = 64 * 1024 * 1024;
+
 /** Decompressed bytes one file inside an extension package may take. */
-export const MAX_PACKAGE_ENTRY_BYTES = 16 * 1024 * 1024;
+export const MAX_PACKAGE_ENTRY_BYTES = 64 * 1024 * 1024;
 
 /** Decompressed bytes a whole extension package may take. */
-export const MAX_PACKAGE_BYTES = 32 * 1024 * 1024;
+export const MAX_PACKAGE_BYTES = 128 * 1024 * 1024;
 
 /** How much unpacked package data is held in memory across all spaces. */
-const CACHE_MAX_BYTES = 64 * 1024 * 1024;
+export const CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 interface CachedPackage {
   files: Unzipped;

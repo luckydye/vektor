@@ -15,6 +15,7 @@
  * out. Values stay typed; date-formatted cells become UTC `Date`s on request.
  */
 
+import { downloadBlob } from "#utils/download.ts";
 import { unzipSync, zipSync } from "#utils/zip.ts";
 
 export const XLSX_MIME =
@@ -569,12 +570,7 @@ export function downloadExcelRows(rows: ExcelCell[][], fileName: string): void {
 }
 
 export function downloadExcelSheets(sheets: ExcelSheet[], fileName: string): void {
-  const blob = new Blob([writeXlsx(sheets)], { type: XLSX_MIME });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = excelFileName(fileName);
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(new Blob([writeXlsx(sheets)], { type: XLSX_MIME }), excelFileName(fileName));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

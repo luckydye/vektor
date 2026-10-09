@@ -20,6 +20,7 @@ import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
+import { downloadBlob } from "#utils/download.ts";
 import { isSafeUrlValue, sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
@@ -109,12 +110,7 @@ async function downloadFile(url: string, fileName: string, exportFileName = file
     downloadExcelRows(parseCsvRows(await response.text()), exportFileName);
     return;
   }
-  const blob = await response.blob();
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(await response.blob(), fileName);
 }
 
 export function WorkflowView(props: Props) {

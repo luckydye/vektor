@@ -29,6 +29,7 @@ import type {
   CanvasShape,
   CanvasToolExtension,
 } from "#canvas/runtime/extensionApi.ts";
+import type { CanvasPlugins } from "#canvas/runtime/plugins.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { browserLang, createTranslator } from "#utils/lang.ts";
@@ -119,6 +120,7 @@ export class CanvasHostElement extends HostElement {
   save: ((snapshot: unknown) => Promise<unknown>) | undefined;
   error: ((message: string) => void) | undefined;
   onpresence: ((states: CanvasPresenceState[]) => void) | undefined;
+  plugins: CanvasPlugins | undefined;
 
   /**
    * Called after every frame this element paints.
@@ -207,6 +209,8 @@ export class CanvasHostElement extends HostElement {
   private start(): void {
     const ydoc = this.ydoc;
     if (this.started || !ydoc) return;
+    const plugins = this.plugins;
+    if (!plugins) throw new Error("Set `plugins` on the canvas before `ydoc`");
     this.started = true;
     this.boundYdoc = ydoc;
 
@@ -232,6 +236,7 @@ export class CanvasHostElement extends HostElement {
         get tools() {
           return element.#tools;
         },
+        plugins,
         get currentUserId() {
           return element.currentuserid;
         },
@@ -454,19 +459,6 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
   `;
 }
 
-/** The section-title editor, whose tag the extension chooses. */
-function chromeEditor(view: CanvasView, shape: CanvasShape) {
-  const tag = view.editorTagForShape(shape);
-  if (!tag) return nothing;
-  const element = unsafeStatic(tag);
-  return staticHtml`<${element}
-    data-editor-shape-id=${shape.id}
-    .shape=${shape}
-    .context=${view.hostContext()}
-    @finish-edit=${() => view.finishChromeEditing()}
-  ></${element}>`;
-}
-
 /**
  * The grab handles around the selection.
  *
@@ -480,6 +472,7 @@ function transformControls(view: CanvasView) {
   const scalable = view.selectedScalableSelection();
   const element = transformElement ?? resizeElement;
   const controls = element ? view.transformControlPositions(element) : null;
+  const edgeHandles = element ? view.edgeHandlePositions(element) : [];
 
   return html`
     ${
@@ -501,19 +494,37 @@ function transformControls(view: CanvasView) {
                   </button>`
                 : nothing
             }
-            <button
-              type="button"
-              class="canvas-transform-handle canvas-resize-handle"
-              aria-label=${`${t("Resize")} ${element.type}`}
-              style=${styleMap({
-                ...handleAt(controls.resize),
-                transform: `translate(-50%, -50%) rotate(${element.rotation}deg)`,
-              })}
-              @pointerdown=${(event: PointerEvent) => {
-                event.stopPropagation();
-                view.startResize(element, event);
-              }}
-            ></button>
+            ${
+              edgeHandles.length > 0
+                ? edgeHandles.map(
+                    ({ handle, at }) => html`<button
+                      type="button"
+                      class="canvas-edge-handle"
+                      aria-label=${`${t("Resize")} ${element.type}`}
+                      style=${styleMap({
+                        ...handleAt(at),
+                        cursor: `${edgeCursor(handle)}-resize`,
+                      })}
+                      @pointerdown=${(event: PointerEvent) => {
+                        event.stopPropagation();
+                        view.startResize(element, event, handle);
+                      }}
+                    ></button>`,
+                  )
+                : html`<button
+                    type="button"
+                    class="canvas-transform-handle canvas-resize-handle"
+                    aria-label=${`${t("Resize")} ${element.type}`}
+                    style=${styleMap({
+                      ...handleAt(controls.resize),
+                      transform: `translate(-50%, -50%) rotate(${element.rotation}deg)`,
+                    })}
+                    @pointerdown=${(event: PointerEvent) => {
+                      event.stopPropagation();
+                      view.startResize(element, event);
+                    }}
+                  ></button>`
+            }
           </div>`
         : nothing
     }
@@ -559,10 +570,85 @@ function selectionToolbar(view: CanvasView) {
   `;
 }
 
+function edgeCursor(handle: { x: number; y: number }) {
+  if (handle.x === 0) return "ns";
+  if (handle.y === 0) return "ew";
+  return handle.x === handle.y ? "nwse" : "nesw";
+}
+
 const handleAt = (point: { x: number; y: number }) => ({
   left: `${point.x}px`,
   top: `${point.y}px`,
 });
+
+// Stable, so lit calls it once per input rather than on every render. A frame
+// later, so the double-click that opened the edit has settled first.
+const focusCapture = (element: Element | undefined) => {
+  if (!(element instanceof HTMLInputElement)) return;
+  requestAnimationFrame(() => {
+    element.focus({ preventScroll: true });
+    element.select();
+  });
+};
+
+/**
+ * The invisible input behind a painted text edit. It owns keys, IME and the
+ * selection; the element paints what it holds, so nothing floats over the canvas.
+ */
+function textCapture(view: CanvasView) {
+  const edit = view.state.textEdit;
+  if (!edit) return nothing;
+  const sync = (input: HTMLInputElement) =>
+    view.updateTextEdit(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+  return html`
+    <input
+      class="canvas-text-capture"
+      aria-label=${t(edit.label)}
+      value=${edit.value}
+      ${ref(focusCapture)}
+      @input=${(event: Event) => sync(event.currentTarget as HTMLInputElement)}
+      @select=${(event: Event) => sync(event.currentTarget as HTMLInputElement)}
+      @keydown=${(event: KeyboardEvent) => {
+        event.stopPropagation();
+        if (event.key === "Enter") return view.finishTextEdit(true);
+        if (event.key === "Escape") return view.finishTextEdit(false);
+        // Caret keys move the selection after this handler runs.
+        const input = event.currentTarget as HTMLInputElement;
+        requestAnimationFrame(() => sync(input));
+      }}
+      @blur=${() => view.finishTextEdit(true)}
+    />
+  `;
+}
+
+function chromeMenu(view: CanvasView) {
+  const menu = view.state.menu;
+  if (!menu) return nothing;
+  return html`
+    <div
+      class="canvas-menu"
+      role="menu"
+      style=${styleMap({ transform: `translate(${menu.pos.x}px, ${menu.pos.y}px)` })}
+      @pointerdown=${stopPointer}
+    >
+      ${menu.entries.map(
+        (entry) => html`
+          <button
+            type="button"
+            role="menuitem"
+            class=${classMap({ "canvas-menu-item": true, active: entry.checked === true })}
+            @click=${() => {
+              view.closeMenu();
+              entry.run();
+            }}
+          >
+            ${entry.label}
+          </button>
+        `,
+      )}
+    </div>
+  `;
+}
 
 function contextMenu(view: CanvasView) {
   const position = view.state.contextMenuPos;
@@ -670,7 +756,6 @@ function contextMenu(view: CanvasView) {
 
 export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateResult {
   const transform = view.transform();
-  const chromeShape = view.editingChromeShape();
   const lockPosition = view.hoveredLockedElementPosition();
   const localPointer = view.state.localPointerScreen;
 
@@ -749,24 +834,6 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
           )}
         </div>
 
-        ${
-          chromeShape
-            ? html`<div
-                class="canvas-section-title-overlay"
-                style=${styleMap({
-                  left: `${view.elementChromePosition(chromeShape).x}px`,
-                  top: `${view.elementChromePosition(chromeShape).y}px`,
-                  width: `${Math.max(1, chromeShape.frame.width * transform.scale)}px`,
-                  transform: `rotate(${chromeShape.frame.rotation}deg)`,
-                  "--canvas-section-color": chromeShape.style.color,
-                })}
-                @pointerdown=${stopPointer}
-              >
-                ${chromeEditor(view, chromeShape)}
-              </div>`
-            : nothing
-        }
-
         ${transformControls(view)}
 
         ${selectionToolbar(view)}
@@ -829,6 +896,8 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
         )}
 
         ${contextMenu(view)}
+        ${chromeMenu(view)}
+        ${textCapture(view)}
       </div>
 
       <document-toolbar

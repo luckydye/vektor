@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { extractFile, extractManifest } from "#extensions/manifest.ts";
 import {
+  CACHE_MAX_BYTES,
   clearExtensionPackageCache,
   extensionPackageCacheStats,
   MAX_PACKAGE_BYTES,
@@ -124,11 +125,12 @@ describe("extension package cache", () => {
   });
 
   it("drops packages past the cache budget", () => {
-    for (let i = 0; i < 12; i++) {
-      extractManifest(createFilledPackage(`v${i}`, 8 * MB));
+    const size = 32 * MB;
+    for (let i = 0; i * size <= CACHE_MAX_BYTES; i++) {
+      extractManifest(createFilledPackage(`v${i}`, size));
     }
 
-    expect(extensionPackageCacheStats().bytes).toBeLessThanOrEqual(64 * MB);
+    expect(extensionPackageCacheStats().bytes).toBeLessThanOrEqual(CACHE_MAX_BYTES);
   });
 });
 

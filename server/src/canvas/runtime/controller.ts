@@ -19,10 +19,12 @@ import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
 import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
+import { pendingImageLoads } from "#canvas/render/images.ts";
 import { drawActiveStroke, drawStrokes, type InkOffset } from "#canvas/render/ink.ts";
-import { drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
+import { drawDashedRect, drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
 import { drawCanvasSelections } from "#canvas/render/selectionLayer.ts";
 import { drawSnapGuides } from "#canvas/render/snapGuides.ts";
+import { drawTextLayout, lineLayout, middlePlacement } from "#canvas/render/text.ts";
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "#canvas/render/theme.ts";
 import { type CanvasTileView, compositeTiles } from "#canvas/render/tiles.ts";
 import {
@@ -32,14 +34,21 @@ import {
   destroyCanvasGpu,
   parseColor,
   presentPass,
+  resolvePass,
+  withScissor,
 } from "#canvas/render/webgl.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
 import type {
+  CanvasClientPoint,
   CanvasEditSession,
   CanvasElementExtension,
+  CanvasElementProperty,
+  CanvasExportOptions,
+  CanvasExtensionHost,
   CanvasFrame,
   CanvasHitTestHelpers,
   CanvasInputKind,
+  CanvasMenuEntry,
   CanvasPaintHelpers,
   CanvasPointerGestureCancelReason,
   CanvasPointerGestureEvent,
@@ -47,9 +56,11 @@ import type {
   CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
+  CanvasSize,
   CanvasSnapshot,
   CanvasStroke,
   CanvasStrokeSnapshot,
+  CanvasTextEdit,
   CanvasToolContext,
   CanvasToolExtension,
   CanvasToolId,
@@ -72,10 +83,12 @@ import {
   pointOnRotatedShape,
   type Rect,
   rectContains,
+  rectIntersection,
   rectsIntersect,
-  resizeRotatedShapeFromBottomRight,
+  RESIZE_HANDLES,
+  type ResizeHandle,
+  resizeRotatedShape,
   rotatedShapeBounds,
-  rotatedShapeCorners,
   rotateVector,
   rotationFromPointer,
   type ScreenSize,
@@ -91,6 +104,7 @@ import {
   type WorldRect,
   worldViewportBounds,
 } from "#canvas/runtime/geometry.ts";
+import { createImageProcessing } from "#canvas/runtime/imageProcessing.ts";
 import {
   createViewportControls,
   panCameraByScreenDelta,
@@ -99,6 +113,7 @@ import {
   screenPoint as screenPointIn,
   type ViewportControls,
 } from "#canvas/runtime/input.ts";
+import type { CanvasPlugins } from "#canvas/runtime/plugins.ts";
 import {
   type CanvasExtensionManager,
   createCanvasExtensionManager,
@@ -126,6 +141,7 @@ import {
   readSystemClipboard,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
+import { downloadBlob } from "#utils/download.ts";
 import { createTranslator, type TranslationKey } from "#utils/lang.ts";
 import "#canvas/ui/PresenceCursorElement.ts";
 import "#editor/elements/rich-text-editor.ts";
@@ -186,13 +202,6 @@ function shapeArticleStyle(
   return { ...style, ...extension.render.article?.style?.(shape) };
 }
 
-function shapeEditorTag(
-  shape: CanvasShape,
-  extensions: CanvasExtensionManager,
-): string | undefined {
-  return extensions.get(shape.type).render.chrome?.editorTag;
-}
-
 /** A container accepts other shapes dropped onto it — a section, for instance. */
 function shapeIsContainer(
   shape: CanvasShape | undefined,
@@ -208,6 +217,8 @@ export interface CanvasHost {
   readonly presenceProfiles: CollaborationPresenceProfile<CanvasPresenceState>[];
   readonly extensions: readonly CanvasElementExtension[] | undefined;
   readonly tools: readonly CanvasToolExtension[] | undefined;
+  /** Inspectors and image processors app extensions register at runtime. */
+  readonly plugins: CanvasPlugins;
 
   /** Resolved from `useUserProfile`. */
   readonly currentUserId: string | undefined;
@@ -257,7 +268,7 @@ export function createCanvasController(
         type: "resize";
         pointerId: number;
         elementId: string;
-        fixedTopLeft: { x: number; y: number };
+        handle: ResizeHandle;
         minSize: { width: number; height: number };
         // Locked width/height ratio for media; undefined lets the axes move freely.
         aspect?: number;
@@ -371,9 +382,16 @@ export function createCanvasController(
     hoveredLockedElement: null as string | null,
     // Cursor the shape under the pointer asks for, while nothing is dragged.
     hoverCursor: null as string | null,
+    // The shape region under the pointer, so chrome can paint a hover state.
+    hoverRegion: null as { shapeId: string; region: string } | null,
+    // The box a drag-to-create tool is sizing, in world units.
+    draftRect: null as Rect | null,
+    // A text field an element paints in its chrome, with the hidden input's selection.
+    textEdit: null as
+      | (CanvasTextEdit & { selectionStart: number; selectionEnd: number })
+      | null,
     // Section chrome is painted on the canvas. This transient input only appears
     // while its title is actively being edited.
-    editingChromeId: null as string | null,
     // Live screen-space rectangle while drag-selecting; null when not marqueeing.
     marqueeRect: null as Rect | null,
     // True only while a pan drag is in progress, so the viewport shows the
@@ -402,6 +420,11 @@ export function createCanvasController(
     activeEditSession: null as CanvasEditSession | null,
     // Screen-space position of the long-press context menu, null when hidden.
     contextMenuPos: null as { x: number; y: number } | null,
+    // A text menu an element opened from its chrome, in viewport px.
+    menu: null as {
+      pos: { x: number; y: number };
+      entries: readonly CanvasMenuEntry[];
+    } | null,
     intrinsicShapeSizes: new Map<string, { width: number; height: number }>(),
     // Remote pointers arrive as discrete presence updates; a CSS transition on
     // the cursor smooths the jumps. While the local camera moves the transition
@@ -462,6 +485,7 @@ export function createCanvasController(
   let savePrunedInvalidShapesWhenReady = false;
   let viewportControls: ViewportControls | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let unsubscribePlugins: (() => void) | null = null;
   let themeObserver: MutationObserver | null = null;
   let colorSchemeMedia: MediaQueryList | null = null;
   let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
@@ -482,6 +506,12 @@ export function createCanvasController(
     // a transform handle without dragging commits nothing.
     changed: boolean;
   } | null = null;
+
+  const imageProcessing = createImageProcessing({
+    plugins: host.plugins,
+    reportError: (error) =>
+      host.error(error instanceof Error ? error.message : String(error)),
+  });
 
   const extensionRuntime = extensionManager.createRuntime({
     spaceId: host.spaceId,
@@ -518,6 +548,31 @@ export function createCanvasController(
     beginEdit,
     reportError: (error) =>
       host.error(error instanceof Error ? error.message : String(error)),
+    processedImage: imageProcessing.processed,
+    openMenu,
+    exportRegion: (options) => {
+      exportRegion(options).catch((error) =>
+        host.error(error instanceof Error ? error.message : String(error)),
+      );
+    },
+    updateData: (id, patch) => ydoc.transact(() => hostContext.updateData(id, patch)),
+    editText: (edit) => {
+      if (shapesById().get(edit.shapeId)?.locked) return;
+      selectOnly(edit.shapeId);
+      state.textEdit = { ...edit, selectionStart: 0, selectionEnd: edit.value.length };
+      renderScene();
+    },
+    resizeShape: (id, size) => {
+      const shape = shapesById().get(id);
+      if (!shape) return;
+      const { minSize } = extensionManager.get(shape.type).defaults;
+      ydoc.transact(() =>
+        updateShapeFrame(id, {
+          width: Math.round(Math.max(minSize.width, size.width)),
+          height: Math.round(Math.max(minSize.height, size.height)),
+        }),
+      );
+    },
   });
   const uploadPlaceholders = extensionRuntime.uploadPlaceholders;
 
@@ -670,6 +725,27 @@ export function createCanvasController(
     };
   }
 
+  /**
+   * Screen positions of a frame-style element's eight handles, on its border.
+   * Empty for elements with the single corner handle.
+   */
+  function edgeHandlePositions(element: CanvasElementHandle) {
+    const shape = element.kind === "shape" ? shapesById().get(element.id) : undefined;
+    if (!shape || extensionManager.get(shape.type).behavior.transform.handles !== "edges") {
+      return [];
+    }
+    const bounds = shapeBounds(shape);
+    return RESIZE_HANDLES.map((handle) => ({
+      handle,
+      at: worldToScreen(
+        pointOnRotatedShape(bounds, {
+          x: ((handle.x + 1) / 2) * bounds.width,
+          y: ((handle.y + 1) / 2) * bounds.height,
+        }),
+      ),
+    }));
+  }
+
   function selectionScaleControlPosition(bounds: Rect) {
     return scaleHandle(bounds, transform().scale, worldToScreen);
   }
@@ -779,17 +855,6 @@ export function createCanvasController(
     state.shapes.filter(
       (shape) => !extensionManager.rendersInDom(shape) && !isEditing(shape),
     );
-
-  const editingChromeShape = () => {
-    const id = state.editingChromeId;
-    if (!id) return null;
-    const shape = shapesById().get(id);
-    return shape && extensionManager.get(shape.type).render.chrome ? shape : null;
-  };
-
-  function editorTagForShape(shape: CanvasShape) {
-    return shapeEditorTag(shape, extensionManager);
-  }
 
   function elementChromePosition(shape: CanvasShape) {
     return (
@@ -1672,13 +1737,99 @@ export function createCanvasController(
     const target = canvas ? gpuView() : null;
     if (!canvas || !target) return;
 
-    beginPass(target, { transform: transform(), screen: state.screen, dpr });
+    const view = { transform: transform(), screen: state.screen, dpr };
+    beginPass(target, view);
     renderGrid(target);
-    renderShapes(target);
-    renderTileShapes(target);
+    renderContent(
+      target,
+      paintHelpers(view, { invalidate: repaint, host: extHost, chrome: true }),
+      worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 64),
+      renderScene,
+    );
+    imageProcessing.retain((id) => shapesById().has(id));
+    presentPass(target, canvas);
+  }
+
+  /** Shapes, tiles and ink: everything a scene or an export shows. */
+  function renderContent(
+    target: CanvasGpu,
+    helpers: CanvasPaintHelpers,
+    visible: Rect,
+    refreshTiles: () => void,
+    exclude?: string,
+  ) {
+    renderShapes(target, helpers, visible, exclude);
+    renderTileShapes(target, visible, refreshTiles);
     const ink = renderedInk();
     drawStrokes(target, ink.strokes, defaultInkColor(), ink.moved);
-    presentPass(target, canvas);
+  }
+
+  /**
+   * Renders a world region into its own context and downloads it. Repaints
+   * until images and processors have settled, so nothing exports half-loaded.
+   */
+  async function exportRegion(options: CanvasExportOptions) {
+    const { region, scale } = options;
+    const width = Math.round(region.width * scale);
+    const height = Math.round(region.height * scale);
+    if (width < 1 || height < 1) throw new Error("Nothing to export");
+    let dirty = true;
+    let failure: unknown = null;
+    let wake: (() => void) | null = null;
+    const invalidateExport = () => {
+      dirty = true;
+      wake?.();
+    };
+    const target = createCanvasGpu(invalidateExport);
+    const limit = Math.min(8192, target.gl.getParameter(target.gl.MAX_RENDERBUFFER_SIZE));
+    const processing = createImageProcessing({
+      plugins: host.plugins,
+      reportError: (error) => {
+        failure = error;
+        wake?.();
+      },
+    });
+    try {
+      if (width > limit || height > limit) {
+        throw new Error(`An export of ${width}×${height} exceeds ${limit}px`);
+      }
+      const view = {
+        transform: { scale, dx: -region.x * scale, dy: -region.y * scale },
+        screen: { width: width, height: height },
+        dpr: 1,
+      };
+      const helpers = paintHelpers(view, {
+        invalidate: invalidateExport,
+        host: { ...extHost, processedImage: processing.processed },
+        chrome: false,
+      });
+      const deadline = Date.now() + 30_000;
+      for (;;) {
+        dirty = false;
+        beginPass(target, view);
+        if (options.format === "jpg") {
+          drawRoundedRect(target, rectQuad(0, 0, width, height), {
+            fill: parseColor(themeColor("--canvas-bg")),
+          });
+        }
+        renderContent(target, helpers, region, invalidateExport, options.exclude);
+        if (failure) throw failure;
+        if (!dirty && pendingImageLoads() === 0 && processing.pending() === 0) break;
+        if (Date.now() > deadline) throw new Error("The export timed out loading images");
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+          setTimeout(resolve, 250);
+        });
+        wake = null;
+      }
+      resolvePass(target);
+      const type = options.format === "png" ? "image/png" : "image/jpeg";
+      const blob = await target.canvas.convertToBlob({ type, quality: 0.92 });
+      downloadBlob(blob, `${options.name}.${options.format}`);
+    } finally {
+      processing.clear();
+      destroyCanvasGpu(target);
+    }
   }
 
   /**
@@ -1697,6 +1848,7 @@ export function createCanvasController(
     drawSnapGuides(target, activeSnapGuides, "#2563eb");
     drawCanvasSelections(target, selectionSnapshot());
     drawFoundShape(target);
+    if (state.draftRect) drawDraft(target, state.draftRect);
     const marquee = state.marqueeRect;
     if (marquee) {
       drawRoundedRect(
@@ -1713,25 +1865,58 @@ export function createCanvasController(
     presentPass(target, canvas);
   }
 
+  /** A drag-to-create box: dashed, with its size in a pill above the end corner. */
+  function drawDraft(target: CanvasGpu, rect: Rect) {
+    const { scale, dx, dy } = transform();
+    const screen = {
+      x: rect.x * scale + dx,
+      y: rect.y * scale + dy,
+      width: rect.width * scale,
+      height: rect.height * scale,
+    };
+    drawDashedRect(target, screen, parseColor("#2563eb"));
+    const label = lineLayout(
+      `${Math.round(rect.width)}×${Math.round(rect.height)}`,
+      { face: "regular", size: 11, color: themeColor("--canvas-muted") },
+      renderOverlay,
+    );
+    if (!label) return;
+    const width = Math.ceil(label.width) + 14;
+    const pill = { x: screen.x + screen.width - width, y: screen.y - 26, height: 18 };
+    drawRoundedRect(target, rectQuad(pill.x, pill.y, width, pill.height), {
+      radius: pill.height / 2,
+      fill: parseColor(themeColor("--canvas-toolbar-bg")),
+      stroke: parseColor(themeColor("--canvas-toolbar-border")),
+      strokeWidth: 1,
+    });
+    drawTextLayout(
+      target,
+      label,
+      middlePlacement(label, { x: pill.x + 7, y: pill.y + pill.height / 2 }, 1),
+    );
+  }
+
   /**
    * Shapes that paint from cached tiles. `refresh` decides for itself whether the
    * zoom moved far enough to re-rasterize; the engine cannot know.
    */
-  function renderTileShapes(target: CanvasGpu) {
-    // Built once per frame, not per shape: the same for every tile source, and
-    // computing it walks the camera maths.
-    let view: CanvasTileView | null = null;
-    let visible: Rect | null = null;
+  function renderTileShapes(target: CanvasGpu, visible: Rect, refresh: () => void) {
+    const view: CanvasTileView = {
+      scale: target.view.transform.scale,
+      dpr: target.view.dpr,
+      visibleWorld: visible,
+    };
+    const containers = clippingContainers();
     for (const shape of state.shapes) {
       const source = extensionManager.get(shape.type).render.tiles;
       if (!source) continue;
-      visible ??= worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 0);
       if (!rectsIntersect(visible, shapeAabb(shape))) continue;
-      view ??= { scale: transform().scale, dpr, visibleWorld: visible };
-      source.refresh?.(shape, view, renderScene);
+      source.refresh?.(shape, view, refresh);
       const tiles = source.tiles(shape, view);
       if (!tiles?.length) continue;
-      compositeTiles(target, shape.frame, tiles, source.clip?.(shape) ?? null);
+      clipped(target, shape, containers, () =>
+        compositeTiles(target, shape.frame, tiles, source.clip?.(shape) ?? null),
+      );
     }
   }
 
@@ -1783,22 +1968,29 @@ export function createCanvasController(
     invalidate();
   }
 
-  function paintHelpers(): CanvasPaintHelpers {
-    const { scale, dx, dy } = transform();
+  function paintHelpers(
+    view: { transform: { scale: number; dx: number; dy: number }; dpr: number },
+    options: { invalidate: () => void; host: CanvasExtensionHost; chrome: boolean },
+  ): CanvasPaintHelpers {
+    const { scale, dx, dy } = view.transform;
     return {
-      host: extHost,
+      host: options.host,
       scale,
       dx,
       dy,
-      dpr,
-      invalidate: repaint,
+      dpr: view.dpr,
+      chrome: options.chrome,
+      invalidate: options.invalidate,
       requestFrame: requestSceneFrame,
       color: themeColor,
       // Painting must not write the document mid-frame.
       reportSize: (id, size) => queueMicrotask(() => hostContext.reportSize(id, size)),
       t,
       chromeTextColor: cssChromeText,
-      isEditingChrome: (id) => state.editingChromeId === id,
+      textEdit: (id) =>
+        options.chrome && state.textEdit?.shapeId === id ? state.textEdit : null,
+      hoveredRegion: (id) =>
+        options.chrome && state.hoverRegion?.shapeId === id ? state.hoverRegion.region : null,
       chromePosition: elementChromePosition,
       chromeSize: elementChromeSize,
     };
@@ -1806,22 +1998,58 @@ export function createCanvasController(
 
   // In z-order, culled to the viewport with room for chrome drawn outside a
   // frame, such as a section's title.
-  function renderShapes(target: CanvasGpu) {
-    const helpers = paintHelpers();
-    const visible = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 64);
+  function renderShapes(
+    target: CanvasGpu,
+    helpers: CanvasPaintHelpers,
+    visible: Rect,
+    exclude?: string,
+  ) {
+    const containers = clippingContainers();
     for (const shape of canvasShapes()) {
-      if (!rectsIntersect(visible, shapeAabb(shape))) continue;
-      extensionManager.get(shape.type).render.paint?.(target, shape, helpers);
+      if (shape.id === exclude || !rectsIntersect(visible, shapeAabb(shape))) continue;
+      const paint = extensionManager.get(shape.type).render.paint;
+      if (paint) clipped(target, shape, containers, () => paint(target, shape, helpers));
     }
   }
 
-  // Pointer events outrun frames; coalesce a gesture's repaints onto one.
+  /** Runs `paint` cut to the shape's clipping containers, if any hold it. */
+  function clipped(
+    target: CanvasGpu,
+    shape: CanvasShape,
+    containers: readonly CanvasShape[],
+    paint: () => void,
+  ) {
+    const clip = clipRectFor(shape, containers);
+    if (!clip) {
+      paint();
+      return;
+    }
+    const { scale, dx, dy } = target.view.transform;
+    withScissor(
+      target,
+      {
+        x: clip.x * scale + dx,
+        y: clip.y * scale + dy,
+        width: clip.width * scale,
+        height: clip.height * scale,
+      },
+      paint,
+    );
+  }
+
+  // Input events outrun frames; their repaints coalesce onto one per frame. A
+  // frame that already painted (a camera change) passes it on to the next.
   let inkRafId: number | null = null;
+  let inkDirty = false;
+  let paintedAt = 0;
   function scheduleInkRender() {
+    inkDirty = true;
     if (inkRafId !== null) return;
-    inkRafId = requestAnimationFrame(() => {
+    inkRafId = requestAnimationFrame((frameStart) => {
       inkRafId = null;
-      renderInk();
+      if (!inkDirty) return;
+      if (paintedAt >= frameStart) scheduleInkRender();
+      else renderInk();
     });
   }
 
@@ -1835,6 +2063,8 @@ export function createCanvasController(
   }
 
   function renderInk() {
+    inkDirty = false;
+    paintedAt = performance.now();
     renderScene();
     renderOverlay();
   }
@@ -1917,7 +2147,11 @@ export function createCanvasController(
     },
     insertStroke: insertCanvasStroke,
     selectStroke: selectOnly,
-    createElement: (type, at) => addShape(type, at),
+    createElement: (type, at, size) => addShape(type, at, size),
+    setDraftRect: (rect) => {
+      state.draftRect = rect;
+      renderOverlay();
+    },
     setActiveTool: (tool) => {
       state.activeTool = tool;
     },
@@ -1985,11 +2219,24 @@ export function createCanvasController(
     return true;
   }
 
-  function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
+  function addShape(type: CanvasShapeType, at: CanvasPoint, size?: CanvasSize) {
     const extension = extensionManager.get(type);
     // The active swatch (if the type has a palette) feeds the factory; text has none.
-    const shape = extension.creation?.create(at, { color: state.activeColors[type] });
-    if (!shape) return;
+    const created = extension.creation?.create(at, { color: state.activeColors[type] });
+    if (!created) return;
+    const { minSize } = extension.defaults;
+    const shape = size
+      ? {
+          ...created,
+          frame: {
+            ...created.frame,
+            x: Math.round(at.x),
+            y: Math.round(at.y),
+            width: Math.round(Math.max(minSize.width, size.width)),
+            height: Math.round(Math.max(minSize.height, size.height)),
+          },
+        }
+      : created;
     yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
     selectOnly(shape.id);
     state.activeTool = "select";
@@ -1997,12 +2244,45 @@ export function createCanvasController(
     // Enter edit mode per the extension: a canvas-painted title overlay, or the
     // element's own rich-text editor.
     if (extension.creation?.editOnCreate === "chrome") {
-      editElementChrome(shape);
+      extension.events?.editChrome?.(shape, extHost);
     } else if (extension.creation?.editOnCreate === "element") {
       const session = extension.render.editor?.(shape, null);
       if (!session) throw new Error(`${shape.type} edits on create but has no editor`);
       beginEdit(session);
     }
+  }
+
+  function clippingContainers(): CanvasShape[] {
+    return state.shapes.filter((shape) =>
+      extensionManager.get(shape.type).behavior.container?.clips?.(shape),
+    );
+  }
+
+  /**
+   * The world rect `shape` is cut to, or null when no clipping container holds
+   * it. An empty overlap of nested clips collapses to a zero-size rect.
+   */
+  function clipRectFor(
+    shape: CanvasShape,
+    containers: readonly CanvasShape[] = clippingContainers(),
+  ): Rect | null {
+    let clip: Rect | null = null;
+    const bounds = shapeAabb(shape);
+    for (const container of containers) {
+      if (container.id === shape.id) continue;
+      const behavior = extensionManager.get(container.type).behavior.container;
+      if (!behavior?.containsBounds(container, bounds)) continue;
+      const frame = shapeAabb(container);
+      clip = clip
+        ? (rectIntersection(clip, frame) ?? {
+            x: frame.x,
+            y: frame.y,
+            width: 0,
+            height: 0,
+          })
+        : frame;
+    }
+    return clip;
   }
 
   function getContainerContents(container: CanvasShape, includeImmovable = false) {
@@ -2110,8 +2390,21 @@ export function createCanvasController(
   const selectedShapeColorPalette = () =>
     colorPalettes.find((entry) => entry.type === selectedShape()?.type);
 
+  const selectedElementProperties = () => {
+    const shape = selectedShape();
+    return shape ? (extensionManager.get(shape.type).properties ?? []) : [];
+  };
+
+  const selectedInspectors = () => {
+    const shape = selectedShape();
+    return shape ? host.plugins.inspectorsFor(shape.type) : [];
+  };
+
   const hasSelectedElementProperties = () =>
-    selectedShapeColorPalette() !== undefined || selectedStrokeColor() !== null;
+    selectedShapeColorPalette() !== undefined ||
+    selectedStrokeColor() !== null ||
+    selectedElementProperties().length > 0 ||
+    selectedInspectors().length > 0;
 
   const hasToolProperties = () =>
     activeToolProperties().length > 0 || activeToolColorPalettes().length > 0;
@@ -2397,7 +2690,7 @@ export function createCanvasController(
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   }
 
-  function startShapeResize(shape: CanvasShape, event: PointerEvent) {
+  function startShapeResize(shape: CanvasShape, event: PointerEvent, handle: ResizeHandle) {
     if (event.button !== 0 || !canMoveShape(shape)) return;
     selectOnly(shape.id);
     // Text auto-sizes to its content, so drive off its measured box.
@@ -2409,7 +2702,7 @@ export function createCanvasController(
       type: "resize",
       pointerId: event.pointerId,
       elementId: shape.id,
-      fixedTopLeft: rotatedShapeCorners(bounds)[0],
+      handle,
       minSize: extensionManager.get(shape.type).defaults.minSize,
       aspect: keepAspect && bounds.height > 0 ? bounds.width / bounds.height : undefined,
       initial: {
@@ -2495,11 +2788,15 @@ export function createCanvasController(
   }
 
   /** Starts a resize on whichever store the element lives in. */
-  function startResize(element: CanvasElementHandle, event: PointerEvent) {
+  function startResize(
+    element: CanvasElementHandle,
+    event: PointerEvent,
+    handle: ResizeHandle = { x: 1, y: 1 },
+  ) {
     const stroke = strokesById().get(element.id);
     if (stroke) return startStrokeResize(stroke, event);
     const shape = shapesById().get(element.id);
-    if (shape) startShapeResize(shape, event);
+    if (shape) startShapeResize(shape, event, handle);
   }
 
   function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
@@ -2536,7 +2833,7 @@ export function createCanvasController(
       type: "resize",
       pointerId: event.pointerId,
       elementId: stroke.id,
-      fixedTopLeft: { x: bounds.x, y: bounds.y },
+      handle: { x: 1, y: 1 },
       // Ink has no declared minimum; this keeps a stroke grabbable after it has
       // been scaled all the way down.
       minSize: { width: 32, height: 32 },
@@ -2616,9 +2913,12 @@ export function createCanvasController(
     };
 
     const ids = new Set(drag.additive ? drag.baseIds : []);
+    const containers = clippingContainers();
     for (const shape of state.shapes) {
       if (shape.locked) continue;
-      const bounds = shapeAabb(shape);
+      const clip = clipRectFor(shape, containers);
+      const bounds = clip ? rectIntersection(shapeAabb(shape), clip) : shapeAabb(shape);
+      if (!bounds) continue;
       const hit = isContainerShape(shape)
         ? rectContains(worldRect, bounds)
         : rectsIntersect(worldRect, bounds);
@@ -2638,6 +2938,7 @@ export function createCanvasController(
   // keeps the z-order (below) and calls ext.hitTest per shape.
   const hitTestHelpers: CanvasHitTestHelpers = {
     worldToScreen: (point) => worldToScreen(point),
+    t,
     chromePosition: elementChromePosition,
     chromeSize: elementChromeSize,
   };
@@ -2649,8 +2950,11 @@ export function createCanvasController(
     worldPoint: CanvasPoint,
   ): { shape: CanvasShape; region: string } | null {
     const shapes = canvasShapes();
+    const containers = clippingContainers();
     for (let i = shapes.length - 1; i >= 0; i--) {
       const shape = shapes[i];
+      const clip = clipRectFor(shape, containers);
+      if (clip && !isPointInRect(worldPoint, clip)) continue;
       const hitTest = extensionManager.get(shape.type).render.hitTest;
       const region = hitTest
         ? hitTest(shape, worldPoint, hitTestHelpers)
@@ -2699,16 +3003,31 @@ export function createCanvasController(
     renderScene();
   }
 
-  // Cursor for what is under the pointer, from the extension that drew it.
-  function hoverCursorAt(worldPoint: CanvasPoint): string | null {
-    if (state.activeTool !== "select" || dragState) return null;
-    if (hitTestCanvasStroke(state.strokes, worldPoint, transform().scale)) return "move";
+  // Cursor and region under the pointer, from the extension that drew it.
+  function hoverAt(worldPoint: CanvasPoint): {
+    cursor: string | null;
+    region: { shapeId: string; region: string } | null;
+  } {
+    if (state.activeTool !== "select" || dragState) return { cursor: null, region: null };
+    if (hitTestCanvasStroke(state.strokes, worldPoint, transform().scale)) {
+      return { cursor: "move", region: null };
+    }
     const hit = hitTestShape(worldPoint);
-    if (!hit) return null;
-    return (
-      extensionManager.get(hit.shape.type).render.cursor?.(hit.shape, hit.region) ??
-      "move"
-    );
+    if (!hit) return { cursor: null, region: null };
+    return {
+      cursor:
+        extensionManager.get(hit.shape.type).render.cursor?.(hit.shape, hit.region) ??
+        "move",
+      region: { shapeId: hit.shape.id, region: hit.region },
+    };
+  }
+
+  // Repaints only when the hovered region changes, which chrome styles by.
+  function setHoverRegion(region: { shapeId: string; region: string } | null) {
+    const current = state.hoverRegion;
+    if (current?.shapeId === region?.shapeId && current?.region === region?.region) return;
+    state.hoverRegion = region;
+    renderScene();
   }
 
   /** Text the browser's find-in-page and screen readers see for painted shapes. */
@@ -2731,21 +3050,12 @@ export function createCanvasController(
     });
   }
 
-  function editElementChrome(shape: CanvasShape) {
-    if (shape.locked) return;
-    selectOnly(shape.id);
-    state.editingChromeId = shape.id;
-    renderScene();
-    void Promise.resolve().then(() => {
-      dom.viewport
-        ?.querySelector<HTMLElement>(`[data-editor-shape-id="${shape.id}"]`)
-        ?.focus();
-    });
-  }
-
-  function finishChromeEditing() {
-    if (!state.editingChromeId) return;
-    state.editingChromeId = null;
+  /** Ends the painted text edit, applying it unless cancelled; safe to call twice. */
+  function finishTextEdit(commit: boolean) {
+    const edit = state.textEdit;
+    if (!edit) return;
+    state.textEdit = null;
+    if (commit) edit.commit(edit.value);
     renderScene();
   }
 
@@ -2754,6 +3064,7 @@ export function createCanvasController(
 
     // Dismiss context menu on any tap outside of it (the menu itself stops
     // propagation with @pointerdown.stop so taps inside it don't reach here).
+    state.menu = null;
     if (state.contextMenuPos) {
       state.contextMenuPos = null;
       contextMenuInsertWorld.current = null;
@@ -2846,9 +3157,10 @@ export function createCanvasController(
     const point = screenPoint(event);
     const worldPoint = screenToWorld(point);
     const hit = hitTestShape(worldPoint);
-    if (hit?.region === "title" && extensionManager.get(hit.shape.type).render.chrome) {
+    const editChrome = hit && extensionManager.get(hit.shape.type).events?.editChrome;
+    if (hit?.region === "title" && editChrome) {
       event.preventDefault();
-      editElementChrome(hit.shape);
+      editChrome(hit.shape, extHost);
       return;
     }
 
@@ -2975,7 +3287,9 @@ export function createCanvasController(
     }
 
     updateHoveredLockedElement(event);
-    state.hoverCursor = hoverCursorAt(localPointer);
+    const hover = hoverAt(localPointer);
+    state.hoverCursor = hover.cursor;
+    setHoverRegion(hover.region);
 
     if (!dragState || dragState.pointerId !== event.pointerId) {
       schedulePresenceUpdate();
@@ -3105,10 +3419,10 @@ export function createCanvasController(
 
     resize: {
       move(drag, { world }) {
-        const box = resizeRotatedShapeFromBottomRight({
-          fixedTopLeft: drag.fixedTopLeft,
+        const box = resizeRotatedShape({
+          initial: drag.initial,
+          handle: drag.handle,
           pointer: world,
-          rotation: drag.initial.rotation,
           minSize: drag.minSize,
           aspect: drag.aspect,
         });
@@ -3199,10 +3513,10 @@ export function createCanvasController(
 
     "selection-scale": {
       move(drag, { world }) {
-        const resized = resizeRotatedShapeFromBottomRight({
-          fixedTopLeft: drag.origin,
+        const resized = resizeRotatedShape({
+          initial: { ...drag.startBounds, rotation: 0 },
+          handle: { x: 1, y: 1 },
           pointer: world,
-          rotation: 0,
           minSize: drag.minSize,
           aspect: drag.startBounds.width / drag.startBounds.height,
         });
@@ -3359,6 +3673,7 @@ export function createCanvasController(
 
   function handlePointerLeave() {
     state.hoverCursor = null;
+    setHoverRegion(null);
     localPointer = null;
     state.localPointerScreen = null;
     state.hoveredLockedElement = null;
@@ -3437,6 +3752,15 @@ export function createCanvasController(
    * Only for a lone selected shape: an extension's action is about *its* shape,
    * and a mixed or multiple selection has no single type to ask.
    */
+  function openMenu(at: CanvasClientPoint, entries: readonly CanvasMenuEntry[]) {
+    const rect = dom.viewport?.getBoundingClientRect();
+    if (!rect) throw new Error("A menu needs the mounted viewport");
+    state.menu = {
+      pos: { x: at.clientX - rect.left, y: at.clientY - rect.top },
+      entries,
+    };
+  }
+
   function contextMenuEntries() {
     if (state.selectedIds.size !== 1) return [];
     const [id] = state.selectedIds;
@@ -3533,9 +3857,8 @@ export function createCanvasController(
     });
 
     watch("selection", state.selectedIds, (ids) => {
-      if (state.editingChromeId && (ids.size !== 1 || !ids.has(state.editingChromeId))) {
-        finishChromeEditing();
-      }
+      const edit = state.textEdit;
+      if (edit && (ids.size !== 1 || !ids.has(edit.shapeId))) finishTextEdit(true);
       updatePresence();
     });
 
@@ -3551,8 +3874,8 @@ export function createCanvasController(
     watch("shapes:edit", state.shapes, () => {
       const editing = state.activeEditSession;
       if (editing && !shapesById().has(editing.shapeId)) stopActiveEdit();
-      if (state.editingChromeId && !shapesById().has(state.editingChromeId)) {
-        finishChromeEditing();
+      if (state.textEdit && !shapesById().has(state.textEdit.shapeId)) {
+        finishTextEdit(false);
       }
     });
 
@@ -3586,11 +3909,10 @@ export function createCanvasController(
       () => updatePresence(),
     );
 
-    // Painted every flush rather than watched. A flush only happens because
-    // something asked for a frame, and the values a watch would compare here —
-    // the selection snapshot, the visible stroke list — are rebuilt on each
-    // read, so it would fire every flush anyway.
-    renderInk();
+    // Repainted after every flush rather than watched: the values a watch would
+    // compare are rebuilt on each read. The host flushes per input event, so the
+    // paint itself waits for the frame.
+    scheduleInkRender();
   }
 
   // --- lifecycle ---------------------------------------------------------
@@ -3741,6 +4063,9 @@ export function createCanvasController(
       getCamera: () => state.camera,
       setCamera: (nextCamera) => {
         state.camera = nextCamera;
+        // Painted now, inside the frame that moved the camera; a scheduled paint
+        // would land a frame late. The DOM layers follow from the flush below.
+        renderInk();
         // Must ask for the frame itself. The host's capture-phase input listener
         // already fired for the `wheel` event that scheduled this, and its
         // microtask drained before the rAF that runs `flushWheel` — so without
@@ -3778,6 +4103,9 @@ export function createCanvasController(
     colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
     colorSchemeMedia.addEventListener("change", updateThemeMode);
 
+    // A processor appearing or going away changes what images paint.
+    unsubscribePlugins = host.plugins.subscribe(invalidate);
+
     updatePresence();
     registerCanvasActions();
     isReady = true;
@@ -3798,6 +4126,8 @@ export function createCanvasController(
     cancelToolPointerGesture("unmount");
     viewportControls?.dispose();
     resizeObserver?.disconnect();
+    unsubscribePlugins?.();
+    imageProcessing.clear();
     themeObserver?.disconnect();
     colorSchemeMedia?.removeEventListener("change", updateThemeMode);
     host.presenceChanged([]);
@@ -3848,12 +4178,18 @@ export function createCanvasController(
     transform,
     domShapes,
     uploadPlaceholders: () => uploadPlaceholders.get(),
-    editingChromeShape,
     hasToolProperties,
     hasSelectedElementProperties,
     activeToolColorPalettes,
     selectedShapeColorPalette,
     selectedShape,
+    shapeById: (id: string) => shapesById().get(id) ?? null,
+    selectedElementProperties,
+    elementPropertyValue: (property: CanvasElementProperty) => {
+      const value = selectedShape()?.data[property.id];
+      return typeof value === "boolean" ? value : property.default;
+    },
+    selectedInspectors,
     selectedStrokeColor,
     selectedTransformElement,
     selectedResizeOnlyElement,
@@ -3867,9 +4203,9 @@ export function createCanvasController(
     articleStyle,
     findableShapes,
     elementTagForShape,
-    editorTagForShape,
     elementChromePosition,
     transformControlPositions,
+    edgeHandlePositions,
     selectionScaleControlPosition,
     selectionToolbarPosition,
     canTidySelection: () => tidyItems() != null,
@@ -3884,8 +4220,22 @@ export function createCanvasController(
     setActivePenColor,
     setSelectedElementColor,
     setSelectedStrokeColor,
+    /** One undoable edit; locked shapes are left alone. */
+    updateShapeData: (id: string, patch: Record<string, unknown>) =>
+      ydoc.transact(() => hostContext.updateData(id, patch)),
     pickShapeLibraryItem,
     contextMenuEntries,
+    closeMenu: () => {
+      state.menu = null;
+    },
+    finishTextEdit,
+    /** Mirrors the hidden input into the painted field. */
+    updateTextEdit: (value: string, selectionStart: number, selectionEnd: number) => {
+      const edit = state.textEdit;
+      if (!edit) return;
+      state.textEdit = { ...edit, value, selectionStart, selectionEnd };
+      renderScene();
+    },
     closeContextMenu: () => {
       state.contextMenuPos = null;
       contextMenuInsertWorld.current = null;
@@ -3902,7 +4252,6 @@ export function createCanvasController(
     deleteSelection,
     tidySelection,
     stopActiveEdit,
-    finishChromeEditing,
     setActiveEditorRef,
 
     // pointer / drag entry points
