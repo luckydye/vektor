@@ -1873,7 +1873,8 @@ export function createCanvasController(
       selection.remoteSelectedShapeBounds.length === 0 &&
       !foundShape &&
       !state.draftRect &&
-      !state.marqueeRect;
+      !state.marqueeRect &&
+      !state.editMode?.overlay.length;
     if (empty) {
       if (overlayPainted) canvas.getContext("bitmaprenderer")?.transferFromImageBitmap(null);
       overlayPainted = false;

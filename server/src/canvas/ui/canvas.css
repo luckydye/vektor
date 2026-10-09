@@ -114,7 +114,6 @@ vektor-canvas {
   border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 6px;
-  box-shadow: 0 10px 28px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
 }
 
@@ -138,7 +137,6 @@ vektor-canvas {
   border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 6px;
-  box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
 }
 
@@ -147,7 +145,8 @@ vektor-canvas {
   position: absolute;
   top: 72px;
   right: 16px;
-  bottom: 16px;
+  /* Level with the toolbar's bottom edge. */
+  bottom: 1.25rem;
   z-index: 11;
   display: flex;
   align-items: flex-start;
@@ -173,7 +172,6 @@ vektor-canvas {
   border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 14px;
-  box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
 }
 
@@ -359,7 +357,6 @@ vektor-canvas {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.94);
   padding: 6px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
   backdrop-filter: blur(8px);
 }
 
@@ -401,7 +398,6 @@ vektor-canvas {
   .canvas-shape-popover-panel {
     border-color: rgba(255, 255, 255, 0.12);
     background: rgba(24, 24, 27, 0.94);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
   }
 
   .canvas-shape-option {
@@ -433,7 +429,6 @@ vektor-canvas {
   background: var(--canvas-toolbar-bg);
   padding: 0;
   color: var(--canvas-tool-text);
-  box-shadow: 0 3px 10px var(--canvas-toolbar-shadow);
   cursor: pointer;
 }
 
@@ -475,7 +470,6 @@ vektor-canvas {
   border-radius: 10px;
   background: var(--canvas-toolbar-bg);
   padding: 4px;
-  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
   pointer-events: auto;
 }
@@ -505,7 +499,6 @@ vektor-canvas {
   border-radius: 10px;
   background: var(--canvas-toolbar-bg);
   padding: 4px;
-  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
   pointer-events: auto;
   will-change: transform;
@@ -525,7 +518,6 @@ vektor-canvas {
   border-radius: 20px;
   background: var(--canvas-toolbar-bg);
   padding: 3px;
-  box-shadow: 0 3px 14px var(--canvas-toolbar-shadow);
   pointer-events: auto;
   /* Centered, and clear of the rotate handle above the selection. */
   translate: -50% calc(-100% - 36px);
