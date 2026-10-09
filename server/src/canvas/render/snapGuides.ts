@@ -1,45 +1,22 @@
-/**
- * Painting for the alignment guides `core/snapping.ts` computes.
- *
- * Split from the maths so `core/` never touches a rendering context: the same
- * guides are consumed by hit-feedback and by the ink overlay, and only the
- * latter needs a canvas.
- */
-import type { ScreenSize, SnapGuide, WorldTransform } from "#canvas/runtime/geometry.ts";
-
-interface DrawSnapGuideOptions {
-  color?: string;
-  lineWidth?: number;
-  dash?: number[];
-}
+/** Painting for the alignment guides `runtime/geometry.ts` computes. */
+import { drawLine } from "#canvas/render/primitives.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
+import type { SnapGuide } from "#canvas/runtime/geometry.ts";
 
 export function drawSnapGuides(
-  ctx: CanvasRenderingContext2D,
+  gpu: CanvasGpu,
   guides: readonly SnapGuide[],
-  transform: WorldTransform,
-  screen: ScreenSize,
-  options: DrawSnapGuideOptions = {},
-): void {
-  if (guides.length === 0) return;
-
-  ctx.save();
-  ctx.strokeStyle = options.color ?? "rgba(96, 165, 250, 0.8)";
-  ctx.lineWidth = options.lineWidth ?? 1;
-  ctx.setLineDash(options.dash ?? [4, 4]);
-
+  color: string,
+) {
+  const { transform, screen } = gpu.view;
+  const rgba = parseColor(color);
   for (const guide of guides) {
-    ctx.beginPath();
     if (guide.axis === "x") {
       const x = guide.value * transform.scale + transform.dx;
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, screen.height);
+      drawLine(gpu, { x, y: 0 }, { x, y: screen.height }, { color: rgba, dash: 4 });
     } else {
       const y = guide.value * transform.scale + transform.dy;
-      ctx.moveTo(0, y);
-      ctx.lineTo(screen.width, y);
+      drawLine(gpu, { x: 0, y }, { x: screen.width, y }, { color: rgba, dash: 4 });
     }
-    ctx.stroke();
   }
-
-  ctx.restore();
 }

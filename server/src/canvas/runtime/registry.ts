@@ -271,8 +271,8 @@ export class CanvasExtensionManager {
     return this.get(shape.type).render.surface !== "canvas" && !this.rasters(shape);
   }
 
-  paint(type: CanvasShapeType) {
-    return this.get(type).render.paint;
+  paints(shape: CanvasShape) {
+    return this.get(shape.type).render.surface === "canvas";
   }
 
   zOrder(type: CanvasShapeType) {

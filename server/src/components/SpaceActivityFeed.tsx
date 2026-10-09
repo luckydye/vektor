@@ -28,6 +28,7 @@ interface CompactActivityBatch {
 interface Props {
   spaceId: string;
   limit?: number;
+  viewAllHref?: string;
 }
 
 function getCompactActivityBatches(
@@ -129,6 +130,17 @@ export function SpaceActivityFeed(props: Props) {
         <h2 class="text-neutral-500 text-size-large leading-large">
           {t("Space Activity")}
         </h2>
+        <Show when={props.viewAllHref}>
+          {(href) => (
+            <a
+              href={href()}
+              class="group inline-flex shrink-0 items-center gap-1.5 text-neutral-400 text-size-medium transition-colors hover:text-neutral-700"
+            >
+              {t("View all")}
+              <span class="transition-transform group-hover:translate-x-0.5">→</span>
+            </a>
+          )}
+        </Show>
       </div>
 
       <Show when={error()}>

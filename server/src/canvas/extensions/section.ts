@@ -1,3 +1,6 @@
+import { drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
+import { drawText } from "#canvas/render/text.ts";
+import { type CanvasGpu, parseColor, type Rgba } from "#canvas/render/webgl.ts";
 import { CanvasElementBase } from "#canvas/runtime/elementBase.ts";
 import type {
   CanvasHitTestHelpers,
@@ -22,52 +25,29 @@ function sectionLocalPoint(world: { x: number; y: number }, shape: CanvasShape) 
   return { x: local.x + frame.width / 2, y: local.y + frame.height / 2 };
 }
 
-function roundedRectPath(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-) {
-  const cornerRadius = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + cornerRadius, y);
-  context.arcTo(x + width, y, x + width, y + height, cornerRadius);
-  context.arcTo(x + width, y + height, x, y + height, cornerRadius);
-  context.arcTo(x, y + height, x, y, cornerRadius);
-  context.arcTo(x, y, x + width, y, cornerRadius);
-  context.closePath();
-}
-
 // Draws the section frame and, unless it is being edited, its title chrome.
 // Screen-space geometry (transform, title position/size) comes from the host so
 // hit-testing and the inline title editor stay in sync with what is painted.
-function paintSection(
-  context: CanvasRenderingContext2D,
-  shape: CanvasShape,
-  helpers: CanvasPaintHelpers,
-) {
+function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
   const { scale, dx, dy } = helpers;
   const frame = shape.frame;
   const width = frame.width * scale;
   const height = frame.height * scale;
   if (width <= 0 || height <= 0) return;
 
-  const centerX = (frame.x + frame.width / 2) * scale + dx;
-  const centerY = (frame.y + frame.height / 2) * scale + dy;
-  context.save();
-  context.translate(centerX, centerY);
-  context.rotate((frame.rotation * Math.PI) / 180);
-  roundedRectPath(context, -width / 2, -height / 2, width, height, 10 * scale);
-  context.fillStyle = shape.style.color;
-  context.globalAlpha = 0.09;
-  context.fill();
-  context.strokeStyle = shape.style.color;
-  context.globalAlpha = 0.6;
-  context.lineWidth = 2 * scale;
-  context.stroke();
-  context.restore();
+  const color = parseColor(shape.style.color);
+  const fade = (alpha: number): Rgba => [color[0], color[1], color[2], color[3] * alpha];
+  const rotation = (frame.rotation * Math.PI) / 180;
+  drawRoundedRect(
+    gpu,
+    rectQuad(frame.x * scale + dx, frame.y * scale + dy, width, height, rotation),
+    {
+      radius: 10 * scale,
+      fill: fade(0.09),
+      stroke: fade(0.6),
+      strokeWidth: 2 * scale,
+    },
+  );
 
   if (helpers.isEditingChrome(shape.id)) return;
 
@@ -75,29 +55,33 @@ function paintSection(
   const size = helpers.chromeSize(shape);
   const title =
     (typeof shape.data.text === "string" && shape.data.text) || helpers.t("Section");
-
-  context.save();
-  context.translate(position.x, position.y);
-  context.rotate((frame.rotation * Math.PI) / 180);
-  roundedRectPath(context, 0, 0, size.width, size.height, 6);
-  context.fillStyle = shape.style.color;
-  context.globalAlpha = 0.1;
-  context.fill();
-  context.strokeStyle = shape.style.color;
-  context.globalAlpha = 0.48;
-  context.lineWidth = 1;
-  context.stroke();
-
-  context.save();
-  roundedRectPath(context, 0, 0, size.width, size.height, 6);
-  context.clip();
-  context.globalAlpha = 1;
-  context.fillStyle = helpers.chromeTextColor;
-  context.font = "750 13px system-ui, sans-serif";
-  context.textBaseline = "middle";
-  context.fillText(title, 8, size.height / 2, Math.max(0, size.width - 16));
-  context.restore();
-  context.restore();
+  // `chromePosition` is the chip's top-left corner, which it rotates about.
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const chip = {
+    origin: position,
+    axisX: { x: cos * size.width, y: sin * size.width },
+    axisY: { x: -sin * size.height, y: cos * size.height },
+  };
+  drawRoundedRect(gpu, chip, {
+    radius: 6,
+    fill: fade(0.1),
+    stroke: fade(0.48),
+    strokeWidth: 1,
+  });
+  const middle = size.height / 2;
+  drawText(gpu, title, {
+    at: {
+      x: position.x + 8 * cos - middle * sin,
+      y: position.y + 8 * sin + middle * cos,
+    },
+    rotation,
+    size: 13,
+    color: parseColor(helpers.chromeTextColor),
+    maxWidth: Math.max(0, size.width - 16),
+    clip: { x: -8, y: -middle, width: size.width, height: size.height },
+    invalidate: helpers.invalidate,
+  });
 }
 
 // Section frame accent colors offered by the toolbar swatch.

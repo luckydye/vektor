@@ -310,8 +310,7 @@ export function useQuery<TData = unknown>(
     // the client's first pass — where the fetch has only just started — renders
     // the same thing. Leave this out and the two disagree: the server says
     // "loaded, empty", the client says "loading", and Solid fails hydration
-    // outright rather than patching it up. `RecentDocuments` took the whole
-    // island down that way.
+    // outright rather than patching it up, taking the whole island down.
     //
     // The signal, not `entry.isFetching`: this is one observer's view for one
     // render, and the entry is shared — on the server by every request in the

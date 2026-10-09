@@ -2,7 +2,6 @@ import { createMemo, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
 import { AgentSection } from "#components/AgentSection.tsx";
 import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
-import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
 import { SpaceHomeHeadline } from "#components/SpaceHomeHeadline.tsx";
 import { useRecentChatSessions } from "#composeables/useChatSessionHandling.ts";
@@ -14,6 +13,7 @@ import { useUploads } from "#composeables/useUploads.ts";
 import { useWeather } from "#composeables/useWeather.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { Actions } from "#utils/actions.ts";
+import { spacePath } from "#utils/utils.ts";
 
 export function SpaceHomeView() {
   const t = useTranslation();
@@ -67,28 +67,29 @@ export function SpaceHomeView() {
             />
 
             <Show when={agentAvailable() !== false}>
-              <AgentSection
-                title={t("Agent")}
-                viewAllLabel={t("View all")}
-                placeholder={t("What can I help with?")}
-                emptyLabel={t("No conversations yet.")}
-                lang={locale}
-                spaceId={space().id}
-                disabled={agentAvailable() === undefined}
-                sessions={recentSessions()}
-                rows={3}
-                onAsk={(message) => Actions.emit("ai-chat:ask", { detail: message })}
-                onResume={(session) => Actions.emit("ai-chat:resume", { detail: session })}
-                onViewAll={() => Actions.emit("ai-chat:sessions", {})}
-              />
+              <div class="py-6">
+                <AgentSection
+                  viewAllLabel={t("View all")}
+                  placeholder={t("What can I help with?")}
+                  emptyLabel={t("No conversations yet.")}
+                  lang={locale}
+                  spaceId={space().id}
+                  disabled={agentAvailable() === undefined}
+                  sessions={recentSessions()}
+                  rows={3}
+                  onAsk={(message) => Actions.emit("ai-chat:ask", { detail: message })}
+                  onResume={(session) => Actions.emit("ai-chat:resume", { detail: session })}
+                  onViewAll={() => Actions.emit("ai-chat:sessions", {})}
+                />
+              </div>
             </Show>
 
-            <div>
-              <RecentDocuments limit={10} />
-            </div>
-
             <div class="flex min-h-0 flex-1 flex-col">
-              <SpaceActivityFeed spaceId={space().id} limit={30} />
+              <SpaceActivityFeed
+                spaceId={space().id}
+                limit={30}
+                viewAllHref={spacePath(space().slug, "/search")}
+              />
             </div>
           </inset-view>
         </FileDropOverlay>

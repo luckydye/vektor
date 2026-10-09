@@ -91,8 +91,7 @@ export class CanvasHostElement extends HostElement {
   private readonly dom: CanvasDomRefs = {
     viewport: null,
     scene: null,
-    activeInk: null,
-    selection: null,
+    overlay: null,
     shapePopover: null,
     canvasToolbar: null,
     activeEditorElement: null,
@@ -697,15 +696,9 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
           })}
         ></canvas>
         <canvas
-          class="canvas-active-ink"
+          class="canvas-overlay"
           ${ref((element) => {
-            dom.activeInk = (element as HTMLCanvasElement) ?? null;
-          })}
-        ></canvas>
-        <canvas
-          class="canvas-selection"
-          ${ref((element) => {
-            dom.selection = (element as HTMLCanvasElement) ?? null;
+            dom.overlay = (element as HTMLCanvasElement) ?? null;
           })}
         ></canvas>
 

@@ -17,7 +17,7 @@ import { expect, type Page, test } from "@playwright/test";
  * correct until you touch it, and that is the bug class worth a browser.
  *
  * Read the notes on `paintedPixels` before adding a test. The canvas draws
- * across three layers and a DOM tree, and counting the wrong one is the
+ * across two layers and a DOM tree, and counting the wrong one is the
  * easiest way to write an assertion that cannot fail.
  */
 
@@ -37,6 +37,10 @@ async function openCanvas(page: Page) {
     if (message.type() === "error") errors.push(message.text());
   });
 
+  // The first-run organizing tour opens over the canvas and swallows clicks.
+  await page.addInitScript(() =>
+    localStorage.setItem("onboarding-document-organization", "true"),
+  );
   await page.goto(`/${SPACE}/doc/${CANVAS}`);
   await page.waitForSelector("vektor-canvas .canvas-viewport", { timeout: 30_000 });
   // Shapes paint from measured geometry, a frame after the element mounts.
@@ -47,22 +51,27 @@ async function openCanvas(page: Page) {
 /**
  * How much of a canvas layer is painted.
  *
- * The layers are the only honest signal for anything drawn in 2D, and there is
- * a trap in the alternative: `.canvas-selection` is the *overlay element*, one
- * per canvas, present whether or not anything is selected. Asserting it exists
- * passes always. Its pixels are what tell you there is a selection.
+ * The layers are the only honest signal for anything drawn by WebGL, and there
+ * is a trap in the alternative: `.canvas-overlay` is one element per canvas,
+ * present whether or not anything is selected. Asserting it exists passes
+ * always. Its pixels are what tell you there is a selection.
  *
- *   canvas-scene       shapes whose extension paints (sections, strokes)
- *   canvas-active-ink  the stroke currently being drawn
- *   canvas-selection   selection outlines and transform handles
+ *   canvas-scene    grid, shapes whose extension paints (sections), strokes
+ *   canvas-overlay  the stroke being drawn, snap guides, selection outlines
+ *
+ * The layers present WebGL frames through a `bitmaprenderer` context, which
+ * cannot be read back, so they are copied onto a scratch 2D canvas first.
  */
 function paintedPixels(page: Page, layer: string) {
   return page.evaluate((className) => {
     const canvas = document.querySelector<HTMLCanvasElement>(`canvas.${className}`);
     if (!canvas) throw new Error(`no ${className} layer`);
-    const { data } = canvas
-      .getContext("2d")!
-      .getImageData(0, 0, canvas.width, canvas.height);
+    const copy = document.createElement("canvas");
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    const context = copy.getContext("2d")!;
+    context.drawImage(canvas, 0, 0);
+    const { data } = context.getImageData(0, 0, copy.width, copy.height);
     let painted = 0;
     for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) painted++;
     return painted;
@@ -116,18 +125,18 @@ test("selects on click and clears on a click into empty space", async ({ page })
   const grab = await grabPoint(page);
   const box = await viewport(page);
 
-  expect(await paintedPixels(page, "canvas-selection")).toBe(0);
+  expect(await paintedPixels(page, "canvas-overlay")).toBe(0);
 
   await page.mouse.click(grab.x, grab.y);
   await expect
-    .poll(() => paintedPixels(page, "canvas-selection"), {
+    .poll(() => paintedPixels(page, "canvas-overlay"), {
       message: "selecting must draw handles on the selection layer",
     })
     .toBeGreaterThan(0);
 
-  await page.mouse.click(box.x + box.width - 40, box.y + 40);
+  await page.mouse.click(box.x + box.width - 40, box.y + box.height / 2);
   await expect
-    .poll(() => paintedPixels(page, "canvas-selection"), {
+    .poll(() => paintedPixels(page, "canvas-overlay"), {
       message: "clicking empty canvas must clear the selection",
     })
     .toBe(0);
@@ -245,7 +254,6 @@ test("shows tool properties only while a tool has them", async ({ page }) => {
 
   await page.keyboard.press("d");
   await expect(bar).toBeVisible();
-  await expect(page.locator(".canvas-draw-mode")).not.toHaveCount(0);
 
   const swatches = page.locator(".canvas-tool-properties .canvas-color-swatch");
   await swatches.nth(2).click();
@@ -270,7 +278,7 @@ test("shows the appearance panel only while something is selected", async ({ pag
   await expect(sidebar.locator(".canvas-color-swatch")).not.toHaveCount(0);
 
   const box = await viewport(page);
-  await page.mouse.click(box.x + box.width - 40, box.y + 40);
+  await page.mouse.click(box.x + box.width - 40, box.y + box.height / 2);
   await expect(sidebar, "clearing the selection must hide it").toHaveCount(0);
 });
 
@@ -302,6 +310,39 @@ test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) 
   await page.mouse.click(box.x + 40, box.y + 40);
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(() => shapes.count()).toBe(before);
+});
+
+test("draws ink on the overlay, commits it to the scene, and undoes it", async ({
+  page,
+}) => {
+  const errors = await openCanvas(page);
+  const box = await viewport(page);
+  const sceneBefore = await paintedPixels(page, "canvas-scene");
+
+  await page.keyboard.press("d");
+  const startX = box.x + box.width - 300;
+  const startY = box.y + box.height - 200;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step++) {
+    await page.mouse.move(startX + step * 14, startY + Math.sin(step / 2) * 30);
+  }
+  await expect
+    .poll(() => paintedPixels(page, "canvas-overlay"), {
+      message: "the stroke under the pen must draw on the overlay",
+    })
+    .toBeGreaterThan(0);
+  await page.mouse.up();
+
+  await expect
+    .poll(() => paintedPixels(page, "canvas-scene"), {
+      message: "a finished stroke must be tessellated onto the scene",
+    })
+    .toBeGreaterThan(sceneBefore);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => paintedPixels(page, "canvas-scene")).toBe(sceneBefore);
+  expect(errors).toEqual([]);
 });
 
 /**

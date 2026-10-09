@@ -1,13 +1,15 @@
 /**
  * Tile compositing: raster content drawn at the resolution the current zoom
- * deserves — a map, a PDF page, a large plot. Contrast `render.paintRaster`,
- * which is right for anything you can just `drawImage`.
+ * deserves — a map, a PDF page, a large plot. Contrast `render.paint`,
+ * which is right for anything that is just one image.
  *
  * Tiles sit in shape-local coordinates. This began as a photo editor's one-image
  * "artboard"; a shape's own frame replaces that.
  */
 
-import type { CanvasPoint, Rect, WorldTransform } from "#canvas/runtime/geometry.ts";
+import { drawImage, rectQuad } from "#canvas/render/primitives.ts";
+import { type CanvasGpu, releaseTexture } from "#canvas/render/webgl.ts";
+import type { CanvasPoint, Rect } from "#canvas/runtime/geometry.ts";
 
 /**
  * A raster tile in shape-local coordinates. Pixel dimensions are independent of
@@ -34,7 +36,7 @@ export interface CanvasTileView {
 
 /**
  * Clip in shape-local coordinates, rotation in radians. A rotated clip is a
- * projection: the canvas counter-rotates so the region lands axis-aligned.
+ * projection: the tiles counter-rotate so the region lands axis-aligned.
  */
 export interface CanvasTileClip {
   x: number;
@@ -44,88 +46,67 @@ export interface CanvasTileClip {
   rotation: number;
 }
 
-type TileSurface = HTMLCanvasElement | OffscreenCanvas;
-
-// Decoded surfaces, keyed by source ImageData. `putImageData` is a
-// full-resolution copy plus a canvas allocation, and compositing runs on every
-// pan and zoom frame — building each surface once is why this module exists.
-const tileSurfaces = new WeakMap<ImageData, TileSurface>();
-
-function getTileSurface(image: ImageData): TileSurface {
-  const cached = tileSurfaces.get(image);
-  if (cached) return cached;
-  const surface =
-    typeof OffscreenCanvas === "function"
-      ? new OffscreenCanvas(image.width, image.height)
-      : document.createElement("canvas");
-  surface.width = image.width;
-  surface.height = image.height;
-  const surfaceCtx = surface.getContext("2d");
-  if (!surfaceCtx || !("putImageData" in surfaceCtx)) {
-    throw new Error("tile surface 2d context required");
-  }
-  surfaceCtx.putImageData(image, 0, 0);
-  tileSurfaces.set(image, surface);
-  return surface;
-}
-
-/** Call when replacing a tile, or its surface stays pinned. */
+/** Call when replacing a tile, or its texture stays resident. */
 export function releaseTileSurface(image: ImageData | null) {
-  if (image) tileSurfaces.delete(image);
+  if (image) releaseTexture(image);
 }
 
-/** Draw one tile at its screen position for a shape at `origin`. */
-function drawTile(
-  ctx: CanvasRenderingContext2D,
-  tile: CanvasTile,
-  origin: CanvasPoint,
-  t: WorldTransform,
-) {
-  const sx = (origin.x + tile.x) * t.scale + t.dx;
-  const sy = (origin.y + tile.y) * t.scale + t.dy;
-  const sw = tile.width * t.scale;
-  const sh = tile.height * t.scale;
-  if (sw <= 0 || sh <= 0) return;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(getTileSurface(tile.image), sx, sy, sw, sh);
+function rotateAbout(point: CanvasPoint, center: CanvasPoint, cos: number, sin: number) {
+  const x = point.x - center.x;
+  const y = point.y - center.y;
+  return { x: center.x + x * cos - y * sin, y: center.y + x * sin + y * cos };
 }
 
 /** Composite back to front: a coarse tile first, then finer ones over it. */
 export function compositeTiles(
-  ctx: CanvasRenderingContext2D,
+  gpu: CanvasGpu,
   /** The shape's world position — its `frame.x` / `frame.y`. */
   origin: CanvasPoint,
   tiles: readonly (CanvasTile | null)[],
-  t: WorldTransform,
-  clip?: CanvasTileClip | null,
+  clip: CanvasTileClip | null,
 ): void {
-  ctx.save();
+  const { gl } = gpu;
+  const { transform: t, screen, dpr } = gpu.view;
+  let center: CanvasPoint | null = null;
   if (clip) {
     const sx = (origin.x + clip.x) * t.scale + t.dx;
     const sy = (origin.y + clip.y) * t.scale + t.dy;
     const sw = clip.width * t.scale;
     const sh = clip.height * t.scale;
-    if (sw <= 0 || sh <= 0) {
-      ctx.restore();
-      return;
-    }
-    // Clipped before rotating: ctx.clip() bakes the path through the current
-    // CTM, so it stays axis-aligned in screen space.
-    const clipPath = new Path2D();
-    clipPath.rect(sx, sy, sw, sh);
-    ctx.clip(clipPath);
-
-    if (clip.rotation !== 0) {
-      const scx = sx + sw / 2;
-      const scy = sy + sh / 2;
-      ctx.translate(scx, scy);
-      ctx.rotate(-clip.rotation);
-      ctx.translate(-scx, -scy);
-    }
+    if (sw <= 0 || sh <= 0) return;
+    // The clip stays axis-aligned on screen; a rotated clip counter-rotates the
+    // tiles inside it instead.
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(
+      Math.floor(sx * dpr),
+      Math.floor((screen.height - sy - sh) * dpr),
+      Math.ceil(sw * dpr),
+      Math.ceil(sh * dpr),
+    );
+    if (clip.rotation !== 0) center = { x: sx + sw / 2, y: sy + sh / 2 };
   }
+  const cos = Math.cos(-(clip?.rotation ?? 0));
+  const sin = Math.sin(-(clip?.rotation ?? 0));
   for (const tile of tiles) {
-    if (tile) drawTile(ctx, tile, origin, t);
+    if (!tile) continue;
+    const quad = rectQuad(
+      (origin.x + tile.x) * t.scale + t.dx,
+      (origin.y + tile.y) * t.scale + t.dy,
+      tile.width * t.scale,
+      tile.height * t.scale,
+    );
+    if (quad.axisX.x <= 0 || quad.axisY.y <= 0) continue;
+    drawImage(
+      gpu,
+      tile.image,
+      center
+        ? {
+            origin: rotateAbout(quad.origin, center, cos, sin),
+            axisX: rotateAbout(quad.axisX, { x: 0, y: 0 }, cos, sin),
+            axisY: rotateAbout(quad.axisY, { x: 0, y: 0 }, cos, sin),
+          }
+        : quad,
+    );
   }
-  ctx.restore();
+  gl.disable(gl.SCISSOR_TEST);
 }

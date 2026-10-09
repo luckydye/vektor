@@ -1,148 +1,81 @@
 /**
  * Selection outlines: a ring around every selected stroke and shape, local and
- * remote.
- *
- * Painted into the scene canvas alongside the ink it outlines, so a selection
- * and the element under it can never disagree about where they are.
+ * remote. Drawn in the overlay pass, the only one above the DOM world.
  */
 
-import {
-  drawRetainedFreehandSelection,
-  type RetainedFreehandSelectionGroup,
-  retainFreehandOutlines,
-} from "#canvas/render/freehand.ts";
-import type { CanvasStroke } from "#canvas/runtime/extensionApi.ts";
-import type { WorldTransform } from "#canvas/runtime/geometry.ts";
+import type { FreehandStroke } from "#canvas/render/freehand.ts";
+import { drawStrokeRings, type InkOffset } from "#canvas/render/ink.ts";
+import { drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
 
-type CanvasSelectionSnapshot = {
-  strokes: CanvasStroke[];
+interface OutlineBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  type?: string;
+}
+
+export interface CanvasSelectionSnapshot {
+  strokes: ReadonlyMap<string, FreehandStroke>;
+  moved: InkOffset | null;
   /** Every selected id; the ones that name a stroke get an ink outline. */
   selectedIds: Set<string>;
-  remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
-  // Present for a multi-item local selection, adding one axis-aligned bounds
-  // box around the individual item outlines for group transforms.
-  selectionBounds?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  selectedShapeBounds?: Array<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    rotation?: number;
-    type?: string;
-  }>;
-  remoteSelectedShapeBounds?: Array<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    rotation?: number;
-    type?: string;
-    color: string;
-  }>;
-};
+  remoteSelectedStrokeIds: Array<{ ids: Set<string>; color: string }>;
+  // Present for a multi-item local selection: one axis-aligned box around the
+  // individual outlines, for group transforms.
+  selectionBounds?: OutlineBounds;
+  selectedShapeBounds: OutlineBounds[];
+  remoteSelectedShapeBounds: Array<OutlineBounds & { color: string }>;
+}
 
-type CanvasSelectionRenderParams = CanvasSelectionSnapshot & {
-  context: CanvasRenderingContext2D;
-  transform: WorldTransform;
-};
+const LOCAL_COLOR = "#2563eb";
 
-export function drawCanvasSelections(params: CanvasSelectionRenderParams) {
-  const {
-    context,
-    transform,
-    strokes,
-    selectedIds,
-    remoteSelectedStrokeIds = [],
-    selectionBounds,
-    selectedShapeBounds = [],
-    remoteSelectedShapeBounds = [],
-  } = params;
+export function drawCanvasSelections(gpu: CanvasGpu, selection: CanvasSelectionSnapshot) {
+  const strokesFor = (ids: Set<string>) =>
+    [...ids].map((id) => selection.strokes.get(id)).filter((stroke) => stroke != null);
 
-  context.setLineDash([]);
-  drawRetainedFreehandSelection(
-    context,
-    retainCanvasSelectionStrokes({ strokes, selectedIds }, transform),
-    transform,
+  drawStrokeRings(
+    gpu,
+    [{ strokes: strokesFor(selection.selectedIds), color: LOCAL_COLOR }],
+    selection.moved,
   );
-
-  for (const bounds of selectedShapeBounds) {
-    drawShapeOutline(context, bounds, transform, "#2563eb");
+  for (const bounds of selection.selectedShapeBounds) {
+    drawShapeOutline(gpu, bounds, LOCAL_COLOR);
   }
-
-  if (selectionBounds) {
-    drawShapeOutline(context, selectionBounds, transform, "#2563eb");
+  if (selection.selectionBounds) {
+    drawShapeOutline(gpu, selection.selectionBounds, LOCAL_COLOR);
   }
-
-  drawRetainedFreehandSelection(
-    context,
-    retainCanvasSelectionStrokes(
-      { strokes, selectedIds: new Set(), remoteSelectedStrokeIds },
-      transform,
-    ),
-    transform,
+  drawStrokeRings(
+    gpu,
+    selection.remoteSelectedStrokeIds.map((remote) => ({
+      strokes: strokesFor(remote.ids),
+      color: remote.color,
+    })),
+    selection.moved,
   );
-
-  for (const bounds of remoteSelectedShapeBounds) {
-    drawShapeOutline(context, bounds, transform, bounds.color);
+  for (const bounds of selection.remoteSelectedShapeBounds) {
+    drawShapeOutline(gpu, bounds, bounds.color);
   }
 }
 
-function retainCanvasSelectionStrokes(
-  selection: Pick<
-    CanvasSelectionSnapshot,
-    "strokes" | "selectedIds" | "remoteSelectedStrokeIds"
-  >,
-  transform: WorldTransform,
-) {
-  const strokesById = new Map(selection.strokes.map((stroke) => [stroke.id, stroke]));
-  const groups: RetainedFreehandSelectionGroup[] = [];
-  const retainGroup = (ids: Set<string>, color: string) => {
-    const strokes: CanvasStroke[] = [];
-    for (const id of ids) {
-      const stroke = strokesById.get(id);
-      if (stroke) strokes.push(stroke);
-    }
-    const outlines = retainFreehandOutlines(strokes, transform);
-    if (outlines.length > 0) groups.push({ outlines, color });
-  };
-
-  retainGroup(selection.selectedIds, "#2563eb");
-  for (const remote of selection.remoteSelectedStrokeIds ?? []) {
-    retainGroup(remote.ids, remote.color);
-  }
-  return groups;
-}
-
-function drawShapeOutline(
-  context: CanvasRenderingContext2D,
-  bounds: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    rotation?: number;
-    type?: string;
-  },
-  transform: WorldTransform,
-  strokeStyle: string,
-) {
+function drawShapeOutline(gpu: CanvasGpu, bounds: OutlineBounds, color: string) {
+  const { transform } = gpu.view;
   const expand = bounds.type === "section" ? 4 : 2;
-  const sx = (bounds.x + bounds.width / 2) * transform.scale + transform.dx;
-  const sy = (bounds.y + bounds.height / 2) * transform.scale + transform.dy;
-  const sw = bounds.width * transform.scale + expand * 2;
-  const sh = bounds.height * transform.scale + expand * 2;
-  context.save();
-  context.translate(sx, sy);
-  context.rotate(((bounds.rotation ?? 0) * Math.PI) / 180);
-  context.strokeStyle = strokeStyle;
-  context.lineWidth = 1.5;
-  context.beginPath();
-  context.rect(-sw / 2, -sh / 2, sw, sh);
-  context.stroke();
-  context.restore();
+  const width = bounds.width * transform.scale + expand * 2;
+  const height = bounds.height * transform.scale + expand * 2;
+  const cx = (bounds.x + bounds.width / 2) * transform.scale + transform.dx;
+  const cy = (bounds.y + bounds.height / 2) * transform.scale + transform.dy;
+  drawRoundedRect(
+    gpu,
+    rectQuad(
+      cx - width / 2,
+      cy - height / 2,
+      width,
+      height,
+      ((bounds.rotation ?? 0) * Math.PI) / 180,
+    ),
+    { stroke: parseColor(color), strokeWidth: 1.5 },
+  );
 }

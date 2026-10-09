@@ -533,8 +533,7 @@ vektor-canvas {
 }
 
 .canvas-scene,
-.canvas-active-ink,
-.canvas-selection {
+.canvas-overlay {
   position: absolute;
   inset: 0;
   display: block;
@@ -545,13 +544,9 @@ vektor-canvas {
   z-index: 0;
 }
 
-.canvas-active-ink {
-  z-index: 3;
-}
-
-/* The only layer above the transformed DOM world, so an outline around a card
-   is not covered by the card. Interaction-transparent like the other surfaces. */
-.canvas-selection {
+/* The only layer above the transformed DOM world — the stroke under the pen and
+   selection outlines must not be covered by cards. */
+.canvas-overlay {
   z-index: 5;
 }
 

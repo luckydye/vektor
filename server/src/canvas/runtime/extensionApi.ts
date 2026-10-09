@@ -12,6 +12,7 @@ import type {
   FreehandStrokeStyle,
 } from "#canvas/render/freehand.ts";
 import type { CanvasTile, CanvasTileClip, CanvasTileView } from "#canvas/render/tiles.ts";
+import type { CanvasGpu } from "#canvas/render/webgl.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 
 // ---------------------------------------------------------------------------
@@ -315,14 +316,17 @@ export interface CanvasExtensionHost {
   service: <T>(key: symbol) => T;
 }
 
-// Engine services passed to a canvas-drawn element's paint() hook. The host
-// owns layer setup (transform, clear) and coordinate geometry; the extension
-// owns the shape's actual drawing and interaction regions.
+// Engine services passed to an element's paint() hook. The host owns the GL
+// pass (cleared, view uniforms set by `useProgram`) and coordinate geometry; the
+// extension owns the shape's pixels, loading strategy and placeholder.
 export interface CanvasPaintHelpers {
   scale: number;
   // World→screen translation of the shared viewport transform.
   dx: number;
   dy: number;
+  dpr: number;
+  // Repaints the scene, e.g. once an image or font has loaded.
+  invalidate: () => void;
   t: (key: TranslationKey) => string;
   // Section title chrome (shared geometry stays host-owned so hit-testing and
   // the inline title editor agree with what is painted).
@@ -330,17 +334,6 @@ export interface CanvasPaintHelpers {
   isEditingChrome: (id: string) => boolean;
   chromePosition: (shape: CanvasShape) => CanvasPoint;
   chromeSize: (shape: CanvasShape) => CanvasSize;
-}
-
-// Engine state handed to a DOM+canvas element's raster painter. The element
-// owns its pixels, loading strategy, and placeholder; the
-// host owns only the shared layer and viewport traversal.
-export interface CanvasRasterPaintHelpers {
-  scale: number;
-  dx: number;
-  dy: number;
-  dpr: number;
-  invalidate: () => void;
 }
 
 // Which part of a canvas-painted shape a point hit. "body" = the shape itself
@@ -380,20 +373,16 @@ export interface CanvasElementExtension {
     surface: CanvasElementSurface;
     tag?: string;
     rasterize?: (shape: CanvasShape) => boolean;
-    paint?: (
-      ctx: CanvasRenderingContext2D,
-      shape: CanvasShape,
-      helpers: CanvasPaintHelpers,
-    ) => void;
-    paintRaster?: (
-      ctx: CanvasRenderingContext2D,
-      shape: CanvasShape,
-      helpers: CanvasRasterPaintHelpers,
-    ) => void;
+    /**
+     * Draws the shape with the canvas's WebGL2 context: the shared primitives
+     * and text in `#canvas/render/`, or raw GL. GPU objects belong in
+     * `gpu.resources`, which is rebuilt after a context loss.
+     */
+    paint?: (gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) => void;
     /**
      * Zoom-relative raster content. `tiles` runs every frame and must return
      * already-rasterized work; `refresh` fires when the viewport outgrows it.
-     * Prefer `paintRaster` unless one resolution genuinely will not do.
+     * Prefer `paint` unless one resolution genuinely will not do.
      */
     tiles?: {
       tiles: (

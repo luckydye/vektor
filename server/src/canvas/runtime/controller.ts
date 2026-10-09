@@ -17,12 +17,20 @@ import {
 } from "#canvas/extensions/shape.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
-import { FREEHAND_STYLE, translateFreehandStroke } from "#canvas/render/freehand.ts";
+import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
+import { drawActiveStroke, drawStrokes, type InkOffset } from "#canvas/render/ink.ts";
 import { drawCanvasSelections } from "#canvas/render/selectionLayer.ts";
-import { drawCanvasStrokes, renderCanvasInkOverlay } from "#canvas/render/strokeLayer.ts";
+import { drawSnapGuides } from "#canvas/render/snapGuides.ts";
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "#canvas/render/theme.ts";
 import { type CanvasTileView, compositeTiles } from "#canvas/render/tiles.ts";
+import {
+  beginPass,
+  type CanvasGpu,
+  createCanvasGpu,
+  destroyCanvasGpu,
+  presentPass,
+} from "#canvas/render/webgl.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
 import type {
   CanvasEditSession,
@@ -69,9 +77,9 @@ import {
   type ScreenSize,
   type SnapGuide,
   scaleHandle,
-  tidyLayout,
   snapDragOffset as snapDrag,
   snapRotation,
+  tidyLayout,
   unionBounds,
   type ViewportCamera,
   screenToWorld as viewportScreenToWorld,
@@ -140,8 +148,7 @@ export interface CanvasToolDef {
 export interface CanvasDomRefs {
   viewport: HTMLElement | null;
   scene: HTMLCanvasElement | null;
-  activeInk: HTMLCanvasElement | null;
-  selection: HTMLCanvasElement | null;
+  overlay: HTMLCanvasElement | null;
   shapePopover: (HTMLElement & { hide: () => void }) | null;
   canvasToolbar:
     | (HTMLElement & { editor: unknown; dismiss: () => void; reposition: () => void })
@@ -595,15 +602,23 @@ export function createCanvasController(
         handles: true,
       };
     }
-    const stroke = strokesById().get(id);
-    if (!stroke) return null;
+    const stored = strokesById().get(id);
+    if (!stored) return null;
+    // Mid-gesture the box and handles follow the preview, not the stored points.
+    const preview = strokePreview;
+    const previewed = preview?.strokes.find((item) => item.id === id);
+    const stroke = previewed ?? stored;
+    const bounds = strokeBounds(stroke);
     return {
       id,
       kind: "stroke",
       type: stroke.kind === "shape" ? "shape" : "ink",
       locked: stroke.locked === true,
       canMove: canMoveStroke(stroke),
-      bounds: strokeBounds(stroke),
+      bounds:
+        bounds && preview && previewed
+          ? { ...bounds, x: bounds.x + preview.dx, y: bounds.y + preview.dy }
+          : bounds,
       rotation: stroke.rotation ?? 0,
       // Ink scales as part of a group whatever it is, but only a stamped
       // primitive has a box worth grabbing on its own.
@@ -787,9 +802,9 @@ export function createCanvasController(
   const domShapes = () =>
     state.shapes.filter((shape) => extensionManager.rendersInDom(shape));
 
-  // Shapes painted via a canvas-2d extension hook, drawn behind the DOM.
+  // Shapes drawn entirely on the scene canvas, behind the DOM.
   const paintedShapes = () =>
-    state.shapes.filter((shape) => extensionManager.paint(shape.type));
+    state.shapes.filter((shape) => extensionManager.paints(shape));
 
   const editingChromeShape = () => {
     const id = state.editingChromeId;
@@ -1601,84 +1616,93 @@ export function createCanvasController(
 
   /**
    * The strokes as the user currently sees them: stored geometry, with anything
-   * under an in-flight gesture swapped for its preview. Everything that paints
-   * or outlines ink reads this rather than `state.strokes`, so an outline can
-   * never be drawn a frame behind the stroke it surrounds.
+   * under an in-flight gesture swapped for its preview. A move is an offset at
+   * paint time, so dragging strokes never re-tessellates them.
    */
-  function renderedStrokes(): CanvasStroke[] {
+  function renderedInk(): { strokes: CanvasStroke[]; moved: InkOffset | null } {
     const preview = strokePreview;
-    if (!preview) return state.strokes;
-    const moved = preview.dx !== 0 || preview.dy !== 0;
-    const replacements = new Map(
-      preview.strokes.map((stroke) => [
-        stroke.id,
-        moved ? translateFreehandStroke(stroke, preview.dx, preview.dy) : stroke,
-      ]),
-    );
-    return state.strokes.map((stroke) => replacements.get(stroke.id) ?? stroke);
+    if (!preview) return { strokes: state.strokes, moved: null };
+    const replacements = new Map(preview.strokes.map((stroke) => [stroke.id, stroke]));
+    return {
+      strokes: state.strokes.map((stroke) => replacements.get(stroke.id) ?? stroke),
+      moved:
+        preview.dx !== 0 || preview.dy !== 0
+          ? { strokes: new Set(preview.strokes), dx: preview.dx, dy: preview.dy }
+          : null,
+    };
   }
 
-  const selectionSnapshot = () => ({
-    strokes: renderedStrokes(),
-    selectedIds: state.selectedIds,
-    remoteSelectedStrokeIds: remoteCanvasStrokeSelections(),
-    selectionBounds: selectedGroupBounds() ?? undefined,
-    selectedShapeBounds: [...state.selectedIds]
-      .map((id) => shapesById().get(id))
-      .filter((shape) => shape != null)
-      .map(shapeBounds),
-    remoteSelectedShapeBounds: remoteCanvasSelections().map((selection) => ({
-      x: selection.bounds.x,
-      y: selection.bounds.y,
-      width: selection.bounds.width,
-      height: selection.bounds.height,
-      rotation: selection.bounds.rotation,
-      type: selection.bounds.type,
-      color: selection.cursorColor,
-    })),
-  });
+  const selectionSnapshot = () => {
+    const ink = renderedInk();
+    return {
+      strokes: new Map(ink.strokes.map((stroke) => [stroke.id, stroke])),
+      moved: ink.moved,
+      selectedIds: state.selectedIds,
+      remoteSelectedStrokeIds: remoteCanvasStrokeSelections(),
+      selectionBounds: selectedGroupBounds() ?? undefined,
+      selectedShapeBounds: [...state.selectedIds]
+        .map((id) => shapesById().get(id))
+        .filter((shape) => shape != null)
+        .map(shapeBounds),
+      remoteSelectedShapeBounds: remoteCanvasSelections().map((selection) => ({
+        x: selection.bounds.x,
+        y: selection.bounds.y,
+        width: selection.bounds.width,
+        height: selection.bounds.height,
+        rotation: selection.bounds.rotation,
+        type: selection.bounds.type,
+        color: selection.cursorColor,
+      })),
+    };
+  };
 
-  // The camera changes every input frame. Keep the static world in one backing
-  // store so a pan produces one compositor update instead of one per visual layer.
+  // One context renders both passes; it is created on the first frame, once the
+  // canvases exist, and rebuilt from scratch after a context loss.
+  let gpu: CanvasGpu | null = null;
+  function gpuView() {
+    gpu ??= createCanvasGpu(renderInk);
+    return gpu.lost ? null : gpu;
+  }
+
+  // The scene: everything below the transformed DOM world.
   function renderScene() {
     const canvas = dom.scene;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
+    const target = canvas ? gpuView() : null;
+    if (!canvas || !target) return;
 
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = "source-over";
-    context.setLineDash([]);
-    context.clearRect(0, 0, state.screen.width, state.screen.height);
-    context.save();
-    renderGrid(context);
-    context.restore();
-    context.save();
-    renderPaintedShapes(context);
-    context.restore();
-    context.save();
-    renderRasterShapes(context);
-    context.restore();
-    context.save();
-    renderTileShapes(context);
-    context.restore();
-    context.save();
-    drawCanvasStrokes({
-      context,
-      screen: state.screen,
-      transform: transform(),
-      strokes: renderedStrokes(),
-      defaultInkColor: defaultInkColor(),
-    });
-    context.restore();
+    beginPass(target, { transform: transform(), screen: state.screen, dpr });
+    renderGrid(target);
+    renderPaintedShapes(target);
+    renderRasterShapes(target);
+    renderTileShapes(target);
+    const ink = renderedInk();
+    drawStrokes(target, ink.strokes, defaultInkColor(), ink.moved);
+    presentPass(target, canvas);
+  }
+
+  /**
+   * The overlay above the DOM world: the stroke under the pen, snap guides and
+   * selection outlines — an outline around a card must not be covered by it.
+   */
+  function renderOverlay() {
+    const canvas = dom.overlay;
+    const target = canvas ? gpuView() : null;
+    if (!canvas || !target) return;
+
+    beginPass(target, { transform: transform(), screen: state.screen, dpr });
+    if (activeFreehandStroke) {
+      drawActiveStroke(target, activeFreehandStroke, defaultInkColor());
+    }
+    drawSnapGuides(target, activeSnapGuides, "#2563eb");
+    drawCanvasSelections(target, selectionSnapshot());
+    presentPass(target, canvas);
   }
 
   /**
    * Shapes that paint from cached tiles. `refresh` decides for itself whether the
    * zoom moved far enough to re-rasterize; the engine cannot know.
    */
-  function renderTileShapes(ctx: CanvasRenderingContext2D) {
-    const t = transform();
+  function renderTileShapes(target: CanvasGpu) {
     // Built once per frame, not per shape: the same for every tile source, and
     // computing it walks the camera maths.
     let view: CanvasTileView | null = null;
@@ -1688,19 +1712,19 @@ export function createCanvasController(
       if (!source) continue;
       visible ??= worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 0);
       if (!rectsIntersect(visible, shapeAabb(shape))) continue;
-      view ??= { scale: t.scale, dpr, visibleWorld: visible };
+      view ??= { scale: transform().scale, dpr, visibleWorld: visible };
       source.refresh?.(shape, view, renderScene);
       const tiles = source.tiles(shape, view);
       if (!tiles?.length) continue;
-      compositeTiles(ctx, shape.frame, tiles, t, source.clip?.(shape) ?? null);
+      compositeTiles(target, shape.frame, tiles, source.clip?.(shape) ?? null);
     }
   }
 
-  function renderGrid(context: CanvasRenderingContext2D) {
+  function renderGrid(target: CanvasGpu) {
     if (state.gridType === "clean") return;
 
     if (state.gridType === "dots") {
-      drawWorldDots(context, transform(), state.screen, {
+      drawWorldDots(target, {
         size: 40,
         color: cssGridMajor,
         radius: 1.2,
@@ -1709,51 +1733,41 @@ export function createCanvasController(
       return;
     }
 
-    drawWorldGrid(context, transform(), state.screen, {
-      levels: [
-        {
-          size: 40,
-          color: cssGridMinor,
-          lineWidth: 1,
-          minScreenSpacing: 8,
-        },
-        {
-          size: 200,
-          color: cssGridMajor,
-          lineWidth: 1,
-          minScreenSpacing: 24,
-        },
-      ],
-    });
+    drawWorldGrid(target, [
+      { size: 40, color: cssGridMinor, lineWidth: 1, minScreenSpacing: 8 },
+      { size: 200, color: cssGridMajor, lineWidth: 1, minScreenSpacing: 24 },
+    ]);
   }
 
-  // Sections draw before raster elements and ink so their frames cannot overlap
-  // cards, media, or strokes. The host owns their shared paint/hit-test geometry.
-  function renderPaintedShapes(context: CanvasRenderingContext2D) {
-    const helpers: CanvasPaintHelpers = {
-      scale: transform().scale,
-      dx: transform().dx,
-      dy: transform().dy,
+  function paintHelpers(): CanvasPaintHelpers {
+    const { scale, dx, dy } = transform();
+    return {
+      scale,
+      dx,
+      dy,
+      dpr,
+      invalidate: renderScene,
       t,
       chromeTextColor: cssChromeText,
       isEditingChrome: (id) => state.editingChromeId === id,
       chromePosition: elementChromePosition,
       chromeSize: elementChromeSize,
     };
+  }
+
+  // Sections draw before raster elements and ink so their frames cannot overlap
+  // cards, media, or strokes. The host owns their shared paint/hit-test geometry.
+  function renderPaintedShapes(target: CanvasGpu) {
+    const helpers = paintHelpers();
     for (const shape of paintedShapes()) {
-      extensionManager.paint(shape.type)?.(context, shape, helpers);
+      extensionManager.get(shape.type).render.paint?.(target, shape, helpers);
     }
   }
 
-  function renderRasterShapes(ctx: CanvasRenderingContext2D) {
+  function renderRasterShapes(target: CanvasGpu) {
+    const helpers = paintHelpers();
     for (const shape of visibleRasterShapes()) {
-      extensionManager.get(shape.type).render.paintRaster?.(ctx, shape, {
-        scale: transform().scale,
-        dx: transform().dx,
-        dy: transform().dy,
-        dpr,
-        invalidate: renderScene,
-      });
+      extensionManager.get(shape.type).render.paint?.(target, shape, helpers);
     }
   }
 
@@ -1778,38 +1792,7 @@ export function createCanvasController(
 
   function renderInk() {
     renderScene();
-    renderActiveInk();
-    renderSelectionOverlay();
-  }
-
-  /**
-   * Selection outlines, on their own surface because it is the only layer that
-   * sits above the transformed DOM world — ink and shapes render below the
-   * cards, an outline around a card must not.
-   */
-  function renderSelectionOverlay() {
-    const canvas = dom.selection;
-    const context = canvas?.getContext("2d");
-    if (!context) return;
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.clearRect(0, 0, state.screen.width, state.screen.height);
-    drawCanvasSelections({ ...selectionSnapshot(), context, transform: transform() });
-  }
-
-  function renderActiveInk() {
-    const canvas = dom.activeInk;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-
-    renderCanvasInkOverlay({
-      context,
-      dpr,
-      screen: state.screen,
-      transform: transform(),
-      activeStroke: activeFreehandStroke,
-      snapGuides: activeSnapGuides,
-      defaultInkColor: defaultInkColor(),
-    });
+    renderOverlay();
   }
 
   function resize() {
@@ -1827,19 +1810,12 @@ export function createCanvasController(
       scene.style.width = `${state.screen.width}px`;
       scene.style.height = `${state.screen.height}px`;
     }
-    const activeInk = dom.activeInk;
-    if (activeInk) {
-      activeInk.width = Math.round(state.screen.width * dpr);
-      activeInk.height = Math.round(state.screen.height * dpr);
-      activeInk.style.width = `${state.screen.width}px`;
-      activeInk.style.height = `${state.screen.height}px`;
-    }
-    const selection = dom.selection;
-    if (selection) {
-      selection.width = Math.round(state.screen.width * dpr);
-      selection.height = Math.round(state.screen.height * dpr);
-      selection.style.width = `${state.screen.width}px`;
-      selection.style.height = `${state.screen.height}px`;
+    const overlay = dom.overlay;
+    if (overlay) {
+      overlay.width = Math.round(state.screen.width * dpr);
+      overlay.height = Math.round(state.screen.height * dpr);
+      overlay.style.width = `${state.screen.width}px`;
+      overlay.style.height = `${state.screen.height}px`;
     }
     renderInk();
   }
@@ -1893,7 +1869,7 @@ export function createCanvasController(
     clearSelection,
     setActiveStroke: (stroke) => {
       activeFreehandStroke = stroke;
-      renderActiveInk();
+      renderOverlay();
     },
     insertStroke: insertCanvasStroke,
     selectStroke: selectOnly,
@@ -2325,6 +2301,7 @@ export function createCanvasController(
     if (!strokePreview) return;
     strokePreview = { strokes: transformedStrokes, dx: 0, dy: 0, changed: true };
     scheduleInkRender();
+    invalidate();
   }
 
   /** A plain move, which leaves the captured geometry alone. */
@@ -2332,6 +2309,7 @@ export function createCanvasController(
     if (!strokePreview) return;
     strokePreview = { ...strokePreview, dx, dy, changed: true };
     scheduleInkRender();
+    invalidate();
   }
 
   function cancelStrokeTransformInteraction() {
@@ -3776,6 +3754,8 @@ export function createCanvasController(
     if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
     if (inkRafId !== null) cancelAnimationFrame(inkRafId);
     if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
+    if (gpu) destroyCanvasGpu(gpu);
+    gpu = null;
   }
 
   // --- view --------------------------------------------------------------

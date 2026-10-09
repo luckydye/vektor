@@ -1,279 +1,115 @@
-import type { ScreenSize, WorldTransform } from "#canvas/runtime/geometry.ts";
-import { screenToWorld, worldToScreen } from "#canvas/runtime/geometry.ts";
+import {
+  type CanvasGpu,
+  parseColor,
+  setColor,
+  useProgram,
+} from "#canvas/render/webgl.ts";
 
 interface WorldGridLevel {
-  // Distance between grid lines in world units. Use 1 for a pixel grid when
-  // world units map to image pixels.
+  // Distance between grid lines in world units.
   size: number;
-  color?: string;
-  lineWidth?: number;
+  color: string;
+  lineWidth: number;
   // Hide this level while its cell spacing is too dense on screen.
-  minScreenSpacing?: number;
-  // Hide this level while its cell spacing is too wide on screen.
-  maxScreenSpacing?: number;
+  minScreenSpacing: number;
 }
 
-interface DrawWorldGridOptions {
-  levels?: WorldGridLevel[];
-  size?: number;
-  color?: string;
-  lineWidth?: number;
-  minScreenSpacing?: number;
-  maxScreenSpacing?: number;
+// Opacity for a level from its on-screen cell spacing, fading over one threshold
+// width as it approaches the cutoff instead of popping.
+function levelFadeAlpha(screenSpacing: number, minScreenSpacing: number): number {
+  if (screenSpacing <= minScreenSpacing) return 0;
+  return Math.min(1, (screenSpacing - minScreenSpacing) / minScreenSpacing);
 }
 
-const DEFAULT_GRID_SIZE = 40;
-const DEFAULT_GRID_COLOR = "rgba(255,255,255,0.08)";
-const DEFAULT_GRID_LINE_WIDTH = 1;
+const FULLSCREEN_VERTEX = `
+void main() {
+  gl_Position = vec4(vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
 
-function visibleWorldBounds(screen: ScreenSize, t: WorldTransform) {
-  const topLeft = screenToWorld(0, 0, t);
-  const bottomRight = screenToWorld(screen.width, screen.height, t);
-  return {
-    minX: Math.min(topLeft.x, bottomRight.x),
-    minY: Math.min(topLeft.y, bottomRight.y),
-    maxX: Math.max(topLeft.x, bottomRight.x),
-    maxY: Math.max(topLeft.y, bottomRight.y),
-  };
+// Lines snap to CSS pixel centres like the old 2D grid, so a 1px line stays
+// crisp at every dpr; dots are centred on the exact intersections.
+const GRID_FRAGMENT = `
+uniform int u_dots;
+uniform int u_count;
+uniform float u_size[2];
+uniform float u_lineWidth[2];
+uniform vec4 u_color[2];
+out vec4 outColor;
+
+float lineCoverage(float s, float offset, float spacing, float width) {
+  float k = floor((s - offset) / spacing + 0.5);
+  float line = floor(k * spacing + offset + 0.5) + 0.5;
+  return clamp(width * u_dpr * 0.5 + 0.5 - abs(s - line) * u_dpr, 0.0, 1.0);
 }
 
-function snapScreenLine(value: number, lineWidth: number) {
-  return Math.round(value) + (lineWidth % 2 === 1 ? 0.5 : 0);
-}
-
-// Opacity for a level based on its on-screen cell spacing, fading it out over a
-// band as the spacing approaches the min/max cutoff instead of popping. Below
-// min (or above max) it is fully hidden; the fade band spans one threshold
-// width, so a level dissolves smoothly while zooming.
-function levelFadeAlpha(
-  screenSpacing: number,
-  minScreenSpacing?: number,
-  maxScreenSpacing?: number,
-): number {
-  let alpha = 1;
-  if (minScreenSpacing !== undefined) {
-    if (screenSpacing <= minScreenSpacing) return 0;
-    alpha = Math.min(alpha, (screenSpacing - minScreenSpacing) / minScreenSpacing);
-  }
-  if (maxScreenSpacing !== undefined) {
-    if (screenSpacing >= maxScreenSpacing) return 0;
-    // Fade over the top half of the visible range up to the cutoff.
-    alpha = Math.min(alpha, ((maxScreenSpacing - screenSpacing) / maxScreenSpacing) * 2);
-  }
-  return Math.max(0, Math.min(1, alpha));
-}
-
-export function drawWorldGrid(
-  ctx: CanvasRenderingContext2D,
-  transform: WorldTransform,
-  screen: ScreenSize,
-  options: DrawWorldGridOptions = {},
-): void {
-  const levels = options.levels ?? [
-    {
-      size: options.size ?? DEFAULT_GRID_SIZE,
-      color: options.color ?? DEFAULT_GRID_COLOR,
-      lineWidth: options.lineWidth ?? DEFAULT_GRID_LINE_WIDTH,
-      minScreenSpacing: options.minScreenSpacing,
-      maxScreenSpacing: options.maxScreenSpacing,
-    },
-  ];
-  const bounds = visibleWorldBounds(screen, transform);
-
-  ctx.save();
-  for (const level of levels) {
-    if (level.size <= 0) continue;
-
-    const screenSpacing = level.size * transform.scale;
-    const alpha = levelFadeAlpha(
-      screenSpacing,
-      level.minScreenSpacing,
-      level.maxScreenSpacing,
-    );
-    if (alpha <= 0) continue;
-
-    const lineWidth = level.lineWidth ?? DEFAULT_GRID_LINE_WIDTH;
-    const startX = Math.floor(bounds.minX / level.size) * level.size;
-    const startY = Math.floor(bounds.minY / level.size) * level.size;
-    const endX = Math.ceil(bounds.maxX / level.size) * level.size;
-    const endY = Math.ceil(bounds.maxY / level.size) * level.size;
-
-    ctx.beginPath();
-    for (let x = startX; x <= endX; x += level.size) {
-      const sx = snapScreenLine(worldToScreen(x, 0, transform).x, lineWidth);
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, screen.height);
+void main() {
+  vec2 s = vec2(gl_FragCoord.x, u_screen.y * u_dpr - gl_FragCoord.y) / u_dpr;
+  vec4 color = vec4(0.0);
+  for (int i = 0; i < 2; i++) {
+    if (i >= u_count) break;
+    float spacing = u_size[i] * u_view.x;
+    float coverage;
+    if (u_dots == 1) {
+      vec2 cell = floor((s - u_view.yz) / spacing + 0.5) * spacing + u_view.yz;
+      coverage = clamp(u_lineWidth[i] * u_dpr + 0.5 - length(s - cell) * u_dpr, 0.0, 1.0);
+    } else {
+      coverage = max(
+        lineCoverage(s.x, u_view.y, spacing, u_lineWidth[i]),
+        lineCoverage(s.y, u_view.z, spacing, u_lineWidth[i])
+      );
     }
-    for (let y = startY; y <= endY; y += level.size) {
-      const sy = snapScreenLine(worldToScreen(0, y, transform).y, lineWidth);
-      ctx.moveTo(0, sy);
-      ctx.lineTo(screen.width, sy);
-    }
-
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = level.color ?? DEFAULT_GRID_COLOR;
-    ctx.lineWidth = lineWidth;
-    ctx.stroke();
+    vec4 layer = u_color[i] * coverage;
+    color = layer + color * (1.0 - layer.a);
   }
-  ctx.restore();
+  outColor = color;
+}
+`;
+
+function drawLevels(gpu: CanvasGpu, levels: readonly WorldGridLevel[], dots: boolean) {
+  const { gl } = gpu;
+  const visible = levels
+    .map((level) => ({
+      level,
+      alpha: levelFadeAlpha(
+        level.size * gpu.view.transform.scale,
+        level.minScreenSpacing,
+      ),
+    }))
+    .filter(({ alpha }) => alpha > 0);
+  if (visible.length === 0) return;
+  if (visible.length > 2) throw new Error("The grid shader draws at most two levels");
+
+  const program = useProgram(gpu, "grid", FULLSCREEN_VERTEX, GRID_FRAGMENT);
+  gl.uniform1i(program.uniform("u_dots"), dots ? 1 : 0);
+  gl.uniform1i(program.uniform("u_count"), visible.length);
+  visible.forEach(({ level, alpha }, index) => {
+    gl.uniform1f(program.uniform(`u_size[${index}]`), level.size);
+    gl.uniform1f(program.uniform(`u_lineWidth[${index}]`), level.lineWidth);
+    setColor(gpu, program.uniform(`u_color[${index}]`), parseColor(level.color), alpha);
+  });
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
-interface DrawWorldDotsOptions {
-  // Distance between dots in world units.
-  size?: number;
-  color?: string;
-  // Dot radius in screen pixels (kept constant regardless of zoom).
-  radius?: number;
-  // Hide the dots while their spacing is too dense on screen.
-  minScreenSpacing?: number;
+export function drawWorldGrid(gpu: CanvasGpu, levels: readonly WorldGridLevel[]) {
+  drawLevels(gpu, levels, false);
 }
 
-const DEFAULT_DOT_RADIUS = 1.2;
-const DOT_PATTERN_TILE_SIZE = 64;
-const DOT_PATTERN_CACHE_LIMIT = 64;
-const dotPatternTiles = new Map<string, CanvasImageSource>();
-// CanvasPattern objects are tied to a specific ctx — key includes a ctx id.
-// We reuse the same grid canvas across frames so the ctx is stable.
-const dotPatternCache = new Map<string, CanvasPattern>();
-let dotPatternCtxId = 0;
-const dotPatternCtxIds = new WeakMap<CanvasRenderingContext2D, number>();
-
-function positiveModulo(value: number, divisor: number) {
-  return ((value % divisor) + divisor) % divisor;
-}
-
-function roundedPatternSpacing(screenSpacing: number) {
-  return Math.max(1, Math.round(screenSpacing * 4) / 4);
-}
-
-function getDotPatternTile(
-  color: string,
-  radius: number,
-  screenSpacing: number,
-): CanvasImageSource {
-  const roundedSpacing = roundedPatternSpacing(screenSpacing);
-  const sourceRadius = Math.max(0.5, (radius * DOT_PATTERN_TILE_SIZE) / roundedSpacing);
-  const key = `${color}|${sourceRadius.toFixed(3)}`;
-  const cached = dotPatternTiles.get(key);
-  if (cached) return cached;
-
-  const surface =
-    typeof OffscreenCanvas === "function"
-      ? new OffscreenCanvas(DOT_PATTERN_TILE_SIZE, DOT_PATTERN_TILE_SIZE)
-      : document.createElement("canvas");
-  surface.width = DOT_PATTERN_TILE_SIZE;
-  surface.height = DOT_PATTERN_TILE_SIZE;
-  const surfaceCtx = surface.getContext("2d") as
-    | CanvasRenderingContext2D
-    | OffscreenCanvasRenderingContext2D
-    | null;
-  if (!surfaceCtx) return surface;
-
-  surfaceCtx.fillStyle = color;
-  surfaceCtx.beginPath();
-  for (const x of [0, DOT_PATTERN_TILE_SIZE]) {
-    for (const y of [0, DOT_PATTERN_TILE_SIZE]) {
-      surfaceCtx.moveTo(x + sourceRadius, y);
-      surfaceCtx.arc(x, y, sourceRadius, 0, Math.PI * 2);
-    }
-  }
-  surfaceCtx.fill();
-
-  if (dotPatternTiles.size >= DOT_PATTERN_CACHE_LIMIT) {
-    const oldestKey = dotPatternTiles.keys().next().value;
-    if (oldestKey) dotPatternTiles.delete(oldestKey);
-  }
-  dotPatternTiles.set(key, surface);
-  return surface;
-}
-
-function drawWorldDotsAsPaths(
-  ctx: CanvasRenderingContext2D,
-  transform: WorldTransform,
-  screen: ScreenSize,
-  size: number,
-  color: string,
-  radius: number,
-  alpha = 1,
-): void {
-  const bounds = visibleWorldBounds(screen, transform);
-  const startX = Math.floor(bounds.minX / size) * size;
-  const startY = Math.floor(bounds.minY / size) * size;
-  const endX = Math.ceil(bounds.maxX / size) * size;
-  const endY = Math.ceil(bounds.maxY / size) * size;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  for (let x = startX; x <= endX; x += size) {
-    const sx = worldToScreen(x, 0, transform).x;
-    for (let y = startY; y <= endY; y += size) {
-      const sy = worldToScreen(0, y, transform).y;
-      ctx.moveTo(sx + radius, sy);
-      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-    }
-  }
-  ctx.fill();
-  ctx.restore();
-}
-
-// Draws a dot at each grid intersection. Mirrors drawWorldGrid's world→screen
-// placement so dots line up with where grid lines would cross.
+/** A dot at each grid intersection; `radius` is in screen pixels at every zoom. */
 export function drawWorldDots(
-  ctx: CanvasRenderingContext2D,
-  transform: WorldTransform,
-  screen: ScreenSize,
-  options: DrawWorldDotsOptions = {},
-): void {
-  const size = options.size ?? DEFAULT_GRID_SIZE;
-  if (size <= 0) return;
-
-  const screenSpacing = size * transform.scale;
-  const alpha = levelFadeAlpha(screenSpacing, options.minScreenSpacing);
-  if (alpha <= 0) return;
-
-  const radius = options.radius ?? DEFAULT_DOT_RADIUS;
-  const color = options.color ?? DEFAULT_GRID_COLOR;
-  const patternTile = getDotPatternTile(color, radius, screenSpacing);
-
-  // Cache CanvasPattern per (ctx, tile) — createPattern is non-trivial.
-  if (!dotPatternCtxIds.has(ctx)) dotPatternCtxIds.set(ctx, ++dotPatternCtxId);
-  const ctxId = dotPatternCtxIds.get(ctx)!;
-  const roundedSpacing = roundedPatternSpacing(screenSpacing);
-  const sourceRadius = Math.max(0.5, (radius * DOT_PATTERN_TILE_SIZE) / roundedSpacing);
-  const patternKey = `${ctxId}|${color}|${sourceRadius.toFixed(3)}`;
-  let pattern = dotPatternCache.get(patternKey);
-  if (!pattern) {
-    const created = ctx.createPattern(patternTile, "repeat");
-    if (!created) {
-      drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius, alpha);
-      return;
-    }
-    pattern = created;
-    if (dotPatternCache.size >= DOT_PATTERN_CACHE_LIMIT) {
-      const oldestKey = dotPatternCache.keys().next().value;
-      if (oldestKey) dotPatternCache.delete(oldestKey);
-    }
-    dotPatternCache.set(patternKey, pattern);
-  }
-
-  if (typeof pattern.setTransform !== "function" || typeof DOMMatrix !== "function") {
-    drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius, alpha);
-    return;
-  }
-
-  const offsetX = positiveModulo(transform.dx, screenSpacing);
-  const offsetY = positiveModulo(transform.dy, screenSpacing);
-  pattern.setTransform(
-    new DOMMatrix()
-      .translateSelf(offsetX, offsetY)
-      .scaleSelf(screenSpacing / DOT_PATTERN_TILE_SIZE),
+  gpu: CanvasGpu,
+  options: { size: number; color: string; radius: number; minScreenSpacing: number },
+) {
+  drawLevels(
+    gpu,
+    [
+      {
+        size: options.size,
+        color: options.color,
+        lineWidth: options.radius,
+        minScreenSpacing: options.minScreenSpacing,
+      },
+    ],
+    true,
   );
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = pattern;
-  ctx.fillRect(0, 0, screen.width, screen.height);
-  ctx.restore();
 }

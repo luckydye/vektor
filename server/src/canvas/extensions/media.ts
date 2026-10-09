@@ -1,12 +1,11 @@
+import { drawImage, drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
+import type { CanvasGpu } from "#canvas/render/webgl.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
 } from "#canvas/runtime/elementBase.ts";
-import type {
-  CanvasRasterPaintHelpers,
-  CanvasShape,
-} from "#canvas/runtime/extensionApi.ts";
+import type { CanvasPaintHelpers, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import { pointInRotatedShape } from "#canvas/runtime/geometry.ts";
 import { isMediaFile, mediaTypeForFile, toAbsoluteUploadUrl } from "#files/fileTypes.ts";
@@ -116,9 +115,9 @@ function cachedImageFallback(src: string): HTMLImageElement | null {
 }
 
 function paintStaticImage(
-  context: CanvasRenderingContext2D,
+  gpu: CanvasGpu,
   shape: CanvasShape,
-  helpers: CanvasRasterPaintHelpers,
+  helpers: CanvasPaintHelpers,
 ) {
   const src = mediaSource(shape);
   if (!src) return;
@@ -148,30 +147,28 @@ function paintStaticImage(
 
   const displayImage =
     cached instanceof HTMLImageElement ? cached : cachedImageFallback(src);
-  const centerX = (frame.x + frame.width / 2) * helpers.scale + helpers.dx;
-  const centerY = (frame.y + frame.height / 2) * helpers.scale + helpers.dy;
-  const angle = (frame.rotation * Math.PI) / 180;
-
-  context.save();
-  context.translate(centerX, centerY);
-  context.rotate(angle);
-  if (displayImage) {
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(displayImage, -width / 2, -height / 2, width, height);
-  } else {
-    context.fillStyle = "rgba(128,128,128,0.15)";
-    context.fillRect(-width / 2, -height / 2, width, height);
-  }
-
-  context.restore();
+  const quad = rectQuad(
+    frame.x * helpers.scale + helpers.dx,
+    frame.y * helpers.scale + helpers.dy,
+    width,
+    height,
+    (frame.rotation * Math.PI) / 180,
+  );
+  if (displayImage) drawImage(gpu, displayImage, quad);
+  else drawRoundedRect(gpu, quad, { fill: [0.5, 0.5, 0.5, 0.15] });
 }
 
-// GIFs must animate, so they render as a live DOM <img>; every other image is a
-// still frame the host rasterizes on the canvas layer. Owned here (not the
+// GIFs must animate, so they render as a live DOM <img>. Owned here (not the
 // host) since it is image-type knowledge.
 function isGifSrc(src: string): boolean {
   return /\.gif($|\?)/i.test(src);
+}
+
+// WebGL refuses pixels from another origin, so those images stay live DOM too.
+function rastersOnCanvas(src: string): boolean {
+  return (
+    !isGifSrc(src) && new URL(src, window.location.href).origin === window.location.origin
+  );
 }
 
 export const CanvasImage = CanvasElement.create({
@@ -192,13 +189,13 @@ export const CanvasImage = CanvasElement.create({
 
   addRender() {
     return {
-      // Still images are rasterized onto the shared canvas layer; animated GIFs
-      // stay live DOM, because a raster would freeze them on the first frame.
+      // Still same-origin images are rasterized onto the shared canvas layer;
+      // animated GIFs stay live DOM, because a raster would freeze them.
       surface: "dom+canvas" as const,
-      rasterize: (shape: CanvasShape) => !isGifSrc(mediaSource(shape)),
+      rasterize: (shape: CanvasShape) => rastersOnCanvas(mediaSource(shape)),
       tag: "canvas-image",
       article: { background: false },
-      paintRaster: paintStaticImage,
+      paint: paintStaticImage,
       hitTest: (shape: CanvasShape, world: { x: number; y: number }) =>
         pointInRotatedShape(world, shape.frame) ? ("body" as const) : null,
     };
