@@ -4,8 +4,8 @@
  * built-in means touching only this file — `runtime/registry.ts` reads these
  * lists and knows nothing else about the folder.
  *
- * `documentEditor`, `twitterEmbed` and `twitterWidgets` are not extensions;
- * they are supporting pieces.
+ * `documentEditor` and `shapePaint` are not extensions; they are supporting
+ * pieces.
  */
 import { CanvasDocumentLink } from "#canvas/extensions/documentLink.ts";
 import { DrawTool } from "#canvas/extensions/drawTool.ts";

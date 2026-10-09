@@ -105,11 +105,6 @@ export type CanvasRect = CanvasPoint & CanvasSize;
 // capabilities; they do not trigger element-specific host fallbacks.
 // ---------------------------------------------------------------------------
 
-// Which render surface(s) an element uses. Most elements are plain DOM custom
-// elements; images paint their pixels on a canvas layer but keep a DOM hit
-// target (`dom+canvas`); sections are drawn entirely on a canvas layer.
-type CanvasElementSurface = "dom" | "canvas" | "dom+canvas";
-
 // Declarative transform capability, replacing the host's
 // selectedTransformShape / selectedResizable* branches.
 export type CanvasElementTransform = {
@@ -292,6 +287,9 @@ export interface CanvasInputHandler {
 // An inline-edit session the host mounts (currently the document editor). Built
 // by an extension's onActivate and handed to CanvasExtensionHost.beginEdit; the
 // host owns the singleton editing slot.
+/** Viewport-independent pointer position, for placing a caret in a live editor. */
+export type CanvasClientPoint = { clientX: number; clientY: number };
+
 export type CanvasEditSession = {
   shapeId: string;
   tag: string;
@@ -320,6 +318,7 @@ export interface CanvasExtensionHost {
 // pass (cleared, view uniforms set by `useProgram`) and coordinate geometry; the
 // extension owns the shape's pixels, loading strategy and placeholder.
 export interface CanvasPaintHelpers {
+  host: CanvasExtensionHost;
   scale: number;
   // World→screen translation of the shared viewport transform.
   dx: number;
@@ -327,6 +326,12 @@ export interface CanvasPaintHelpers {
   dpr: number;
   // Repaints the scene, e.g. once an image or font has loaded.
   invalidate: () => void;
+  // Paints again on the next animation frame; call every paint while animating.
+  requestFrame: () => void;
+  // A themed colour, resolved from a `--canvas-*` custom property.
+  color: (property: string) => string;
+  // Persists measured content size through `behavior.measurement.normalize`.
+  reportSize: (shapeId: string, size: Partial<CanvasSize>) => void;
   t: (key: TranslationKey) => string;
   // Section title chrome (shared geometry stays host-owned so hit-testing and
   // the inline title editor agree with what is painted).
@@ -336,9 +341,9 @@ export interface CanvasPaintHelpers {
   chromeSize: (shape: CanvasShape) => CanvasSize;
 }
 
-// Which part of a canvas-painted shape a point hit. "body" = the shape itself
-// (images), "border"/"title" = a section's grabbable edge / editable title.
-type CanvasHitRegion = "body" | "title" | "border";
+// Which part of a shape a point hit, named by its extension: "body" for the
+// shape itself, or e.g. a section's "border"/"title", a note's "grip".
+type CanvasHitRegion = string;
 
 // Geometry a canvas-painted element's hitTest needs. The host keeps the z-order
 // (images above sections above the backdrop) and calls hitTest per shape.
@@ -370,9 +375,15 @@ export interface CanvasElementExtension {
     palette?: readonly string[];
   };
   render: {
-    surface: CanvasElementSurface;
+    /**
+     * Shapes are painted with WebGL unless this returns true: then `tag` is
+     * mounted as live DOM, for content WebGL cannot draw (a PDF viewer).
+     */
+    dom?: (shape: CanvasShape) => boolean;
     tag?: string;
-    rasterize?: (shape: CanvasShape) => boolean;
+    /** The live DOM editor mounted while the shape is edited in place. */
+    editor?: (shape: CanvasShape, at: CanvasClientPoint | null) => CanvasEditSession;
+    cursor?: (shape: CanvasShape, region: CanvasHitRegion) => string;
     /**
      * Draws the shape with the canvas's WebGL2 context: the shared primitives
      * and text in `#canvas/render/`, or raw GL. GPU objects belong in
@@ -402,6 +413,7 @@ export interface CanvasElementExtension {
       point: CanvasPoint,
       helpers: CanvasHitTestHelpers,
     ) => CanvasHitRegion | null;
+    /** Inline style for a live DOM body's positioned wrapper. */
     article?: {
       background?: boolean;
       style?: (shape: CanvasShape) => Record<string, string>;
@@ -421,8 +433,11 @@ export interface CanvasElementExtension {
   behavior: {
     transform: CanvasElementTransform;
     zOrder?: number;
-    editableBody?: boolean;
+    /** What a press on a region starts; "drag" unless an extension says "edit". */
+    press?: (shape: CanvasShape, region: CanvasHitRegion) => "drag" | "edit";
     measurement?: {
+      /** Content size from the shape's own layout, or null until it can tell. */
+      measure?: (shape: CanvasShape) => CanvasSize | null;
       fallback?: (shape: CanvasShape) => CanvasSize;
       normalize?: (
         shape: CanvasShape,
@@ -443,8 +458,14 @@ export interface CanvasElementExtension {
   };
   events?: {
     data?: (shape: CanvasShape, host: CanvasExtensionHost) => unknown;
-    activate?: (shape: CanvasShape, host: CanvasExtensionHost, event: MouseEvent) => void;
-    open?: (shape: CanvasShape, host: CanvasExtensionHost, event: Event) => void;
+    /** A press that ended without dragging. `local` is in shape-local world units. */
+    click?: (
+      shape: CanvasShape,
+      host: CanvasExtensionHost,
+      hit: { region: CanvasHitRegion; local: CanvasPoint; event: PointerEvent },
+    ) => void;
+    /** Wheel over the shape; return true to keep the canvas from panning. */
+    wheel?: (shape: CanvasShape, host: CanvasExtensionHost, event: WheelEvent) => boolean;
     prepare?: {
       key: (shape: CanvasShape, host: CanvasExtensionHost) => string | null;
       run: (shape: CanvasShape, host: CanvasExtensionHost) => void;

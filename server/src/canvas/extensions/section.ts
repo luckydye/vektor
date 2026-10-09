@@ -1,5 +1,6 @@
 import { drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
-import { drawText } from "#canvas/render/text.ts";
+import { drawTextLayout, lineLayout, middlePlacement } from "#canvas/render/text.ts";
+import type { TextStyle } from "#canvas/render/textLayout.ts";
 import { type CanvasGpu, parseColor, type Rgba } from "#canvas/render/webgl.ts";
 import { CanvasElementBase } from "#canvas/runtime/elementBase.ts";
 import type {
@@ -8,22 +9,16 @@ import type {
   CanvasShape,
 } from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
-import { pointOnRotatedShape, rotateVector } from "#canvas/runtime/geometry.ts";
+import {
+  localPointInShape,
+  pointOnRotatedShape,
+  rotateVector,
+} from "#canvas/runtime/geometry.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 
 // Sections are click-through in their interior; only the painted border (this
 // many world px) is grabbable, preserving access to content placed inside.
 const SECTION_BORDER = 6;
-
-function sectionLocalPoint(world: { x: number; y: number }, shape: CanvasShape) {
-  const frame = shape.frame;
-  const center = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
-  const local = rotateVector(
-    { x: world.x - center.x, y: world.y - center.y },
-    -frame.rotation,
-  );
-  return { x: local.x + frame.width / 2, y: local.y + frame.height / 2 };
-}
 
 // Draws the section frame and, unless it is being edited, its title chrome.
 // Screen-space geometry (transform, title position/size) comes from the host so
@@ -69,19 +64,24 @@ function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHe
     stroke: fade(0.48),
     strokeWidth: 1,
   });
-  const middle = size.height / 2;
-  drawText(gpu, title, {
-    at: {
-      x: position.x + 8 * cos - middle * sin,
-      y: position.y + 8 * sin + middle * cos,
-    },
-    rotation,
-    size: 13,
-    color: parseColor(helpers.chromeTextColor),
-    maxWidth: Math.max(0, size.width - 16),
-    clip: { x: -8, y: -middle, width: size.width, height: size.height },
-    invalidate: helpers.invalidate,
+  const label = lineLayout(
+    title,
+    titleStyle(helpers.chromeTextColor),
+    helpers.invalidate,
+  );
+  if (!label) return;
+  const at = {
+    x: position.x + 8 * cos - (size.height / 2) * sin,
+    y: position.y + 8 * sin + (size.height / 2) * cos,
+  };
+  drawTextLayout(gpu, label, {
+    ...middlePlacement(label, at, 1, rotation),
+    clip: { x: 0, y: 0, width: Math.max(0, size.width - 16), height: label.height },
   });
+}
+
+function titleStyle(color: string): TextStyle {
+  return { face: "bold", size: 13, color };
 }
 
 // Section frame accent colors offered by the toolbar swatch.
@@ -128,7 +128,6 @@ export const CanvasSection = CanvasElement.create({
 
   addRender() {
     return {
-      surface: "canvas" as const,
       paint: paintSection,
       hitTest: (shape, world, helpers) => hitTestSection(shape, world, helpers),
       chrome: {
@@ -144,10 +143,10 @@ export const CanvasSection = CanvasElement.create({
           const title =
             (typeof shape.data.text === "string" && shape.data.text) ||
             helpers.t("Section");
-          return {
-            width: Math.min(maxWidth, Math.max(40, title.length * 8 + 16)),
-            height: 22,
-          };
+          // Until the font loads, an estimate of 8px per character.
+          const label = lineLayout(title, titleStyle("#000"), () => {});
+          const width = label ? Math.ceil(label.width) + 16 : title.length * 8 + 16;
+          return { width: Math.min(maxWidth, Math.max(40, width)), height: 22 };
         },
       },
     };
@@ -245,7 +244,7 @@ function hitTestSection(
     return "title";
   }
 
-  const local = sectionLocalPoint(world, shape);
+  const local = localPointInShape(shape.frame, world);
   const inBounds =
     local.x >= -SECTION_BORDER &&
     local.x <= shape.frame.width + SECTION_BORDER &&

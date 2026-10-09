@@ -389,6 +389,9 @@ if (
 const svgIcon = (markup: string, className = "svg-icon") =>
   html`<div class=${className} aria-hidden="true">${unsafeSVG(markup)}</div>`;
 
+// Editors whose session props were assigned; lit re-runs `ref` every render.
+const mountedEditors = new WeakSet<Element>();
+
 /** Keeps chrome clicks away from the viewport marquee. */
 const stopPointer = (event: Event) => event.stopPropagation();
 
@@ -409,26 +412,27 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
     body = staticHtml`<${element}
       .shape=${shape}
       .context=${view.hostContext()}
-      .data=${view.elementDataForShape(shape)}
       @request-drag=${(event: Event) =>
         view.startElementDrag(shape, (event as CustomEvent).detail)}
-      @document-click=${(event: Event) =>
-        view.onElementActivate(shape, (event as CustomEvent).detail)}
-      @open-document=${(event: Event) => view.onElementOpen(shape, event)}
     ></${element}>`;
   } else if (session?.shapeId === shape.id && session.tag) {
-    // `elementTagForShape` returns null only while a card is being edited
-    // inline: the host swaps in its own editor, which depends on host editing
-    // state (save/exit orchestration) the element cannot carry.
+    // A shape being edited in place mounts its extension's live editor; at rest
+    // it is painted. The session's props are type-erased and vary per editor,
+    // so they are assigned on mount rather than bound — lit has no spread.
     const element = unsafeStatic(session.tag);
     body = staticHtml`<${element}
       class=${ifDefined(session.className)}
       ${ref((instance) => {
-        // The session's props are type-erased and vary per editor, so they are
-        // assigned rather than bound — lit has no spread for that.
-        if (instance) Object.assign(instance, session.props ?? {});
+        if (instance && !mountedEditors.has(instance)) {
+          mountedEditors.add(instance);
+          Object.assign(instance, session.props ?? {});
+        }
         view.setActiveEditorRef(instance ?? null);
       })}
+      .shape=${shape}
+      .context=${view.hostContext()}
+      @request-drag=${(event: Event) =>
+        view.startElementDrag(shape, (event as CustomEvent).detail)}
       @drag-start=${(event: Event) =>
         view.startElementDrag(shape, (event as CustomEvent).detail[0])}
       @exit-edit=${() => view.stopActiveEdit()}
@@ -444,7 +448,6 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
       })}
       style=${styleMap(view.articleStyle(shape))}
       data-shape-id=${shape.id}
-      hidden=${ifDefined(view.isBrowserFindTarget(shape) ? "until-found" : undefined)}
     >
       ${body}
     </article>
@@ -714,6 +717,19 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
             (shape) => shape.id,
             (shape) => shapeArticle(view, shape),
           )}
+          <ul class="canvas-text-mirror" aria-label=${t("Canvas")}>
+            ${repeat(
+              view.findableShapes(),
+              (item) => item.id,
+              (item) => html`<li
+                aria-label=${item.label}
+                data-shape-id=${item.id}
+                style=${styleMap(item.style)}
+              >
+                <div hidden="until-found" data-find-shape-id=${item.id}>${item.text}</div>
+              </li>`,
+            )}
+          </ul>
           ${repeat(
             view.uploadPlaceholders(),
             (placeholder) => placeholder.id,

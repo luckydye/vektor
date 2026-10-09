@@ -1,13 +1,19 @@
-import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
-import { shared } from "#canvas/runtime/state.ts";
-import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import type { LinkMetadata } from "#api/routes/url-metadata.ts";
-import {
-  CANVAS_ELEMENT_EVENTS,
-  CanvasElementBase,
-  dragOnPointerDown,
-} from "#canvas/runtime/elementBase.ts";
+import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
+import { loadedImage } from "#canvas/render/images.ts";
+import { drawImage, drawRoundedRect } from "#canvas/render/primitives.ts";
+import { type RichTextTheme, richTextLayout } from "#canvas/render/richText.ts";
+import { svgImage } from "#canvas/render/svgImage.ts";
+import { drawTextLayout, lineLayout } from "#canvas/render/text.ts";
+import type { TextLayout } from "#canvas/render/textLayout.ts";
+import { containQuad } from "#canvas/render/video.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
+import type { CanvasPaintHelpers } from "#canvas/runtime/extensionApi.ts";
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import { localPointInShape } from "#canvas/runtime/geometry.ts";
+import { shared } from "#canvas/runtime/state.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import {
   createVektorDocumentAddress,
   type ParsedVektorDocumentAddress,
@@ -18,6 +24,13 @@ import {
   type DocumentPropertyValue,
   propertyValueToText,
 } from "#documents/properties.ts";
+import {
+  type DocumentPreviewStatus,
+  documentBodyHtml,
+  documentTypeLabel,
+  fetchWorkflowPreview,
+  type WorkflowPreviewState,
+} from "#editor/elements/document-attachment.ts";
 import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import "#canvas/extensions/documentEditor.ts";
 import type { CanvasExtensionHost, CanvasShape } from "#canvas/runtime/extensionApi.ts";
@@ -205,15 +218,6 @@ type DocumentLinkControllerOptions = {
 
 // Reactive view model resolved from the document-link preview controller and
 // handed to <canvas-document> via its `data` property.
-type CanvasDocumentData = {
-  title: string;
-  headerImage: string;
-  type: string;
-  status: string;
-  content: string;
-  spaceId: string;
-  documentId: string;
-};
 
 export const DOCUMENT_CANVAS_SERVICE = Symbol("canvas-document-service");
 
@@ -227,29 +231,290 @@ function documentService(host: CanvasExtensionHost) {
   return host.service<DocumentCanvasService>(DOCUMENT_CANVAS_SERVICE);
 }
 
-// Ordinal of the checkbox the click landed on within the read-only card, or
-// null when the click wasn't on a task checkbox. Used to replay the toggle in
-// the editor the click is about to mount. The preview renders checkboxes as
-// non-interactive static HTML (the click actually lands on the card host), so
-// we hit-test the click point against the checkbox rects rather than the path.
-function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
-  const host = event.currentTarget as HTMLElement | null;
-  const view = host?.shadowRoot?.querySelector("document-view") as HTMLElement | null;
-  const root = view?.shadowRoot;
-  if (!root) return null;
-  const pad = 4;
-  const index = Array.from(
-    root.querySelectorAll<HTMLElement>('input[type="checkbox"]'),
-  ).findIndex((checkbox) => {
-    const rect = checkbox.getBoundingClientRect();
-    return (
-      event.clientX >= rect.left - pad &&
-      event.clientX <= rect.right + pad &&
-      event.clientY >= rect.top - pad &&
-      event.clientY <= rect.bottom + pad
-    );
+// Card geometry from `<document-attachment>`: a 1px border, a header with
+// 10/12px padding, an optional 16:9 header image, and a body padded 12/14/16.
+const HEADER = 52;
+const BODY_PADDING = { top: 12, x: 14, bottom: 16 };
+const OPEN_BUTTON = 24;
+
+const workflowPreviews = new Map<string, WorkflowPreviewState>();
+const bodyScroll = new Map<string, number>();
+
+function workflowPreview(spaceId: string, documentId: string, invalidate: () => void) {
+  const key = `${spaceId}:${documentId}`;
+  const cached = workflowPreviews.get(key);
+  if (cached) return cached;
+  workflowPreviews.set(key, { status: "loading" });
+  fetchWorkflowPreview(spaceId, documentId)
+    .catch(
+      (error): WorkflowPreviewState => ({
+        status: "error",
+        message:
+          error instanceof Error ? error.message : "Unable to load latest workflow run.",
+      }),
+    )
+    .then((preview) => {
+      workflowPreviews.set(key, preview);
+      invalidate();
+    });
+  return workflowPreviews.get(key) ?? null;
+}
+
+function bodyTheme(helpers: Pick<CanvasPaintHelpers, "color">): RichTextTheme {
+  const muted = helpers.color("--canvas-muted");
+  return {
+    size: 13,
+    lineHeight: 1.45,
+    color: helpers.color("--canvas-doc-content"),
+    headings: [22, 18, 15, 13, 13, 13],
+    headingLineHeight: 1.18,
+    headingColor: helpers.color("--canvas-text"),
+    headingFace: "bold",
+    blockMargin: 0.55,
+    headingMargin: { top: 0.8, bottom: 0.35 },
+    listIndent: 16,
+    itemMargin: 0,
+    link: helpers.color("--canvas-doc-accent"),
+    muted,
+    codeBackground: helpers.color("--canvas-tool-hover-bg"),
+    divider: helpers.color("--canvas-doc-divider"),
+    accent: helpers.color("--canvas-doc-accent"),
+    classes: {
+      empty: { color: muted },
+      "workflow-meta": { color: muted, size: 11 },
+      "workflow-status": { face: "bold", size: 11 },
+      completed: { highlight: "#dcfce7", color: "#047857" },
+      failed: { highlight: "#fee2e2", color: "#b91c1c" },
+      running: { highlight: "#dbeafe", color: "#1d4ed8" },
+      neutral: { highlight: "#f3f4f6", color: "#4b5563" },
+    },
+  };
+}
+
+interface DocumentCardGeometry {
+  bodyTop: number;
+  bodyHeight: number;
+  contentWidth: number;
+  layout: TextLayout | null;
+}
+
+function cardGeometry(
+  shape: CanvasShape,
+  host: CanvasExtensionHost,
+  helpers: Pick<CanvasPaintHelpers, "color" | "invalidate">,
+): DocumentCardGeometry {
+  const documents = documentService(host);
+  const { width, height } = shape.frame;
+  const imageHeight = documents.shapeHeaderImage(shape) ? ((width - 2) * 9) / 16 + 1 : 0;
+  const bodyTop = 1 + HEADER + imageHeight;
+  const contentWidth = width - 2 - BODY_PADDING.x * 2;
+  const type = documents.shapeType(shape);
+  const spaceId = documents.documentSpaceIdForShape(shape) || host.spaceId;
+  const documentId = documents.isRemote(shape)
+    ? ""
+    : documents.documentIdForShape(shape) || "";
+  const html = documentBodyHtml({
+    status: documents.shapeStatus(shape) as DocumentPreviewStatus,
+    type,
+    content: documents.shapeContent(shape),
+    workflow:
+      type === "workflow"
+        ? spaceId && documentId
+          ? workflowPreview(spaceId, documentId, helpers.invalidate)
+          : { status: "error", message: "Missing workflow id." }
+        : null,
   });
-  return index >= 0 ? index : null;
+  return {
+    bodyTop,
+    bodyHeight: height - 1 - bodyTop,
+    contentWidth,
+    layout: richTextLayout(html, bodyTheme(helpers), contentWidth, helpers.invalidate),
+  };
+}
+
+function paintDocument(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const documents = documentService(helpers.host);
+  const { width, height } = shape.frame;
+  const pixels = helpers.scale * helpers.dpr;
+  const divider = parseColor(helpers.color("--canvas-doc-divider"));
+  drawRoundedRect(gpu, shapeQuad(shape, helpers, 0, 0, width, height), {
+    radius: 8 * helpers.scale,
+    fill: parseColor(helpers.color("--canvas-doc-bg")),
+    stroke: parseColor(helpers.color("--canvas-shape-border")),
+    strokeWidth: helpers.scale,
+  });
+
+  const icon = svgImage(
+    iconMarkup("document"),
+    helpers.color("--canvas-doc-accent"),
+    18 * pixels,
+    helpers.invalidate,
+  );
+  if (icon)
+    drawImage(gpu, icon, shapeQuad(shape, helpers, 13, 1 + HEADER / 2 - 9, 18, 18));
+  const textLeft = 13 + 18 + 10;
+  const textWidth = width - textLeft - 12 - OPEN_BUTTON - 10;
+  const title = lineLayout(
+    documents.shapeTitle(shape),
+    { face: "bold", size: 14, color: helpers.color("--canvas-text") },
+    helpers.invalidate,
+  );
+  const typeLabel = lineLayout(
+    documentTypeLabel(documents.shapeType(shape)),
+    { face: "regular", size: 11, color: helpers.color("--canvas-muted") },
+    helpers.invalidate,
+  );
+  if (title && typeLabel) {
+    const top = 1 + (HEADER - title.height - 2 - typeLabel.height) / 2;
+    const clip = (layout: TextLayout) => ({
+      x: 0,
+      y: 0,
+      width: textWidth,
+      height: layout.height,
+    });
+    drawTextLayout(
+      gpu,
+      title,
+      shapePlacement(shape, helpers, { x: textLeft, y: top }, clip(title)),
+    );
+    drawTextLayout(
+      gpu,
+      typeLabel,
+      shapePlacement(
+        shape,
+        helpers,
+        { x: textLeft, y: top + title.height + 2 },
+        clip(typeLabel),
+      ),
+    );
+  }
+  const chevron = svgImage(
+    iconMarkup("chevron-right-thin"),
+    helpers.color("--canvas-muted"),
+    16 * pixels,
+    helpers.invalidate,
+  );
+  if (chevron) {
+    const x = width - 1 - 12 - OPEN_BUTTON + 4;
+    drawImage(gpu, chevron, shapeQuad(shape, helpers, x, 1 + HEADER / 2 - 8, 16, 16));
+  }
+  drawRoundedRect(gpu, shapeQuad(shape, helpers, 1, HEADER, width - 2, 1), {
+    fill: divider,
+  });
+
+  const headerImage = documents.shapeHeaderImage(shape);
+  if (headerImage) {
+    const frame = shapeQuad(
+      shape,
+      helpers,
+      1,
+      1 + HEADER,
+      width - 2,
+      ((width - 2) * 9) / 16,
+    );
+    drawRoundedRect(gpu, frame, {
+      fill: parseColor(helpers.color("--canvas-tool-hover-bg")),
+    });
+    const image = loadedImage(headerImage, helpers.invalidate);
+    if (image) {
+      drawImage(gpu, image, containQuad(frame, image.naturalWidth, image.naturalHeight));
+    }
+    drawRoundedRect(
+      gpu,
+      shapeQuad(shape, helpers, 1, 1 + HEADER + ((width - 2) * 9) / 16, width - 2, 1),
+      { fill: divider },
+    );
+  }
+
+  const geometry = cardGeometry(shape, helpers.host, helpers);
+  if (!geometry.layout) return;
+  const scroll = bodyScroll.get(shape.id) ?? 0;
+  drawTextLayout(
+    gpu,
+    geometry.layout,
+    shapePlacement(
+      shape,
+      helpers,
+      { x: 1 + BODY_PADDING.x, y: geometry.bodyTop + BODY_PADDING.top - scroll },
+      {
+        x: -BODY_PADDING.x,
+        y: scroll - BODY_PADDING.top,
+        width: geometry.contentWidth + BODY_PADDING.x * 2,
+        height: geometry.bodyHeight,
+      },
+    ),
+    (src) => loadedImage(src, helpers.invalidate),
+  );
+}
+
+// What a card-local point lands on in the body: a task checkbox, whose toggle
+// is replayed in the editor the click mounts, or a link.
+function bodyHit(
+  shape: CanvasShape,
+  host: CanvasExtensionHost,
+  local: { x: number; y: number },
+) {
+  const geometry = cardGeometry(shape, host, geometryOnly);
+  const layout = geometry.layout;
+  if (!layout) return { task: null, href: null };
+  const x = local.x - 1 - BODY_PADDING.x;
+  const y =
+    local.y - geometry.bodyTop - BODY_PADDING.top + (bodyScroll.get(shape.id) ?? 0);
+  const pad = 4;
+  const task = layout.checkboxes.find(
+    (box) =>
+      x >= box.x - pad &&
+      x <= box.x + box.size + pad &&
+      y >= box.y - pad &&
+      y <= box.y + box.size + pad,
+  );
+  const link = layout.links.find(
+    (box) =>
+      x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height,
+  );
+  return { task: task?.index ?? null, href: link?.href ?? null };
+}
+
+// Hit tests only need the card's geometry, which colours do not change.
+const geometryOnly = { color: () => "#000", invalidate: () => {} };
+
+function openEditor(
+  shape: CanvasShape,
+  host: CanvasExtensionHost,
+  toggleTaskIndex: number | null,
+) {
+  if (shape.locked) return;
+  const documents = documentService(host);
+  const documentId = documents.documentIdForShape(shape);
+  const address = documents.address(shape);
+  if (!documentId || !address) return;
+  if (!documents.canEdit() || documents.isRemote(shape)) return;
+  if (documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
+  if (!documents.inlineEditable(shape)) return;
+  // The editor is a plain custom element, so its session is created here and
+  // torn down in `finish` — there is no unmount hook to do it.
+  const collaboration = host.createCollaboration?.({ spaceId: host.spaceId, documentId });
+  host.beginEdit({
+    shapeId: shape.id,
+    tag: "canvas-document-editor",
+    className: "canvas-shape-document-editor",
+    props: {
+      spaceId: host.spaceId,
+      documentId,
+      documentTitle: documents.shapeTitle(shape),
+      headerImage: documents.shapeHeaderImage(shape),
+      toggleTaskIndex,
+      collaboration,
+    },
+    finish: (element) => {
+      const editor = element as
+        | (HTMLElement & { getHtml?: () => string | null; destroy?: () => void })
+        | null;
+      const html = editor?.getHtml?.();
+      if (typeof html === "string") documents.setPreviewContent(address, html);
+      editor?.destroy?.();
+    },
+  });
 }
 
 export const CanvasDocumentLink = CanvasElement.create({
@@ -273,7 +538,25 @@ export const CanvasDocumentLink = CanvasElement.create({
 
   isValid: (shape) => Boolean(parseVektorDocumentAddress(shapeDocumentAddress(shape))),
   addRender() {
-    return { surface: "dom" as const, tag: "canvas-document" };
+    return {
+      paint: paintDocument,
+      hitTest: (shape: CanvasShape, world: { x: number; y: number }) => {
+        const local = localPointInShape(shape.frame, world);
+        const { width, height } = shape.frame;
+        if (local.x < 0 || local.y < 0 || local.x > width || local.y > height)
+          return null;
+        const buttonLeft = width - 1 - 12 - OPEN_BUTTON;
+        const buttonTop = 1 + (HEADER - OPEN_BUTTON) / 2;
+        const onButton =
+          local.x >= buttonLeft &&
+          local.x <= buttonLeft + OPEN_BUTTON &&
+          local.y >= buttonTop &&
+          local.y <= buttonTop + OPEN_BUTTON;
+        return onButton ? "open" : "body";
+      },
+      cursor: (_shape: CanvasShape, region: string) =>
+        region === "open" ? "pointer" : "move",
+    };
   },
   addBehavior() {
     return { transform: { move: true, resize: "box" as const, rotate: false } };
@@ -288,71 +571,40 @@ export const CanvasDocumentLink = CanvasElement.create({
           if (address) void documentService(host).loadPreview(address);
         },
       },
-      data: (shape, host): CanvasDocumentData => {
-        const documents = documentService(host);
-        return {
-          title: documents.shapeTitle(shape),
-          headerImage: documents.shapeHeaderImage(shape),
-          type: documents.shapeType(shape),
-          status: documents.shapeStatus(shape),
-          content: documents.shapeContent(shape),
-          spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
-          documentId: documents.isRemote(shape)
-            ? ""
-            : documents.documentIdForShape(shape) || "",
-        };
-      },
-      activate: (shape, host, event) => {
-        if (event.button !== 0) return;
-        if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-        if (host.wasDragged() || shape.locked) return;
-        const documents = documentService(host);
-        const documentId = documents.documentIdForShape(shape);
-        const address = documents.address(shape);
-        if (!documentId || !address) return;
-        if (!documents.canEdit() || documents.isRemote(shape)) return;
-        if (documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
-        if (!documents.inlineEditable(shape)) return;
-        // The editor is a plain custom element, so its session is created here
-        // and torn down in `finish` — there is no unmount hook to do it.
-        const collaboration = host.createCollaboration?.({
-          spaceId: host.spaceId,
-          documentId,
-        });
-        host.beginEdit({
-          shapeId: shape.id,
-          tag: "canvas-document-editor",
-          className: "canvas-shape-document-editor",
-          props: {
-            spaceId: host.spaceId,
-            documentId,
-            documentTitle: documents.shapeTitle(shape),
-            headerImage: documents.shapeHeaderImage(shape),
-            toggleTaskIndex: clickedTaskCheckboxIndex(event),
-            collaboration,
-          },
-          finish: (element) => {
-            const editor = element as
-              | (HTMLElement & { getHtml?: () => string | null; destroy?: () => void })
-              | null;
-            const html = editor?.getHtml?.();
-            if (typeof html === "string") documents.setPreviewContent(address, html);
-            editor?.destroy?.();
-          },
-        });
-      },
-      open: (shape, host, event) => {
-        event.preventDefault();
-        if (host.wasDragged()) return;
+      // The open button navigates; a click anywhere else edits in place.
+      click: (shape, host, hit) => {
+        if (
+          hit.event.shiftKey ||
+          hit.event.ctrlKey ||
+          hit.event.metaKey ||
+          hit.event.altKey
+        ) {
+          return;
+        }
         const href = documentService(host).documentHrefForShape(shape);
-        if (!href) return;
-        // A workflow card can ask for its output document, which lives next to
-        // the card's own document under the same space path.
-        const requested =
-          event instanceof CustomEvent && typeof event.detail?.documentId === "string"
-            ? event.detail.documentId
-            : null;
-        host.openUrl(requested ? siblingDocumentHref(href, requested) : href);
+        if (hit.region === "open") {
+          if (href) host.openUrl(href);
+          return;
+        }
+        const body = bodyHit(shape, host, hit.local);
+        if (href && body.href?.startsWith("document:")) {
+          host.openUrl(siblingDocumentHref(href, body.href.slice("document:".length)));
+          return;
+        }
+        openEditor(shape, host, body.task);
+      },
+      // The preview scrolls inside the card instead of panning the canvas.
+      wheel: (shape, host, event) => {
+        const geometry = cardGeometry(shape, host, geometryOnly);
+        const overflow =
+          (geometry.layout?.height ?? 0) +
+          BODY_PADDING.top +
+          BODY_PADDING.bottom -
+          geometry.bodyHeight;
+        if (overflow <= 0) return false;
+        const current = bodyScroll.get(shape.id) ?? 0;
+        bodyScroll.set(shape.id, Math.min(overflow, Math.max(0, current + event.deltaY)));
+        return true;
       },
     };
   },
@@ -394,49 +646,6 @@ export const CanvasDocumentLink = CanvasElement.create({
     };
   },
 });
-
-// Static preview card. Delegates to the existing <document-attachment> custom
-// element; the inline editor (<canvas-document-editor>) stays host-owned and
-// is swapped in by the host while a card is being edited. A
-// plain click bubbles up as `document-click` for the host to enter edit mode;
-// the card's own `open-document` event already bubbles (composed) to the host.
-class CanvasDocumentElement extends CanvasElementBase {
-  private card: HTMLElement | null = null;
-
-  protected mount() {
-    const card = document.createElement("document-attachment");
-    card.className = "canvas-shape-document";
-    dragOnPointerDown(card, (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
-    );
-    card.addEventListener("wheel", (event) => event.stopPropagation());
-    // Re-emit the click synchronously so the host handler still sees the
-    // original event (currentTarget === the card, for checkbox hit-testing).
-    card.addEventListener("click", (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.documentClick, event),
-    );
-    this.appendChild(card);
-    this.card = card;
-  }
-
-  protected update() {
-    const data = this.extra as CanvasDocumentData | null;
-    const card = this.card;
-    if (!card || !data) return;
-    card.setAttribute("title", data.title);
-    if (data.headerImage) card.setAttribute("header-image", data.headerImage);
-    else card.removeAttribute("header-image");
-    card.setAttribute("type", data.type);
-    card.setAttribute("status", data.status);
-    card.setAttribute("content", data.content);
-    card.setAttribute("space-id", data.spaceId);
-    card.setAttribute("document-id", data.documentId);
-  }
-}
-
-if (typeof customElements !== "undefined" && !customElements.get("canvas-document")) {
-  customElements.define("canvas-document", CanvasDocumentElement);
-}
 
 function documentLabel(doc: {
   properties?: { title?: DocumentPropertyValue | null } | null;

@@ -1,7 +1,7 @@
 /**
- * A minimal TrueType reader: just enough of `cmap`, `hmtx` and `glyf` to give
- * the text renderer each glyph's quadratic outline. Expects the bundled font,
- * whose composite glyphs were flattened when it was subset.
+ * A minimal TrueType reader: `cmap`, `hmtx` and `glyf` for outlines, and the
+ * `GPOS` kern pairs. Expects the bundled fonts, whose composite glyphs were
+ * flattened when they were subset.
  */
 
 export interface FontGlyph {
@@ -12,10 +12,14 @@ export interface FontGlyph {
   curves: Float32Array;
 }
 
+/** Metrics in ems; `descender` is negative. */
 export interface Font {
   ascender: number;
   descender: number;
-  glyph: (codePoint: number) => FontGlyph;
+  glyphIndex: (codePoint: number) => number;
+  glyph: (index: number) => FontGlyph;
+  /** Advance adjustment between two glyph indices, in ems. */
+  kerning: (left: number, right: number) => number;
 }
 
 function tables(view: DataView) {
@@ -196,11 +200,14 @@ export function parseFont(buffer: ArrayBuffer): Font {
     return { advance, bounds, curves: new Float32Array(curves) };
   };
 
+  const pairAdjustment = readKernPairs(view, table("GPOS"));
+  const kerningCache = new Map<number, number>();
+
   return {
     ascender: em(view.getInt16(hhea + 4)),
     descender: em(view.getInt16(hhea + 6)),
-    glyph: (codePoint) => {
-      const index = glyphIndex(codePoint);
+    glyphIndex,
+    glyph: (index) => {
       let glyph = cache.get(index);
       if (!glyph) {
         glyph = readGlyph(index);
@@ -208,5 +215,136 @@ export function parseFont(buffer: ArrayBuffer): Font {
       }
       return glyph;
     },
+    kerning: (left, right) => {
+      const key = left * 65536 + right;
+      let value = kerningCache.get(key);
+      if (value === undefined) {
+        value = em(pairAdjustment(left, right));
+        kerningCache.set(key, value);
+      }
+      return value;
+    },
+  };
+}
+
+function coverageIndex(view: DataView, offset: number, glyph: number): number {
+  const format = view.getUint16(offset);
+  const count = view.getUint16(offset + 2);
+  if (format === 1) {
+    let low = 0;
+    let high = count - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      const value = view.getUint16(offset + 4 + middle * 2);
+      if (value === glyph) return middle;
+      if (value < glyph) low = middle + 1;
+      else high = middle - 1;
+    }
+    return -1;
+  }
+  for (let i = 0; i < count; i++) {
+    const range = offset + 4 + i * 6;
+    const start = view.getUint16(range);
+    if (glyph >= start && glyph <= view.getUint16(range + 2)) {
+      return view.getUint16(range + 4) + glyph - start;
+    }
+  }
+  return -1;
+}
+
+function glyphClass(view: DataView, offset: number, glyph: number): number {
+  const format = view.getUint16(offset);
+  if (format === 1) {
+    const start = view.getUint16(offset + 2);
+    const count = view.getUint16(offset + 4);
+    const index = glyph - start;
+    return index >= 0 && index < count ? view.getUint16(offset + 6 + index * 2) : 0;
+  }
+  const count = view.getUint16(offset + 2);
+  for (let i = 0; i < count; i++) {
+    const range = offset + 4 + i * 6;
+    if (glyph >= view.getUint16(range) && glyph <= view.getUint16(range + 2)) {
+      return view.getUint16(range + 4);
+    }
+  }
+  return 0;
+}
+
+function valueRecordSize(format: number): number {
+  let size = 0;
+  for (let bit = format; bit; bit >>= 1) size += (bit & 1) * 2;
+  return size;
+}
+
+// Byte offset of XAdvance inside a value record: after XPlacement and YPlacement.
+function xAdvanceOffset(format: number): number | null {
+  if (!(format & 4)) return null;
+  return ((format & 1) + ((format >> 1) & 1)) * 2;
+}
+
+// The `kern` feature's pair-adjustment subtables (lookup type 2, or 9 wrapping
+// it), as one lookup from a glyph pair to an XAdvance in font units.
+function readKernPairs(view: DataView, gpos: number) {
+  const features = gpos + view.getUint16(gpos + 6);
+  const lookups = gpos + view.getUint16(gpos + 8);
+  const lookupIndices = new Set<number>();
+  for (let i = 0; i < view.getUint16(features); i++) {
+    const record = features + 2 + i * 6;
+    const tag = String.fromCharCode(
+      ...[0, 1, 2, 3].map((byte) => view.getUint8(record + byte)),
+    );
+    if (tag !== "kern") continue;
+    const feature = features + view.getUint16(record + 4);
+    for (let j = 0; j < view.getUint16(feature + 2); j++) {
+      lookupIndices.add(view.getUint16(feature + 4 + j * 2));
+    }
+  }
+  const subtables: number[] = [];
+  for (const index of [...lookupIndices].sort((a, b) => a - b)) {
+    const lookup = lookups + view.getUint16(lookups + 2 + index * 2);
+    const type = view.getUint16(lookup);
+    for (let j = 0; j < view.getUint16(lookup + 4); j++) {
+      let subtable = lookup + view.getUint16(lookup + 6 + j * 2);
+      if (type === 9) {
+        if (view.getUint16(subtable + 2) !== 2) continue;
+        subtable += view.getUint32(subtable + 4);
+      } else if (type !== 2) {
+        continue;
+      }
+      subtables.push(subtable);
+    }
+  }
+
+  return (left: number, right: number): number => {
+    for (const subtable of subtables) {
+      const covered = coverageIndex(view, subtable + view.getUint16(subtable + 2), left);
+      if (covered < 0) continue;
+      const format1 = view.getUint16(subtable + 4);
+      const format2 = view.getUint16(subtable + 6);
+      const advance = xAdvanceOffset(format1);
+      const recordSize = valueRecordSize(format1) + valueRecordSize(format2);
+      if (view.getUint16(subtable) === 1) {
+        const set = subtable + view.getUint16(subtable + 10 + covered * 2);
+        let low = 0;
+        let high = view.getUint16(set) - 1;
+        while (low <= high) {
+          const middle = (low + high) >> 1;
+          const record = set + 2 + middle * (2 + recordSize);
+          const second = view.getUint16(record);
+          if (second === right) {
+            return advance === null ? 0 : view.getInt16(record + 2 + advance);
+          }
+          if (second < right) low = middle + 1;
+          else high = middle - 1;
+        }
+        continue;
+      }
+      const class1 = glyphClass(view, subtable + view.getUint16(subtable + 8), left);
+      const class2 = glyphClass(view, subtable + view.getUint16(subtable + 10), right);
+      const class2Count = view.getUint16(subtable + 14);
+      const record = subtable + 16 + (class1 * class2Count + class2) * recordSize;
+      return advance === null ? 0 : view.getInt16(record + advance);
+    }
+    return 0;
   };
 }

@@ -246,9 +246,9 @@ async function fetchTwitterEmbed(url: string): Promise<LinkMetadata | null> {
     favicon: null,
     updatedAt: null,
     fetchedAt: Date.now(),
-    // Injected into the page as markup by `canvas-twitter-embed`, and written
-    // by X rather than by this app, so it goes through the same walker as any
-    // other remote preview.
+    // Parsed into a native card by the canvas link painter, and written by X
+    // rather than by this app, so it goes through the same walker as any other
+    // remote preview.
     embed: { provider: "twitter", html: sanitizeVektorDocumentPreviewHtml(data.html) },
   };
 }

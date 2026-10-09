@@ -1,7 +1,63 @@
+import {
+  editorTheme,
+  shapePlacement,
+  shapeQuad,
+  shapeTextLayout,
+} from "#canvas/extensions/shapePaint.ts";
+import { drawRoundedRect } from "#canvas/render/primitives.ts";
+import { drawTextLayout } from "#canvas/render/text.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
 import { CanvasRichTextElement } from "#canvas/runtime/elementBase.ts";
-import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
+import type {
+  CanvasClientPoint,
+  CanvasPaintHelpers,
+  CanvasShape,
+} from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import { localPointInShape } from "#canvas/runtime/geometry.ts";
 import { iconMarkup } from "#components/Icon.tsx";
+
+// The article's 1px border, the 18px drag grip and the editor's 4px padding.
+const BORDER = 1;
+const GRIP = 18;
+const PADDING = 4;
+const THEME = editorTheme(15, "#111827");
+
+function paintNote(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const { width, height } = shape.frame;
+  const box = (x: number, y: number, w: number, h: number) =>
+    shapeQuad(shape, helpers, x, y, w, h);
+  drawRoundedRect(gpu, box(0, 0, width, height), {
+    radius: 8 * helpers.scale,
+    fill: parseColor(shape.style.color),
+    stroke: parseColor(helpers.color("--canvas-shape-border")),
+    strokeWidth: helpers.scale,
+  });
+  const corner = 7 * helpers.scale;
+  drawRoundedRect(gpu, box(BORDER, BORDER, width - BORDER * 2, GRIP), {
+    radius: [corner, corner, 0, 0],
+    fill: parseColor(helpers.color("--canvas-handle-bg")),
+  });
+  const inset = BORDER + PADDING;
+  const contentWidth = width - inset * 2;
+  const layout = shapeTextLayout(shape, THEME, contentWidth, helpers.invalidate);
+  if (!layout) return;
+  drawTextLayout(
+    gpu,
+    layout,
+    shapePlacement(
+      shape,
+      helpers,
+      { x: inset, y: BORDER + GRIP + PADDING },
+      {
+        x: -PADDING,
+        y: -PADDING,
+        width: contentWidth + PADDING * 2,
+        height: height - BORDER * 2 - GRIP,
+      },
+    ),
+  );
+}
 
 const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
 
@@ -44,20 +100,37 @@ export const Note = CanvasElement.create({
   },
 
   addRender() {
-    return { surface: "dom" as const, tag: "canvas-note" };
+    return {
+      paint: paintNote,
+      hitTest: (shape: CanvasShape, world: { x: number; y: number }) => {
+        const local = localPointInShape(shape.frame, world);
+        if (local.x < 0 || local.y < 0) return null;
+        if (local.x > shape.frame.width || local.y > shape.frame.height) return null;
+        return local.y <= BORDER + GRIP ? "grip" : "body";
+      },
+      cursor: (_shape: CanvasShape, region: string) =>
+        region === "grip" ? "move" : "text",
+      editor: (shape: CanvasShape, at: CanvasClientPoint | null) => ({
+        shapeId: shape.id,
+        tag: "canvas-note",
+        props: { caret: at },
+      }),
+    };
   },
 
   addBehavior() {
-    return { transform: { move: true, resize: "box" as const, rotate: true } };
+    return {
+      transform: { move: true, resize: "box" as const, rotate: true },
+      press: (_shape: CanvasShape, region: string) =>
+        region === "grip" ? ("drag" as const) : ("edit" as const),
+    };
   },
 });
 
-// Note body: a drag grip plus the rich-text editor.
+// The live note, mounted only while editing: a drag grip plus the editor.
 class CanvasNoteElement extends CanvasRichTextElement {
   protected readonly showHandle = true;
-  protected readonly dragFromEditor = false;
   protected readonly removeWhenEmpty = false;
-  protected readonly autoSize = false;
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-note")) {

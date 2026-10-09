@@ -73,7 +73,8 @@ function setQuad(
 
 const ROUNDED_RECT_FRAGMENT = `
 uniform vec2 u_size;
-uniform float u_radius;
+// Corner radii: top-left, top-right, bottom-right, bottom-left.
+uniform vec4 u_radius;
 uniform vec4 u_fill;
 uniform vec4 u_stroke;
 uniform float u_strokeWidth;
@@ -81,8 +82,10 @@ in vec2 v_local;
 out vec4 outColor;
 void main() {
   vec2 half_ = u_size * 0.5;
-  vec2 q = abs(v_local - half_) - half_ + u_radius;
-  float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - u_radius;
+  vec2 p = v_local - half_;
+  float r = p.x > 0.0 ? (p.y > 0.0 ? u_radius.z : u_radius.y) : (p.y > 0.0 ? u_radius.w : u_radius.x);
+  vec2 q = abs(p) - half_ + r;
+  float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
   float fill = clamp(0.5 - d * u_dpr, 0.0, 1.0);
   float stroke = clamp(u_strokeWidth * u_dpr * 0.5 + 0.5 - abs(d) * u_dpr, 0.0, 1.0);
   vec4 color = u_fill * fill;
@@ -95,7 +98,8 @@ export function drawRoundedRect(
   gpu: CanvasGpu,
   quad: ScreenQuad,
   options: {
-    radius?: number;
+    /** One radius, or top-left, top-right, bottom-right, bottom-left. */
+    radius?: number | readonly [number, number, number, number];
     fill?: Rgba;
     stroke?: Rgba;
     strokeWidth?: number;
@@ -110,9 +114,15 @@ export function drawRoundedRect(
   setQuad(gpu, program, quad);
   gl.uniform1f(program.uniform("u_pad"), strokeWidth / 2 + 1);
   gl.uniform2f(program.uniform("u_size"), width, height);
-  gl.uniform1f(
+  const radius = options.radius ?? 0;
+  const radii = typeof radius === "number" ? [radius, radius, radius, radius] : radius;
+  const limit = Math.min(width, height) / 2;
+  gl.uniform4f(
     program.uniform("u_radius"),
-    Math.min(options.radius ?? 0, width / 2, height / 2),
+    Math.min(radii[0], limit),
+    Math.min(radii[1], limit),
+    Math.min(radii[2], limit),
+    Math.min(radii[3], limit),
   );
   setColor(gpu, program.uniform("u_fill"), options.fill ?? [0, 0, 0, 0], options.alpha);
   setColor(
@@ -128,13 +138,22 @@ export function drawRoundedRect(
 const IMAGE_FRAGMENT = `
 uniform sampler2D u_image;
 uniform vec2 u_size;
+uniform vec4 u_uv;
 uniform float u_alpha;
 in vec2 v_local;
 out vec4 outColor;
 void main() {
-  outColor = texture(u_image, v_local / u_size) * u_alpha;
+  outColor = texture(u_image, mix(u_uv.xy, u_uv.zw, v_local / u_size)) * u_alpha;
 }
 `;
+
+/** The part of a texture to draw, in 0..1 texture coordinates. */
+export interface TextureCrop {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
 
 /** Draws an image or tile, uploaded and mipmapped on first use. */
 export function drawImage(
@@ -143,8 +162,18 @@ export function drawImage(
   quad: ScreenQuad,
   alpha = 1,
 ) {
+  drawTexture(gpu, textureFor(gpu, source), quad, alpha);
+}
+
+/** Draws a premultiplied-alpha texture the caller owns, e.g. a video frame. */
+export function drawTexture(
+  gpu: CanvasGpu,
+  texture: WebGLTexture,
+  quad: ScreenQuad,
+  alpha = 1,
+  crop: TextureCrop = { x0: 0, y0: 0, x1: 1, y1: 1 },
+) {
   const { gl } = gpu;
-  const texture = textureFor(gpu, source);
   const program = useProgram(gpu, "image", QUAD_VERTEX, IMAGE_FRAGMENT);
   setQuad(gpu, program, quad);
   gl.uniform1f(program.uniform("u_pad"), 0);
@@ -154,6 +183,7 @@ export function drawImage(
     Math.hypot(quad.axisY.x, quad.axisY.y),
   );
   gl.uniform1f(program.uniform("u_alpha"), alpha);
+  gl.uniform4f(program.uniform("u_uv"), crop.x0, crop.y0, crop.x1, crop.y1);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.uniform1i(program.uniform("u_image"), 0);

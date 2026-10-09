@@ -262,17 +262,9 @@ export class CanvasExtensionManager {
     return { ...serialized, frame } as CanvasSerializedShape;
   }
 
-  rasters(shape: CanvasShape) {
-    const render = this.get(shape.type).render;
-    return render.surface === "dom+canvas" && (render.rasterize?.(shape) ?? true);
-  }
-
+  /** Shapes are painted with WebGL unless their extension keeps them as live DOM. */
   rendersInDom(shape: CanvasShape) {
-    return this.get(shape.type).render.surface !== "canvas" && !this.rasters(shape);
-  }
-
-  paints(shape: CanvasShape) {
-    return this.get(shape.type).render.surface === "canvas";
+    return this.get(shape.type).render.dom?.(shape) === true;
   }
 
   zOrder(type: CanvasShapeType) {

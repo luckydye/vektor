@@ -35,7 +35,7 @@ export interface CanvasElementContext {
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is
 // undefined during SSR, so fall back to a dummy base there; the guarded
 // customElements.define() calls never run on the server anyway. Exported so
-// standalone canvas custom elements (e.g. twitterEmbed) share the guard.
+// standalone canvas custom elements share the guard.
 export const HostElement: typeof HTMLElement =
   typeof HTMLElement !== "undefined"
     ? HTMLElement
@@ -64,19 +64,6 @@ export const CANVAS_ELEMENT_EVENTS = {
   requestDrag: "request-drag",
   documentClick: "document-click",
 } as const;
-
-function cssPixels(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function borderBoxExtra(element: HTMLElement) {
-  const style = getComputedStyle(element);
-  return {
-    width: cssPixels(style.borderLeftWidth) + cssPixels(style.borderRightWidth),
-    height: cssPixels(style.borderTopWidth) + cssPixels(style.borderBottomWidth),
-  };
-}
 
 /**
  * Base class for canvas element custom elements. Subclasses build their DOM
@@ -162,24 +149,23 @@ export abstract class CanvasElementBase extends HostElement {
 }
 
 /**
- * Shared base for the rich-text element types (note, text), which both embed a
- * <rich-text-editor>. The editor is created once and only its `value` is
- * patched, so typing/selection state survives shape updates.
+ * Shared base for the rich-text element types (note, text), mounted only while
+ * a shape is edited; at rest the shape is painted. It focuses itself on mount,
+ * with the caret where the editing click landed, or at the end.
  */
 export abstract class CanvasRichTextElement extends CanvasElementBase {
-  // Note shows a dedicated drag grip; text drags from the editor body itself
-  // (only when not being edited).
+  // Note shows a dedicated drag grip.
   protected abstract readonly showHandle: boolean;
-  protected abstract readonly dragFromEditor: boolean;
   // Text has nothing anchoring it, so an empty one is removed on blur; notes
   // keep their box.
   protected abstract readonly removeWhenEmpty: boolean;
-  // Text auto-sizes to its content (measured, not persisted); notes have a
-  // fixed box.
-  protected abstract readonly autoSize: boolean;
 
   private editorEl: RichTextEditorElementApi | null = null;
-  private sizeObserver: ResizeObserver | null = null;
+  private pendingCaret: { clientX: number; clientY: number } | null = null;
+
+  set caret(value: { clientX: number; clientY: number } | null) {
+    this.pendingCaret = value;
+  }
 
   protected mount() {
     if (this.showHandle) {
@@ -199,8 +185,6 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     editor.value =
       typeof this.shapeData?.data.text === "string" ? this.shapeData.data.text : "";
 
-    // Drive the host services directly rather than emitting type-specific events
-    // for the host to interpret.
     editor.addEventListener("content-change", (event) => {
       const id = this.shapeData?.id;
       if (id) this.services?.updateData(id, { text: (event as CustomEvent).detail });
@@ -217,28 +201,12 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
       const value = String((event as CustomEvent).detail ?? "");
       if (this.removeWhenEmpty && value.trim() === "") this.services?.removeShape(id);
     });
-
-    // Match the original template: pointerdown on the editor always stops
-    // propagation (so it never reaches the viewport marquee/deselect); text
-    // additionally begins a drag when it isn't focused for editing.
-    editor.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      if (
-        this.dragFromEditor &&
-        !(event.currentTarget as Element).matches(":focus-within")
-      ) {
-        this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event);
-      }
-    });
+    // Keep presses inside the editor from reaching the viewport marquee/deselect.
+    editor.addEventListener("pointerdown", (event) => event.stopPropagation());
     this.appendChild(editor);
     this.editorEl = editor;
 
-    // Text measures its own content and reports it; the host caches it for
-    // geometry. The editor's box changes as content wraps, so observe it.
-    if (this.autoSize && typeof ResizeObserver !== "undefined") {
-      this.sizeObserver = new ResizeObserver(() => this.measure());
-      this.sizeObserver.observe(editor);
-    }
+    requestAnimationFrame(() => this.placeCaret());
   }
 
   protected update() {
@@ -246,54 +214,23 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
       this.editorEl.value =
         typeof this.shapeData.data.text === "string" ? this.shapeData.data.text : "";
     }
-    if (this.autoSize) this.measure();
   }
 
   focus(options?: FocusOptions) {
     this.editorEl?.focus(options);
   }
 
-  // Intrinsic content size of the text, measured by cloning the editor's laid-
-  // out content at max-content width in its shadow root. Reported to the host,
-  // which caches it as the text shape's geometry (never persisted).
-  private measure() {
-    const id = this.shapeData?.id;
-    const editor = this.editorEl;
-    if (!id || !editor) return;
-    const content = editor.el ?? editor.shadowRoot?.querySelector<HTMLElement>(".tiptap");
-    const shadowRoot = editor.shadowRoot;
-    if (!content || !shadowRoot) return;
-
-    const clone = content.cloneNode(true) as HTMLElement;
-    clone.removeAttribute("contenteditable");
-    clone.removeAttribute("tabindex");
-    Object.assign(clone.style, {
-      position: "fixed",
-      left: "-100000px",
-      top: "-100000px",
-      visibility: "hidden",
-      pointerEvents: "none",
-      width: "max-content",
-      minWidth: "0",
-      maxWidth: "none",
-      height: "auto",
-      whiteSpace: "pre-wrap",
-      wordBreak: "normal",
-      overflowWrap: "normal",
-    });
-    shadowRoot.append(clone);
-    const width = Math.max(clone.scrollWidth, clone.offsetWidth);
-    const height = Math.max(clone.scrollHeight, clone.offsetHeight);
-    clone.remove();
-
-    // The positioned box is the wrapping .canvas-shape article (this element is
-    // display:contents), so its border adds to the shape's box.
-    const extra = this.parentElement
-      ? borderBoxExtra(this.parentElement)
-      : { width: 0, height: 0 };
-    this.services?.reportSize(id, {
-      width: Math.ceil(width + extra.width),
-      height: Math.ceil(height + extra.height),
-    });
+  private placeCaret() {
+    const editor = this.editorEl?.editorInstance;
+    if (!editor) throw new Error("The rich-text editor did not mount");
+    const at = this.pendingCaret;
+    this.pendingCaret = null;
+    const position = at
+      ? editor.view.posAtCoords({ left: at.clientX, top: at.clientY })?.pos
+      : undefined;
+    editor
+      .chain()
+      .focus(position ?? "end")
+      .run();
   }
 }

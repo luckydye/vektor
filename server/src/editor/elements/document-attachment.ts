@@ -9,10 +9,10 @@ import { browserLang, createTranslator } from "#utils/lang.ts";
 
 const t = createTranslator(browserLang());
 
-type DocumentPreviewStatus = "loading" | "loaded" | "error";
+export type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "workflow" | string;
 
-type WorkflowPreviewState =
+export type WorkflowPreviewState =
   | { status: "idle" | "loading" }
   | { status: "no-run" }
   | { status: "error"; message: string }
@@ -29,7 +29,7 @@ function isCanvasSnapshotContent(content: string): boolean {
   }
 }
 
-function documentTypeLabel(type: DocumentPreviewType | null): string {
+export function documentTypeLabel(type: DocumentPreviewType | null): string {
   if (type === "canvas") return "Canvas";
   if (type === "workflow") return "Workflow";
   return "Document";
@@ -77,6 +77,43 @@ function shouldRenderDocumentView(params: {
   if (params.type === "workflow") return false;
   if (params.type === "canvas" || isCanvasSnapshotContent(params.content)) return false;
   return true;
+}
+
+/**
+ * The card body as sanitized HTML: the document's own content, or the label
+ * or workflow summary that stands in for it.
+ */
+export function documentBodyHtml(params: {
+  status: DocumentPreviewStatus;
+  type: DocumentPreviewType | null;
+  content: string;
+  workflow: WorkflowPreviewState | null;
+}): string {
+  return shouldRenderDocumentView(params)
+    ? sanitizeVektorDocumentPreviewHtml(params.content)
+    : previewHtml(params);
+}
+
+/** The latest run of a workflow document and its output, for its card. */
+export async function fetchWorkflowPreview(
+  spaceId: string,
+  documentId: string,
+): Promise<WorkflowPreviewState> {
+  const { api } = await import("#api/client.ts");
+  const latest = await api.workflows.getLatestRun(spaceId, documentId);
+  if (!latest) return { status: "no-run" };
+  const run = await api.workflows.getRun(spaceId, latest.runId);
+  let output: Record<string, unknown> | null = null;
+  if (run.resultArtifact) {
+    const response = await fetch(run.resultArtifact.url);
+    if (!response.ok)
+      throw new Error(`Unable to load workflow result: ${response.status}`);
+    const value: unknown = await response.json();
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      output = value as Record<string, unknown>;
+    }
+  }
+  return { status: "loaded", run, output };
 }
 
 function setDocumentViewHtml(
@@ -635,30 +672,9 @@ if (
 
       async loadWorkflowPreview(spaceId: string, documentId: string, key: string) {
         try {
-          const { api } = await import("#api/client.ts");
-          const latest = await api.workflows.getLatestRun(spaceId, documentId);
+          const preview = await fetchWorkflowPreview(spaceId, documentId);
           if (this.workflowPreviewKey !== key) return;
-          if (!latest) {
-            this.workflowPreview = { status: "no-run" };
-            this.render();
-            return;
-          }
-
-          const run = await api.workflows.getRun(spaceId, latest.runId);
-          if (this.workflowPreviewKey !== key) return;
-          let output: Record<string, unknown> | null = null;
-          if (run.resultArtifact) {
-            const response = await fetch(run.resultArtifact.url);
-            if (!response.ok)
-              throw new Error(`Unable to load workflow result: ${response.status}`);
-            const value: unknown = await response.json();
-            if (value && typeof value === "object" && !Array.isArray(value)) {
-              output = value as Record<string, unknown>;
-            }
-          }
-          if (this.workflowPreviewKey !== key) return;
-          this.workflowPreview = { status: "loaded", run, output };
-          this.render();
+          this.workflowPreview = preview;
         } catch (error) {
           if (this.workflowPreviewKey !== key) return;
           this.workflowPreview = {
@@ -668,8 +684,8 @@ if (
                 ? error.message
                 : "Unable to load latest workflow run.",
           };
-          this.render();
         }
+        this.render();
       }
     },
   );

@@ -3,8 +3,19 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { SsrfError, safeFetch } from "#utils/ssrf.ts";
 
-// Only relay content types that the canvas link-preview card can meaningfully display.
+// Only relay content types the canvas can display. Raster images only: an SVG
+// served from our origin is a document that can run script.
 const ALLOWED_CONTENT_TYPE_PREFIXES = ["video/", "audio/"];
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "image/bmp",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+]);
 
 const HEADERS_TO_FORWARD = [
   "content-type",
@@ -38,7 +49,7 @@ function rejectMedia(url: string, reason: string): Response {
 /**
  * Proxy a remote media file
  *
- * Fetches an external image or video on the server's behalf so a document can embed it without leaking the reader's address. Requires a session.
+ * Fetches an external raster image, video or audio file on the server's behalf so a document can embed it without leaking the reader's address. Requires a session.
  *
  * @tag Media
  * @query url! Absolute media URL.
@@ -83,8 +94,12 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     const contentType = upstream.headers.get("content-type") ?? "";
-    if (!ALLOWED_CONTENT_TYPE_PREFIXES.some((p) => contentType.startsWith(p))) {
-      throw rejectMedia(url, `content-type "${contentType}" is not audio or video`);
+    const mediaType = contentType.split(";")[0].trim().toLowerCase();
+    if (
+      !ALLOWED_IMAGE_TYPES.has(mediaType) &&
+      !ALLOWED_CONTENT_TYPE_PREFIXES.some((p) => mediaType.startsWith(p))
+    ) {
+      throw rejectMedia(url, `content-type "${contentType}" is not media`);
     }
 
     const out = new Headers();
@@ -93,6 +108,8 @@ export const GET: ApiRouteHandler = (context) =>
       if (value) out.set(header, value);
     }
     out.set("cache-control", "public, max-age=3600, immutable");
+    out.set("x-content-type-options", "nosniff");
+    out.set("content-security-policy", "sandbox; default-src 'none'");
 
     return new Response(upstream.body, { status: upstream.status, headers: out });
   });

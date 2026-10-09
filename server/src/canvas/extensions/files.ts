@@ -1,17 +1,30 @@
-import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
-import "#editor/elements/file-attachment.ts";
 import {
   type MediaUploadOptions,
   mediaFilesFromDataTransfer,
   uploadMediaFile,
 } from "#canvas/extensions/media.ts";
 import { createModelShape } from "#canvas/extensions/model.ts";
+import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
+import { drawImage, drawRoundedRect } from "#canvas/render/primitives.ts";
+import { svgImage } from "#canvas/render/svgImage.ts";
+import { drawTextLayout, lineLayout } from "#canvas/render/text.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
 } from "#canvas/runtime/elementBase.ts";
-import type { CanvasInputHandler, CanvasShape } from "#canvas/runtime/extensionApi.ts";
+import type {
+  CanvasInputHandler,
+  CanvasPaintHelpers,
+  CanvasShape,
+} from "#canvas/runtime/extensionApi.ts";
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import {
+  FILE_COLORS,
+  FILE_ICONS,
+  getFileType,
+} from "#editor/elements/file-attachment.ts";
 import { isMediaFile, isModelFile } from "#files/fileTypes.ts";
 
 const PDF_PREVIEW_SIZE = { width: 420, height: 560 };
@@ -43,7 +56,24 @@ export const CanvasFile = CanvasElement.create({
   isValid: (shape) => Boolean(fileSource(shape)),
 
   addRender() {
-    return { surface: "dom" as const, tag: "canvas-file" };
+    return {
+      // A PDF keeps its live viewer: WebGL has no PDF renderer.
+      dom: (shape: CanvasShape) =>
+        isPdfFile(fileName(shape)) || isPdfFile(fileSource(shape)),
+      tag: "canvas-file",
+      paint: paintFile,
+      cursor: () => "move",
+    };
+  },
+
+  // A click that did not drag opens the file.
+  addEvents() {
+    return {
+      click: (shape: CanvasShape, host: { openUrl: (url: string) => void }) => {
+        const src = fileSource(shape);
+        if (src) host.openUrl(src);
+      },
+    };
   },
 
   addBehavior() {
@@ -99,90 +129,176 @@ function isCanvasFile(file: File) {
   return !isMediaFile(file);
 }
 
-// File body: PDFs get an inline <iframe> viewer with a drag header; everything
-// else renders the shared <file-attachment> card. PDF-ness is fixed for a given
-// file shape (its src/filename never change), so it's decided once at mount.
-class CanvasFileElement extends CanvasElementBase {
-  private isPdf = false;
+// Card geometry from `<file-attachment>`: an icon or text preview above a 1px
+// divider and an info bar with a small icon and the filename.
+const INFO_BAR = 34;
+const textPreviews = new Map<string, string | "loading" | "error">();
+
+function textPreview(src: string, invalidate: () => void): string | null {
+  const cached = textPreviews.get(src);
+  if (cached === "error") return "Unable to load preview";
+  if (cached && cached !== "loading") return cached;
+  if (!cached) {
+    textPreviews.set(src, "loading");
+    void fetch(src)
+      .then((response) => {
+        if (!response.ok) throw new Error(`File preview failed: ${response.status}`);
+        return response.text();
+      })
+      .then(
+        (text) =>
+          textPreviews.set(src, text.slice(0, 500) + (text.length > 500 ? "\n..." : "")),
+        () => textPreviews.set(src, "error"),
+      )
+      .then(invalidate);
+  }
+  return null;
+}
+
+function paintFile(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const { width, height } = shape.frame;
+  const name =
+    fileName(shape) || (typeof shape.data.text === "string" && shape.data.text) || "file";
+  const type = getFileType(name);
+  const color = FILE_COLORS[type];
+  const dpr = helpers.dpr * helpers.scale;
+  drawRoundedRect(gpu, shapeQuad(shape, helpers, 0, 0, width, height), {
+    radius: 8 * helpers.scale,
+    fill: parseColor(helpers.color("--canvas-doc-bg")),
+    stroke: parseColor(helpers.color("--canvas-doc-divider")),
+    strokeWidth: helpers.scale,
+  });
+  // The preview area's tint is translucent in dark mode, so it sits on the card.
+  drawRoundedRect(
+    gpu,
+    shapeQuad(shape, helpers, 1, 1, width - 2, height - INFO_BAR - 1),
+    {
+      radius: [7 * helpers.scale, 7 * helpers.scale, 0, 0],
+      fill: parseColor(helpers.color("--canvas-tool-hover-bg")),
+    },
+  );
+  const barTop = height - INFO_BAR;
+  drawRoundedRect(gpu, shapeQuad(shape, helpers, 1, barTop, width - 2, 1), {
+    fill: parseColor(helpers.color("--canvas-doc-divider")),
+  });
+
+  const src = fileSource(shape);
+  if (type === "text" && src) {
+    const preview = textPreview(src, helpers.invalidate) ?? "Loading preview...";
+    const text = lineLayout(
+      preview,
+      {
+        face: "mono",
+        size: 11,
+        color: helpers.color("--canvas-doc-content"),
+      },
+      helpers.invalidate,
+      width - 32,
+    );
+    if (text) {
+      drawTextLayout(
+        gpu,
+        text,
+        shapePlacement(
+          shape,
+          helpers,
+          { x: 16, y: 16 },
+          {
+            x: 0,
+            y: 0,
+            width: width - 32,
+            height: Math.min(150, barTop - 32),
+          },
+        ),
+      );
+    }
+  } else {
+    const icon = svgImage(FILE_ICONS[type], color, 48 * dpr, helpers.invalidate);
+    if (icon) {
+      drawImage(
+        gpu,
+        icon,
+        shapeQuad(shape, helpers, width / 2 - 24, barTop / 2 - 24, 48, 48),
+      );
+    }
+  }
+
+  const small = svgImage(FILE_ICONS[type], color, 16 * dpr, helpers.invalidate);
+  if (small) {
+    drawImage(
+      gpu,
+      small,
+      shapeQuad(shape, helpers, 13, barTop + INFO_BAR / 2 - 8, 16, 16),
+    );
+  }
+  const label = lineLayout(
+    name,
+    {
+      face: "regular",
+      size: 13,
+      color: helpers.color("--canvas-doc-content"),
+    },
+    helpers.invalidate,
+  );
+  if (label) {
+    drawTextLayout(
+      gpu,
+      label,
+      shapePlacement(
+        shape,
+        helpers,
+        { x: 37, y: barTop + (INFO_BAR - label.height) / 2 },
+        {
+          x: 0,
+          y: 0,
+          width: width - 37 - 12,
+          height: label.height,
+        },
+      ),
+    );
+  }
+}
+
+// The live PDF viewer: an <iframe> under a filename header that drags.
+class CanvasPdfElement extends CanvasElementBase {
   private frame: HTMLIFrameElement | null = null;
   private header: HTMLElement | null = null;
-  private attachment: HTMLElement | null = null;
 
   protected mount() {
-    const shape = this.shapeData;
-    this.isPdf = Boolean(
-      shape && (isPdfFile(fileName(shape)) || isPdfFile(fileSource(shape))),
-    );
+    const wrap = document.createElement("div");
+    wrap.className = "canvas-pdf-preview";
+    // The viewer keeps scroll/text-selection/toolbar events; only the header
+    // starts a drag.
+    wrap.addEventListener("pointerdown", (event) => event.stopPropagation());
 
-    if (this.isPdf) {
-      const wrap = document.createElement("div");
-      wrap.className = "canvas-pdf-preview";
-      // The viewer keeps scroll/text-selection/toolbar events; only the header
-      // starts a drag.
-      wrap.addEventListener("pointerdown", (event) => event.stopPropagation());
-
-      const header = document.createElement("div");
-      header.className = "canvas-pdf-preview-header";
-      dragOnPointerDown(header, (event) =>
-        this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
-      );
-
-      const frame = document.createElement("iframe");
-      frame.className = "canvas-pdf-preview-frame";
-      frame.title = "PDF preview";
-
-      wrap.append(header, frame);
-      this.appendChild(wrap);
-      this.header = header;
-      this.frame = frame;
-      return;
-    }
-
-    const attachment = document.createElement("file-attachment");
-    attachment.className = "canvas-shape-file";
-    dragOnPointerDown(attachment, (event) =>
+    const header = document.createElement("div");
+    header.className = "canvas-pdf-preview-header";
+    dragOnPointerDown(header, (event) =>
       this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
     );
-    // Capture-phase guard: a click that ended a drag must not navigate.
-    attachment.addEventListener(
-      "click",
-      (event) => {
-        if (this.services?.wasDragged()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      },
-      true,
-    );
-    this.appendChild(attachment);
-    this.attachment = attachment;
+
+    const frame = document.createElement("iframe");
+    frame.className = "canvas-pdf-preview-frame";
+    frame.title = "PDF preview";
+
+    wrap.append(header, frame);
+    this.appendChild(wrap);
+    this.header = header;
+    this.frame = frame;
   }
 
   protected update() {
     const shape = this.shapeData;
-    if (!shape) return;
-    const text = typeof shape.data.text === "string" ? shape.data.text : "";
-    const filename = fileName(shape) || text || (this.isPdf ? "PDF" : "file");
+    if (!shape || !this.frame || !this.header) return;
     const src = fileSource(shape);
-    if (this.isPdf) {
-      if (this.frame && src && this.frame.getAttribute("src") !== src) {
-        this.frame.src = src;
-      }
-      if (this.header) {
-        this.header.textContent = filename;
-        this.header.title = fileName(shape) || "PDF";
-      }
-      return;
-    }
-    if (this.attachment && src) {
-      this.attachment.setAttribute("src", src);
-      this.attachment.setAttribute("filename", filename);
-    }
+    if (src && this.frame.getAttribute("src") !== src) this.frame.src = src;
+    this.header.textContent = fileName(shape) || "PDF";
+    this.header.title = fileName(shape) || "PDF";
   }
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-file")) {
-  customElements.define("canvas-file", CanvasFileElement);
+  customElements.define("canvas-file", CanvasPdfElement);
 }
 
 /** Whether a filename or upload URL points at a PDF. */

@@ -259,6 +259,16 @@ export function pointOnRotatedShape(
   return { x: center.x + rotated.x, y: center.y + rotated.y };
 }
 
+/** Inverse of `pointOnRotatedShape`: a world point in the shape's own frame. */
+export function localPointInShape(shape: CanvasRect, point: CanvasPoint): CanvasPoint {
+  const center = shapeCenter(shape);
+  const local = rotateVector(
+    { x: point.x - center.x, y: point.y - center.y },
+    -normalizeRotation(shape.rotation),
+  );
+  return { x: local.x + shape.width / 2, y: local.y + shape.height / 2 };
+}
+
 export function resizeRotatedShapeFromBottomRight(params: {
   fixedTopLeft: CanvasPoint;
   pointer: CanvasPoint;

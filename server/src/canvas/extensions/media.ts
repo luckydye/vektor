@@ -1,13 +1,15 @@
+import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
+import { animatesImages, drawAnimatedImage } from "#canvas/render/animatedImage.ts";
+import { sameOriginMediaUrl } from "#canvas/render/imageSource.ts";
 import { drawImage, drawRoundedRect, rectQuad } from "#canvas/render/primitives.ts";
-import type { CanvasGpu } from "#canvas/render/webgl.ts";
-import {
-  CANVAS_ELEMENT_EVENTS,
-  CanvasElementBase,
-  dragOnPointerDown,
-} from "#canvas/runtime/elementBase.ts";
+import { svgImage } from "#canvas/render/svgImage.ts";
+import { drawTextLayout, lineLayout } from "#canvas/render/text.ts";
+import { drawVideo } from "#canvas/render/video.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
 import type { CanvasPaintHelpers, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
-import { pointInRotatedShape } from "#canvas/runtime/geometry.ts";
+import type { CanvasPoint } from "#canvas/runtime/geometry.ts";
+import { localPointInShape, pointInRotatedShape } from "#canvas/runtime/geometry.ts";
 import { isMediaFile, mediaTypeForFile, toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 
@@ -114,25 +116,29 @@ function cachedImageFallback(src: string): HTMLImageElement | null {
   return cached instanceof HTMLImageElement ? cached : null;
 }
 
-function paintStaticImage(
-  gpu: CanvasGpu,
-  shape: CanvasShape,
-  helpers: CanvasPaintHelpers,
-) {
-  const src = mediaSource(shape);
-  if (!src) return;
-  const frame = shape.frame;
-  const width = frame.width * helpers.scale;
-  const height = frame.height * helpers.scale;
-  if (width <= 0 || height <= 0) return;
+function isGifSrc(src: string): boolean {
+  return /\.gif($|\?)/i.test(src);
+}
 
-  const targetPixels = Math.ceil(width * helpers.dpr);
+function paintImage(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const src = mediaSource(shape);
+  if (!src || shape.frame.width <= 0 || shape.frame.height <= 0) return;
+  const quad = shapeQuad(shape, helpers, 0, 0, shape.frame.width, shape.frame.height);
+  // Without ImageDecoder (Safari) a GIF takes the static path and shows its first frame.
+  if (animatesImages && isGifSrc(src)) {
+    if (!drawAnimatedImage(gpu, src, quad, helpers.requestFrame)) {
+      drawRoundedRect(gpu, quad, { fill: [0.5, 0.5, 0.5, 0.15] });
+    }
+    return;
+  }
+
+  const targetPixels = Math.ceil(shape.frame.width * helpers.scale * helpers.dpr);
   const tieredSrc = resizeImageUrl(src, targetPixels);
   const cached = imageCache.get(tieredSrc);
   if (!cached) {
     imageCache.set(tieredSrc, "loading");
     const image = new Image();
-    image.src = tieredSrc;
+    image.src = sameOriginMediaUrl(tieredSrc);
     image
       .decode()
       .then(() => {
@@ -147,28 +153,20 @@ function paintStaticImage(
 
   const displayImage =
     cached instanceof HTMLImageElement ? cached : cachedImageFallback(src);
-  const quad = rectQuad(
-    frame.x * helpers.scale + helpers.dx,
-    frame.y * helpers.scale + helpers.dy,
-    width,
-    height,
-    (frame.rotation * Math.PI) / 180,
-  );
   if (displayImage) drawImage(gpu, displayImage, quad);
   else drawRoundedRect(gpu, quad, { fill: [0.5, 0.5, 0.5, 0.15] });
 }
 
-// GIFs must animate, so they render as a live DOM <img>. Owned here (not the
-// host) since it is image-type knowledge.
-function isGifSrc(src: string): boolean {
-  return /\.gif($|\?)/i.test(src);
+function paintVideo(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const src = mediaSource(shape);
+  if (!src || shape.frame.width <= 0 || shape.frame.height <= 0) return;
+  const quad = shapeQuad(shape, helpers, 0, 0, shape.frame.width, shape.frame.height);
+  drawRoundedRect(gpu, quad, { fill: parseColor(helpers.color("--canvas-image-bg")) });
+  drawVideo(gpu, src, quad, helpers.requestFrame);
 }
 
-// WebGL refuses pixels from another origin, so those images stay live DOM too.
-function rastersOnCanvas(src: string): boolean {
-  return (
-    !isGifSrc(src) && new URL(src, window.location.href).origin === window.location.origin
-  );
+function hitBody(shape: CanvasShape, world: { x: number; y: number }) {
+  return pointInRotatedShape(world, shape.frame) ? "body" : null;
 }
 
 export const CanvasImage = CanvasElement.create({
@@ -188,17 +186,7 @@ export const CanvasImage = CanvasElement.create({
   },
 
   addRender() {
-    return {
-      // Still same-origin images are rasterized onto the shared canvas layer;
-      // animated GIFs stay live DOM, because a raster would freeze them.
-      surface: "dom+canvas" as const,
-      rasterize: (shape: CanvasShape) => rastersOnCanvas(mediaSource(shape)),
-      tag: "canvas-image",
-      article: { background: false },
-      paint: paintStaticImage,
-      hitTest: (shape: CanvasShape, world: { x: number; y: number }) =>
-        pointInRotatedShape(world, shape.frame) ? ("body" as const) : null,
-    };
+    return { paint: paintImage, hitTest: hitBody };
   },
 
   addBehavior() {
@@ -247,7 +235,7 @@ export const CanvasVideo = CanvasElement.create({
   },
 
   addRender() {
-    return { surface: "dom" as const, tag: "canvas-video" };
+    return { paint: paintVideo, hitTest: hitBody };
   },
 
   addBehavior() {
@@ -278,122 +266,143 @@ export const CanvasAudio = CanvasElement.create({
   },
 
   addRender() {
-    return { surface: "dom" as const, tag: "canvas-audio" };
+    return {
+      paint: paintAudio,
+      hitTest: (shape: CanvasShape, world: { x: number; y: number }) => {
+        const local = localPointInShape(shape.frame, world);
+        if (local.x < 0 || local.y < 0) return null;
+        if (local.x > shape.frame.width || local.y > shape.frame.height) return null;
+        if (local.x < AUDIO_GRIP) return "grip";
+        return local.x < AUDIO_BAR_LEFT ? "play" : "seek";
+      },
+      cursor: (_shape: CanvasShape, region: string) =>
+        region === "grip" ? "move" : "pointer",
+    };
   },
 
   addBehavior() {
     return { transform: { move: true, resize: "none" as const, rotate: false } };
   },
 
+  // A click on the button plays or pauses; on the bar it seeks.
+  addEvents() {
+    return {
+      click: (
+        shape: CanvasShape,
+        _host: unknown,
+        hit: { region: string; local: CanvasPoint },
+      ) => {
+        const audio = audioFor(mediaSource(shape));
+        if (hit.region === "play") {
+          if (audio.paused) void audio.play();
+          else audio.pause();
+        }
+        if (hit.region === "seek" && Number.isFinite(audio.duration)) {
+          const track = shape.frame.width - AUDIO_BAR_LEFT - 12;
+          const at = Math.min(1, Math.max(0, (hit.local.x - AUDIO_BAR_LEFT) / track));
+          audio.currentTime = at * audio.duration;
+        }
+      },
+    };
+  },
+
   parseData: parseMediaData,
 });
 
-// A single media tag (img/video) that drags from its own body and tracks
-// shape.data.src/alt. GIF images render here as a live <img> (static images are
-// painted on the canvas layer instead, so they never reach this element).
-abstract class CanvasMediaTagElement extends CanvasElementBase {
-  private media: HTMLElement | null = null;
-  protected abstract createMedia(): HTMLElement;
-  protected abstract applyLabel(el: HTMLElement, alt: string): void;
+// Player geometry: a dotted grip, a play button, the time, then the track.
+const AUDIO_GRIP = 16;
+const AUDIO_BAR_LEFT = 130;
+const PLAY_ICON =
+  '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M4 2.5v11l9-5.5z"/></svg>';
+const PAUSE_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="currentColor" d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>';
 
-  protected mount() {
-    const media = this.createMedia();
-    media.className = "canvas-shape-image";
-    (media as HTMLImageElement).draggable = false;
-    dragOnPointerDown(media, (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
-    );
-    this.appendChild(media);
-    this.media = media;
-  }
+const audioElements = new Map<string, HTMLAudioElement>();
+// The latest painter's repaint, called when the player's state changes.
+const audioRepaints = new WeakMap<HTMLAudioElement, () => void>();
 
-  protected update() {
-    const shape = this.shapeData;
-    if (!this.media || !shape) return;
-    const src = mediaSource(shape);
-    if (src && this.media.getAttribute("src") !== src) {
-      this.media.setAttribute("src", src);
+// One detached player per source; WebGL draws its controls.
+function audioFor(src: string): HTMLAudioElement {
+  let audio = audioElements.get(src);
+  if (!audio) {
+    const created = new Audio(sameOriginMediaUrl(src));
+    created.preload = "metadata";
+    for (const event of ["loadedmetadata", "play", "pause", "ended", "seeked"]) {
+      created.addEventListener(event, () => audioRepaints.get(created)?.());
     }
-    this.applyLabel(this.media, mediaAlt(shape));
+    audioElements.set(src, created);
+    audio = created;
   }
+  return audio;
 }
 
-class CanvasImageElement extends CanvasMediaTagElement {
-  protected createMedia() {
-    const img = document.createElement("img");
-    img.decoding = "async";
-    return img;
-  }
-  protected applyLabel(el: HTMLElement, alt: string) {
-    (el as HTMLImageElement).alt = alt;
-  }
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds)) return "0:00";
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-class CanvasVideoElement extends CanvasMediaTagElement {
-  protected createMedia() {
-    const video = document.createElement("video");
-    video.autoplay = true;
-    video.muted = true;
-    video.loop = true;
-    video.playsInline = true;
-    return video;
+function paintAudio(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const src = mediaSource(shape);
+  const audio = audioFor(src);
+  const { width, height } = shape.frame;
+  const box = (x: number, y: number, w: number, h: number) =>
+    shapeQuad(shape, helpers, x, y, w, h);
+  const muted = helpers.color("--canvas-muted");
+  drawRoundedRect(gpu, box(0, 0, width, height), {
+    radius: 6 * helpers.scale,
+    fill: parseColor(helpers.color("--canvas-toolbar-bg")),
+    stroke: parseColor(helpers.color("--canvas-doc-divider")),
+    strokeWidth: helpers.scale,
+  });
+  const dot = parseColor(muted);
+  for (let y = 6; y < height - 4; y += 4) {
+    for (const x of [6, 10]) {
+      drawRoundedRect(gpu, box(x, y, 1.5, 1.5), {
+        radius: helpers.scale,
+        fill: dot,
+        alpha: 0.6,
+      });
+    }
   }
-  protected applyLabel(el: HTMLElement, alt: string) {
-    el.setAttribute("aria-label", alt);
-  }
-}
-
-// Native audio player. The grip handles selection/drag; the player keeps its
-// own pointer events so its controls stay clickable.
-class CanvasAudioElement extends CanvasElementBase {
-  private audio: HTMLAudioElement | null = null;
-  private handle: HTMLElement | null = null;
-
-  protected mount() {
-    const wrap = document.createElement("div");
-    wrap.className = "canvas-shape-audio";
-    // The wrapper only stops propagation; dragging happens from the grip.
-    wrap.addEventListener("pointerdown", (event) => event.stopPropagation());
-
-    const handle = document.createElement("div");
-    handle.className = "canvas-shape-audio-handle";
-    dragOnPointerDown(handle, (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+  const pixels = helpers.scale * helpers.dpr;
+  const icon = svgImage(
+    audio.paused ? PLAY_ICON : PAUSE_ICON,
+    helpers.color("--canvas-text"),
+    16 * pixels,
+    helpers.invalidate,
+  );
+  if (icon) drawImage(gpu, icon, box(AUDIO_GRIP + 12, height / 2 - 8, 16, 16));
+  const time = lineLayout(
+    `${formatTime(audio.currentTime)} / ${formatTime(audio.duration)}`,
+    { face: "regular", size: 12, color: muted },
+    helpers.invalidate,
+  );
+  if (time) {
+    drawTextLayout(
+      gpu,
+      time,
+      shapePlacement(shape, helpers, {
+        x: AUDIO_GRIP + 38,
+        y: (height - time.height) / 2,
+      }),
     );
-
-    const audio = document.createElement("audio");
-    audio.className = "canvas-shape-audio-player";
-    audio.controls = true;
-    audio.preload = "metadata";
-
-    wrap.append(handle, audio);
-    this.appendChild(wrap);
-    this.handle = handle;
-    this.audio = audio;
   }
-
-  protected update() {
-    const shape = this.shapeData;
-    if (!this.audio || !shape) return;
-    const text = typeof shape.data.text === "string" ? shape.data.text : "";
-    const label = mediaAlt(shape) || text || "Audio";
-    const src = mediaSource(shape);
-    if (src && this.audio.getAttribute("src") !== src) this.audio.src = src;
-    this.audio.setAttribute("aria-label", label);
-    this.handle?.setAttribute("title", label);
-  }
-}
-
-if (typeof customElements !== "undefined") {
-  if (!customElements.get("canvas-image")) {
-    customElements.define("canvas-image", CanvasImageElement);
-  }
-  if (!customElements.get("canvas-video")) {
-    customElements.define("canvas-video", CanvasVideoElement);
-  }
-  if (!customElements.get("canvas-audio")) {
-    customElements.define("canvas-audio", CanvasAudioElement);
-  }
+  const track = width - AUDIO_BAR_LEFT - 12;
+  const progress = Number.isFinite(audio.duration)
+    ? audio.currentTime / audio.duration
+    : 0;
+  drawRoundedRect(gpu, box(AUDIO_BAR_LEFT, height / 2 - 2, track, 4), {
+    radius: 2 * helpers.scale,
+    fill: parseColor(helpers.color("--canvas-handle-bg")),
+  });
+  drawRoundedRect(gpu, box(AUDIO_BAR_LEFT, height / 2 - 2, track * progress, 4), {
+    radius: 2 * helpers.scale,
+    fill: parseColor(helpers.color("--canvas-doc-accent")),
+  });
+  // Playback moves the bar every frame; other changes repaint through events.
+  audioRepaints.set(audio, helpers.invalidate);
+  if (!audio.paused) helpers.requestFrame();
 }
 
 export function mediaFilesFromList(files: FileList | File[]) {

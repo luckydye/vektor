@@ -1,14 +1,16 @@
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/url-metadata.ts";
-import {
-  CANVAS_ELEMENT_EVENTS,
-  CanvasElementBase,
-  dragOnPointerDown,
-} from "#canvas/runtime/elementBase.ts";
+import { shapePlacement, shapeQuad } from "#canvas/extensions/shapePaint.ts";
+import { loadedImage } from "#canvas/render/images.ts";
+import { drawImage, drawRoundedRect } from "#canvas/render/primitives.ts";
+import { type RichTextTheme, richTextLayout } from "#canvas/render/richText.ts";
+import { drawTextLayout, lineLayout } from "#canvas/render/text.ts";
+import type { TextLayout } from "#canvas/render/textLayout.ts";
+import { containQuad, drawVideo } from "#canvas/render/video.ts";
+import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
+import type { CanvasPaintHelpers, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import { shared } from "#canvas/runtime/state.ts";
-import "#canvas/extensions/twitterEmbed.ts";
-import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
 
 function linkSource(shape: CanvasShape) {
   return typeof shape.data.src === "string" ? shape.data.src : "";
@@ -36,7 +38,7 @@ export const CanvasLink = CanvasElement.create({
   isValid: (shape) => Boolean(linkSource(shape)),
 
   addRender() {
-    return { surface: "dom" as const, tag: "canvas-link" };
+    return { paint: paintLink, cursor: () => "move" };
   },
 
   addBehavior() {
@@ -63,8 +65,14 @@ export const CanvasLink = CanvasElement.create({
     };
   },
 
+  // A click that did not drag opens the link.
   addEvents() {
-    return { data: (shape: CanvasShape) => linkPreviewForShape(shape) ?? null };
+    return {
+      click: (shape: CanvasShape, host: { openUrl: (url: string) => void }) => {
+        const src = linkSource(shape);
+        if (src) host.openUrl(src);
+      },
+    };
   },
 
   addInput() {
@@ -110,225 +118,198 @@ type LinkPreviewState = {
   metadata: LinkMetadata | null;
 };
 
-// True for links whose preview resolved to a Twitter/X embed. Those render the
-// live <canvas-twitter-embed> instead of the generic card.
-function isTwitterLinkPreview(preview: LinkPreviewState | null | undefined): boolean {
-  return preview?.metadata?.embed?.provider === "twitter";
-}
+// Card geometry from `.canvas-link-*` in canvas.css.
+const PADDING_X = 12;
+const PADDING_Y = 10;
+const GAP = 4;
 
-function hideOnError(img: HTMLImageElement) {
-  img.addEventListener("error", () => {
-    img.style.display = "none";
-  });
-}
-
-// Renders a pasted link as either a Twitter/X embed (when its preview resolves
-// to one) or a generic preview card. Both modes are owned here so the host
-// stays type-agnostic; the mode is rebuilt only when it changes so the tweet
-// isn't re-hydrated on every update.
-class CanvasLinkElement extends CanvasElementBase {
-  private mode: "card" | "twitter" | null = null;
-  private anchor: HTMLAnchorElement | null = null;
-  private embed: (HTMLElement & { value: string }) | null = null;
-  private sizeObserver: ResizeObserver | null = null;
-  private renderedSrc: string | null = null;
-  private renderedPreview: LinkPreviewState | null | undefined = null;
-
-  protected mount() {
-    // Built lazily by update() once the preview determines the render mode.
-  }
-
-  protected update() {
-    const shape = this.shapeData;
-    if (!shape) return;
-    const src = linkSource(shape);
-    const preview = this.extra as LinkPreviewState | null | undefined;
-
-    // Canvas mutations recreate the reactive shape objects, including this one
-    // when only another shape changed. Keep the preview DOM intact unless one
-    // of its actual inputs changed; rebuilding it reloads media and embeds.
-    if (src === this.renderedSrc && preview === this.renderedPreview) return;
-    this.renderedSrc = src;
-    this.renderedPreview = preview;
-
-    // Load our own preview; the reactive store drives the re-render via `data`.
-    if (src) void loadLinkPreview(src);
-
-    const mode: "card" | "twitter" =
-      src && isTwitterLinkPreview(preview) ? "twitter" : "card";
-    if (mode !== this.mode) this.buildMode(mode);
-
-    if (this.mode === "twitter") {
-      const html = preview?.metadata?.embed?.html;
-      if (this.embed && html) this.embed.value = html;
-      return;
-    }
-
-    const anchor = this.anchor;
-    if (!anchor) return;
-    anchor.href = src;
-    const metadata = preview?.metadata ?? null;
-    anchor.replaceChildren(this.buildImage(metadata), this.buildBody(shape, metadata));
-    this.fitToContent();
-  }
-
-  private buildMode(mode: "card" | "twitter") {
-    this.mode = mode;
-    this.sizeObserver?.disconnect();
-    this.sizeObserver = null;
-    this.anchor = null;
-    this.embed = null;
-    this.replaceChildren();
-    if (mode === "twitter") this.buildTwitter();
-    else this.buildCard();
-  }
-
-  // Generic card: optional media, then site/title/description. An <a> so a plain
-  // click navigates; a click that ended a drag is suppressed via wasDragged.
-  private buildCard() {
-    const anchor = document.createElement("a");
-    anchor.className = "canvas-shape-link";
-    anchor.target = "_blank";
-    anchor.rel = "noopener noreferrer";
-    anchor.draggable = false;
-    dragOnPointerDown(anchor, (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
-    );
-    anchor.addEventListener(
-      "click",
-      (event) => {
-        if (this.services?.wasDragged()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      },
-      true,
-    );
-    this.appendChild(anchor);
-    this.anchor = anchor;
-
-    // Cards fit their height to the preview content (image keeps a 4/3 ratio, so
-    // content height depends on card width). Observe the card box for width-
-    // driven reflow; update() also re-measures when preview data arrives.
-    if (typeof ResizeObserver !== "undefined") {
-      this.sizeObserver = new ResizeObserver(() => this.fitToContent());
-      this.sizeObserver.observe(anchor);
-    }
-  }
-
-  // Live tweet embed. The embed reports its natural height via `embed-resize`,
-  // which we forward to the host's height-fit so the shape grows to fit.
-  private buildTwitter() {
-    const wrap = document.createElement("div");
-    wrap.className = "canvas-twitter-shape";
-    dragOnPointerDown(wrap, (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
-    );
-    wrap.addEventListener("wheel", (event) => event.stopPropagation());
-    wrap.addEventListener("embed-resize", (event) => {
-      const id = this.shapeData?.id;
-      if (id) this.services?.reportSize(id, { height: (event as CustomEvent).detail });
-    });
-    const embed = document.createElement("canvas-twitter-embed") as HTMLElement & {
-      value: string;
-    };
-    wrap.appendChild(embed);
-    this.appendChild(wrap);
-    this.embed = embed;
-  }
-
-  // Sum of the card's stacked children — the true content height, independent of
-  // the (possibly clipping) shape box, so the shape can shrink as well as grow.
-  private fitToContent() {
-    const id = this.shapeData?.id;
-    const anchor = this.anchor;
-    if (!id || !anchor) return;
-    let total = 0;
-    for (const child of Array.from(anchor.children)) {
-      total += (child as HTMLElement).offsetHeight;
-    }
-    const hostStyle = this.parentElement ? getComputedStyle(this.parentElement) : null;
-    const borderHeight = hostStyle
-      ? (Number.parseFloat(hostStyle.borderTopWidth) || 0) +
-        (Number.parseFloat(hostStyle.borderBottomWidth) || 0)
-      : 0;
-    this.services?.reportSize(id, { height: Math.ceil(total + borderHeight) });
-  }
-
-  private buildImage(metadata: LinkMetadata | null): DocumentFragment {
-    const fragment = document.createDocumentFragment();
-    if (!metadata?.video && !metadata?.image) return fragment;
-
-    const wrap = document.createElement("div");
-    wrap.className = "canvas-link-image";
-    if (metadata.video) {
-      const video = document.createElement("video");
-      video.src = `/api/v1/proxy-media?url=${encodeURIComponent(metadata.video)}`;
-      video.autoplay = true;
-      video.muted = true;
-      video.loop = true;
-      video.playsInline = true;
-      video.draggable = false;
-      wrap.appendChild(video);
-    } else if (metadata.image) {
-      const img = document.createElement("img");
-      img.src = metadata.image;
-      img.alt = "";
-      img.draggable = false;
-      hideOnError(img);
-      wrap.appendChild(img);
-    }
-    fragment.appendChild(wrap);
-    return fragment;
-  }
-
-  private buildBody(shape: CanvasShape, metadata: LinkMetadata | null): HTMLElement {
-    const body = document.createElement("div");
-    body.className = "canvas-link-body";
-
-    const site = document.createElement("div");
-    site.className = "canvas-link-site";
-    if (metadata?.favicon) {
-      const favicon = document.createElement("img");
-      favicon.src = metadata.favicon;
-      favicon.className = "canvas-link-favicon";
-      favicon.setAttribute("aria-hidden", "true");
-      favicon.draggable = false;
-      hideOnError(favicon);
-      site.appendChild(favicon);
-    }
-    const domain = document.createElement("span");
-    domain.className = "canvas-link-domain";
-    domain.textContent =
-      metadata?.siteName || (linkSource(shape) ? domainFromUrl(linkSource(shape)) : "");
-    site.appendChild(domain);
-
-    const title = document.createElement("div");
-    title.className = "canvas-link-title";
-    title.textContent = metadata?.title || linkSource(shape);
-
-    body.append(site, title);
-
-    if (metadata?.description) {
-      const desc = document.createElement("div");
-      desc.className = "canvas-link-desc";
-      desc.textContent = metadata.description;
-      body.appendChild(desc);
-    }
-    return body;
-  }
-}
-
+// Stored links predate URL validation, so a malformed one shows as typed.
 function domainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
+  return URL.canParse(url) ? new URL(url).hostname : url;
 }
 
-if (typeof customElements !== "undefined" && !customElements.get("canvas-link")) {
-  customElements.define("canvas-link", CanvasLinkElement);
+// The tweet text and its "— Name (@handle) date" byline, from the oEmbed
+// blockquote; the card draws them natively instead of loading widgets.js.
+function tweetParts(html: string) {
+  const quote = new DOMParser()
+    .parseFromString(html, "text/html")
+    .querySelector("blockquote");
+  if (!quote) throw new Error("Twitter embed has no blockquote");
+  const text = quote.querySelector("p");
+  const byline = [...quote.childNodes]
+    .filter((node) => node !== text)
+    .map((node) => node.textContent ?? "")
+    .join("")
+    .replace(/^\s*[—-]\s*/, "")
+    .trim();
+  return { html: text?.outerHTML ?? "", byline };
+}
+
+function cardTheme(
+  helpers: CanvasPaintHelpers,
+  size: number,
+  color: string,
+): RichTextTheme {
+  return {
+    size,
+    lineHeight: 1.4,
+    color,
+    headings: [size, size, size, size, size, size],
+    headingLineHeight: 1.3,
+    headingColor: color,
+    headingFace: "semibold",
+    blockMargin: 0,
+    headingMargin: { top: 0, bottom: 0 },
+    listIndent: 16,
+    itemMargin: 0,
+    link: helpers.color("--canvas-doc-accent"),
+    muted: helpers.color("--canvas-link-desc"),
+    codeBackground: helpers.color("--canvas-handle-bg"),
+    divider: helpers.color("--canvas-link-border"),
+    accent: helpers.color("--canvas-doc-accent"),
+  };
+}
+
+function paintLink(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  const src = linkSource(shape);
+  if (src) void loadLinkPreview(src);
+  const preview = linkPreviewForShape(shape);
+  const metadata = preview?.metadata ?? null;
+  const { width, height } = shape.frame;
+  const card = shapeQuad(shape, helpers, 0, 0, width, height);
+  drawRoundedRect(gpu, card, {
+    radius: 8 * helpers.scale,
+    fill: parseColor(helpers.color("--canvas-link-bg")),
+    stroke: parseColor(helpers.color("--canvas-shape-border")),
+    strokeWidth: helpers.scale,
+  });
+  const inner = width - 2;
+  const textWidth = inner - PADDING_X * 2;
+  const clip = { x: 0, y: 0, width: textWidth, height: height - 2 };
+  let y = 1;
+
+  const embed = metadata?.embed?.provider === "twitter" ? metadata.embed.html : null;
+  const domain = metadata?.siteName || (src ? domainFromUrl(src) : "");
+  const muted = helpers.color("--canvas-link-domain");
+  const site = lineLayout(
+    embed ? "x.com" : domain,
+    {
+      face: "regular",
+      size: 11,
+      color: muted,
+    },
+    helpers.invalidate,
+  );
+  let body: TextLayout | null;
+  let byline: TextLayout | null = null;
+  if (embed) {
+    const tweet = tweetParts(embed);
+    body = richTextLayout(
+      tweet.html,
+      cardTheme(helpers, 13, helpers.color("--canvas-link-title")),
+      textWidth,
+      helpers.invalidate,
+    );
+    byline = lineLayout(
+      tweet.byline,
+      { face: "semibold", size: 11, color: muted },
+      helpers.invalidate,
+    );
+  } else {
+    body = lineLayout(
+      metadata?.title || src,
+      {
+        face: "semibold",
+        size: 13,
+        color: helpers.color("--canvas-link-title"),
+      },
+      helpers.invalidate,
+      textWidth,
+    );
+  }
+  const description =
+    !embed && metadata?.description
+      ? lineLayout(
+          metadata.description,
+          {
+            face: "regular",
+            size: 11,
+            color: helpers.color("--canvas-link-desc"),
+          },
+          helpers.invalidate,
+          textWidth,
+        )
+      : null;
+  if (!site || !body) return;
+
+  if (!embed && (metadata?.video || metadata?.image)) {
+    const mediaHeight = (inner * 3) / 4;
+    const frame = shapeQuad(shape, helpers, 1, 1, inner, mediaHeight);
+    drawRoundedRect(gpu, frame, {
+      radius: [7 * helpers.scale, 7 * helpers.scale, 0, 0],
+      fill: parseColor(helpers.color("--canvas-handle-bg")),
+    });
+    if (metadata?.video) {
+      drawVideo(gpu, metadata.video, frame, helpers.requestFrame);
+    } else if (metadata?.image) {
+      const loaded = loadedImage(metadata.image, helpers.invalidate);
+      if (loaded) {
+        drawImage(
+          gpu,
+          loaded,
+          containQuad(frame, loaded.naturalWidth, loaded.naturalHeight),
+        );
+      }
+    }
+    y += mediaHeight;
+  }
+
+  y += PADDING_Y;
+  let x = 1 + PADDING_X;
+  const favicon =
+    !embed && metadata?.favicon
+      ? loadedImage(metadata.favicon, helpers.invalidate)
+      : null;
+  if (favicon) {
+    drawImage(gpu, favicon, shapeQuad(shape, helpers, x, y, 14, 14));
+    x += 20;
+  }
+  const place = (layout: TextLayout, left: number, top: number, maxHeight: number) => {
+    drawTextLayout(
+      gpu,
+      layout,
+      shapePlacement(
+        shape,
+        helpers,
+        { x: left, y: top },
+        {
+          ...clip,
+          width: textWidth - (left - 1 - PADDING_X),
+          height: Math.min(maxHeight, height - 1 - top),
+        },
+      ),
+    );
+  };
+  place(site, x, y, 14);
+  y += Math.max(site.height, favicon ? 14 : 0) + GAP;
+
+  // Title and description clamp to two lines, like `-webkit-line-clamp: 2`.
+  const titleHeight = embed ? body.height : Math.min(body.height, 2 * 13 * 1.3);
+  place(body, 1 + PADDING_X, y, titleHeight);
+  y += titleHeight;
+  if (byline) {
+    y += GAP;
+    place(byline, 1 + PADDING_X, y, byline.height);
+    y += byline.height;
+  }
+  if (description) {
+    y += GAP;
+    const descHeight = Math.min(description.height, 2 * 11 * 1.4);
+    place(description, 1 + PADDING_X, y, descHeight);
+    y += descHeight;
+  }
+  y += PADDING_Y + 1;
+  helpers.reportSize(shape.id, { height: Math.ceil(y) });
 }
 
 // Link preview cache. This is extension-owned module state (link previews are
@@ -361,8 +342,8 @@ function linkPreviewForShape(shape: CanvasShape): LinkPreviewState | undefined {
   return src ? previews.get().get(src) : undefined;
 }
 
-// Preview state used by this extension's data and measurement hooks. Writing a
-// resolved preview repaints the canvases, so a card fills in when it lands.
+// Preview state used by this extension's painter and measurement hook. Writing
+// a resolved preview repaints the canvases, so a card fills in when it lands.
 const linkPreviews = {
   previews,
   loadPreview: loadLinkPreview,

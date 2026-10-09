@@ -611,77 +611,14 @@ vektor-canvas {
   box-shadow: none;
 }
 
-.canvas-shape.image {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.canvas-shape.video {
-  border-color: transparent;
-  background: var(--canvas-image-bg);
-}
-
 .canvas-shape.file {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
 
-.canvas-shape.image .canvas-shape-image,
-.canvas-shape.video .canvas-shape-image,
-.canvas-shape.file .canvas-shape-file {
-  cursor: move;
-}
-
-.canvas-shape.image .canvas-shape-image {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-}
-
-.canvas-shape-file {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  margin: 0;
-}
-
-.canvas-shape.audio {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.canvas-shape-audio {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: center;
-  overflow: hidden;
-  border: 1px solid var(--canvas-doc-divider, #e5e7eb);
-  border-radius: var(--radius-md);
-  background: var(--canvas-toolbar-bg, #fff);
-  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
-}
-
-.canvas-shape-audio-handle {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 100%;
-  cursor: move;
-  background-image: radial-gradient(currentcolor 1px, transparent 1px);
-  background-position: center;
-  background-size: 4px 4px;
-  color: var(--canvas-text-muted, #9ca3af);
-  opacity: 0.6;
-}
-
-.canvas-shape-audio-player {
-  width: 100%;
-  min-width: 0;
-  height: 40px;
-  flex: 1 1 auto;
+.canvas-shape.document {
+  background: var(--canvas-doc-bg) !important;
 }
 
 .canvas-pdf-preview {
@@ -725,17 +662,6 @@ vektor-canvas {
   flex: 0 0 auto;
   cursor: move;
   background: var(--canvas-handle-bg);
-}
-
-.canvas-shape.document {
-  background: var(--canvas-doc-bg) !important;
-  cursor: move;
-}
-
-.canvas-shape-document {
-  width: 100%;
-  height: 100%;
-  cursor: move;
 }
 
 .canvas-shape-document-editor {
@@ -846,109 +772,6 @@ vektor-canvas {
   line-height: 1.4;
 }
 
-.canvas-shape.link {
-  background: var(--canvas-link-bg) !important;
-  cursor: move;
-}
-
-.canvas-shape-link {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: auto;
-  overflow: hidden;
-  text-decoration: none;
-  color: inherit;
-  cursor: move;
-}
-
-.canvas-twitter-shape {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--canvas-link-bg);
-  cursor: move;
-}
-
-/* Container built inside the <canvas-twitter-embed> custom element. */
-.canvas-twitter-embed {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.canvas-link-image {
-  flex: none;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: var(--canvas-handle-bg);
-}
-
-.canvas-link-image img,
-.canvas-link-image video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-.canvas-link-body {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.canvas-link-site {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.canvas-link-favicon {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-}
-
-.canvas-link-domain {
-  font-size: 11px;
-  color: var(--canvas-link-domain);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.canvas-link-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--canvas-link-title);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.canvas-link-desc {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--canvas-link-desc);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
 .canvas-section-title-overlay {
   position: absolute;
   z-index: 6;
@@ -984,16 +807,6 @@ vektor-canvas {
   background: var(--canvas-toolbar-bg);
 }
 
-.canvas-shape-image {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  flex: 1 1 auto;
-  object-fit: contain;
-  background: var(--canvas-image-bg);
-  user-select: none;
-}
-
 .canvas-shape-textwrap {
   display: flex;
   min-width: 0;
@@ -1019,6 +832,28 @@ vektor-canvas {
 
 .canvas-shape.note .canvas-shape-textwrap {
   color: #111827;
+}
+
+/* Painted shapes' text, for find-in-page and screen readers only: each item
+   sits over its shape but is clipped away. A match the browser reveals moves
+   the camera to its shape instead. */
+.canvas-text-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  list-style: none;
+  pointer-events: none;
+}
+
+.canvas-text-mirror > li {
+  position: absolute;
+  transform-origin: center;
 }
 
 .canvas-transform-controls {

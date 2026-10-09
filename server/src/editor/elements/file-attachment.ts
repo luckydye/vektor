@@ -20,7 +20,7 @@ const ARCHIVE_EXTENSIONS = ["zip"];
 const TEXT_EXTENSIONS = ["md", "txt"];
 const MODEL_EXTENSIONS = ["obj", "gltf", "glb"];
 
-type FileType =
+export type FileType =
   | "image"
   | "document"
   | "presentation"
@@ -34,7 +34,7 @@ function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
 }
 
-function getFileType(filename: string): FileType {
+export function getFileType(filename: string): FileType {
   const ext = getFileExtension(filename);
   if (IMAGE_EXTENSIONS.includes(ext)) return "image";
   if (DOCUMENT_EXTENSIONS.includes(ext)) return "document";
@@ -46,7 +46,7 @@ function getFileType(filename: string): FileType {
   return "unknown";
 }
 
-const ICONS: Record<FileType, string> = {
+export const FILE_ICONS: Record<FileType, string> = {
   document: iconMarkup("document"),
   presentation: iconMarkup("presentation"),
   spreadsheet: iconMarkup("csv-file"),
@@ -57,7 +57,7 @@ const ICONS: Record<FileType, string> = {
   unknown: iconMarkup("file"),
 };
 
-const FILE_COLORS: Record<FileType, string> = {
+export const FILE_COLORS: Record<FileType, string> = {
   document: "#2563eb",
   presentation: "#ea580c",
   spreadsheet: "#16a34a",
@@ -209,7 +209,7 @@ if (
             ${this.previewMarkup(fileType, src)}
           </div>
           <div class="info-bar">
-            <div class="icon-small" style="color: ${FILE_COLORS[fileType]}">${ICONS[fileType]}</div>
+            <div class="icon-small" style="color: ${FILE_COLORS[fileType]}">${FILE_ICONS[fileType]}</div>
             <span class="filename" title="${safeFilename}">${safeFilename}</span>
           </div>
         `;
@@ -237,7 +237,7 @@ if (
           // it from bubbling to the card's open-in-new-tab handler.
           return `<${MODEL_VIEWER_TAG} src="${escapeHtml(src)}"></${MODEL_VIEWER_TAG}>`;
         }
-        return `<div class="icon-wrapper" style="color: ${FILE_COLORS[fileType]}">${ICONS[fileType]}</div>`;
+        return `<div class="icon-wrapper" style="color: ${FILE_COLORS[fileType]}">${FILE_ICONS[fileType]}</div>`;
       }
 
       handleClick = (e: Event) => {

@@ -27,6 +27,11 @@ const CANVAS = process.env.VEKTOR_E2E_CANVAS ?? "untitled-2";
 const SECOND_CANVAS = process.env.VEKTOR_E2E_CANVAS_SECOND ?? "other-canvas-fixture";
 const CATEGORY = "Guidelines";
 
+/**
+ * Every shape: painted ones through the clipped text mirror laid over them, and
+ * live DOM ones (a PDF, the shape being edited) through their article.
+ */
+const SHAPES = "vektor-canvas .canvas-text-mirror > li, vektor-canvas .canvas-shape";
 const NOTE = '[data-shape-id="shape-fixture-note"]';
 const OTHER_NOTE = '[data-shape-id="shape-fixture-other-note"]';
 
@@ -44,7 +49,7 @@ async function openCanvas(page: Page) {
   await page.goto(`/${SPACE}/doc/${CANVAS}`);
   await page.waitForSelector("vektor-canvas .canvas-viewport", { timeout: 30_000 });
   // Shapes paint from measured geometry, a frame after the element mounts.
-  await page.waitForSelector("vektor-canvas .canvas-shape", { timeout: 30_000 });
+  await page.waitForSelector(SHAPES, { state: "attached", timeout: 30_000 });
   return errors;
 }
 
@@ -110,12 +115,10 @@ test("upgrades the host element and paints the document", async ({ page }) => {
     "the host element must register, or the canvas is an empty box",
   ).toBe(true);
 
-  // Two of the fixture's three shapes are DOM elements. The third is a
-  // section, whose extension declares `surface: "canvas"` — it is painted on
-  // the scene layer and deliberately has no DOM node, so counting DOM shapes
-  // and finding two is correct rather than a missing shape.
-  await expect(page.locator("vektor-canvas .canvas-shape")).toHaveCount(2);
-  await expect(page.locator(NOTE)).toBeVisible();
+  // All three fixture shapes (note, text, section) are painted with WebGL, so
+  // each is present as a mirror item rather than a DOM body.
+  await expect(page.locator(SHAPES)).toHaveCount(3);
+  await expect(page.locator(NOTE)).toHaveCount(1);
   expect(await paintedPixels(page, "canvas-scene")).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
@@ -284,7 +287,7 @@ test("shows the appearance panel only while something is selected", async ({ pag
 
 test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) => {
   await openCanvas(page);
-  const shapes = page.locator("vektor-canvas .canvas-shape");
+  const shapes = page.locator(SHAPES);
   const before = await shapes.count();
   const box = await viewport(page);
 
@@ -353,14 +356,14 @@ test("draws ink on the overlay, commits it to the scene, and undoes it", async (
  */
 test("switching to another canvas paints the other document", async ({ page }) => {
   const errors = await openCanvas(page);
-  await expect(page.locator(NOTE)).toBeVisible();
+  await expect(page.locator(NOTE)).toHaveCount(1);
 
   // The tree only loads a category's documents once it is open.
   await page.locator(`nav button:has-text("${CATEGORY}")`).first().click();
   const link = page.locator(`a[href="/${SPACE}/doc/${SECOND_CANVAS}"]`);
   await link.click();
 
-  await expect(page.locator(OTHER_NOTE)).toBeVisible();
+  await expect(page.locator(OTHER_NOTE)).toHaveCount(1);
   await expect(
     page.locator(NOTE),
     "the shapes of the canvas we left must be gone",
@@ -369,7 +372,7 @@ test("switching to another canvas paints the other document", async ({ page }) =
 
   // Back, because this switch renders over the tree the last one left behind.
   await page.goBack();
-  await expect(page.locator(NOTE)).toBeVisible();
+  await expect(page.locator(NOTE)).toHaveCount(1);
   await expect(page.locator(OTHER_NOTE)).toHaveCount(0);
   expect(
     await paintedPixels(page, "canvas-scene"),

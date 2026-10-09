@@ -63,8 +63,10 @@ import {
   handleOffsets,
   hitTestCanvasStroke,
   isPointInRect,
+  localPointInShape,
   MIN_FONT_SCALE,
   normalizeRotation,
+  pointInRotatedShape,
   pointOnRotatedShape,
   type Rect,
   rectContains,
@@ -195,29 +197,6 @@ function shapeIsContainer(
   extensions: CanvasExtensionManager,
 ): boolean {
   return Boolean(shape && extensions.get(shape.type).behavior.container);
-}
-
-/**
- * Whether the canvas should swallow native pointer events over this shape.
- *
- * A shape with an editable body (a text note) needs its own pointer handling;
- * everything else lets the canvas drive selection and dragging.
- */
-function shapeSuppressesNativePointer(
-  shape: CanvasShape,
-  extensions: CanvasExtensionManager,
-): boolean {
-  return !extensions.get(shape.type).behavior.editableBody;
-}
-
-/**
- * Whether the browser's own find-in-page can see this shape's content.
- *
- * Only text-bearing shapes render their content as DOM text; the rest are
- * painted, so the browser has nothing to match against.
- */
-export function isBrowserFindTarget(shape: CanvasShape): boolean {
-  return shape.type === "text" || shape.type === "note";
 }
 
 export interface CanvasHost {
@@ -388,6 +367,8 @@ export function createCanvasController(
     // Locked elements are intentionally excluded from normal hit testing. Keep a
     // separate hover target so their small unlock control remains reachable.
     hoveredLockedElement: null as string | null,
+    // Cursor the shape under the pointer asks for, while nothing is dragged.
+    hoverCursor: null as string | null,
     // Section chrome is painted on the canvas. This transient input only appears
     // while its title is actively being edited.
     editingChromeId: null as string | null,
@@ -691,7 +672,7 @@ export function createCanvasController(
     return scaleHandle(bounds, transform().scale, worldToScreen);
   }
 
-  // Custom-element tag registered by an extension for its DOM body.
+  // Custom-element tag of a shape that stays live DOM (a PDF viewer).
   function elementTagForShape(shape: CanvasShape): string | null {
     const tag = extensionManager.get(shape.type).render.tag;
     if (!tag || typeof customElements === "undefined" || !customElements.get(tag)) {
@@ -703,12 +684,6 @@ export function createCanvasController(
       return null;
     }
     return tag;
-  }
-
-  // Per-type reactive view model handed to an element via its `data` property.
-  // The extension resolves it from the host's controllers; the host stays generic.
-  function elementDataForShape(shape: CanvasShape): unknown {
-    return extensionManager.get(shape.type).events?.data?.(shape, extHost) ?? null;
   }
 
   // Inline style for a shape's <article> wrapper, driven by extension metadata
@@ -728,14 +703,6 @@ export function createCanvasController(
   }
 
   const extHost = extensionRuntime.host;
-
-  function onElementActivate(shape: CanvasShape, event: MouseEvent) {
-    extensionManager.get(shape.type).events?.activate?.(shape, extHost, event);
-  }
-
-  function onElementOpen(shape: CanvasShape, event: Event) {
-    extensionManager.get(shape.type).events?.open?.(shape, extHost, event);
-  }
 
   // Stable helpers/data handed to every element custom element via its
   // `canvasContext` property. Per-shape reactive values flow through `shape`/`data`.
@@ -797,14 +764,19 @@ export function createCanvasController(
     },
   };
 
-  // DOM-surface elements stay mounted; content-visibility lets the browser skip
-  // off-screen painting.
-  const domShapes = () =>
-    state.shapes.filter((shape) => extensionManager.rendersInDom(shape));
+  const isEditing = (shape: CanvasShape) => state.activeEditSession?.shapeId === shape.id;
 
-  // Shapes drawn entirely on the scene canvas, behind the DOM.
-  const paintedShapes = () =>
-    state.shapes.filter((shape) => extensionManager.paints(shape));
+  // Live DOM: shapes WebGL cannot draw, plus the one being edited in place.
+  const domShapes = () =>
+    state.shapes.filter(
+      (shape) => extensionManager.rendersInDom(shape) || isEditing(shape),
+    );
+
+  // Shapes WebGL draws: everything not mounted as live DOM.
+  const canvasShapes = () =>
+    state.shapes.filter(
+      (shape) => !extensionManager.rendersInDom(shape) && !isEditing(shape),
+    );
 
   const editingChromeShape = () => {
     const id = state.editingChromeId;
@@ -834,15 +806,6 @@ export function createCanvasController(
       }) ?? { width: 1, height: 1 }
     );
   }
-
-  // Canvas-rasterized shapes within the current viewport. Used only by
-  // raster rendering to avoid paint calls for off-screen elements.
-  const visibleRasterShapes = () => {
-    const vr = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 400);
-    return state.shapes.filter(
-      (shape) => extensionManager.rasters(shape) && rectsIntersect(vr, shapeAabb(shape)),
-    );
-  };
 
   const selectedStrokeColor = () => {
     let color: string | null = null;
@@ -942,9 +905,11 @@ export function createCanvasController(
   }
 
   function intrinsicShapeSize(shape: CanvasShape) {
+    const measurement = extensionManager.get(shape.type).behavior.measurement;
     return (
+      measurement?.measure?.(shape) ??
       state.intrinsicShapeSizes.get(shape.id) ??
-      extensionManager.get(shape.type).behavior.measurement?.fallback?.(shape) ??
+      measurement?.fallback?.(shape) ??
       extensionManager.get(shape.type).defaults.size
     );
   }
@@ -967,9 +932,6 @@ export function createCanvasController(
 
   // Whether the host should preventDefault a shape's pointer interaction. Types
   // whose whole body is a live editor (text) opt out so native focus/caret works.
-  function suppressesNativePointer(shape: CanvasShape): boolean {
-    return shapeSuppressesNativePointer(shape, extensionManager);
-  }
 
   function shapeAabb(shape: CanvasShape): Rect {
     return rotatedShapeBounds(shapeBounds(shape));
@@ -1270,17 +1232,16 @@ export function createCanvasController(
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
 
-    const article = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
-    const shapeId = article?.dataset.shapeId;
+    const article = target.closest<HTMLElement>("[data-find-shape-id]");
+    const shapeId = article?.dataset.findShapeId;
     const shape = shapeId ? shapesById().get(shapeId) : null;
-    if (!article || !shape || !isBrowserFindTarget(shape)) return;
+    if (!article || !shape) return;
 
     moveToShape(shape);
 
     // The browser removes hidden=until-found after beforematch. Restore the
     // marker once it has finished revealing this match so advancing to another
-    // result in the same shape emits beforematch again. The author-level
-    // content-visibility:auto rule keeps these marked shapes normally visible.
+    // result in the same shape emits beforematch again.
     requestAnimationFrame(() => {
       if (article.isConnected) article.setAttribute("hidden", "until-found");
       // Native find may try to scroll the overflow-hidden viewport as well as
@@ -1564,7 +1525,7 @@ export function createCanvasController(
   // a local colored cursor that matches the color broadcast to collaborators.
   const viewportCursor = () => {
     if (state.isPanning) return "grabbing";
-    return makeCanvasCursor(host.cursorColor);
+    return state.hoverCursor ?? makeCanvasCursor(host.cursorColor);
   };
 
   function screenToWorld(point: { x: number; y: number }) {
@@ -1584,6 +1545,7 @@ export function createCanvasController(
   let cssChromeText = "#1e3a8a";
 
   function refreshCssVars() {
+    themeColors.clear();
     const theme = readCanvasTheme(dom.viewport, { ink: FREEHAND_STYLE.color });
     cssGridMajor = theme.gridMajor;
     cssGridMinor = theme.gridMinor;
@@ -1672,8 +1634,7 @@ export function createCanvasController(
 
     beginPass(target, { transform: transform(), screen: state.screen, dpr });
     renderGrid(target);
-    renderPaintedShapes(target);
-    renderRasterShapes(target);
+    renderShapes(target);
     renderTileShapes(target);
     const ink = renderedInk();
     drawStrokes(target, ink.strokes, defaultInkColor(), ink.moved);
@@ -1739,14 +1700,48 @@ export function createCanvasController(
     ]);
   }
 
+  // Theme colours painters ask for, resolved once per theme.
+  const themeColors = new Map<string, string>();
+  function themeColor(property: string): string {
+    let color = themeColors.get(property);
+    if (color === undefined) {
+      if (!dom.viewport) throw new Error("Theme colours need the mounted viewport");
+      color = getComputedStyle(dom.viewport).getPropertyValue(property).trim();
+      if (!color) throw new Error(`Canvas theme colour ${property} is not defined`);
+      themeColors.set(property, color);
+    }
+    return color;
+  }
+
+  // Animated painters (video, GIFs, a spinning model) ask for the next frame.
+  let sceneFrameId: number | null = null;
+  function requestSceneFrame() {
+    if (sceneFrameId !== null) return;
+    sceneFrameId = requestAnimationFrame(() => {
+      sceneFrameId = null;
+      renderScene();
+    });
+  }
+
+  // A late asset (font, image, preview) can change sizes and handles too.
+  function repaint() {
+    renderInk();
+    invalidate();
+  }
+
   function paintHelpers(): CanvasPaintHelpers {
     const { scale, dx, dy } = transform();
     return {
+      host: extHost,
       scale,
       dx,
       dy,
       dpr,
-      invalidate: renderScene,
+      invalidate: repaint,
+      requestFrame: requestSceneFrame,
+      color: themeColor,
+      // Painting must not write the document mid-frame.
+      reportSize: (id, size) => queueMicrotask(() => hostContext.reportSize(id, size)),
       t,
       chromeTextColor: cssChromeText,
       isEditingChrome: (id) => state.editingChromeId === id,
@@ -1755,18 +1750,13 @@ export function createCanvasController(
     };
   }
 
-  // Sections draw before raster elements and ink so their frames cannot overlap
-  // cards, media, or strokes. The host owns their shared paint/hit-test geometry.
-  function renderPaintedShapes(target: CanvasGpu) {
+  // In z-order, culled to the viewport with room for chrome drawn outside a
+  // frame, such as a section's title.
+  function renderShapes(target: CanvasGpu) {
     const helpers = paintHelpers();
-    for (const shape of paintedShapes()) {
-      extensionManager.get(shape.type).render.paint?.(target, shape, helpers);
-    }
-  }
-
-  function renderRasterShapes(target: CanvasGpu) {
-    const helpers = paintHelpers();
-    for (const shape of visibleRasterShapes()) {
+    const visible = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 64);
+    for (const shape of canvasShapes()) {
+      if (!rectsIntersect(visible, shapeAabb(shape))) continue;
       extensionManager.get(shape.type).render.paint?.(target, shape, helpers);
     }
   }
@@ -1955,11 +1945,9 @@ export function createCanvasController(
     if (extension.creation?.editOnCreate === "chrome") {
       editElementChrome(shape);
     } else if (extension.creation?.editOnCreate === "element") {
-      queueMicrotask(() => {
-        document
-          .querySelector<HTMLElement>(`.canvas-shape[data-shape-id="${shape.id}"] > *`)
-          ?.focus();
-      });
+      const session = extension.render.editor?.(shape, null);
+      if (!session) throw new Error(`${shape.type} edits on create but has no editor`);
+      beginEdit(session);
     }
   }
 
@@ -2335,9 +2323,9 @@ export function createCanvasController(
     }
 
     // Shift toggles membership and does not begin a drag.
+    event.preventDefault();
     if (event.shiftKey) {
       toggleSelection(shape.id);
-      if (suppressesNativePointer(shape)) event.preventDefault();
       return;
     }
 
@@ -2347,18 +2335,12 @@ export function createCanvasController(
       selectOnly(shape.id);
     }
 
-    if (!canMoveShape(shape)) {
-      if (suppressesNativePointer(shape)) event.preventDefault();
-      return;
-    }
+    if (!canMoveShape(shape)) return;
 
     dragMoved = false;
     dragState = buildElementDragState(event);
     beginDragStrokeTransform(dragState);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    if (suppressesNativePointer(shape)) {
-      event.preventDefault();
-    }
   }
 
   function startShapeResize(shape: CanvasShape, event: PointerEvent) {
@@ -2606,38 +2588,102 @@ export function createCanvasController(
     chromeSize: elementChromeSize,
   };
 
-  // Canvas-rasterized shapes (still images), topmost first, via each shape's own
-  // hitTest hook. DOM shapes hit-test through native events, so they are skipped.
-  function hitTestRasterShape(worldPoint: { x: number; y: number }): CanvasShape | null {
-    for (let i = state.shapes.length - 1; i >= 0; i--) {
-      const shape = state.shapes[i];
-      if (!extensionManager.rasters(shape)) continue;
-      if (
-        extensionManager
-          .get(shape.type)
-          .render.hitTest?.(shape, worldPoint, hitTestHelpers)
-      ) {
-        return shape;
-      }
+  // WebGL-drawn shapes, topmost first, via each shape's own hitTest hook (a
+  // rotated-box "body" without one). A null region is click-through, like a
+  // section's interior.
+  function hitTestShape(
+    worldPoint: CanvasPoint,
+  ): { shape: CanvasShape; region: string } | null {
+    const shapes = canvasShapes();
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      const shape = shapes[i];
+      const hitTest = extensionManager.get(shape.type).render.hitTest;
+      const region = hitTest
+        ? hitTest(shape, worldPoint, hitTestHelpers)
+        : pointInRotatedShape(worldPoint, shapeBounds(shape))
+          ? "body"
+          : null;
+      if (region) return { shape, region };
     }
     return null;
   }
 
-  // Canvas-painted shapes (sections), topmost first, via each shape's own hitTest
-  // hook. Returns which region was hit (title = editable, border = grabbable;
-  // interior click-through).
-  function hitTestPaintedShape(worldPoint: {
-    x: number;
-    y: number;
-  }): { shape: CanvasShape; region: "title" | "border" } | null {
-    for (let i = paintedShapes().length - 1; i >= 0; i--) {
-      const shape = paintedShapes()[i];
-      const region = extensionManager
-        .get(shape.type)
-        .render.hitTest?.(shape, worldPoint, hitTestHelpers);
-      if (region === "title" || region === "border") return { shape, region };
+  // A press on a shape that has not moved yet: released in place, it is a click.
+  let pendingClick: { shape: CanvasShape; region: string; local: CanvasPoint } | null =
+    null;
+
+  function pressShape(hit: { shape: CanvasShape; region: string }, event: PointerEvent) {
+    const { shape, region } = hit;
+    const extension = extensionManager.get(shape.type);
+    const press = extension.behavior.press?.(shape, region) ?? "drag";
+    if (press === "edit" && !shape.locked && host.canEdit && !event.shiftKey) {
+      const session = extension.render.editor?.(shape, event);
+      if (!session) throw new Error(`${shape.type} edits on press but has no editor`);
+      event.preventDefault();
+      beginEdit(session);
+      return;
     }
-    return null;
+    startElementDrag(shape, event);
+    if (!event.shiftKey && !shape.locked) {
+      const world = screenToWorld(screenPoint(event));
+      pendingClick = {
+        shape,
+        region,
+        local: localPointInShape(shapeBounds(shape), world),
+      };
+    }
+  }
+
+  // Fires the pending click when its press ends without having dragged.
+  function releasePress(event: PointerEvent) {
+    const press = pendingClick;
+    pendingClick = null;
+    if (!press || dragMoved || event.button !== 0) return;
+    const click = extensionManager.get(press.shape.type).events?.click;
+    if (!click) return;
+    click(press.shape, extHost, { region: press.region, local: press.local, event });
+    renderScene();
+  }
+
+  // Cursor for what is under the pointer, from the extension that drew it.
+  function hoverCursorAt(worldPoint: CanvasPoint): string | null {
+    if (state.activeTool !== "select" || dragState) return null;
+    if (hitTestCanvasStroke(state.strokes, worldPoint, transform().scale)) return "move";
+    const hit = hitTestShape(worldPoint);
+    if (!hit) return null;
+    return (
+      extensionManager.get(hit.shape.type).render.cursor?.(hit.shape, hit.region) ??
+      "move"
+    );
+  }
+
+  // Wheel over a shape that scrolls its own content (a document preview).
+  function wheelShape(event: WheelEvent): boolean {
+    const hit = hitTestShape(screenToWorld(screenPoint(event)));
+    const wheel = hit && extensionManager.get(hit.shape.type).events?.wheel;
+    if (!hit || !wheel || !wheel(hit.shape, extHost, event)) return false;
+    renderScene();
+    return true;
+  }
+
+  /** Text the browser's find-in-page and screen readers see for painted shapes. */
+  function findableShapes() {
+    return canvasShapes().map((shape) => {
+      const data = shape.data;
+      const text = [data.text, data.alt, data.src]
+        .filter((value): value is string => typeof value === "string" && value !== "")
+        .join(" ");
+      const bounds = shapeBounds(shape);
+      // Laid over the painted shape, so assistive tech outlines the right spot.
+      const style = {
+        left: `${bounds.x}px`,
+        top: `${bounds.y}px`,
+        width: `${bounds.width}px`,
+        height: `${bounds.height}px`,
+        transform: `rotate(${bounds.rotation}deg)`,
+      };
+      return { id: shape.id, label: `${shape.type}: ${text}`, text, style };
+    });
   }
 
   function editElementChrome(shape: CanvasShape) {
@@ -2690,29 +2736,6 @@ export function createCanvasController(
       const additive = event.shiftKey;
       const worldPoint = screenToWorld(point);
 
-      const hitImage = hitTestRasterShape(worldPoint);
-      if (hitImage) {
-        if (hitImage.locked) {
-          event.preventDefault();
-          return;
-        }
-        if (additive) {
-          toggleSelection(hitImage.id);
-        } else if (!state.selectedIds.has(hitImage.id)) {
-          selectOnly(hitImage.id);
-        }
-        if (!canMoveShape(hitImage)) {
-          event.preventDefault();
-          return;
-        }
-        dragMoved = false;
-        dragState = buildElementDragState(event);
-        beginDragStrokeTransform(dragState);
-        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-        event.preventDefault();
-        return;
-      }
-
       const hitStroke = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
       if (hitStroke) {
         if (isElementLocked(hitStroke)) {
@@ -2746,9 +2769,9 @@ export function createCanvasController(
         return;
       }
 
-      const paintedHit = hitTestPaintedShape(worldPoint);
-      if (paintedHit) {
-        startElementDrag(paintedHit.shape, event);
+      const hit = hitTestShape(worldPoint);
+      if (hit) {
+        pressShape(hit, event);
         return;
       }
 
@@ -2777,10 +2800,10 @@ export function createCanvasController(
 
     const point = screenPoint(event);
     const worldPoint = screenToWorld(point);
-    const paintedHit = hitTestPaintedShape(worldPoint);
-    if (paintedHit?.region === "title") {
+    const hit = hitTestShape(worldPoint);
+    if (hit?.region === "title" && extensionManager.get(hit.shape.type).render.chrome) {
       event.preventDefault();
-      editElementChrome(paintedHit.shape);
+      editElementChrome(hit.shape);
       return;
     }
 
@@ -2792,13 +2815,7 @@ export function createCanvasController(
       return;
     }
 
-    if (paintedHit?.region === "border") {
-      return;
-    }
-    if (
-      hitTestRasterShape(worldPoint) ||
-      hitTestCanvasStroke(state.strokes, worldPoint, transform().scale)
-    ) {
+    if (hit || hitTestCanvasStroke(state.strokes, worldPoint, transform().scale)) {
       return;
     }
 
@@ -2875,17 +2892,13 @@ export function createCanvasController(
     }
 
     const worldPoint = screenToWorld(screenPoint(event));
-    const image = hitTestRasterShape(worldPoint);
-    if (image?.locked) return image.id;
-
     if (hasLockedStrokes()) {
       const strokeId = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
       if (strokeId && isElementLocked(strokeId)) return strokeId;
     }
 
-    const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
-    if (paintedShape?.locked) return paintedShape.id;
-    return null;
+    const shape = hitTestShape(worldPoint)?.shape ?? null;
+    return shape?.locked ? shape.id : null;
   }
 
   function updateHoveredLockedElement(event: PointerEvent) {
@@ -2917,6 +2930,7 @@ export function createCanvasController(
     }
 
     updateHoveredLockedElement(event);
+    state.hoverCursor = hoverCursorAt(localPointer);
 
     if (!dragState || dragState.pointerId !== event.pointerId) {
       schedulePresenceUpdate();
@@ -3263,10 +3277,12 @@ export function createCanvasController(
 
   function handlePointerUp(event: PointerEvent) {
     if (endToolPointerGesture(event)) event.preventDefault();
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    const drag = dragState;
-    dragBehavior(drag).commit?.(drag);
-    endDrag(drag);
+    if (dragState && dragState.pointerId === event.pointerId) {
+      const drag = dragState;
+      dragBehavior(drag).commit?.(drag);
+      endDrag(drag);
+    }
+    releasePress(event);
   }
 
   /**
@@ -3295,6 +3311,7 @@ export function createCanvasController(
   }
 
   function handlePointerLeave() {
+    state.hoverCursor = null;
     localPointer = null;
     state.localPointerScreen = null;
     state.hoveredLockedElement = null;
@@ -3333,13 +3350,6 @@ export function createCanvasController(
     }
 
     const worldPoint = screenToWorld(screenPoint(event));
-    const image = hitTestRasterShape(worldPoint);
-    if (image) {
-      if (image.locked) clearSelection();
-      else if (!state.selectedIds.has(image.id)) selectOnly(image.id);
-      return;
-    }
-
     const strokeId = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
     if (strokeId) {
       if (isElementLocked(strokeId)) clearSelection();
@@ -3347,10 +3357,10 @@ export function createCanvasController(
       return;
     }
 
-    const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
-    if (paintedShape) {
-      if (paintedShape.locked) clearSelection();
-      else if (!state.selectedIds.has(paintedShape.id)) selectOnly(paintedShape.id);
+    const shape = hitTestShape(worldPoint)?.shape ?? null;
+    if (shape) {
+      if (shape.locked) clearSelection();
+      else if (!state.selectedIds.has(shape.id)) selectOnly(shape.id);
       return;
     }
 
@@ -3700,6 +3710,7 @@ export function createCanvasController(
         renderInk();
       },
       onTwoFingerTap: undo,
+      onWheel: wheelShape,
       minZoom: 0.15,
       maxZoom: 10,
     });
@@ -3754,6 +3765,7 @@ export function createCanvasController(
     if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
     if (inkRafId !== null) cancelAnimationFrame(inkRafId);
     if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
+    if (sceneFrameId !== null) cancelAnimationFrame(sceneFrameId);
     if (gpu) destroyCanvasGpu(gpu);
     gpu = null;
   }
@@ -3807,9 +3819,8 @@ export function createCanvasController(
 
     // per-shape queries
     articleStyle,
-    isBrowserFindTarget,
+    findableShapes,
     elementTagForShape,
-    elementDataForShape,
     editorTagForShape,
     elementChromePosition,
     transformControlPositions,
@@ -3853,8 +3864,6 @@ export function createCanvasController(
     startRotation,
     startResize,
     startSelectionScale,
-    onElementActivate,
-    onElementOpen,
     handleContextMenu,
     handleViewportPointerDown,
     handlePointerCancel,

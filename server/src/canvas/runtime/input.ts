@@ -114,6 +114,8 @@ interface ViewportControlsOptions extends ViewportZoomLimits {
   getFit: () => FitReference;
   onTouchGestureStart?: () => void;
   onTwoFingerTap?: () => void;
+  /** Lets content under the pointer scroll instead of the camera; true when it did. */
+  onWheel?: (event: WheelEvent) => boolean;
   wheelZoomSpeed?: number;
   pinchZoomSpeed?: number;
 }
@@ -218,6 +220,7 @@ export function createViewportControls({
   getFit,
   onTouchGestureStart,
   onTwoFingerTap,
+  onWheel,
   minZoom = 0.2,
   maxZoom = 20,
   wheelZoomSpeed = 0.001,
@@ -453,6 +456,7 @@ export function createViewportControls({
     // Safari keeps emitting momentum wheel events during a pinch; the gesture
     // handler already owns the camera while one is in flight.
     if (nativeGesture) return;
+    if (!e.ctrlKey && !e.metaKey && onWheel?.(e)) return;
     const pointer = targetPoint(target, e.clientX, e.clientY);
 
     if (e.ctrlKey || e.metaKey) {

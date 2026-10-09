@@ -1,7 +1,34 @@
+import {
+  editorTheme,
+  shapePlacement,
+  shapeTextLayout,
+} from "#canvas/extensions/shapePaint.ts";
+import type { RichTextTheme } from "#canvas/render/richText.ts";
+import { drawTextLayout } from "#canvas/render/text.ts";
+import type { CanvasGpu } from "#canvas/render/webgl.ts";
 import { CanvasRichTextElement } from "#canvas/runtime/elementBase.ts";
-import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
+import type {
+  CanvasClientPoint,
+  CanvasEditSession,
+  CanvasExtensionHost,
+  CanvasPaintHelpers,
+  CanvasShape,
+} from "#canvas/runtime/extensionApi.ts";
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import { iconMarkup } from "#components/Icon.tsx";
+
+function textEditor(shape: CanvasShape, at: CanvasClientPoint | null): CanvasEditSession {
+  return { shapeId: shape.id, tag: "canvas-text", props: { caret: at } };
+}
+
+// The article's 1px (transparent) border plus the editor's 4px padding.
+const INSET = 5;
+
+// Colour comes from the theme; a throwaway colour is fine for measuring.
+function textTheme(shape: CanvasShape, fontSize: number, color: string): RichTextTheme {
+  const theme = editorTheme(fontSize * (Number(shape.data.fontScale) || 1), color);
+  return { ...theme, preserveWhitespace: true };
+}
 
 export const CanvasText = CanvasElement.create({
   name: "text",
@@ -42,8 +69,24 @@ export const CanvasText = CanvasElement.create({
   addRender() {
     const { fontSize } = this.options;
     return {
-      surface: "dom" as const,
-      tag: "canvas-text",
+      paint: (gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) => {
+        const theme = textTheme(shape, fontSize, helpers.color("--canvas-text"));
+        const layout = shapeTextLayout(
+          shape,
+          theme,
+          Number.POSITIVE_INFINITY,
+          helpers.invalidate,
+        );
+        if (layout) {
+          drawTextLayout(
+            gpu,
+            layout,
+            shapePlacement(shape, helpers, { x: INSET, y: INSET }),
+          );
+        }
+      },
+      editor: textEditor,
+      cursor: () => "move",
       article: {
         style: (shape: CanvasShape) => ({
           "--canvas-text-font-size": `${fontSize * (Number(shape.data.fontScale) || 1)}px`,
@@ -56,8 +99,20 @@ export const CanvasText = CanvasElement.create({
     const { minSize, placeholder } = this.options;
     return {
       transform: { move: true, resize: "font" as const, rotate: true },
-      editableBody: true,
       measurement: {
+        measure: (shape: CanvasShape) => {
+          const layout = shapeTextLayout(
+            shape,
+            textTheme(shape, this.options.fontSize, "#000"),
+            Number.POSITIVE_INFINITY,
+            () => {},
+          );
+          if (!layout) return null;
+          return {
+            width: Math.max(minSize.width, Math.ceil(layout.width + INSET * 2)),
+            height: Math.max(minSize.height, Math.ceil(layout.height + INSET * 2)),
+          };
+        },
         // Text sizes itself from its content, so the persisted box is a
         // placeholder. This is the estimate used before the element has measured.
         fallback: (shape: CanvasShape) => {
@@ -70,6 +125,17 @@ export const CanvasText = CanvasElement.create({
           };
         },
       },
+    };
+  },
+
+  // A press drags; a click that did not drag starts editing at that point.
+  addEvents() {
+    return {
+      click: (
+        shape: CanvasShape,
+        host: CanvasExtensionHost,
+        hit: { event: PointerEvent },
+      ) => host.beginEdit(textEditor(shape, hit.event)),
     };
   },
 
@@ -106,13 +172,10 @@ export const CanvasText = CanvasElement.create({
   },
 });
 
-// Text body: just the rich-text editor, which doubles as the drag target when
-// it isn't focused for editing.
+// The live text, mounted only while editing: just the rich-text editor.
 class CanvasTextElement extends CanvasRichTextElement {
   protected readonly showHandle = false;
-  protected readonly dragFromEditor = true;
   protected readonly removeWhenEmpty = true;
-  protected readonly autoSize = true;
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-text")) {

@@ -1,38 +1,40 @@
 /**
- * Text drawn straight from glyph outlines with Eric Lengyel's Slug algorithm:
- * each fragment casts a horizontal and a vertical ray through the glyph's
- * quadratic curves and turns the crossings into coverage, so labels stay sharp
- * at every zoom with no atlas. Curves are looped per glyph rather than banded,
- * which suits short labels.
+ * Painted text: a `TextLayout` placed on screen. Glyphs are drawn straight from
+ * their outlines with Eric Lengyel's Slug algorithm — each fragment casts a
+ * horizontal and a vertical ray through the glyph's quadratic curves — so text
+ * stays sharp at every zoom with no atlas. One instanced draw per font face.
  */
 
-import { type Font, parseFont } from "#canvas/render/font.ts";
-import { type CanvasGpu, type Rgba, setColor, useProgram } from "#canvas/render/webgl.ts";
+import type { FontFace } from "#canvas/render/fonts.ts";
+import { fontFaces } from "#canvas/render/fonts.ts";
+import {
+  drawRoundedRect,
+  drawTexture,
+  type ScreenQuad,
+} from "#canvas/render/primitives.ts";
+import {
+  type LaidRect,
+  layoutText,
+  type TextLayout,
+  type TextStyle,
+} from "#canvas/render/textLayout.ts";
+import { type CanvasGpu, textureFor, useProgram } from "#canvas/render/webgl.ts";
 import type { CanvasPoint } from "#canvas/runtime/geometry.ts";
 
 const CURVE_TEXTURE_WIDTH = 4096;
+// Floats per glyph instance: em bounds (4), origin and size (3), curves (2), colour (4).
+const INSTANCE_FLOATS = 13;
 
-let font: Font | null = null;
-let fontLoad: Promise<void> | null = null;
-const waiting = new Set<() => void>();
-
-// The font arrives asynchronously the first time any text is drawn; callers
-// asking before then are repainted once it lands.
-function loadedFont(invalidate: () => void): Font | null {
-  if (font) return font;
-  waiting.add(invalidate);
-  fontLoad ??= import("#assets/fonts/Inter-Bold.ttf?url")
-    .then((module) => fetch(module.default))
-    .then((response) => {
-      if (!response.ok) throw new Error(`Canvas font failed to load: ${response.status}`);
-      return response.arrayBuffer();
-    })
-    .then((buffer) => {
-      font = parseFont(buffer);
-      for (const repaint of waiting) repaint();
-      waiting.clear();
-    });
-  return null;
+/**
+ * Where a layout lands on screen: its (0, 0) at `origin`, `scale` screen pixels
+ * per layout unit, rotated by `rotation` radians.
+ */
+export interface TextPlacement {
+  origin: CanvasPoint;
+  scale: number;
+  rotation: number;
+  /** Visible part of the layout, in layout units. */
+  clip?: { x: number; y: number; width: number; height: number };
 }
 
 /** Glyph curves packed two texels per curve, uploaded as new glyphs are used. */
@@ -41,7 +43,7 @@ interface CurveStore {
   data: Float32Array;
   used: number;
   dirty: boolean;
-  glyphs: Map<number, { start: number; count: number }>;
+  glyphs: Map<string, { start: number; count: number }>;
   vao: WebGLVertexArrayObject;
   instances: WebGLBuffer;
 }
@@ -56,12 +58,15 @@ function curveStore(gpu: CanvasGpu): CurveStore {
   if (!texture || !vao || !instances) throw new Error("Text resource allocation failed");
   gl.bindVertexArray(vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, instances);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 28, 0);
-  gl.vertexAttribDivisor(0, 1);
-  gl.enableVertexAttribArray(1);
-  gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 16);
-  gl.vertexAttribDivisor(1, 1);
+  const stride = INSTANCE_FLOATS * 4;
+  const attributes = [4, 3, 2, 4];
+  let offset = 0;
+  attributes.forEach((size, location) => {
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, size, gl.FLOAT, false, stride, offset * 4);
+    gl.vertexAttribDivisor(location, 1);
+    offset += size;
+  });
   gl.bindVertexArray(null);
   const store: CurveStore = {
     texture,
@@ -76,8 +81,8 @@ function curveStore(gpu: CanvasGpu): CurveStore {
   return store;
 }
 
-function glyphCurves(store: CurveStore, codePoint: number, curves: Float32Array) {
-  const cached = store.glyphs.get(codePoint);
+function glyphCurves(store: CurveStore, key: string, curves: Float32Array) {
+  const cached = store.glyphs.get(key);
   if (cached) return cached;
   const count = curves.length / 6;
   const needed = (store.used + count * 2) * 4;
@@ -95,39 +100,43 @@ function glyphCurves(store: CurveStore, codePoint: number, curves: Float32Array)
   const entry = { start: store.used, count };
   store.used += count * 2;
   store.dirty = true;
-  store.glyphs.set(codePoint, entry);
+  store.glyphs.set(key, entry);
   return entry;
 }
 
 const TEXT_VERTEX = `
 layout(location = 0) in vec4 a_bounds;
-layout(location = 1) in vec3 a_glyph;
+layout(location = 1) in vec3 a_place;
+layout(location = 2) in vec2 a_curves;
+layout(location = 3) in vec4 a_color;
 uniform vec2 u_origin;
-uniform vec2 u_direction;
-uniform vec2 u_scale;
+uniform vec2 u_axisX;
+uniform vec2 u_axisY;
+uniform float u_scale;
 out vec2 v_em;
-out vec2 v_local;
+out vec2 v_layout;
 flat out vec2 v_curves;
+flat out vec4 v_color;
 void main() {
   vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1);
-  vec2 pad = vec2(1.0) / (u_scale * u_dpr);
+  float pad = 1.0 / (a_place.z * u_scale * u_dpr);
   vec2 em = mix(a_bounds.xy - pad, a_bounds.zw + pad, corner);
-  vec2 local = vec2(em.x * u_scale.x, -em.y * u_scale.y);
-  v_em = em - vec2(a_glyph.x, 0.0);
-  v_local = local;
-  v_curves = a_glyph.yz;
-  vec2 normal = vec2(-u_direction.y, u_direction.x);
-  gl_Position = screenToClip(u_origin + u_direction * local.x + normal * local.y);
+  vec2 layoutPoint = a_place.xy + vec2(em.x, -em.y) * a_place.z;
+  v_em = em;
+  v_layout = layoutPoint;
+  v_curves = a_curves;
+  v_color = a_color;
+  gl_Position = screenToClip(u_origin + u_axisX * layoutPoint.x + u_axisY * layoutPoint.y);
 }
 `;
 
 const TEXT_FRAGMENT = `
 uniform highp sampler2D u_curves;
-uniform vec4 u_color;
 uniform vec4 u_clip;
 in vec2 v_em;
-in vec2 v_local;
+in vec2 v_layout;
 flat in vec2 v_curves;
+flat in vec4 v_color;
 out vec4 outColor;
 
 vec4 curveTexel(int index) {
@@ -166,7 +175,7 @@ vec2 solveVertical(vec4 p12, vec2 p3) {
 }
 
 void main() {
-  if (v_local.x < u_clip.x || v_local.y < u_clip.y || v_local.x > u_clip.z || v_local.y > u_clip.w) discard;
+  if (v_layout.x < u_clip.x || v_layout.y < u_clip.y || v_layout.x > u_clip.z || v_layout.y > u_clip.w) discard;
   vec2 pixelsPerEm = 1.0 / fwidth(v_em);
   float xcov = 0.0;
   float xwgt = 0.0;
@@ -208,44 +217,106 @@ void main() {
     abs(xcov * xwgt + ycov * ywgt) / max(xwgt + ywgt, 1.0 / 65536.0),
     min(abs(xcov), abs(ycov))
   );
-  outColor = u_color * clamp(coverage, 0.0, 1.0);
+  outColor = v_color * clamp(coverage, 0.0, 1.0);
 }
 `;
 
-export interface TextOptions {
-  /** Screen position of the text's left edge on its middle line. */
-  at: CanvasPoint;
-  /** Radians, about `at`. */
-  rotation?: number;
-  size: number;
-  color: Rgba;
-  /** Squeezes the text horizontally to fit, like `fillText`'s `maxWidth`. */
-  maxWidth?: number;
-  /** Rect in the text's own unrotated pixels, relative to `at`. */
-  clip?: { x: number; y: number; width: number; height: number };
-  /** Repaints once the font has loaded; text is skipped until then. */
-  invalidate: () => void;
+function axes(placement: TextPlacement) {
+  const cos = Math.cos(placement.rotation) * placement.scale;
+  const sin = Math.sin(placement.rotation) * placement.scale;
+  return { axisX: { x: cos, y: sin }, axisY: { x: -sin, y: cos } };
 }
 
-export function drawText(gpu: CanvasGpu, text: string, options: TextOptions) {
-  const loaded = loadedFont(options.invalidate);
-  if (!loaded || text.length === 0) return;
-  const { gl } = gpu;
-  const store = curveStore(gpu);
+function quadOf(
+  placement: TextPlacement,
+  rect: { x: number; y: number; width: number; height: number },
+): ScreenQuad {
+  const { axisX, axisY } = axes(placement);
+  return {
+    origin: {
+      x: placement.origin.x + axisX.x * rect.x + axisY.x * rect.y,
+      y: placement.origin.y + axisX.y * rect.x + axisY.y * rect.y,
+    },
+    axisX: { x: axisX.x * rect.width, y: axisX.y * rect.width },
+    axisY: { x: axisY.x * rect.height, y: axisY.y * rect.height },
+  };
+}
 
-  const instances: number[] = [];
-  let pen = 0;
-  for (const char of text) {
-    const codePoint = char.codePointAt(0) ?? 0;
-    const glyph = loaded.glyph(codePoint);
-    if (glyph.curves.length > 0) {
-      const curves = glyphCurves(store, codePoint, glyph.curves);
-      const { x0, y0, x1, y1 } = glyph.bounds;
-      instances.push(pen + x0, y0, pen + x1, y1, pen, curves.start, curves.count);
-    }
-    pen += glyph.advance;
+function clipRect(rect: LaidRect, clip: TextPlacement["clip"]): LaidRect | null {
+  if (!clip) return rect;
+  const x0 = Math.max(rect.x, clip.x);
+  const y0 = Math.max(rect.y, clip.y);
+  const x1 = Math.min(rect.x + rect.width, clip.x + clip.width);
+  const y1 = Math.min(rect.y + rect.height, clip.y + clip.height);
+  if (x1 <= x0 || y1 <= y0) return null;
+  return { ...rect, x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * Draws a laid-out block of text. `image` resolves the layout's images to
+ * loaded sources, or null while they load.
+ */
+export function drawTextLayout(
+  gpu: CanvasGpu,
+  layout: TextLayout,
+  placement: TextPlacement,
+  image: (src: string) => TexImageSource | null = () => null,
+) {
+  const { gl } = gpu;
+  for (const laid of layout.rects) {
+    const rect = clipRect(laid, placement.clip);
+    if (!rect) continue;
+    drawRoundedRect(gpu, quadOf(placement, rect), {
+      radius: rect.radius * placement.scale,
+      fill: rect.fill,
+      stroke: rect.stroke,
+      strokeWidth: (rect.strokeWidth ?? 1) * placement.scale,
+    });
   }
-  if (instances.length === 0) return;
+  for (const laid of layout.images) {
+    const source = image(laid.src);
+    const rect = clipRect({ ...laid, radius: 0 }, placement.clip);
+    if (!source || !rect || laid.height <= 0) continue;
+    drawTexture(gpu, textureFor(gpu, source), quadOf(placement, rect), 1, {
+      x0: (rect.x - laid.x) / laid.width,
+      y0: (rect.y - laid.y) / laid.height,
+      x1: (rect.x + rect.width - laid.x) / laid.width,
+      y1: (rect.y + rect.height - laid.y) / laid.height,
+    });
+  }
+  if (layout.glyphs.length === 0) return;
+
+  const faces = new Set(layout.glyphs.map((glyph) => glyph.face));
+  const fonts = fontFaces(faces, () => {});
+  if (!fonts) throw new Error("Text is laid out before its fonts have loaded");
+  const store = curveStore(gpu);
+  const byFace = new Map<FontFace, number[]>();
+  for (const glyph of layout.glyphs) {
+    const font = fonts.get(glyph.face);
+    if (!font) throw new Error(`Font ${glyph.face} is not loaded`);
+    const outline = font.glyph(glyph.index);
+    if (outline.curves.length === 0) continue;
+    const curves = glyphCurves(store, `${glyph.face}:${glyph.index}`, outline.curves);
+    const { x0, y0, x1, y1 } = outline.bounds;
+    const alpha = glyph.color[3];
+    const list = byFace.get(glyph.face) ?? [];
+    byFace.set(glyph.face, list);
+    list.push(
+      x0,
+      y0,
+      x1,
+      y1,
+      glyph.x,
+      glyph.y,
+      glyph.size,
+      curves.start,
+      curves.count,
+      glyph.color[0] * alpha,
+      glyph.color[1] * alpha,
+      glyph.color[2] * alpha,
+      alpha,
+    );
+  }
 
   if (store.dirty) {
     gl.bindTexture(gl.TEXTURE_2D, store.texture);
@@ -265,40 +336,79 @@ export function drawText(gpu: CanvasGpu, text: string, options: TextOptions) {
     store.dirty = false;
   }
 
-  const width = pen * options.size;
-  const squeeze =
-    options.maxWidth !== undefined && width > options.maxWidth
-      ? Math.max(0, options.maxWidth) / width
-      : 1;
-  // Shift from the middle line to the baseline, in em.
-  const middle = (loaded.ascender + loaded.descender) / 2;
-  const rotation = options.rotation ?? 0;
-  const direction = { x: Math.cos(rotation), y: Math.sin(rotation) };
-  const clip = options.clip ?? { x: -1e9, y: -1e9, width: 2e9, height: 2e9 };
-
   const program = useProgram(gpu, "text", TEXT_VERTEX, TEXT_FRAGMENT);
-  gl.uniform2f(
-    program.uniform("u_origin"),
-    options.at.x - direction.y * middle * options.size,
-    options.at.y + direction.x * middle * options.size,
-  );
-  gl.uniform2f(program.uniform("u_direction"), direction.x, direction.y);
-  gl.uniform2f(program.uniform("u_scale"), options.size * squeeze, options.size);
-  // The clip is relative to `at`, the varying to the baseline origin.
+  const { axisX, axisY } = axes(placement);
+  const clip = placement.clip ?? { x: -1e9, y: -1e9, width: 2e9, height: 2e9 };
+  gl.uniform2f(program.uniform("u_origin"), placement.origin.x, placement.origin.y);
+  gl.uniform2f(program.uniform("u_axisX"), axisX.x, axisX.y);
+  gl.uniform2f(program.uniform("u_axisY"), axisY.x, axisY.y);
+  gl.uniform1f(program.uniform("u_scale"), placement.scale);
   gl.uniform4f(
     program.uniform("u_clip"),
     clip.x,
-    clip.y - middle * options.size,
+    clip.y,
     clip.x + clip.width,
-    clip.y + clip.height - middle * options.size,
+    clip.y + clip.height,
   );
-  setColor(gpu, program.uniform("u_color"), options.color);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, store.texture);
   gl.uniform1i(program.uniform("u_curves"), 0);
   gl.bindVertexArray(store.vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, store.instances);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(instances), gl.DYNAMIC_DRAW);
-  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, instances.length / 7);
+  for (const instances of byFace.values()) {
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(instances), gl.DYNAMIC_DRAW);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, instances.length / INSTANCE_FLOATS);
+  }
   gl.bindVertexArray(null);
+}
+
+const singleLines = new Map<string, TextLayout>();
+
+/**
+ * One line of text in one style, e.g. a label. Returns its layout, or null
+ * until the font has loaded; `invalidate` repaints once it has.
+ */
+export function lineLayout(
+  text: string,
+  style: TextStyle,
+  invalidate: () => void,
+  maxWidth = Number.POSITIVE_INFINITY,
+): TextLayout | null {
+  const key = `${style.face}|${style.size}|${style.color}|${maxWidth}|${text}`;
+  const cached = singleLines.get(key);
+  if (cached) return cached;
+  const fonts = fontFaces([style.face], invalidate);
+  if (!fonts) return null;
+  const layout = layoutText(
+    [
+      {
+        kind: "text",
+        runs: [{ text, style }],
+        spacing: { marginTop: 0, marginBottom: 0, indent: 0, lineHeight: 1.2 },
+      },
+    ],
+    fonts,
+    { width: maxWidth, imageAspect: () => null },
+  );
+  if (singleLines.size > 512) singleLines.clear();
+  singleLines.set(key, layout);
+  return layout;
+}
+
+/** Placement that puts a layout's middle line at `at`, like `textBaseline = "middle"`. */
+export function middlePlacement(
+  layout: TextLayout,
+  at: CanvasPoint,
+  scale: number,
+  rotation = 0,
+): TextPlacement {
+  const up = layout.height / 2;
+  return {
+    origin: {
+      x: at.x + Math.sin(rotation) * up * scale,
+      y: at.y - Math.cos(rotation) * up * scale,
+    },
+    scale,
+    rotation,
+  };
 }
