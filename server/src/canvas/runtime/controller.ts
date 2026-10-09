@@ -1760,12 +1760,19 @@ export function createCanvasController(
     const view = { transform: transform(), screen: state.screen, dpr };
     beginPass(target, view);
     renderGrid(target);
-    renderContent(
-      target,
-      paintHelpers(view, { invalidate: repaint, host: extHost, chrome: true }),
-      worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 64),
-      renderScene,
-    );
+    const helpers = paintHelpers(view, {
+      invalidate: repaint,
+      host: extHost,
+      chrome: true,
+    });
+    const visible = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 64);
+    renderContent(target, helpers, visible, renderScene);
+    // After the content, so a shape overlapping a section never covers its title row.
+    for (const shape of canvasShapes()) {
+      const chrome = extensionManager.get(shape.type).render.chrome;
+      if (chrome && rectsIntersect(visible, shapeAabb(shape)))
+        chrome.paint(target, shape, helpers);
+    }
     imageProcessing.retain((id) => shapesById().has(id));
     presentPass(target, canvas);
   }
@@ -1876,7 +1883,8 @@ export function createCanvasController(
       !state.marqueeRect &&
       !state.editMode?.overlay.length;
     if (empty) {
-      if (overlayPainted) canvas.getContext("bitmaprenderer")?.transferFromImageBitmap(null);
+      if (overlayPainted)
+        canvas.getContext("bitmaprenderer")?.transferFromImageBitmap(null);
       overlayPainted = false;
       return;
     }
@@ -2021,7 +2029,6 @@ export function createCanvasController(
       dx,
       dy,
       dpr: view.dpr,
-      chrome: options.chrome,
       invalidate: options.invalidate,
       requestFrame: requestSceneFrame,
       color: themeColor,
@@ -2997,6 +3004,14 @@ export function createCanvasController(
     worldPoint: CanvasPoint,
   ): { shape: CanvasShape; region: string } | null {
     const shapes = canvasShapes();
+    // Chrome is painted above every shape, so it is hit first.
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      const shape = shapes[i];
+      const region = extensionManager
+        .get(shape.type)
+        .render.chrome?.hitTest?.(shape, worldPoint, hitTestHelpers);
+      if (region) return { shape, region };
+    }
     const containers = clippingContainers();
     for (let i = shapes.length - 1; i >= 0; i--) {
       const shape = shapes[i];
@@ -3061,10 +3076,9 @@ export function createCanvasController(
     }
     const hit = hitTestShape(worldPoint);
     if (!hit) return { cursor: null, region: null };
+    const cursor = extensionManager.get(hit.shape.type).render.cursor;
     return {
-      cursor:
-        extensionManager.get(hit.shape.type).render.cursor?.(hit.shape, hit.region) ??
-        "move",
+      cursor: cursor ? cursor(hit.shape, hit.region) : "move",
       region: { shapeId: hit.shape.id, region: hit.region },
     };
   }
@@ -3187,13 +3201,19 @@ export function createCanvasController(
   }
 
   /** Paints an edit mode's overlay over its shape, in the overlay pass only. */
-  function drawEditOverlay(target: CanvasGpu, active: NonNullable<typeof state.editMode>) {
+  function drawEditOverlay(
+    target: CanvasGpu,
+    active: NonNullable<typeof state.editMode>,
+  ) {
     const shape = shapesById().get(active.shapeId);
     if (!shape) return;
     const bounds = shapeBounds(shape);
     const { scale } = transform();
     const world = (point: CanvasLocalPoint) =>
-      pointOnRotatedShape(bounds, { x: point.x * bounds.width, y: point.y * bounds.height });
+      pointOnRotatedShape(bounds, {
+        x: point.x * bounds.width,
+        y: point.y * bounds.height,
+      });
     const screen = (point: CanvasLocalPoint) => worldToScreen(world(point));
     // Local lengths are fractions of the frame width.
     const pixels = (value: number, unit: "local" | "screen" = "local") =>
@@ -3208,7 +3228,11 @@ export function createCanvasController(
         // Ink is drawn in world units and covers each pixel once, so a
         // translucent brush preview does not darken where it overlaps itself.
         const stroke = buildFreehandStroke(item.points.map(world), {
-          style: { width: pixels(item.width, item.unit) / scale, color: item.color, opacity: 1 },
+          style: {
+            width: pixels(item.width, item.unit) / scale,
+            color: item.color,
+            opacity: 1,
+          },
         });
         drawActiveStroke(target, stroke, item.color);
       } else if (item.kind === "circle") {
@@ -3220,7 +3244,10 @@ export function createCanvasController(
           { radius, ...paint(item) },
         );
       } else {
-        const center = screen({ x: item.x + item.width / 2, y: item.y + item.height / 2 });
+        const center = screen({
+          x: item.x + item.width / 2,
+          y: item.y + item.height / 2,
+        });
         const width = item.width * bounds.width * scale;
         const height = item.height * bounds.height * scale;
         drawRoundedRect(
@@ -3483,7 +3510,10 @@ export function createCanvasController(
     const edited = editing && shapesById().get(editing.shapeId);
     if (editing && edited && !dragState) {
       const sample = [{ world: localPointer, event }];
-      editing.mode.onHover?.(editPointer(edited, localPointer, sample, event), editing.session);
+      editing.mode.onHover?.(
+        editPointer(edited, localPointer, sample, event),
+        editing.session,
+      );
       schedulePresenceUpdate();
       return;
     }

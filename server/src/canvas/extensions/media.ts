@@ -168,7 +168,8 @@ export const CanvasImage = CanvasElement.create({
   },
 
   addRender() {
-    return { paint: paintImage, hitTest: hitBody };
+    // Images keep the canvas's own cursor; a move cursor over a photo is noise.
+    return { paint: paintImage, hitTest: hitBody, cursor: () => null };
   },
 
   addBehavior() {

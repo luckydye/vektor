@@ -25,39 +25,56 @@ import type { TranslationKey } from "#utils/lang.ts";
 // many world px) is grabbable, preserving access to content placed inside.
 const SECTION_BORDER = 6;
 
-// Draws the section frame and, unless it is being edited, its title row.
-// Screen-space geometry (transform, title position/size) comes from the host so
-// hit-testing and the inline title editor stay in sync with what is painted.
-// Sections never rotate, so everything here is axis-aligned.
-function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+/**
+ * The frame's screen box and colour. Sections never rotate, so it is
+ * axis-aligned; a transparent one keeps a neutral border so it can be found.
+ */
+function sectionFrame(shape: CanvasShape, helpers: CanvasPaintHelpers) {
   const { scale, dx, dy, dpr } = helpers;
   const frame = shape.frame;
-  if (frame.width <= 0 || frame.height <= 0) return;
-
   // A one-pixel border lands on device pixels at any zoom: an odd device width
   // is centred on a pixel, an even one on a pixel edge.
   const half = (Math.round(dpr) % 2) / (2 * dpr);
   const snap = (value: number) => Math.round(value * dpr) / dpr + half;
   const left = snap(frame.x * scale + dx);
   const top = snap(frame.y * scale + dy);
-  // A transparent frame keeps a neutral border so it can still be found.
   const transparent = shape.style.color === "transparent";
   const color = parseColor(
     transparent ? helpers.color("--canvas-frame-border") : shape.style.color,
   );
-  const fade = (alpha: number): Rgba => [color[0], color[1], color[2], color[3] * alpha];
-  drawRoundedRect(
-    gpu,
-    rectQuad(
+  return {
+    quad: rectQuad(
       left,
       top,
       snap((frame.x + frame.width) * scale + dx) - left,
       snap((frame.y + frame.height) * scale + dy) - top,
     ),
-    { fill: fade(transparent ? 0 : 0.06), stroke: fade(0.9), strokeWidth: 1 },
-  );
+    transparent,
+    fade: (alpha: number): Rgba => [color[0], color[1], color[2], color[3] * alpha],
+  };
+}
 
-  if (!helpers.chrome) return;
+// The fill, under the section's contents.
+function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
+  if (shape.frame.width <= 0 || shape.frame.height <= 0) return;
+  const { quad, transparent, fade } = sectionFrame(shape, helpers);
+  if (!transparent) drawRoundedRect(gpu, quad, { fill: fade(0.06) });
+}
+
+// The border and title row: title, size readout and export chips. Screen-space
+// geometry comes from the host so hit-testing paints and tests the same boxes.
+function paintSectionChrome(
+  gpu: CanvasGpu,
+  shape: CanvasShape,
+  helpers: CanvasPaintHelpers,
+) {
+  const { scale, dx } = helpers;
+  const frame = shape.frame;
+  if (frame.width <= 0 || frame.height <= 0) return;
+  // The border sits above the contents, like the title row, so overlapping
+  // shapes never hide where the frame is.
+  const outline = sectionFrame(shape, helpers);
+  drawRoundedRect(gpu, outline.quad, { stroke: outline.fade(0.9), strokeWidth: 1 });
 
   const position = helpers.chromePosition(shape);
   const size = helpers.chromeSize(shape);
@@ -69,7 +86,8 @@ function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHe
   if (edit?.field === "title") {
     drawTextField(gpu, edit, style, { x: position.x, y: middle }, helpers.invalidate);
   }
-  const label = edit?.field === "title" ? null : lineLayout(title, style, helpers.invalidate);
+  const label =
+    edit?.field === "title" ? null : lineLayout(title, style, helpers.invalidate);
   if (label) {
     drawTextLayout(gpu, label, {
       ...middlePlacement(label, { x: position.x, y: middle }, 1),
@@ -89,7 +107,12 @@ function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHe
   if (hovered === "size") {
     drawRoundedRect(
       gpu,
-      rectQuad(controls.size.x - 4, position.y + 2, controls.size.width + 8, size.height - 4),
+      rectQuad(
+        controls.size.x - 4,
+        position.y + 2,
+        controls.size.width + 8,
+        size.height - 4,
+      ),
       { radius: 4, fill: parseColor(helpers.color("--canvas-divider-color")) },
     );
   }
@@ -107,7 +130,11 @@ function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHe
       helpers.invalidate,
     );
   } else if (readout) {
-    drawTextLayout(gpu, readout, middlePlacement(readout, { x: controls.size.x, y: middle }, 1));
+    drawTextLayout(
+      gpu,
+      readout,
+      middlePlacement(readout, { x: controls.size.x, y: middle }, 1),
+    );
   }
   const chipStyle = controlStyle(helpers.chromeTextColor);
   for (const chip of controls.chips) {
@@ -270,7 +297,8 @@ export const CanvasSection = CanvasElement.create({
   addRender() {
     return {
       paint: paintSection,
-      hitTest: (shape, world, helpers) => hitTestSection(shape, world, helpers),
+      // The interior is click-through; the border and title row are chrome.
+      hitTest: () => null,
       cursor: (_shape, region) =>
         region === "size"
           ? "text"
@@ -278,6 +306,8 @@ export const CanvasSection = CanvasElement.create({
             ? "pointer"
             : "move",
       chrome: {
+        paint: paintSectionChrome,
+        hitTest: hitTestSection,
         position: (shape, helpers) => {
           const gap = 26 / helpers.scale;
           return helpers.worldToScreen(
@@ -390,7 +420,6 @@ export const CanvasSection = CanvasElement.create({
     };
   },
 });
-
 
 // The title row (screen-space, above the frame) takes priority over the border
 // (world-space edge band); the interior is click-through (null).

@@ -394,8 +394,6 @@ export interface CanvasPaintHelpers {
   dx: number;
   dy: number;
   dpr: number;
-  /** False while exporting: titles and controls frame content but are not part of it. */
-  chrome: boolean;
   // Repaints the scene, e.g. once an image or font has loaded.
   invalidate: () => void;
   // Paints again on the next animation frame; call every paint while animating.
@@ -461,7 +459,8 @@ export interface CanvasElementExtension {
     tag?: string;
     /** The live DOM editor mounted while the shape is edited in place. */
     editor?: (shape: CanvasShape, at: CanvasClientPoint | null) => CanvasEditSession;
-    cursor?: (shape: CanvasShape, region: CanvasHitRegion) => string;
+    /** The hover cursor for a region: "move" when omitted, the canvas's own cursor for null. */
+    cursor?: (shape: CanvasShape, region: CanvasHitRegion) => string | null;
     /**
      * Draws the shape with the canvas's WebGL2 context: the shared primitives
      * and text in `#canvas/render/`, or raw GL. GPU objects belong in
@@ -498,6 +497,14 @@ export interface CanvasElementExtension {
     };
     /** Screen-space chrome painted outside the frame, such as a section's title row. */
     chrome?: {
+      /** Draws the chrome; runs after every shape is painted, so nothing covers it. */
+      paint: (gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) => void;
+      /** Hits on the chrome, tested before any shape's own `hitTest` since it is drawn above them. */
+      hitTest?: (
+        shape: CanvasShape,
+        point: CanvasPoint,
+        helpers: CanvasHitTestHelpers,
+      ) => CanvasHitRegion | null;
       position: (
         shape: CanvasShape,
         helpers: { scale: number; worldToScreen: (point: CanvasPoint) => CanvasPoint },
