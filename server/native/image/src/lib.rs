@@ -4,7 +4,7 @@
 //! Compiled to a N-API addon (`.node`) that Bun embeds directly into the
 //! single-file executable. See `server/native/image/README.md`.
 
-use image::{DynamicImage, GenericImageView, ImageFormat, Rgb, RgbImage};
+use image::{DynamicImage, GenericImageView, ImageDecoder, ImageFormat, ImageReader, Rgb, RgbImage};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 use std::io::Cursor;
@@ -44,12 +44,26 @@ fn err(msg: impl ToString) -> napi::Error {
     napi::Error::from_reason(msg.to_string())
 }
 
+/// Decodes upright: camera photos store their rotation as EXIF orientation, and
+/// a resized copy drops that tag, so it has to be baked into the pixels.
+fn decode(bytes: &[u8]) -> napi::Result<DynamicImage> {
+    let mut decoder = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(err)?
+        .into_decoder()
+        .map_err(err)?;
+    let orientation = decoder.orientation().map_err(err)?;
+    let mut img = DynamicImage::from_decoder(decoder).map_err(err)?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
 /// Decode an image and report its dimensions + detected format.
 #[napi]
 pub fn metadata(input: Buffer) -> napi::Result<Metadata> {
     let bytes: &[u8] = &input;
     let fmt = image::guess_format(bytes).map_err(err)?;
-    let img = image::load_from_memory(bytes).map_err(err)?;
+    let img = decode(bytes)?;
     let (width, height) = img.dimensions();
     Ok(Metadata {
         width,
@@ -63,7 +77,7 @@ pub fn metadata(input: Buffer) -> napi::Result<Metadata> {
 pub fn transform(input: Buffer, opts: TransformOptions) -> napi::Result<Buffer> {
     let bytes: &[u8] = &input;
     let src_fmt = image::guess_format(bytes).ok();
-    let mut img = image::load_from_memory(bytes).map_err(err)?;
+    let mut img = decode(bytes)?;
 
     if opts.w > 0 || opts.h > 0 {
         let (ow, oh) = img.dimensions();
