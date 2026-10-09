@@ -3100,7 +3100,7 @@ export function createCanvasController(
   // --- edit modes ---------------------------------------------------------
 
   function beginEditMode(shapeId: string, mode: CanvasEditMode) {
-    if (shapesById().get(shapeId)?.locked) return;
+    if (shapesById().get(shapeId)?.locked) return null;
     exitEditMode();
     const shape = () => {
       const found = shapesById().get(shapeId);
@@ -3133,6 +3133,7 @@ export function createCanvasController(
     };
     state.editMode = { shapeId, mode, session, cursor: null, overlay: [] };
     invalidate();
+    return session;
   }
 
   function exitEditMode() {

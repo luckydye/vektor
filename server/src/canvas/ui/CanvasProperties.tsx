@@ -208,7 +208,7 @@ function InspectorMount(props: {
       write: (patch) => run((canvas) => canvas.updateShapeData(shapeId, patch)),
       beginEdit: (mode) => {
         editMode = mode;
-        run((canvas) => canvas.beginEditMode(shapeId, mode));
+        return run((canvas) => canvas.beginEditMode(shapeId, mode)) ?? null;
       },
     });
     const mounted = handle;

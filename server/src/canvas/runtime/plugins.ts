@@ -20,8 +20,9 @@ export interface CanvasInspectorHandle {
   /**
    * Hands pointer input over the inspected shape to `mode` until it exits: on
    * Escape, a selection or tool change, the shape's deletion, or the panel closing.
+   * Returns its session, or null when the shape is locked.
    */
-  beginEdit: (mode: CanvasEditMode) => void;
+  beginEdit: (mode: CanvasEditMode) => CanvasEditModeSession | null;
 }
 
 /** A point in the shape's own space: 0..1 across its frame, rotation removed. */
@@ -198,7 +199,7 @@ export function createInspectorHandle(options: {
   owner: string;
   shape: () => CanvasShape;
   write: (patch: Record<string, unknown>) => void;
-  beginEdit: (mode: CanvasEditMode) => void;
+  beginEdit: (mode: CanvasEditMode) => CanvasEditModeSession | null;
 }): CanvasInspectorHandle & { notify: () => void } {
   const key = pluginDataKey(options.owner);
   const listeners = new Set<() => void>();

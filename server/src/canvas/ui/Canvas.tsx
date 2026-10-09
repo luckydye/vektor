@@ -31,7 +31,8 @@ import type { CanvasHostElement } from "#canvas/ui/CanvasHostElement.ts";
 export interface CanvasChrome {
   view: Accessor<CanvasView | null>;
   frame<T>(read: () => T): Accessor<T>;
-  run(command: (view: CanvasView) => void): void;
+  /** Runs a command on the view and asks for a frame; returns what it returned. */
+  run<T>(command: (view: CanvasView) => T): T | undefined;
   onFrame(): void;
 }
 
@@ -61,9 +62,10 @@ export function createCanvasChrome(
     },
     run(command) {
       const current = view();
-      if (!current) return;
-      command(current);
+      if (!current) return undefined;
+      const result = command(current);
       host()?.requestFrame();
+      return result;
     },
     onFrame() {
       setPainted((count) => count + 1);
