@@ -23,7 +23,7 @@ vektor-canvas {
   --canvas-muted: #6b7280;
   --canvas-strong: #374151;
   --canvas-toolbar-bg: rgba(255, 255, 255, 0.94);
-  --canvas-toolbar-border: #d1d5db;
+  --canvas-toolbar-border: var(--color-neutral-100);
   --canvas-toolbar-shadow: rgba(15, 23, 42, 0.14);
   --canvas-tool-text: #374151;
   --canvas-tool-hover-bg: #f3f4f6;
@@ -67,7 +67,6 @@ vektor-canvas {
     --canvas-muted: #9ca3af;
     --canvas-strong: #e5e7eb;
     --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
-    --canvas-toolbar-border: rgba(255, 255, 255, 0.12);
     --canvas-toolbar-shadow: rgba(0, 0, 0, 0.38);
     --canvas-tool-text: #d1d5db;
     --canvas-tool-hover-bg: rgba(255, 255, 255, 0.08);
@@ -200,6 +199,11 @@ vektor-canvas {
   writing-mode: vertical-rl;
   cursor: pointer;
   transition: color 120ms;
+}
+
+.canvas-properties-tabs:first-child .canvas-properties-tab {
+  border-left: 1px solid var(--canvas-toolbar-border);
+  border-radius: 8px;
 }
 
 .canvas-properties-tab:hover {

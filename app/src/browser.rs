@@ -11,8 +11,9 @@ use gpui::{
     TitlebarOptions, Window, WindowBounds, WindowHandle, WindowOptions, actions, canvas, div,
     point, prelude::*, px, rgb, size,
 };
-use objc2::rc::Retained;
+use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::NSEvent;
+use objc2_foundation::{NSArray, NSString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::{Origin, Url};
@@ -153,6 +154,20 @@ const CHROME_COLOR_SCRIPT: &str = r##"
   schedule();
 }
 "##;
+
+/// WebKit throttles rendering and requestAnimationFrame to 60fps by default, even on 120Hz displays.
+fn unlock_frame_rate(webview: &WebView) {
+    let features: Retained<NSArray<AnyObject>> = unsafe { msg_send![class!(WKPreferences), _features] };
+    let feature = features
+        .iter()
+        .find(|feature| {
+            let key: Retained<NSString> = unsafe { msg_send![feature, key] };
+            key.to_string() == "PreferPageRenderingUpdatesNear60FPSEnabled"
+        })
+        .expect("WebKit has no 60fps rendering feature flag");
+    let preferences = unsafe { webview.webview().configuration().preferences() };
+    let _: () = unsafe { msg_send![&preferences, _setEnabled: false, forFeature: &*feature] };
+}
 
 /// Webview callbacks fire outside gpui's update cycle, so they are funnelled through a channel
 /// and delivered to whichever window holds the tab by then.
@@ -488,6 +503,7 @@ impl Browser {
             })
             .build_as_child(window)
             .expect("failed to create webview");
+        unlock_frame_rate(&webview);
 
         self.tabs.push(Tab {
             id,
