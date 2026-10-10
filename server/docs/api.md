@@ -1981,11 +1981,13 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_202
   reads its documents here. With `archived=true` it takes `editor` on the space —
   reading an archived document takes `editor`, so listing them does too — and a
   resource grant alone is not enough.
-- **Query**: `limit` (≤500, default 50 — must be an integer in range, else `400`),
+- **Query**: `limit` (≤5000, default 50 — must be an integer in range, else `400`),
   `cursor?`, `type?` (filter),
   `categorySlugs?` (comma-separated), `grouped` (`"true"` groups results by
   category), `parentId?` (list direct children of a parent instead of top-level
-  listing), `includeFiles` (`"true"` — uploaded files are unpaginated, so a listing
+  listing), `sort?` (with `parentId` only, else `400` — order the children by this
+  property key, case-insensitive; numbers inside values compare numerically and empty
+  values come last), `order?` (`asc` default or `desc`, else `400`), `includeFiles` (`"true"` — uploaded files are unpaginated, so a listing
   only gets them on request), `archived` (`"true"` — the archived (soft-deleted)
   documents instead of the live ones; takes precedence over the other filters).
 - **Behavior**: content is never included in list responses (fetched separately per
@@ -1993,10 +1995,11 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_202
   `parentId`, children are filtered against the caller's document grants, so a child
   with no ACL entry of its own is not enumerable through a grant on the parent alone.
 - **Returns**: shape depends on query — `{ documentsByCategory, categorySlugs }`
-  (grouped), `{ documents, total, nextCursor: null }` (`categorySlugs` or `parentId`
-  — the full filtered result set in one response, so no `limit` applies and there is
-  no page 2), `{ documents, limit, nextCursor }` (`archived`), or
-  `{ documents, total, limit, nextCursor }` (default cursor-paginated listing).
+  (grouped), `{ documents, total, nextCursor: null }` (`categorySlugs` — the full
+  filtered result set in one response, so no `limit` applies and there is no page 2),
+  `{ documents, limit, nextCursor }` (`archived`), or
+  `{ documents, total, limit, nextCursor }` (`parentId` and the default listing, both
+  cursor-paginated).
   `total` is always the full count of matching documents and `limit`, when present,
   the page size that was applied.
 

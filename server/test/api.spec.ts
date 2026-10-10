@@ -639,6 +639,45 @@ describe("API Tests - Documents", () => {
     expect(data.documents[0].id).toBe(childDocumentId);
   });
 
+  it("sorts document children by a property across pages", async () => {
+    const createDocument = async (properties: Record<string, string>, parentId?: string) => {
+      const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ content: "<p></p>", properties, parentId }),
+      });
+      expect(response.status).toBe(201);
+      return (await response.json()).document.id as string;
+    };
+
+    const parentId = await createDocument({ title: "Sorted Parent" });
+    const ten = await createDocument({ title: "Ten", Price: "10" }, parentId);
+    const nine = await createDocument({ title: "Nine", price: "9" }, parentId);
+    const empty = await createDocument({ title: "Empty" }, parentId);
+
+    const listAll = async (order: string) => {
+      const ids: string[] = [];
+      let cursor = "";
+      do {
+        const response = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents?parentId=${parentId}&sort=Price&order=${order}&limit=1${cursor ? `&cursor=${cursor}` : ""}`,
+        );
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        ids.push(...data.documents.map((doc: { id: string }) => doc.id));
+        cursor = data.nextCursor ?? "";
+      } while (cursor);
+      return ids;
+    };
+
+    expect(await listAll("asc")).toEqual([nine, ten, empty]);
+    expect(await listAll("desc")).toEqual([ten, nine, empty]);
+
+    const unsupported = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents?sort=Price`,
+    );
+    expect(unsupported.status).toBe(400);
+  });
+
   it("should move document by updating parent", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${childDocumentId}`,

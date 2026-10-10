@@ -10,9 +10,11 @@ import {
   Show,
 } from "solid-js";
 import { Portal } from "solid-js/web";
+import { twMerge } from "tailwind-merge";
 import { useDatabaseFileImport } from "#composeables/useDatabaseFileImport.ts";
-import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
+import type { DatabaseColumn, DatabaseSort } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
+import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import {
@@ -21,6 +23,8 @@ import {
   readDocumentProperty,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
+import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
+import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
 
 interface Props {
@@ -58,6 +62,115 @@ function rowTitle(row: DocumentProperties): string {
 }
 
 export function DatabaseView(props: Props) {
+  const { value: sort, commit: commitSort } = usePersistedState<DatabaseSort | null>({
+    key: () => `database-sort:${props.databaseDocumentId}`,
+    fallback: null,
+  });
+  const ariaSort = (key: string) =>
+    sort()?.key === key
+      ? sort()?.order === "asc"
+        ? "ascending"
+        : "descending"
+      : undefined;
+
+  // Before any state change: an item that unmounts with it can no longer
+  // reach the menu with its exit event.
+  function closeMenu(event: Event) {
+    (event.currentTarget as Element).dispatchEvent(
+      new CustomEvent("exit", { bubbles: true }),
+    );
+  }
+
+  const sortItem = (key: string, order: DatabaseSort["order"]) => (
+    <ContextMenuItem
+      onClick={(event) => {
+        closeMenu(event);
+        commitSort({ key, order });
+      }}
+    >
+      <Icon
+        name="arrow-left"
+        class={twMerge("h-4 w-4 flex-none", order === "asc" ? "rotate-90" : "-rotate-90")}
+      />
+      <span
+        class={
+          sort()?.key === key && sort()?.order === order
+            ? "font-medium text-primary-600"
+            : "text-neutral-900"
+        }
+      >
+        {order === "asc" ? "Sort ascending" : "Sort descending"}
+      </span>
+    </ContextMenuItem>
+  );
+
+  // The whole cell opens the column menu; its icon only shows on hover so the
+  // header row stays quiet.
+  const columnHeader = (
+    key: string,
+    label: string,
+    onDelete?: (anchor: Element) => void,
+  ) => (
+    <ContextMenu
+      class="block w-full"
+      placements="bottom-start"
+      ariaLabel={`${label} column`}
+      trigger={
+        <button
+          type="button"
+          slot="trigger"
+          class="group/header flex w-full cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left transition-colors hover:text-neutral-950"
+        >
+          <span class="truncate">{label}</span>
+          <Show when={sort()?.key === key}>
+            <Icon
+              name="arrow-left"
+              class={twMerge(
+                "h-3.5 w-3.5 shrink-0 text-primary-600",
+                sort()?.order === "asc" ? "rotate-90" : "-rotate-90",
+              )}
+            />
+          </Show>
+          <Icon
+            name="context-menu-more"
+            class="ml-auto h-4 w-4 shrink-0 text-neutral-400 opacity-0 transition-opacity group-hover/header:opacity-100"
+          />
+        </button>
+      }
+    >
+      {sortItem(key, "asc")}
+      {sortItem(key, "desc")}
+      <Show when={sort()?.key === key}>
+        <ContextMenuItem
+          onClick={(event) => {
+            closeMenu(event);
+            commitSort(null);
+          }}
+        >
+          <Icon name="cancel" class="h-4 w-4 flex-none" />
+          <span class="text-neutral-900">Clear sort</span>
+        </ContextMenuItem>
+      </Show>
+      <Show when={onDelete}>
+        {(remove) => (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={(event) => {
+                const anchor = (event.currentTarget as Element).closest("th");
+                closeMenu(event);
+                if (!anchor) throw new Error("Column menu is not inside a header cell");
+                remove()(anchor);
+              }}
+            >
+              <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
+              <span class="text-red-600">Delete column</span>
+            </ContextMenuItem>
+          </>
+        )}
+      </Show>
+    </ContextMenu>
+  );
   const { currentSpace } = useSpace();
   const { error: toastError } = useToast();
 
@@ -76,7 +189,7 @@ export function DatabaseView(props: Props) {
     addColumn,
     addColumns,
     deleteColumn,
-  } = useDatabaseRows(() => props.databaseDocumentId);
+  } = useDatabaseRows(() => props.databaseDocumentId, sort);
 
   createEffect(() => setSchemaStr(props.schemaJson));
 
@@ -137,9 +250,9 @@ export function DatabaseView(props: Props) {
   const [deletingColumn, setDeletingColumn] = createSignal<string | null>(null);
   const [columnPopoverStyle, setColumnPopoverStyle] = createSignal<JSX.CSSProperties>({});
 
-  function openDeleteColumn(name: string, event: MouseEvent) {
+  function openDeleteColumn(name: string, anchor: Element) {
     setDeletingColumn(name);
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const rect = anchor.getBoundingClientRect();
     setColumnPopoverStyle({ top: `${rect.bottom + 4}px`, left: `${rect.left}px` });
   }
 
@@ -303,13 +416,13 @@ export function DatabaseView(props: Props) {
 
   return (
     <>
-      <div class="relative flex h-full min-h-0 flex-col overflow-hidden">
+      <div class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-neutral-100">
         <div class="min-h-0 flex-1 overflow-auto">
           <Show
             when={!isLoading()}
             fallback={
               <table
-                class="border-separate border-spacing-0 animate-pulse overflow-hidden rounded-[var(--radius-md)] border border-neutral-100 [&_thead_th:first-child]:rounded-tl-[var(--radius-md)] [&_thead_th:last-child]:rounded-tr-[var(--radius-md)] [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
+                class="border-separate border-spacing-0 animate-pulse [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
                 style={{ "table-layout": "fixed", width: "100%" }}
               >
                 <thead>
@@ -359,7 +472,7 @@ export function DatabaseView(props: Props) {
             }
           >
             <table
-              class="border-separate border-spacing-0 rounded-[var(--radius-md)] border border-neutral-100 [&_thead_th:first-child]:rounded-tl-[var(--radius-md)] [&_thead_th:last-child]:rounded-tr-[var(--radius-md)] text-size-medium [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
+              class="border-separate border-spacing-0 text-size-medium [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
               style={{
                 "table-layout": "fixed",
                 // An explicit sum, not `max-content`: that measured the cells,
@@ -372,29 +485,23 @@ export function DatabaseView(props: Props) {
               <thead>
                 <tr class="bg-neutral-50 text-left">
                   <th
-                    class="relative whitespace-nowrap bg-neutral-50 px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
+                    class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
                     style={{ ...stickyHeaderStyle, width: `${NAME_COL_WIDTH}px` }}
+                    aria-sort={ariaSort("title")}
                   >
-                    Name
+                    {columnHeader("title", "Name")}
                   </th>
 
                   <For each={derivedColumns()}>
                     {(col) => (
                       <th
-                        class="group whitespace-nowrap bg-neutral-50 px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
+                        class="whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
                         style={{ ...stickyHeaderStyle, width: `${DEFAULT_COL_WIDTH}px` }}
+                        aria-sort={ariaSort(col.name)}
                       >
-                        <div class="flex items-center justify-between gap-1">
-                          <span class="truncate">{col.label}</span>
-                          <button
-                            type="button"
-                            class="shrink-0 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
-                            title="Delete column"
-                            onClick={(event) => openDeleteColumn(col.name, event)}
-                          >
-                            <Icon class="h-3.5 w-3.5" name="delete-entry" />
-                          </button>
-                        </div>
+                        {columnHeader(col.name, col.label, (anchor) =>
+                          openDeleteColumn(col.name, anchor),
+                        )}
                       </th>
                     )}
                   </For>
@@ -519,7 +626,12 @@ export function DatabaseView(props: Props) {
                           // biome-ignore lint/a11y/noStaticElementInteractions: the cell is the edit affordance; the input it opens is the control.
                           // biome-ignore lint/a11y/useKeyWithClickEvents: the row link and the edit button are the keyboard paths.
                           <td
-                            class="px-3 py-2.5 align-top"
+                            class="cursor-text px-3 py-2.5 align-top transition-colors hover:bg-neutral-50"
+                            classList={{
+                              "bg-background! shadow-[inset_0_0_0_2px_var(--color-primary-400)]":
+                                editingCell()?.rowId === row.id &&
+                                editingCell()?.col === col.name,
+                            }}
                             style={{ width: `${DEFAULT_COL_WIDTH}px` }}
                             onClick={() =>
                               startEdit(
@@ -536,7 +648,7 @@ export function DatabaseView(props: Props) {
                               }
                               fallback={
                                 <div
-                                  class="min-h-[1.25rem] cursor-text truncate text-neutral-700"
+                                  class="min-h-[1.25rem] truncate text-neutral-700"
                                   classList={{
                                     "text-neutral-300 italic": !cellValue(
                                       row.properties,

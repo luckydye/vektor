@@ -85,6 +85,8 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
  * @query categorySlugs Comma-separated category slugs to list documents from.
  * @query grouped:boolean With `categorySlugs`, group the result by category.
  * @query parentId List the children of this document instead of the space.
+ * @query sort With `parentId`, order the children by this property key; empty values come last.
+ * @query order With `sort`, `asc` (default) or `desc`.
  * @query includeFiles:boolean Append the space's uploaded files as `file` entries.
  * @query archived:boolean List the archived (soft-deleted) documents instead. Takes `editor`.
  * @query pinned:boolean List only the pinned documents instead.
@@ -124,6 +126,15 @@ export const GET: ApiRouteHandler = (context) =>
       new URL(context.req.url).searchParams.get("includeFiles") === "true";
     const parentIdParam =
       new URL(context.req.url).searchParams.get("parentId")?.trim() || undefined;
+    const sortParam =
+      new URL(context.req.url).searchParams.get("sort")?.trim() || undefined;
+    const orderParam = new URL(context.req.url).searchParams.get("order") ?? "asc";
+    if (sortParam && !parentIdParam) {
+      return badRequestResponse("sort is only supported with parentId");
+    }
+    if (orderParam !== "asc" && orderParam !== "desc") {
+      return badRequestResponse("order must be asc or desc");
+    }
 
     const categorySlugs = categorySlugsParam
       ? categorySlugsParam
@@ -164,10 +175,7 @@ export const GET: ApiRouteHandler = (context) =>
         Array.from(
           documentsByCategory,
           ([slug, docs]) =>
-            [
-              slug,
-              docs.filter((doc) => !typeParam || doc.type === typeParam),
-            ] as const,
+            [slug, docs.filter((doc) => !typeParam || doc.type === typeParam)] as const,
         ),
       );
 
@@ -200,7 +208,11 @@ export const GET: ApiRouteHandler = (context) =>
         store,
         parentIdParam,
         viewer,
-        { limit, cursor },
+        {
+          limit,
+          cursor,
+          sort: sortParam ? { key: sortParam, order: orderParam } : undefined,
+        },
       );
       return jsonResponse({ documents, total, limit, nextCursor });
     }

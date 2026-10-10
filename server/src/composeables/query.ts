@@ -81,6 +81,7 @@ export interface UseInfiniteQueryOptions<TPage, TPageParam> {
   initialPageParam: TPageParam;
   queryFn: (context: { pageParam: TPageParam }) => Promise<TPage>;
   queryKey: MaybeAccessor<QueryKey>;
+  placeholderData?: UseQueryOptions<InfiniteData<TPage, TPageParam>>["placeholderData"];
   staleTime?: number;
 }
 
@@ -439,6 +440,7 @@ export function useInfiniteQuery<TPage, TPageParam = unknown>(
       const firstPage = await options.queryFn({ pageParam: options.initialPageParam });
       return { pageParams: [options.initialPageParam], pages: [firstPage] };
     },
+    placeholderData: options.placeholderData,
     staleTime: options.staleTime,
   });
 

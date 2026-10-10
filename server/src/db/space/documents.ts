@@ -105,7 +105,9 @@ export async function generateUniqueSlug(
     const condition = excludeDocumentId
       ? and(eq(document.slug, candidate), ne(document.id, excludeDocumentId))
       : eq(document.slug, candidate);
-    const existing = await one(s.db.select({ id: document.id }).from(document).where(condition));
+    const existing = await one(
+      s.db.select({ id: document.id }).from(document).where(condition),
+    );
     return existing !== undefined;
   };
 
@@ -809,6 +811,90 @@ async function readableDocumentPage(
   return { ids: page.map((doc) => doc.id), total: visible.length, nextCursor };
 }
 
+export interface DocumentSort {
+  /** Property key, matched case-insensitively like columns merge their keys. */
+  key: string;
+  order: "asc" | "desc";
+}
+
+const sortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+/**
+ * Like {@link readableDocumentPage}, ordered by a property value instead. Empty
+ * values sort last either way; the cursor holds the last row's (value, id).
+ */
+async function sortedDocumentPage(
+  s: SpaceStore,
+  condition: SQL | undefined,
+  viewer: AclViewer | null,
+  options: { limit?: number; cursor?: string; sort: DocumentSort },
+): Promise<{ ids: string[]; total: number; nextCursor: string | null }> {
+  const key = canonicalPropertyKey(options.sort.key);
+  const rows = await many(
+    s.db
+      .select({ id: document.id, value: property.value })
+      .from(document)
+      .leftJoin(
+        property,
+        and(
+          eq(property.documentId, document.id),
+          key.startsWith("_")
+            ? eq(property.key, key)
+            : sql`lower(${property.key}) = ${key}`,
+        ),
+      )
+      .where(condition),
+  );
+  const values = new Map<string, string>();
+  for (const row of rows) {
+    if (!values.get(row.id)) values.set(row.id, row.value ?? "");
+  }
+
+  let ids = [...values.keys()];
+  if (viewer) {
+    const readable = await filterReadableResources(
+      s.spaceId,
+      ResourceType.DOCUMENT,
+      ids,
+      viewer,
+    );
+    ids = ids.filter((id) => readable.has(id));
+  }
+
+  const direction = options.sort.order === "asc" ? 1 : -1;
+  const compare = (
+    a: { value: string; id: string },
+    b: { value: string; id: string },
+  ) => {
+    if (!a.value !== !b.value) return a.value ? -1 : 1;
+    return (
+      direction * sortCollator.compare(a.value, b.value) ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    );
+  };
+  const visible = ids.map((id) => ({ id, value: values.get(id) ?? "" })).sort(compare);
+
+  let start = 0;
+  if (options.cursor) {
+    const pos = JSON.parse(Buffer.from(options.cursor, "base64url").toString("utf8"));
+    if (typeof pos?.v !== "string" || typeof pos?.id !== "string") {
+      throw new Error("Invalid sort cursor");
+    }
+    const idx = visible.findIndex(
+      (row) => compare(row, { value: pos.v, id: pos.id }) > 0,
+    );
+    start = idx === -1 ? visible.length : idx;
+  }
+  const pageLimit = options.limit ?? visible.length;
+  const page = visible.slice(start, start + pageLimit);
+  const last = page[page.length - 1];
+  const nextCursor =
+    start + pageLimit < visible.length && last
+      ? Buffer.from(JSON.stringify({ v: last.value, id: last.id })).toString("base64url")
+      : null;
+  return { ids: page.map((row) => row.id), total: visible.length, nextCursor };
+}
+
 /** Rows for `ids`, in the order of `ids`. */
 function inIdOrder<T extends { id: string }>(ids: string[], rows: T[]): T[] {
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -886,7 +972,10 @@ export async function listDocuments(
       ? inIdOrder(
           page.ids,
           (await many(
-            s.db.select(selectFields).from(document).where(inArray(document.id, page.ids)),
+            s.db
+              .select(selectFields)
+              .from(document)
+              .where(inArray(document.id, page.ids)),
           )) as DocRow[],
         )
       : [];
@@ -1248,7 +1337,10 @@ export async function listAllDocumentsByCategories(
       uniqueSlugs.includes(slug),
     );
     if (slugs.length === 0) continue;
-    slugsByDocId.set(row.documentId, [...(slugsByDocId.get(row.documentId) ?? []), ...slugs]);
+    slugsByDocId.set(row.documentId, [
+      ...(slugsByDocId.get(row.documentId) ?? []),
+      ...slugs,
+    ]);
   }
 
   const docIdsBySlug = new Map<string, Set<string>>();
@@ -1447,17 +1539,29 @@ export async function getDocumentChildren(
   s: SpaceStore,
   parentId: string,
   viewer: AclViewer | null,
-  options: { limit?: number; cursor?: string } = {},
-): Promise<{ documents: DocumentWithProperties[]; total: number; nextCursor: string | null }> {
-  const { limit, cursor } = options;
-  const baseCondition = and(eq(document.parentId, parentId), nonArchivedDocumentCondition);
+  options: { limit?: number; cursor?: string; sort?: DocumentSort } = {},
+): Promise<{
+  documents: DocumentWithProperties[];
+  total: number;
+  nextCursor: string | null;
+}> {
+  const { limit, cursor, sort } = options;
+  const baseCondition = and(
+    eq(document.parentId, parentId),
+    nonArchivedDocumentCondition,
+  );
 
   let docs: (typeof document.$inferSelect)[];
   let total: number;
   let nextCursor: string | null = null;
 
-  if (viewer) {
-    const page = await readableDocumentPage(s, baseCondition, viewer, { limit, cursor });
+  const page = sort
+    ? await sortedDocumentPage(s, baseCondition, viewer, { limit, cursor, sort })
+    : viewer
+      ? await readableDocumentPage(s, baseCondition, viewer, { limit, cursor })
+      : null;
+
+  if (page) {
     total = page.total;
     nextCursor = page.nextCursor;
     docs = page.ids.length

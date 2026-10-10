@@ -19,6 +19,11 @@ export interface DatabaseColumn {
   label: string;
 }
 
+export interface DatabaseSort {
+  key: string;
+  order: "asc" | "desc";
+}
+
 export interface DatabaseSchema {
   columns: DatabaseColumn[];
 }
@@ -46,11 +51,20 @@ function parseSchema(raw: string | undefined): DatabaseSchema {
  * database document to another — only the prop changes — so a snapshotted id
  * would keep the first database's rows in the query key forever.
  */
-export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
+export function useDatabaseRows(
+  databaseDocumentId: Accessor<string>,
+  sort: Accessor<DatabaseSort | null>,
+) {
   const { currentSpaceId: spaceId } = useSpace();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const queryKey = createMemo(() => ["database_rows", spaceId(), databaseDocumentId()]);
+  // Writes invalidate this prefix, so every cached sort order refetches.
+  const databaseKey = createMemo(() => [
+    "database_rows",
+    spaceId(),
+    databaseDocumentId(),
+  ]);
+  const queryKey = createMemo(() => [...databaseKey(), sort()?.key, sort()?.order]);
 
   const {
     data,
@@ -67,10 +81,18 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
         parentId: databaseDocumentId(),
         limit: PAGE_SIZE,
         cursor: pageParam,
+        sort: sort()?.key,
+        order: sort()?.order,
       });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     initialPageParam: undefined,
+    // A new sort order keeps the current rows up until it lands, rather than
+    // blanking the table; another database's rows are never carried over.
+    placeholderData: (previous) =>
+      previous?.pages[0]?.documents[0]?.parentId === databaseDocumentId()
+        ? previous
+        : undefined,
     enabled: createMemo(() => !!spaceId() && !!databaseDocumentId()),
   });
 
@@ -117,7 +139,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
     },
     onSuccess: (_data, variables) => {
       if (variables.invalidate) {
-        queryClient.invalidateQueries({ queryKey: queryKey() });
+        queryClient.invalidateQueries({ queryKey: databaseKey() });
       }
     },
     onError: (error) => {
@@ -134,7 +156,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKey() });
+      queryClient.invalidateQueries({ queryKey: databaseKey() });
     },
   });
 
@@ -145,7 +167,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
       await api.document.archive(id, rowId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKey() });
+      queryClient.invalidateQueries({ queryKey: databaseKey() });
     },
   });
 
@@ -161,7 +183,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   });
 
   function refreshRows() {
-    queryClient.invalidateQueries({ queryKey: queryKey() });
+    queryClient.invalidateQueries({ queryKey: databaseKey() });
   }
 
   async function addRow(properties?: DocumentProperties, options?: AddRowOptions) {
@@ -211,7 +233,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   }
 
   useSync(spaceId, [realtimeTopics.properties], (_keys) => {
-    queryClient.invalidateQueries({ queryKey: queryKey() });
+    queryClient.invalidateQueries({ queryKey: databaseKey() });
   });
 
   return {

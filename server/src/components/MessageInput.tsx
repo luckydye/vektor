@@ -302,7 +302,11 @@ export function MessageInput(props: Props) {
           attr:document-id={merged.documentId}
           classList={{ "max-h-40": merged.autoGrow }}
           class="min-w-0 flex-1 overflow-y-auto bg-transparent text-neutral-800 text-size-medium leading-5"
-          style={{ "--editor-min-height": `${Math.max(1, merged.rows) * 1.25}rem` }}
+          // min-height on the host too: the shadow-root rule only applies after upgrade, so SSR would render it collapsed.
+          style={{
+            "--editor-min-height": `${Math.max(1, merged.rows) * 1.25}rem`,
+            "min-height": "var(--editor-min-height)",
+          }}
           on:content-change={(event: Event) => {
             const markdown = (event as CustomEvent<string>).detail;
             lastEmittedValue = markdown;

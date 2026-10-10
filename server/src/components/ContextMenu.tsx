@@ -18,6 +18,8 @@ interface Props {
    * the surface behind it.
    */
   trigger?: JSX.Element;
+  /** Classes for the wrapping trigger element; defaults to `flex-none`. */
+  class?: string;
 }
 
 // A plain element, not an <a-list-item>: a-list only collects list items, so
@@ -55,7 +57,7 @@ export function ContextMenu(props: Props) {
   }
 
   return (
-    <a-popover-trigger class="group relative z-10 flex-none">
+    <a-popover-trigger class={`group relative z-10 ${props.class ?? "flex-none"}`}>
       <Show
         when={props.trigger}
         fallback={
