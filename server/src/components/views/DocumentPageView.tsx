@@ -489,7 +489,9 @@ export function DocumentPageView(props: Props) {
       type="button"
       aria-label={documentDetailsVisible() ? t("Hide properties") : t("Show properties")}
       aria-pressed={documentDetailsVisible()}
-      data-tooltip={documentDetailsVisible() ? t("Hide properties") : t("Show properties")}
+      data-tooltip={
+        documentDetailsVisible() ? t("Hide properties") : t("Show properties")
+      }
       data-tooltip-pos="bottom"
       class="inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2"
       onClick={() => setDocumentDetailsVisible(!documentDetailsVisible())}
@@ -499,20 +501,20 @@ export function DocumentPageView(props: Props) {
       </Show>
       <Icon
         name="chevron-down"
-        class={twMerge(
-          "h-4 w-4",
-          documentDetailsVisible() ? "rotate-90" : "-rotate-90",
-        )}
+        class={twMerge("h-4 w-4", documentDetailsVisible() ? "rotate-90" : "-rotate-90")}
       />
     </button>
   );
+
+  const inlineAddProperty = () =>
+    hasToolbarProperties() && !hasToolbarPropertyChips() && userCanEdit();
 
   const breadcrumbs = (): JSX.Element => (
     <div class="flex min-w-0 items-center gap-2">
       <div
         class={twMerge(
           "pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background",
-          hasToolbarProperties() ? "p-1 pr-2" : "p-1",
+          hasToolbarProperties() && !inlineAddProperty() ? "p-1 pr-2" : "p-1",
         )}
       >
         <Show when={!isDraft()}>
@@ -524,26 +526,26 @@ export function DocumentPageView(props: Props) {
             spaceId={currentSpace()?.id}
             canEdit={userCanEdit()}
             categorySlot={documentPropertiesBlock("toolbar", "category")}
+            // Without a title block these types have nothing else naming them on mobile.
+            class={hasToolbarProperties() ? undefined : "max-md:hidden"}
           />
         </Show>
         <Show when={!hasToolbarProperties()}>{documentDetailsToggle()}</Show>
+        {/* A lone add button would be an empty box of its own. */}
+        <Show when={inlineAddProperty()}>
+          <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
+          <div class="shrink-0">{documentPropertiesBlock("toolbar", "others")}</div>
+        </Show>
       </div>
       {/* These types have no title block, so their properties ride the toolbar
           in a pill of their own, folding away sideways. */}
-      <Show
-        when={hasToolbarProperties() && (hasToolbarPropertyChips() || userCanEdit())}
-      >
+      <Show when={hasToolbarProperties() && hasToolbarPropertyChips()}>
         <div class="pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background p-1">
-          <Show
-            when={hasToolbarPropertyChips()}
-            fallback={documentPropertiesBlock("toolbar", "others")}
-          >
-            <Show when={documentDetailsVisible()}>
-              <div class="min-w-0">{documentPropertiesBlock("toolbar", "others")}</div>
-              <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
-            </Show>
-            {propertiesToggle()}
+          <Show when={documentDetailsVisible()}>
+            <div class="min-w-0">{documentPropertiesBlock("toolbar", "others")}</div>
+            <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
           </Show>
+          {propertiesToggle()}
         </div>
       </Show>
     </div>
@@ -554,7 +556,7 @@ export function DocumentPageView(props: Props) {
       class={twMerge(
         // Above the details block below it, which raises itself to z-20 for
         // its popovers and would otherwise scroll over this sticky bar.
-        "sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 py-3xs page-spacing",
+        "@container sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-3 py-3xs page-spacing",
         !transparent && "border-neutral-50 border-b bg-neutral-10",
       )}
     >
@@ -567,6 +569,7 @@ export function DocumentPageView(props: Props) {
           {documentDetailsToggle()}
         </div>
       </Show>
+      <div id="document-toolbar-slot" class="pointer-events-auto shrink-0 empty:hidden" />
       {documentActions()}
     </div>
   );

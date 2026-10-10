@@ -1,8 +1,10 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { api, type ExtensionRoute } from "#api/client.ts";
 import { ContextMenu } from "#components/ContextMenu.tsx";
 import { ContextMenuItem } from "#components/ContextMenuItem.tsx";
 import { DatabaseView } from "#components/DatabaseView.tsx";
+import { Dialog } from "#components/Dialog.tsx";
 import { ExtensionView } from "#components/ExtensionView.tsx";
 import { Icon } from "#components/Icon.tsx";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
@@ -53,6 +55,14 @@ function extensionViewTitle(view: DatabaseExtensionView): string {
 export function DatabaseDocumentView(props: Props) {
   const { error: toastError } = useToast();
   let panelRef: HTMLDivElement | undefined;
+  const [toolbarSlot, setToolbarSlot] = createSignal<HTMLElement>();
+  const [viewSheetOpen, setViewSheetOpen] = createSignal(false);
+
+  onMount(() => {
+    const slot = document.querySelector<HTMLElement>("#document-toolbar-slot");
+    if (!slot) throw new Error("Database views need the document toolbar slot");
+    setToolbarSlot(slot);
+  });
   const [configuredViewIds, setConfiguredViewIds] = createSignal(
     parseConfiguredViewIds(props.viewConfig),
   );
@@ -215,110 +225,203 @@ export function DatabaseDocumentView(props: Props) {
 
   return (
     <div class="flex h-full min-h-0 flex-1 flex-col">
-      <div class="flex shrink-0 items-center overflow-x-auto page-spacing py-2xs">
-        <div
-          role="tablist"
-          class="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-neutral-100/75 px-1 py-0.5"
-          aria-label="Database views"
-          onKeyDown={onTabKeyDown}
-        >
-          <TabButton
-            selected={selectedViewId() === TABLE_VIEW_ID}
-            icon="table"
-            onClick={() => selectView(TABLE_VIEW_ID)}
-          >
-            Table
-          </TabButton>
-          <For each={configuredExtensionViews()}>
-            {(view) => {
-              const viewId = extensionViewId(view);
-              // No background of its own: the tab paints the pill, and a
-              // second one behind it doubles the tone and spreads it under the
-              // menu button.
-              return (
-                <span class="group/view inline-flex h-8 items-center rounded-md">
-                  <TabButton
-                    selected={selectedViewId() === viewId}
-                    icon="grid-grid"
-                    onClick={() => selectView(viewId)}
-                  >
-                    {extensionViewTitle(view)}
-                  </TabButton>
+      <Show when={toolbarSlot()}>
+        {(slot) => (
+          <Portal mount={slot()}>
+            <button
+              type="button"
+              class="flex h-9 items-center gap-2 rounded-lg border border-neutral-100 bg-background px-3 text-label @min-[60rem]:hidden"
+              onClick={() => setViewSheetOpen(true)}
+            >
+              <Show
+                when={selectedExtensionView()}
+                fallback={
+                  <>
+                    <Icon class="h-4 w-4" name="table" />
+                    Table
+                  </>
+                }
+              >
+                {(view) => (
+                  <>
+                    <Icon class="h-4 w-4" name="grid-grid" />
+                    {extensionViewTitle(view())}
+                  </>
+                )}
+              </Show>
+              <Icon class="h-4 w-4 text-neutral-400" name="chevron-down" />
+            </button>
 
-                  <ContextMenu
-                    ariaLabel={`Manage ${extensionViewTitle(view)} view`}
-                    trigger={
-                      <button
-                        type="button"
-                        slot="trigger"
-                        aria-label={`Manage ${extensionViewTitle(view)} view`}
-                        // No background of its own: it used to sit flush
-                        // against one the wrapper drew behind the whole tab,
-                        // and alone it reads as a second, darker control.
-                        class="flex h-8 w-7 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700 group-hover/view:opacity-100"
-                        classList={{
-                          "opacity-100": selectedViewId() === viewId,
-                          "opacity-0": selectedViewId() !== viewId,
-                        }}
-                      >
-                        <Icon class="h-4 w-4" name="context-menu-more" />
-                      </button>
-                    }
-                  >
-                    <ContextMenuItem
-                      onClick={(event) => void removeExtensionView(view, event)}
+            <div class="flex h-9 min-w-0 items-center rounded-lg bg-neutral-100/75 px-0.5 @max-[60rem]:hidden">
+              <div
+                role="tablist"
+                class="inline-flex min-w-0 items-center gap-1 overflow-x-auto"
+                aria-label="Database views"
+                onKeyDown={onTabKeyDown}
+              >
+                <TabButton
+                  selected={selectedViewId() === TABLE_VIEW_ID}
+                  icon="table"
+                  onClick={() => selectView(TABLE_VIEW_ID)}
+                >
+                  Table
+                </TabButton>
+                <For each={configuredExtensionViews()}>
+                  {(view) => {
+                    const viewId = extensionViewId(view);
+                    // No background of its own: the tab paints the pill, and a
+                    // second one behind it doubles the tone and spreads it under the
+                    // menu button.
+                    return (
+                      <span class="group/view inline-flex h-8 items-center rounded-md">
+                        <TabButton
+                          selected={selectedViewId() === viewId}
+                          icon="grid-grid"
+                          onClick={() => selectView(viewId)}
+                        >
+                          {extensionViewTitle(view)}
+                        </TabButton>
+
+                        <ContextMenu
+                          ariaLabel={`Manage ${extensionViewTitle(view)} view`}
+                          trigger={
+                            <button
+                              type="button"
+                              slot="trigger"
+                              aria-label={`Manage ${extensionViewTitle(view)} view`}
+                              // No background of its own: it used to sit flush
+                              // against one the wrapper drew behind the whole tab,
+                              // and alone it reads as a second, darker control.
+                              class="flex h-8 w-7 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700 group-hover/view:opacity-100"
+                              classList={{
+                                "opacity-100": selectedViewId() === viewId,
+                                "opacity-0": selectedViewId() !== viewId,
+                              }}
+                            >
+                              <Icon class="h-4 w-4" name="context-menu-more" />
+                            </button>
+                          }
+                        >
+                          <ContextMenuItem
+                            onClick={(event) => void removeExtensionView(view, event)}
+                          >
+                            <Icon
+                              class="h-4 w-4 flex-none text-red-600"
+                              name="delete-entry"
+                            />
+                            <span class="text-red-600">Remove view</span>
+                          </ContextMenuItem>
+                        </ContextMenu>
+                      </span>
+                    );
+                  }}
+                </For>
+              </div>
+
+              <Show when={availableExtensionViews().length > 0}>
+                <ContextMenu
+                  ariaLabel="Add database view"
+                  placements="bottom-start"
+                  trigger={
+                    <button
+                      type="button"
+                      slot="trigger"
+                      aria-label="Add view"
+                      title="Add view"
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-700"
                     >
-                      <Icon class="h-4 w-4 flex-none text-red-600" name="delete-entry" />
-                      <span class="text-red-600">Remove view</span>
-                    </ContextMenuItem>
-                  </ContextMenu>
-                </span>
-              );
-            }}
-          </For>
-        </div>
+                      <Icon class="h-4 w-4" name="add" />
+                    </button>
+                  }
+                >
+                  <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
+                    Add view
+                  </div>
+                  <For each={availableExtensionViews()}>
+                    {(view) => (
+                      <ContextMenuItem
+                        class="min-w-48"
+                        onClick={(event) => void addExtensionView(view, event)}
+                      >
+                        <Icon class="h-4 w-4 flex-none" name="grid-grid" />
+                        <span class="min-w-0 truncate text-left text-neutral-900">
+                          {extensionViewTitle(view)}
+                        </span>
+                      </ContextMenuItem>
+                    )}
+                  </For>
+                </ContextMenu>
+              </Show>
+            </div>
+          </Portal>
+        )}
+      </Show>
+
+      <Dialog
+        show={viewSheetOpen()}
+        title="Views"
+        bodyClass="flex flex-col gap-1 overflow-y-auto px-3 pb-5"
+        onUpdateShow={setViewSheetOpen}
+      >
+        <For each={[undefined, ...configuredExtensionViews()]}>
+          {(view) => {
+            const viewId = view ? extensionViewId(view) : TABLE_VIEW_ID;
+            return (
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="flex h-11 flex-1 items-center gap-3 rounded-lg px-3 text-left text-neutral-800 text-size-medium"
+                  classList={{ "bg-neutral-50 font-medium": selectedViewId() === viewId }}
+                  onClick={() => {
+                    selectView(viewId);
+                    setViewSheetOpen(false);
+                  }}
+                >
+                  <Icon class="h-4 w-4 flex-none" name={view ? "grid-grid" : "table"} />
+                  <span class="min-w-0 flex-1 truncate">
+                    {view ? extensionViewTitle(view) : "Table"}
+                  </span>
+                </button>
+                <Show when={view}>
+                  {(view) => (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${extensionViewTitle(view())} view`}
+                      class="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-neutral-400"
+                      onClick={(event) => void removeExtensionView(view(), event)}
+                    >
+                      <Icon class="h-4 w-4" name="delete-entry" />
+                    </button>
+                  )}
+                </Show>
+              </div>
+            );
+          }}
+        </For>
 
         <Show when={availableExtensionViews().length > 0}>
-          <div class="mx-3 h-6 w-px shrink-0 bg-neutral-100" />
-
-          <ContextMenu
-            ariaLabel="Add database view"
-            placements="bottom-start"
-            trigger={
+          <div class="mt-3 px-3 pb-1 text-neutral-500 text-size-extra-small">
+            Add view
+          </div>
+          <For each={availableExtensionViews()}>
+            {(view) => (
               <button
                 type="button"
-                slot="trigger"
-                class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 font-medium text-neutral-500 text-size-medium transition-colors hover:bg-neutral-50 hover:text-neutral-800"
+                class="flex h-11 items-center gap-3 rounded-lg px-3 text-left text-neutral-700 text-size-medium"
+                onClick={(event) => void addExtensionView(view, event)}
               >
-                <Icon class="h-4 w-4" name="add" />
-                View
+                <Icon class="h-4 w-4 flex-none text-neutral-400" name="add" />
+                <span class="min-w-0 flex-1 truncate">{extensionViewTitle(view)}</span>
               </button>
-            }
-          >
-            <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
-              Add view
-            </div>
-            <For each={availableExtensionViews()}>
-              {(view) => (
-                <ContextMenuItem
-                  class="min-w-48"
-                  onClick={(event) => void addExtensionView(view, event)}
-                >
-                  <Icon class="h-4 w-4 flex-none" name="grid-grid" />
-                  <span class="min-w-0 truncate text-left text-neutral-900">
-                    {extensionViewTitle(view)}
-                  </span>
-                </ContextMenuItem>
-              )}
-            </For>
-          </ContextMenu>
+            )}
+          </For>
         </Show>
-      </div>
+      </Dialog>
 
       <div
         ref={panelRef}
         role="tabpanel"
-        class="flex min-h-0 flex-1 flex-col page-spacing"
+        class="flex min-h-0 flex-1 flex-col page-spacing pt-2xs"
       >
         <Show
           when={selectedExtensionView()}

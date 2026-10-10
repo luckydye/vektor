@@ -27,6 +27,7 @@ interface Props {
   documentId?: string;
   spaceId?: string;
   canEdit?: boolean;
+  class?: string;
 }
 
 export function Breadcrumbs(props: Props) {
@@ -50,7 +51,7 @@ export function Breadcrumbs(props: Props) {
     <Show when={showBreadcrumbs()}>
       <nav
         aria-label="Breadcrumb"
-        class="breadcrumbs hidden min-w-0 items-center text-neutral-700 text-size-medium md:flex"
+        class={`breadcrumbs flex min-w-0 items-center text-neutral-700 text-size-medium ${props.class ?? ""}`}
       >
         {/* Outside the scrolling list, which would clip the slot's popovers. */}
         <Show when={categorySlot()}>

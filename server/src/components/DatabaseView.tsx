@@ -304,35 +304,12 @@ export function DatabaseView(props: Props) {
   return (
     <>
       <div class="relative flex h-full min-h-0 flex-col overflow-hidden">
-        <div class="flex h-10 shrink-0 items-center justify-between gap-3 rounded-t-md border border-neutral-100 border-b-0 bg-neutral-50 px-4">
-          <span class="text-neutral-500 text-size-small">{rows().length} rows</span>
-          <div class="flex items-center gap-1.5">
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,text/csv,.ics,text/calendar"
-              class="hidden"
-              onChange={(event) => void onImportFileChange(event)}
-            />
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-neutral-500 text-size-small transition-colors hover:bg-neutral-100 hover:text-neutral-800 disabled:pointer-events-none disabled:opacity-50"
-              title="Import"
-              disabled={isImporting()}
-              onClick={openImportPicker}
-            >
-              <Icon class="h-3.5 w-3.5" name="csv-file" />
-              Import
-            </button>
-          </div>
-        </div>
-
         <div class="min-h-0 flex-1 overflow-auto">
           <Show
             when={!isLoading()}
             fallback={
               <table
-                class="border-separate border-spacing-0 animate-pulse overflow-hidden rounded-b-[var(--radius-md)] border border-neutral-100 [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
+                class="border-separate border-spacing-0 animate-pulse overflow-hidden rounded-[var(--radius-md)] border border-neutral-100 [&_thead_th:first-child]:rounded-tl-[var(--radius-md)] [&_thead_th:last-child]:rounded-tr-[var(--radius-md)] [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
                 style={{ "table-layout": "fixed", width: "100%" }}
               >
                 <thead>
@@ -382,7 +359,7 @@ export function DatabaseView(props: Props) {
             }
           >
             <table
-              class="border-separate border-spacing-0 rounded-b-[var(--radius-md)] border border-neutral-100 text-size-medium [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
+              class="border-separate border-spacing-0 rounded-[var(--radius-md)] border border-neutral-100 [&_thead_th:first-child]:rounded-tl-[var(--radius-md)] [&_thead_th:last-child]:rounded-tr-[var(--radius-md)] text-size-medium [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
               style={{
                 "table-layout": "fixed",
                 // An explicit sum, not `max-content`: that measured the cells,
@@ -655,7 +632,7 @@ export function DatabaseView(props: Props) {
           </Show>
         </div>
 
-        <div class="shrink-0 border-neutral-100 border-t px-3 py-2">
+        <div class="flex shrink-0 items-center justify-between gap-3 border-neutral-100 border-t px-3 py-2">
           <button
             type="button"
             class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
@@ -664,6 +641,26 @@ export function DatabaseView(props: Props) {
             <Icon class="h-3.5 w-3.5" name="add" />
             New row
           </button>
+          <div class="flex items-center gap-3">
+            <span class="text-neutral-400 text-size-small">{rows().length} rows</span>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv,.ics,text/calendar"
+              class="hidden"
+              onChange={(event) => void onImportFileChange(event)}
+            />
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-50"
+              title="Import"
+              disabled={isImporting()}
+              onClick={openImportPicker}
+            >
+              <Icon class="h-3.5 w-3.5" name="csv-file" />
+              Import
+            </button>
+          </div>
         </div>
       </div>
 
