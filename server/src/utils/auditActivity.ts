@@ -3,6 +3,7 @@
  * Used by activity feed components and the revisions sidebar.
  */
 
+import { appLabel } from "#acl/apps.ts";
 import type { AuditLog } from "#api/client.ts";
 import { formatRelativeTime } from "./dateFormat.ts";
 import { normalizeTimestamp } from "./datetime.ts";
@@ -224,6 +225,8 @@ export interface ActivityActor {
   /** The name of someone without an account, as the app knows them. */
   name: string | null;
   app: string | null;
+  /** What acted for the person — an app or an access token — shown as "via …". */
+  via: string | null;
 }
 
 export function activityActor(entry: AuditLog): ActivityActor {
@@ -234,9 +237,19 @@ export function activityActor(entry: AuditLog): ActivityActor {
       userId: onBehalfOf.userId ?? null,
       name: onBehalfOf.name,
       app: attribution.app,
+      via: appLabel(attribution.app),
     };
   }
-  return { userId: entry.userId ?? null, name: null, app: attribution?.app ?? null };
+  if (entry.credential) {
+    return {
+      userId: entry.credential.createdBy,
+      name: null,
+      app: null,
+      via: entry.credential.name,
+    };
+  }
+  const app = attribution?.app ?? null;
+  return { userId: entry.userId ?? null, name: null, app, via: app && appLabel(app) };
 }
 
 /** The actor's display name, resolving an account through `userName`. */
@@ -291,6 +304,7 @@ export function groupActivityEntries(
       previous.actor.userId === actor.userId &&
       previous.actor.name === actor.name &&
       previous.actor.app === actor.app &&
+      previous.actor.via === actor.via &&
       previous.date === date &&
       isSameBatch(entry, previous)
     ) {

@@ -47,6 +47,12 @@ function cellValue(row: DocumentProperties, col: string): string {
   return value ? propertyValueToText(value) : "";
 }
 
+// Only absolute http(s) values become links; anything else stays plain text.
+function cellHref(value: string): string | undefined {
+  const url = URL.parse(value.trim());
+  return url?.protocol === "http:" || url?.protocol === "https:" ? url.href : undefined;
+}
+
 function rowTitle(row: DocumentProperties): string {
   return cellValue(row, "title") || "Untitled";
 }
@@ -561,7 +567,22 @@ export function DatabaseView(props: Props) {
                                     ),
                                   }}
                                 >
-                                  {cellValue(row.properties, col.name) || "—"}
+                                  <Show
+                                    when={cellHref(cellValue(row.properties, col.name))}
+                                    fallback={cellValue(row.properties, col.name) || "—"}
+                                  >
+                                    {(href) => (
+                                      <a
+                                        href={href()}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="text-primary-600 hover:underline"
+                                        onClick={(event) => event.stopPropagation()}
+                                      >
+                                        {cellValue(row.properties, col.name)}
+                                      </a>
+                                    )}
+                                  </Show>
                                 </div>
                               }
                             >

@@ -9,6 +9,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { listAccessTokens } from "#db/space/accessTokens.ts";
 import {
   getAuditLogsForDocument,
   getRecentAuditLogs,
@@ -65,11 +66,19 @@ export const GET: ApiRouteHandler = (context) =>
       ? await getAuditLogsForDocument(store, documentId, limit, cursor)
       : await getRecentAuditLogs(store, limit, cursor);
 
-    const auditLogs = rows.map((log) => ({
-      ...log,
-      details: parseAuditDetails(log),
-      attribution: parseAuditAttribution(log),
-    }));
+    const tokens = new Map(
+      (await listAccessTokens(store)).map((token) => [token.id, token]),
+    );
+
+    const auditLogs = rows.map((log) => {
+      const token = log.userId ? tokens.get(log.userId) : undefined;
+      return {
+        ...log,
+        details: parseAuditDetails(log),
+        attribution: parseAuditAttribution(log),
+        credential: token ? { name: token.name, createdBy: token.createdBy } : null,
+      };
+    });
 
     return jsonResponse({ auditLogs, limit, nextCursor });
   }, "Failed to list space audit logs");

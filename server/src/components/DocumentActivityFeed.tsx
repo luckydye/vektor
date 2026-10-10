@@ -1,7 +1,6 @@
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { AuditLog } from "#api/client.ts";
-import { appLabel } from "#acl/apps.ts";
 import {
   type ActivityGroup,
   activityActorName,
@@ -143,10 +142,10 @@ export function DocumentActivityFeed(props: Props) {
                       <span class="truncate font-semibold text-neutral-900">
                         {activityActorName(group.actor, props.getUserName)}
                       </span>
-                      <Show when={group.actor.app}>
-                        {(app) => (
+                      <Show when={group.actor.via}>
+                        {(via) => (
                           <span class="shrink-0 text-neutral-500">
-                            {t("via {app}").replace("{app}", appLabel(app()))}
+                            {t("via {app}").replace("{app}", via())}
                           </span>
                         )}
                       </Show>

@@ -572,6 +572,8 @@ export interface AuditLog {
   details?: AuditDetails | null;
   /** The app that acted, and for whom; null when a person acted directly. */
   attribution?: Attribution | null;
+  /** The access token that acted, and who issued it; null when it was not a token. */
+  credential?: { name: string | null; createdBy: string | null } | null;
   createdAt: Date | string;
   userName?: string | null;
 }
