@@ -1,4 +1,4 @@
-import { type JSX, mergeProps, Show } from "solid-js";
+import { createEffect, type JSX, mergeProps, Show } from "solid-js";
 import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 
@@ -8,18 +8,26 @@ interface Props {
   badge?: CategoryBadgeData;
   label?: string;
   selected?: boolean;
+  active?: boolean;
   onClick?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>;
 }
 
 export function SelectItem(props: Props) {
   const merged = mergeProps({ label: "Item", selected: false }, props);
+  let buttonElement: HTMLButtonElement | undefined;
+
+  createEffect(() => {
+    if (merged.active) buttonElement?.scrollIntoView({ block: "nearest" });
+  });
 
   return (
     <button
+      ref={buttonElement}
       type="button"
-      class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors [&_svg]:h-[18px] [&_svg]:w-[18px] [&_svg]:text-neutral-950"
+      class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left [&_svg]:h-[18px] [&_svg]:w-[18px] [&_svg]:text-neutral-950"
       classList={{
         "bg-primary-50": merged.selected,
+        "bg-primary-10": merged.active && !merged.selected,
         "hover:bg-primary-10": !merged.selected,
       }}
       onClick={merged.onClick}

@@ -9,7 +9,7 @@ import {
   Switch,
 } from "solid-js";
 import { Button } from "./Button.tsx";
-import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
+import { SelectMenu, type SelectMenuItem, useSelectMenuKeys } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import type { Property, SpaceProperty } from "#documents/properties.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -38,13 +38,18 @@ export function PropertyPopover(props: Props) {
 
   const [mode, setMode] = createSignal<Mode>("select");
   let inputElement: HTMLInputElement | undefined;
+  let searchElement: HTMLInputElement | undefined;
+  const [search, setSearch] = createSignal("");
   const [propertyName, setPropertyName] = createSignal("");
   const [selectedType, setSelectedType] = createSignal("");
   const [selectedPropertyName, setSelectedPropertyName] = createSignal("");
 
   const spacePropertyItems = createMemo<SelectMenuItem[]>(() => [
     ...(props.spaceProperties ?? [])
-      .filter((p) => !["title"].includes(p.name))
+      .filter(
+        (p) =>
+          p.name !== "title" && p.name.toLowerCase().includes(search().trim().toLowerCase()),
+      )
       .map((sp) => ({
         id: sp.name,
         label: sp.name,
@@ -55,7 +60,7 @@ export function PropertyPopover(props: Props) {
   const handleSpacePropertySelect = (item: SelectMenuItem) => {
     if (item.id === "__new__") {
       setMode("create");
-      setPropertyName("");
+      setPropertyName(search().trim());
       setSelectedType("");
       return;
     }
@@ -68,6 +73,8 @@ export function PropertyPopover(props: Props) {
       });
     }
   };
+
+  const searchKeys = useSelectMenuKeys(spacePropertyItems, handleSpacePropertySelect);
 
   const handleCreate = () => {
     if (!propertyName().trim() || !selectedType()) return;
@@ -91,6 +98,7 @@ export function PropertyPopover(props: Props) {
   createEffect(() => {
     if (props.isOpen === true) {
       setMode("select");
+      setSearch("");
       setPropertyName("");
       setSelectedType("");
       setSelectedPropertyName("");
@@ -98,8 +106,9 @@ export function PropertyPopover(props: Props) {
   });
 
   createEffect(() => {
-    if (props.isOpen === true && mode() === "create") {
-      const handle = setTimeout(() => inputElement?.focus(), 25);
+    if (props.isOpen === true) {
+      const target = mode() === "create" ? inputElement : searchElement;
+      const handle = setTimeout(() => target?.focus(), 25);
       onCleanup(() => clearTimeout(handle));
     }
   });
@@ -127,12 +136,18 @@ export function PropertyPopover(props: Props) {
       >
         <Switch>
           <Match when={mode() === "select"}>
-            <div class="mt-4xs px-4xs font-medium text-neutral-600 text-size-small">
-              {t("Add Property")}
-            </div>
+            <input
+              ref={searchElement}
+              value={search()}
+              onInput={(e) => setSearch(e.currentTarget.value)}
+              onKeyDown={searchKeys.onKeyDown}
+              class="mt-4xs w-full border-none bg-transparent px-4xs text-interactive outline-none"
+              placeholder={t("Search properties")}
+            />
             <SelectMenu
               items={spacePropertyItems()}
               value={selectedPropertyName()}
+              activeIndex={searchKeys.activeIndex()}
               onSelect={handleSpacePropertySelect}
             />
           </Match>

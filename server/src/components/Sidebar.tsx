@@ -230,7 +230,7 @@ export function Sidebar(props: Props) {
         </button>
 
         <div class={twMerge(
-          "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-50",
+          "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-100",
           (drawer.isDragging() || isMobileOpen()) && "shadow-2xl"
         )}>
           <Navigation />

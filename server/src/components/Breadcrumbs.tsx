@@ -1,4 +1,4 @@
-import { createEffect, For, Show } from "solid-js";
+import { children, createEffect, For, type JSX, Show } from "solid-js";
 import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 import { CategoryBadge } from "./CategoryBadge.tsx";
@@ -20,6 +20,8 @@ interface Category {
 
 interface Props {
   category?: Category | null;
+  /** Replaces the category link, e.g. with an editable category chip. */
+  categorySlot?: JSX.Element;
   parents?: BreadcrumbItem[];
   currentTitle: string;
   documentId?: string;
@@ -30,7 +32,10 @@ interface Props {
 export function Breadcrumbs(props: Props) {
   const { currentSpace } = useSpace();
   const parents = () => props.parents ?? [];
-  const showBreadcrumbs = () => props.category || parents().length > 0;
+  // Resolved once: every read of a JSX prop would create the slot anew.
+  const categorySlot = children(() => props.categorySlot);
+  const showBreadcrumbs = () =>
+    categorySlot() || props.category || parents().length > 0;
 
   let olRef: HTMLOListElement | undefined;
 
@@ -45,13 +50,22 @@ export function Breadcrumbs(props: Props) {
     <Show when={showBreadcrumbs()}>
       <nav
         aria-label="Breadcrumb"
-        class="breadcrumbs hidden min-w-0 text-neutral-600 text-size-medium md:flex bg-background px-2 py-1.5 rounded-lg"
+        class="breadcrumbs hidden min-w-0 items-center text-neutral-700 text-size-medium md:flex"
       >
+        {/* Outside the scrolling list, which would clip the slot's popovers. */}
+        <Show when={categorySlot()}>
+          <div class="pointer-events-auto flex shrink-0 items-center gap-1">
+            {categorySlot()}
+            <span class="px-1 text-neutral-500" aria-hidden="true">
+              &rsaquo;
+            </span>
+          </div>
+        </Show>
         <ol
           ref={olRef}
           class="pointer-events-auto flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <Show when={props.category}>
+          <Show when={!categorySlot() && props.category}>
             {(category) => (
               <li class="flex shrink-0 items-center gap-1.5">
                 {/* biome-ignore lint/a11y/useValidAnchor: href is computed. */}
@@ -62,7 +76,7 @@ export function Breadcrumbs(props: Props) {
                   <CategoryBadge category={category()} class="h-4 w-4" />
                   <span>{category().name}</span>
                 </a>
-                <span class="px-1 text-neutral-400" aria-hidden="true">
+                <span class="px-1 text-neutral-500" aria-hidden="true">
                   &rsaquo;
                 </span>
               </li>
@@ -80,7 +94,7 @@ export function Breadcrumbs(props: Props) {
                 >
                   {parent.title}
                 </a>
-                <span class="px-1 text-neutral-400" aria-hidden="true">
+                <span class="px-1 text-neutral-500" aria-hidden="true">
                   &rsaquo;
                 </span>
               </li>

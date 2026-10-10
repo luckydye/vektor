@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge";
 import type { Property } from "#documents/properties.ts";
 import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
-import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
+import { SelectMenu, type SelectMenuItem, useSelectMenuKeys } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -15,11 +15,12 @@ interface Props {
   icon?: IconName;
   iconSvg?: string;
   badge?: CategoryBadgeData;
-  variant?: "default" | "special";
+  variant?: "default" | "special" | "quiet";
   readonly?: boolean;
   property?: Property | null;
   allowMultiple?: boolean;
   showTooltip?: boolean;
+  tooltipPos?: "bottom";
   propertyValues?: (property: Property) => Promise<SelectMenuItem[]>;
   onUpdate?: (property: Property & { search: string }) => void;
   onDelete?: (property: Property) => void;
@@ -129,6 +130,8 @@ export function PropertyChip(props: Props) {
     handleExit();
   };
 
+  const valueKeys = useSelectMenuKeys(filteredValueOptions, handleValueSelect);
+
   const handleDateChange = (event: Event) => {
     const target = event.target as HTMLInputElement;
     const property = props.property; // solid-reactivity-ok: handler, re-reads per call
@@ -160,17 +163,27 @@ export function PropertyChip(props: Props) {
   });
 
   const chipClass = () => ({
-    "text-interactive flex items-center gap-4xs py-7xs pl-5xs pr-4xs rounded-md transition-colors": true,
-    "bg-primary-50 hover:bg-primary-100 border border-primary-100":
-      props.variant === "special",
-    "bg-background hover:bg-primary-10 border border-primary-200":
-      props.variant === "default",
+    "text-interactive flex items-center gap-4xs py-7xs pl-5xs pr-4xs rounded-md border transition-colors": true,
+    "bg-primary-50 hover:bg-primary-100 border-primary-100": props.variant === "special",
+    "bg-background hover:bg-primary-10 border-primary-200": props.variant === "default",
+    "h-7 border-transparent hover:bg-neutral-100": props.variant === "quiet",
     "cursor-pointer": !!props.property && !props.readonly,
     "cursor-default": !props.property || !!props.readonly,
   });
 
+  const textClass = () =>
+    props.variant === "quiet"
+      ? "text-neutral-900"
+      : props.variant === "special"
+        ? "text-primary-700"
+        : "text-primary-600";
+
   const iconClass = () =>
-    props.variant === "special" ? "[&_svg]:text-primary-700" : "[&_svg]:text-primary-600";
+    props.variant === "quiet"
+      ? "[&_svg]:text-neutral-700"
+      : props.variant === "special"
+        ? "[&_svg]:text-primary-700"
+        : "[&_svg]:text-primary-600";
 
   return (
     <div class="relative">
@@ -188,12 +201,7 @@ export function PropertyChip(props: Props) {
                 name={props.icon}
               />
             </Show>
-            <span
-              classList={{
-                "text-primary-700": props.variant === "special",
-                "text-primary-600": props.variant === "default",
-              }}
-            >
+            <span class={textClass()}>
               {props.label}
             </span>
           </button>
@@ -205,6 +213,7 @@ export function PropertyChip(props: Props) {
             data-tooltip={
               props.showTooltip === false ? undefined : props.nameLabel || property().name
             }
+            data-tooltip-pos={props.tooltipPos}
             classList={chipClass()}
             onClick={() => void handleClick()}
           >
@@ -232,8 +241,7 @@ export function PropertyChip(props: Props) {
                 <span
                   class={twMerge(
                     "max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap capitalize",
-                    props.variant === "special" && "text-primary-700",
-                    props.variant === "default" && "text-primary-600",
+                    textClass(),
                   )}
                 >
                   {props.label}
@@ -281,6 +289,7 @@ export function PropertyChip(props: Props) {
                     ref={inputElement}
                     value={searchInput()}
                     onInput={(e) => setSearchInput(e.currentTarget.value)}
+                    onKeyDown={valueKeys.onKeyDown}
                     class="w-[150px] border-none bg-transparent text-interactive outline-none"
                     placeholder={props.nameLabel || property().name || t("Property name")}
                   />
@@ -302,6 +311,7 @@ export function PropertyChip(props: Props) {
                 <SelectMenu
                   items={filteredValueOptions()}
                   value={selectedValue() ?? null}
+                  activeIndex={valueKeys.activeIndex()}
                   onSelect={handleValueSelect}
                 />
               }

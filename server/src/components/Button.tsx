@@ -8,6 +8,8 @@ interface Props {
   text?: string;
   icon?: IconName;
   ariaLabel?: string;
+  /** Shows the label in the app tooltip instead of the native title. */
+  tooltipPos?: "top" | "bottom";
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
   class?: string;
@@ -51,7 +53,9 @@ export function Button(props: Props) {
       class={classes()}
       disabled={merged.disabled}
       aria-label={merged.ariaLabel}
-      title={merged.ariaLabel}
+      title={merged.tooltipPos ? undefined : merged.ariaLabel}
+      data-tooltip={merged.tooltipPos ? merged.ariaLabel : undefined}
+      data-tooltip-pos={merged.tooltipPos}
       form={merged.form}
       slot={merged.slot}
       onClick={merged.onClick}

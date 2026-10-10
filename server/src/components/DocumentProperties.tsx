@@ -23,7 +23,9 @@ import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 interface Props {
   documentId?: string;
   documentType?: string;
-  layout?: "inline" | "labeled";
+  layout?: "inline" | "labeled" | "toolbar";
+  /** Splits the set so the category chip can render apart from the rest. */
+  part?: "category" | "others";
   readonly?: boolean;
   initialProperties: Record<string, string | string[] | null | undefined> | undefined;
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
@@ -334,7 +336,10 @@ export function DocumentProperties(props: Props) {
       })
       .filter((p): p is Property => p !== null);
 
-    return [...list, ...otherProps];
+    const all = [...list, ...otherProps];
+    if (props.part === "category") return all.filter((p) => p.id === "category");
+    if (props.part === "others") return all.filter((p) => p.id !== "category");
+    return all;
   });
 
   const availableNewProperties = createMemo(() => {
@@ -353,6 +358,7 @@ export function DocumentProperties(props: Props) {
       class={twMerge(
         "pointer-events-none flex gap-3xs -mx-0.5",
         props.layout === "labeled" ? "flex-col items-start" : "flex-wrap items-center",
+        props.layout === "toolbar" && "mx-0 gap-5xs",
       )}
     >
       <For each={properties()}>
@@ -384,10 +390,13 @@ export function DocumentProperties(props: Props) {
                 valueLabels={getPropertyValueLabels(property)}
                 icon={getPropertyIcon(property)}
                 badge={getPropertyBadge(property)}
-                variant={getPropertyVariant(property)}
+                variant={
+                  props.layout === "toolbar" ? "quiet" : getPropertyVariant(property)
+                }
                 readonly={readonly()}
                 property={property}
                 showTooltip={props.layout !== "labeled" && !isMarker}
+                tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
                 allowMultiple={
                   property.type === "multi-select" || Array.isArray(property.value)
                 }
@@ -404,7 +413,7 @@ export function DocumentProperties(props: Props) {
         }}
       </For>
 
-      <Show when={!props.readonly}>
+      <Show when={!props.readonly && props.part !== "category"}>
         <div
           class={twMerge(
             "pointer-events-auto",
@@ -416,7 +425,8 @@ export function DocumentProperties(props: Props) {
             size="small"
             icon="add"
             ariaLabel={t("New property")}
-            class="w-full justify-center [&_svg]:text-primary-600"
+            tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
+            class={`w-full justify-center border-transparent! bg-transparent! hover:bg-neutral-100! [&_svg]:text-neutral-700 hover:[&_svg]:text-neutral-900 ${props.layout === "toolbar" ? "w-7! px-0!" : ""}`}
             onClick={() => setIsCreatePopoverOpen(!isCreatePopoverOpen())}
           />
 

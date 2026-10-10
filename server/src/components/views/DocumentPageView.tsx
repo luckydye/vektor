@@ -37,7 +37,11 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
-import { optionalPropertyValueToText } from "#documents/properties.ts";
+import {
+  isHiddenDocumentPropertyKey,
+  optionalPropertyValueToText,
+} from "#documents/properties.ts";
+import { templatePropertyKey } from "#documents/templates.ts";
 import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
@@ -210,6 +214,18 @@ export function DocumentPageView(props: Props) {
   const isDatabase = createMemo(() => documentType() === "database");
   const isRecord = createMemo(() => documentType() === "record");
   const isRegularDocument = createMemo(() => documentType() === "document");
+  const hasToolbarProperties = createMemo(
+    () => isDatabase() || isCanvas() || documentType() === repositoryDocumentType,
+  );
+  // Mirrors the chips DocumentProperties renders beside the category; without
+  // any, the toolbar pill holds only the add button and needs no toggle.
+  const hasToolbarPropertyChips = createMemo(
+    () =>
+      isCanvas() ||
+      Object.keys(doc()?.properties ?? {}).some(
+        (key) => key === templatePropertyKey || !isHiddenDocumentPropertyKey(key),
+      ),
+  );
   const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
@@ -430,11 +446,15 @@ export function DocumentPageView(props: Props) {
     </div>
   );
 
-  const documentPropertiesBlock = (layout?: "labeled"): JSX.Element => (
+  const documentPropertiesBlock = (
+    layout?: "labeled" | "toolbar",
+    part?: "category" | "others",
+  ): JSX.Element => (
     <DocumentProperties
       documentId={doc()?.id}
       documentType={documentType()}
       layout={layout}
+      part={part}
       readonly={!userCanEdit()}
       initialProperties={initialProperties()}
       initialCategory={null}
@@ -451,9 +471,7 @@ export function DocumentPageView(props: Props) {
       title={
         documentDetailsVisible() ? t("Hide document details") : t("Show document details")
       }
-      class={twMerge(
-        "pointer-events-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2",
-      )}
+      class="pointer-events-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2"
       onClick={() => setDocumentDetailsVisible(!documentDetailsVisible())}
     >
       <Icon
@@ -466,19 +484,68 @@ export function DocumentPageView(props: Props) {
     </button>
   );
 
-  const breadcrumbs = (): JSX.Element => (
-    <div class="flex min-w-0 items-center gap-1">
-      <Show when={!isDraft()}>
-        <Breadcrumbs
-          category={docCategory()}
-          parents={parentBreadcrumbs()}
-          currentTitle={title()}
-          documentId={doc()?.id}
-          spaceId={currentSpace()?.id}
-          canEdit={userCanEdit()}
-        />
+  const propertiesToggle = (): JSX.Element => (
+    <button
+      type="button"
+      aria-label={documentDetailsVisible() ? t("Hide properties") : t("Show properties")}
+      aria-pressed={documentDetailsVisible()}
+      data-tooltip={documentDetailsVisible() ? t("Hide properties") : t("Show properties")}
+      data-tooltip-pos="bottom"
+      class="inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2"
+      onClick={() => setDocumentDetailsVisible(!documentDetailsVisible())}
+    >
+      <Show when={!documentDetailsVisible()}>
+        <Icon name="generic-property" class="h-4 w-4" />
       </Show>
-      {documentDetailsToggle()}
+      <Icon
+        name="chevron-down"
+        class={twMerge(
+          "h-4 w-4",
+          documentDetailsVisible() ? "rotate-90" : "-rotate-90",
+        )}
+      />
+    </button>
+  );
+
+  const breadcrumbs = (): JSX.Element => (
+    <div class="flex min-w-0 items-center gap-2">
+      <div
+        class={twMerge(
+          "pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background",
+          hasToolbarProperties() ? "p-1 pr-2" : "p-1",
+        )}
+      >
+        <Show when={!isDraft()}>
+          <Breadcrumbs
+            category={docCategory()}
+            parents={parentBreadcrumbs()}
+            currentTitle={title()}
+            documentId={doc()?.id}
+            spaceId={currentSpace()?.id}
+            canEdit={userCanEdit()}
+            categorySlot={documentPropertiesBlock("toolbar", "category")}
+          />
+        </Show>
+        <Show when={!hasToolbarProperties()}>{documentDetailsToggle()}</Show>
+      </div>
+      {/* These types have no title block, so their properties ride the toolbar
+          in a pill of their own, folding away sideways. */}
+      <Show
+        when={hasToolbarProperties() && (hasToolbarPropertyChips() || userCanEdit())}
+      >
+        <div class="pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background p-1">
+          <Show
+            when={hasToolbarPropertyChips()}
+            fallback={documentPropertiesBlock("toolbar", "others")}
+          >
+            <Show when={documentDetailsVisible()}>
+              <div class="min-w-0">{documentPropertiesBlock("toolbar", "others")}</div>
+              <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
+            </Show>
+            {propertiesToggle()}
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 
@@ -504,7 +571,11 @@ export function DocumentPageView(props: Props) {
     </div>
   );
 
-  const documentDetails = (layout?: "labeled", transparent = false): JSX.Element => (
+  // The body's content sits one page-spacing step further in than the toolbar.
+  const alignDetailsWithBody = (layout?: "labeled") =>
+    isPaddedDocument() && layout !== "labeled";
+
+  const documentDetails = (layout?: "labeled"): JSX.Element => (
     <Show when={documentDetailsVisible()}>
       <div
         class={twMerge(
@@ -518,17 +589,20 @@ export function DocumentPageView(props: Props) {
       >
         <inset-view
           class={twMerge(
-            "flex flex-row justify-between gap-6 page-spacing py-3xs md:gap-4",
-            !transparent && "bg-neutral-10",
+            "flex flex-row justify-between gap-6 bg-neutral-10 page-spacing py-3xs md:gap-4",
+            alignDetailsWithBody(layout) && "pl-6! print:pl-0!",
           )}
         >
           {titleRow()}
         </inset-view>
         <inset-view
           id="document-properties"
-          class="mb-xl block page-spacing"
+          class={twMerge(
+            "mb-xl block page-spacing",
+            alignDetailsWithBody(layout) && "pl-6! print:pl-0!",
+          )}
         >
-          {documentPropertiesBlock(layout)}
+          {documentPropertiesBlock(layout, isDraft() ? undefined : "others")}
         </inset-view>
       </div>
     </Show>
@@ -641,7 +715,6 @@ export function DocumentPageView(props: Props) {
                 <Show when={isCanvas()}>
                   <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
                     {documentToolbar(true)}
-                    {documentDetails(undefined, true)}
                   </div>
                 </Show>
 
@@ -673,7 +746,7 @@ export function DocumentPageView(props: Props) {
                   </Show>
 
                   {documentToolbar()}
-                  {documentDetails()}
+                  <Show when={!hasToolbarProperties()}>{documentDetails()}</Show>
                 </Show>
 
                 <div
