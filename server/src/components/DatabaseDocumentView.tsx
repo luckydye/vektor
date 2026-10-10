@@ -269,11 +269,8 @@ export function DatabaseDocumentView(props: Props) {
                 <For each={configuredExtensionViews()}>
                   {(view) => {
                     const viewId = extensionViewId(view);
-                    // No background of its own: the tab paints the pill, and a
-                    // second one behind it doubles the tone and spreads it under the
-                    // menu button.
                     return (
-                      <span class="group/view inline-flex h-8 items-center rounded-md">
+                      <span class="inline-flex items-center">
                         <TabButton
                           selected={selectedViewId() === viewId}
                           icon="grid-grid"
@@ -282,36 +279,33 @@ export function DatabaseDocumentView(props: Props) {
                           {extensionViewTitle(view)}
                         </TabButton>
 
-                        <ContextMenu
-                          ariaLabel={`Manage ${extensionViewTitle(view)} view`}
-                          trigger={
-                            <button
-                              type="button"
-                              slot="trigger"
-                              aria-label={`Manage ${extensionViewTitle(view)} view`}
-                              // No background of its own: it used to sit flush
-                              // against one the wrapper drew behind the whole tab,
-                              // and alone it reads as a second, darker control.
-                              class="flex h-8 w-7 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700 group-hover/view:opacity-100"
-                              classList={{
-                                "opacity-100": selectedViewId() === viewId,
-                                "opacity-0": selectedViewId() !== viewId,
-                              }}
-                            >
-                              <Icon class="h-4 w-4" name="context-menu-more" />
-                            </button>
-                          }
-                        >
-                          <ContextMenuItem
-                            onClick={(event) => void removeExtensionView(view, event)}
+                        {/* Only the selected view gets one; hidden ones still took
+                            their width and left uneven gaps between the tabs. */}
+                        <Show when={selectedViewId() === viewId}>
+                          <ContextMenu
+                            ariaLabel={`Manage ${extensionViewTitle(view)} view`}
+                            trigger={
+                              <button
+                                type="button"
+                                slot="trigger"
+                                aria-label={`Manage ${extensionViewTitle(view)} view`}
+                                class="flex h-8 w-6 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700"
+                              >
+                                <Icon class="h-4 w-4" name="context-menu-more" />
+                              </button>
+                            }
                           >
-                            <Icon
-                              class="h-4 w-4 flex-none text-red-600"
-                              name="delete-entry"
-                            />
-                            <span class="text-red-600">Remove view</span>
-                          </ContextMenuItem>
-                        </ContextMenu>
+                            <ContextMenuItem
+                              onClick={(event) => void removeExtensionView(view, event)}
+                            >
+                              <Icon
+                                class="h-4 w-4 flex-none text-red-600"
+                                name="delete-entry"
+                              />
+                              <span class="text-red-600">Remove view</span>
+                            </ContextMenuItem>
+                          </ContextMenu>
+                        </Show>
                       </span>
                     );
                   }}
