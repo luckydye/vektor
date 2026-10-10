@@ -1,8 +1,17 @@
 import { validateTokenGrant, verifyAccess } from "#acl/guards.ts";
-import { Feature, isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
+import { resolveIdentity } from "#acl/identity.ts";
+import {
+  Feature,
+  isResourceType,
+  meetsPermissionLevel,
+  Permission,
+  ResourceType,
+} from "#acl/permissions.ts";
+import { issuerRole } from "#acl/store.ts";
 import {
   badRequestResponse,
   createdResponse,
+  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
@@ -110,7 +119,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     // The capability is stored as the feature grant it is, so the token is one
     // row like any other.
-    let grant: { resourceType: ResourceType; resourceId: string; permission: string };
+    let grant: { resourceType: ResourceType; resourceId: string; permission: Permission };
 
     if (isExtensionsCapability) {
       grant = {
@@ -134,6 +143,22 @@ export const POST: ApiRouteHandler = (context) =>
         resourceId,
         permission: validateTokenGrant(resourceType, permission),
       };
+    }
+
+    // A token is capped at its issuer's own grants when used, where instance
+    // admin does not count, so a grant they cannot back would mint a dead token.
+    const cap = await issuerRole(
+      spaceId,
+      await resolveIdentity(user.id),
+      grant.resourceType,
+      grant.resourceId,
+    );
+    if (!meetsPermissionLevel(cap, grant.permission)) {
+      throw forbiddenResponse(
+        cap
+          ? `You hold ${cap} here, so a token cannot be granted ${grant.permission}`
+          : "You hold no role here of your own; instance admin access cannot be delegated to a token",
+      );
     }
 
     let expiresAt: Date | undefined;

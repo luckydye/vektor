@@ -319,7 +319,7 @@ async function tokenIssuer(
  * What the issuer may currently do where a token grant on this resource sits:
  * documents by their access to that document, the rest by their space role.
  */
-async function issuerRole(
+export async function issuerRole(
   spaceId: string,
   issuer: ResolvedIdentity,
   resourceType: ResourceType,
