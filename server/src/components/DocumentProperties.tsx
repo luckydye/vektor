@@ -272,7 +272,9 @@ export function DocumentProperties(props: Props) {
         });
     }
 
-    return (await listValues(property.name)).map((value) => ({
+    // A text value only one document holds is free text rather than an option.
+    const minDocuments = property.type === "text" ? 2 : 1;
+    return (await listValues(property.name, minDocuments)).map((value) => ({
       id: value,
       label: value,
       icon: "generic-property",
@@ -325,7 +327,7 @@ export function DocumentProperties(props: Props) {
         const spaceProperty = spaceProperties()?.find(
           (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(key),
         );
-        const propertyType = (spaceProperty?.type as Property["type"]) || "select";
+        const propertyType = (spaceProperty?.type as Property["type"]) || "text";
 
         return {
           id: key,

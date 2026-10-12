@@ -33,14 +33,13 @@ export function useProperties() {
     if (keys.includes(realtimeTopics.properties)) refresh();
   });
 
-  // The chip filters these in place, so it takes as many as one request allows. A value
-  // only one document holds is free text rather than an option, so it is not suggested.
-  const listValues = async (name: string): Promise<string[]> => {
+  // The chip filters these in place, so it takes as many as one request allows.
+  const listValues = async (name: string, minDocuments?: number): Promise<string[]> => {
     const spaceIdValue = spaceId();
     if (!spaceIdValue) {
       throw new Error("No space ID");
     }
-    return (await api.properties.values(spaceIdValue, name, { limit: 500, minDocuments: 2 }))
+    return (await api.properties.values(spaceIdValue, name, { limit: 500, minDocuments }))
       .values;
   };
 
