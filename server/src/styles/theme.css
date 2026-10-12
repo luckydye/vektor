@@ -545,6 +545,21 @@
   }
 }
 
+/** A popover unfolding from its trigger in the top-left corner; enter only. */
+@utility popover-enter {
+  opacity: 1;
+  transform: scale(1);
+  transform-origin: left top;
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms var(--emphasized-curve, ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
 /** The user preferences panel inside the profile popover. */
 @utility preferences-panel {
   position: static;
@@ -581,6 +596,7 @@
   .overlay-fade,
   .overlay-slide,
   .comment-thread-enter,
+  .popover-enter,
   .preferences-panel,
   .dialog-layer,
   .dialog-layer .dialog-backdrop,
