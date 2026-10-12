@@ -81,7 +81,28 @@ async function appliedVersion(db: Database): Promise<number | null> {
     return rows[0]?.version ?? 0;
   } catch (error) {
     if (isMissingMigrationTable(error)) return null;
+    if (await migrationTableAbsent(db)) return null;
     throw error;
+  }
+}
+
+/**
+ * Whether SQLite's catalog confirms the migration table does not exist. Some
+ * driver builds fail to convert the "no such table" error and lose its message,
+ * so the table is asked about directly. A failing probe (another dialect, a
+ * dead connection) is not an answer, and the original error stands.
+ */
+async function migrationTableAbsent(db: Database): Promise<boolean> {
+  try {
+    const rows = await many<{ name: string }>(
+      db,
+      sql.raw(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${MIGRATION_TABLE}'`,
+      ),
+    );
+    return rows.length === 0;
+  } catch {
+    return false;
   }
 }
 
