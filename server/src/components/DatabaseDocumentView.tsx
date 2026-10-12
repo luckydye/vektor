@@ -255,7 +255,7 @@ export function DatabaseDocumentView(props: Props) {
             <div class="flex h-9 min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background px-1 @max-[60rem]:hidden">
               <div
                 role="tablist"
-                class="inline-flex min-w-0 items-center gap-1 overflow-x-auto [&_[role=tab]]:h-7 [&_[role=tab]>span]:h-7 [&_[aria-selected=true]>span]:bg-neutral-100! [&_[aria-selected=true]>span]:shadow-none!"
+                class="inline-flex min-w-0 items-center gap-1 overflow-x-auto"
                 aria-label="Database views"
                 onKeyDown={onTabKeyDown}
               >

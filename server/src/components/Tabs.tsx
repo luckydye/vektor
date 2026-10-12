@@ -39,7 +39,7 @@ interface TabsProps {
 export function TabsList(props: { class?: string; children: JSX.Element }) {
   return (
     <a-tabs-list
-      class={`inline-flex max-w-full overflow-x-auto rounded-lg bg-neutral-100/75 px-1 py-0.5 w-full ${props.class ?? ""}`}
+      class={`inline-flex h-9 max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-neutral-100 bg-background px-1 ${props.class ?? ""}`}
     >
       {props.children}
     </a-tabs-list>
@@ -66,11 +66,10 @@ export function Tabs(props: TabsProps) {
 }
 
 /**
- * The pill: icon and label, and the selected tab's raised surface.
+ * The pill: icon and label, and the selected tab's filled surface.
  *
- * The rail carries the muted tone. Selection adds a fine outlined surface
- * while hover only brightens the label, so it remains distinct from the
- * active tab.
+ * The rail is an outlined surface. Selection fills the pill while hover only
+ * brightens the label, so it remains distinct from the active tab.
  *
  * The parent's `selected` attribute rather than a descendant selector — an icon
  * is a span too, and `[&_span]` paints a box behind it.
@@ -81,7 +80,7 @@ export function Tabs(props: TabsProps) {
  */
 function TabPill(props: { icon?: IconName; children: JSX.Element }) {
   return (
-    <span class="inline-flex h-8 items-center justify-center gap-2 rounded-md px-4 [[aria-selected=true]>&]:bg-neutral-10 [[aria-selected=true]>&]:shadow-[inset_0_0_0_1px_var(--color-neutral-200)] [[selected]>&]:bg-neutral-10 [[selected]>&]:shadow-[inset_0_0_0_1px_var(--color-neutral-200)]">
+    <span class="inline-flex h-7 items-center justify-center gap-2 rounded-md px-4 [[aria-selected=true]>&]:bg-neutral-100 [[selected]>&]:bg-neutral-100">
       <Show when={props.icon}>{(icon) => <Icon class="h-4 w-4" name={icon()} />}</Show>
       {props.children}
     </span>
@@ -89,7 +88,7 @@ function TabPill(props: { icon?: IconName; children: JSX.Element }) {
 }
 
 const TAB_CLASS =
-  "group/tab inline-flex h-9 items-center justify-center rounded-sm text-label opacity-60 hover:opacity-100 [&[aria-selected=true]]:opacity-100 [&[selected]]:opacity-100";
+  "group/tab inline-flex h-7 items-center justify-center rounded-sm text-label opacity-60 hover:opacity-100 [&[aria-selected=true]]:opacity-100 [&[selected]]:opacity-100";
 
 interface TabProps {
   /** Only the initially selected tab needs this; the element takes over after. */
