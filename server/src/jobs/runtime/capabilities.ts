@@ -31,6 +31,7 @@ import { getNativeImage } from "#files/native.ts";
 import { applyTransform } from "#files/transforms.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import {
+  isLoopbackIp,
   isPrivateOrBlockedIp,
   safeFetch,
   type UrlValidator,
@@ -146,8 +147,9 @@ export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
   // No pinning either: the hatch exists to reach the local network.
   if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return { url, addresses: [] };
 
+  const allowLoopback = config().JOB_FETCH_ALLOW_LOOPBACK === "1";
   const hostname = urlHostname(url);
-  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+  if (!allowLoopback && (hostname === "localhost" || hostname.endsWith(".localhost"))) {
     throw new Error(`fetch: ${url.hostname} is not reachable from a job`);
   }
 
@@ -160,7 +162,15 @@ export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
         })
       ).map((record) => record.address);
 
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
   for (const address of addresses) {
+    if (allowLoopback && isLoopbackIp(address)) {
+      // Unproxied, the instance would believe a job-chosen `X-Forwarded-For`.
+      if (port === new URL(getLocalOrigin()).port) {
+        throw new Error(`fetch: ${url.host} is this instance, use apiFetch instead`);
+      }
+      continue;
+    }
     if (isPrivateOrBlockedIp(address)) {
       throw new Error(
         `fetch: ${url.hostname} resolves to the private address ${address}, which jobs cannot reach`,
@@ -390,7 +400,9 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
         method,
         headers: {
           ...Object.fromEntries(
-            Object.entries(asRecord(init.headers)).map(([k, v]) => [k, String(v)]),
+            Object.entries(asRecord(init.headers))
+              .filter(([k]) => k.toLowerCase() !== "x-forwarded-for")
+              .map(([k, v]) => [k, String(v)]),
           ),
           "X-Job-Token": token,
           "X-Space-Id": spaceId,

@@ -141,6 +141,14 @@ export function isPrivateOrBlockedIp(ip: string): boolean {
   return true;
 }
 
+/** Loopback in any spelling, including IPv4-mapped `::ffff:127.0.0.1`. */
+export function isLoopbackIp(ip: string): boolean {
+  if (isIP(ip) === 4) return isIPv4InCidr(ip, "127.0.0.0/8");
+  if (isIP(ip) !== 6) return false;
+  const normalized = ip.toLowerCase();
+  return isIPv6InCidr(normalized, "::1/128") || isIPv6InCidr(normalized, "::ffff:7f00:0/104");
+}
+
 export function isBlockedHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return BLOCKED_HOSTNAMES.has(host) || host.endsWith(".internal");

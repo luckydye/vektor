@@ -261,6 +261,12 @@ export function config() {
        */
       JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
       /**
+       * Allow job `fetch` to reach loopback (`localhost`, 127.0.0.0/8, `::1`) while
+       * other private ranges stay blocked. This instance's own port stays closed, since
+       * it would believe a job-chosen `X-Forwarded-For`; jobs use `apiFetch` for it.
+       */
+      JOB_FETCH_ALLOW_LOOPBACK: process.env.VEKTOR_JOB_FETCH_ALLOW_LOOPBACK,
+      /**
        * Disk budget in bytes for `jobCache`, 512 MB by default. Entries live
        * under DATA_DIR and the least recently read ones are evicted once the
        * cache is over budget, so this is the only bound on what jobs cache.
