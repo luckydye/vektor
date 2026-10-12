@@ -30,6 +30,7 @@ export const GET: ApiRouteHandler = (context) =>
     const result = await listPropertyValues(store, key, {
       prefix: searchParams.get("prefix") ?? "",
       limit,
+      minDocuments: parseQueryInt(searchParams, "minDocuments", { defaultValue: 1, min: 1 }),
     });
 
     return jsonResponse(result);

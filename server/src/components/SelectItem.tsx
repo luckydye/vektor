@@ -40,7 +40,10 @@ export function SelectItem(props: Props) {
           svg={merged.iconSvg}
         />
       </Show>
-      <span class="font-normal text-neutral-950 text-size-normal capitalize leading-[1rem]">
+      <span
+        class="min-w-0 truncate font-normal text-neutral-950 text-size-normal capitalize leading-[1rem]"
+        title={merged.label}
+      >
         {merged.label}
       </span>
     </button>

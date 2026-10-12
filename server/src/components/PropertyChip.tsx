@@ -267,7 +267,7 @@ export function PropertyChip(props: Props) {
           <a-blur
             enabled
             on:exit={handleExit}
-            class="popover-enter absolute -top-[5px] -left-[5px] z-50 flex flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
+            class="popover-enter absolute -top-[5px] -left-[5px] z-50 flex w-max max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
           >
             {/* Border and padding match the chip, so the header sits exactly over it. */}
             <div class="flex h-7 w-full items-center gap-4xs border border-transparent pr-4xs pl-5xs">

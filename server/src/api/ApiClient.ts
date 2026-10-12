@@ -1820,7 +1820,11 @@ export class ApiClient {
       return response.properties;
     },
 
-    values: (spaceId: string, key: string, options: { prefix?: string; limit?: number } = {}) =>
+    values: (
+      spaceId: string,
+      key: string,
+      options: { prefix?: string; limit?: number; minDocuments?: number } = {},
+    ) =>
       this.apiGet<{ values: string[]; hasMore: boolean }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/properties/values`,

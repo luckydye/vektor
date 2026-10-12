@@ -308,12 +308,13 @@ export async function listSpaceProperties(
 
 /**
  * The distinct values non-archived documents hold for one property key, in
- * every spelling of it, with multi-value rows unpacked. `prefix` matches case-insensitively.
+ * every spelling of it, with multi-value rows unpacked, most-used first. `prefix` matches
+ * case-insensitively; `minDocuments` drops values too rare to be worth suggesting.
  */
 export async function listPropertyValues(
   s: SpaceStore,
   key: string,
-  options: { prefix: string; limit: number },
+  options: { prefix: string; limit: number; minDocuments: number },
 ): Promise<{ values: string[]; hasMore: boolean }> {
   const canonical = canonicalPropertyKey(key);
   const prefix = options.prefix.toLowerCase();
@@ -351,16 +352,18 @@ export async function listPropertyValues(
     s.db,
     sql`
       SELECT value FROM (
-        SELECT p.value AS value FROM ${property} p
+        SELECT p.value AS value, p.document_id AS document_id FROM ${property} p
         JOIN ${document} ON ${document.id} = p.document_id
         WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND NOT ${isArray}
-        UNION
-        SELECT CAST(j.value AS TEXT) FROM ${property} p
+        UNION ALL
+        SELECT CAST(j.value AS TEXT), p.document_id FROM ${property} p
         JOIN ${document} ON ${document.id} = p.document_id, json_each(p.value) j
         WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND ${isArray}
       )
-      WHERE value <> '' AND substr(lower(value), 1, ${prefix.length}) = ${prefix}
-      ORDER BY value
+      WHERE trim(value) <> '' AND substr(lower(value), 1, ${prefix.length}) = ${prefix}
+      GROUP BY value
+      HAVING count(DISTINCT document_id) >= ${options.minDocuments}
+      ORDER BY count(DISTINCT document_id) DESC, value
       LIMIT ${options.limit + 1}
     `,
   );
