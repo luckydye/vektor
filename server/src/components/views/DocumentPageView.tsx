@@ -461,29 +461,6 @@ export function DocumentPageView(props: Props) {
     />
   );
 
-  const documentDetailsToggle = (): JSX.Element => (
-    <button
-      type="button"
-      aria-label={
-        documentDetailsVisible() ? t("Hide document details") : t("Show document details")
-      }
-      aria-pressed={documentDetailsVisible()}
-      title={
-        documentDetailsVisible() ? t("Hide document details") : t("Show document details")
-      }
-      class="pointer-events-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-700 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2"
-      onClick={() => setDocumentDetailsVisible(!documentDetailsVisible())}
-    >
-      <Icon
-        name="chevron-down"
-        class={twMerge(
-          "h-4 w-4 transition-transform duration-150 ease-out",
-          documentDetailsVisible() && "rotate-180",
-        )}
-      />
-    </button>
-  );
-
   const propertiesToggle = (): JSX.Element => (
     <button
       type="button"
@@ -530,7 +507,6 @@ export function DocumentPageView(props: Props) {
             class={hasToolbarProperties() ? undefined : "max-md:hidden"}
           />
         </Show>
-        <Show when={!hasToolbarProperties()}>{documentDetailsToggle()}</Show>
         {/* A lone add button would be an empty box of its own. */}
         <Show when={inlineAddProperty()}>
           <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
@@ -564,10 +540,7 @@ export function DocumentPageView(props: Props) {
         when={isWorkflow()}
         fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
       >
-        <div class="flex min-w-0 flex-1 items-center gap-1">
-          <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
-          {documentDetailsToggle()}
-        </div>
+        <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
       </Show>
       <div id="document-toolbar-slot" class="pointer-events-auto shrink-0 empty:hidden" />
       {documentActions()}
@@ -579,36 +552,33 @@ export function DocumentPageView(props: Props) {
     isPaddedDocument() && layout !== "labeled";
 
   const documentDetails = (layout?: "labeled"): JSX.Element => (
-    <Show when={documentDetailsVisible()}>
-      <div
+    <div
+      class={twMerge(
+        // Property popovers need the wrapper itself above the body below it.
+        "relative z-20 flex min-w-0 shrink-0 flex-col",
+        // Growing is for the row layout beside a portrait header; in a
+        // full-height view it would stretch the header over the content.
+        layout === "labeled" && "flex-1",
+      )}
+    >
+      <inset-view
         class={twMerge(
-          // The enter transition's transform makes this a stacking context, so
-          // property popovers need the wrapper itself above the body below it.
-          "document-details-enter relative z-20 flex min-w-0 shrink-0 flex-col",
-          // Growing is for the row layout beside a portrait header; in a
-          // full-height view it would stretch the header over the content.
-          layout === "labeled" && "flex-1",
+          "flex flex-row justify-between gap-6 bg-neutral-10 page-spacing py-3xs md:gap-4",
+          alignDetailsWithBody(layout) && "pl-6! print:pl-0!",
         )}
       >
-        <inset-view
-          class={twMerge(
-            "flex flex-row justify-between gap-6 bg-neutral-10 page-spacing py-3xs md:gap-4",
-            alignDetailsWithBody(layout) && "pl-6! print:pl-0!",
-          )}
-        >
-          {titleRow()}
-        </inset-view>
-        <inset-view
-          id="document-properties"
-          class={twMerge(
-            "mb-xl block page-spacing",
-            alignDetailsWithBody(layout) && "pl-6! print:pl-0!",
-          )}
-        >
-          {documentPropertiesBlock(layout, isDraft() ? undefined : "others")}
-        </inset-view>
-      </div>
-    </Show>
+        {titleRow()}
+      </inset-view>
+      <inset-view
+        id="document-properties"
+        class={twMerge(
+          "mb-xl block page-spacing",
+          alignDetailsWithBody(layout) && "pl-6! print:pl-0!",
+        )}
+      >
+        {documentPropertiesBlock(layout, isDraft() ? undefined : "others")}
+      </inset-view>
+    </div>
   );
 
   const documentActions = (): JSX.Element => (
@@ -765,9 +735,6 @@ export function DocumentPageView(props: Props) {
                       "min-w-0",
                       // Every document type ends on the same gap, footer or not.
                       !isCanvas() && "pb-2xs",
-                      // Collapsed details take their own bottom margin with
-                      // them, leaving the body flush against the toolbar.
-                      isRegularDocument() && !documentDetailsVisible() && "pt-2xs",
                       isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                     )}
                   >

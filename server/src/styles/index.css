@@ -16,7 +16,7 @@
   --inset-left: var(--sidebar-width);
   --inset-right: 0px;
   --site-width: 1600px;
-  --document-width: 1200px;
+  --document-width: 1000px;
 
   --emphasized-curve: linear(
     0,
