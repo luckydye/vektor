@@ -157,6 +157,16 @@ export interface FileStorageAdapter {
     contentType?: string,
   ): Promise<StoredUpload>;
   /**
+   * Store a stream at a known key without holding it in memory. Nothing lands
+   * under the key unless the stream ends cleanly, so erroring it aborts the write.
+   */
+  putStream(
+    spaceId: string,
+    key: string,
+    body: ReadableStream<Uint8Array>,
+    contentType?: string,
+  ): Promise<void>;
+  /**
    * Read a whole file by key. Null if not found.
    *
    * Every byte lands in memory, so this is for callers that genuinely need all
@@ -362,6 +372,31 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
       await mkdir(dirname(filePath), { recursive: true });
       await rename(stagingPath, filePath);
       return { key, url: this.url(spaceId, key), size };
+    } catch (error) {
+      await unlink(stagingPath).catch(() => {});
+      throw error;
+    }
+  }
+
+  async putStream(
+    spaceId: string,
+    key: string,
+    body: ReadableStream<Uint8Array>,
+    _contentType?: string,
+  ): Promise<void> {
+    const filePath = this.resolvePath(spaceId, key);
+    if (!filePath) throw new Error(`Refusing to write outside the space: ${key}`);
+    const stagingPath = join(this.root, spaceId, ".staging", randomUUID());
+    await mkdir(dirname(stagingPath), { recursive: true });
+    try {
+      const handle = await open(stagingPath, "w");
+      try {
+        for await (const chunk of body) await handle.write(chunk);
+      } finally {
+        await handle.close();
+      }
+      await mkdir(dirname(filePath), { recursive: true });
+      await rename(stagingPath, filePath);
     } catch (error) {
       await unlink(stagingPath).catch(() => {});
       throw error;

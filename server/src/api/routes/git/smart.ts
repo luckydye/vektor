@@ -17,7 +17,15 @@ import { getFileStorage } from "#files/storage.ts";
 import { ensureCache, invalidateCache, withRepoLock } from "#git/cache.ts";
 import { runHttpBackend } from "#git/httpBackend.ts";
 import { publishPush, readRefs } from "#git/publish.ts";
-import { resolveRepository } from "#git/repos.ts";
+import {
+  answerLfsBatch,
+  getLfsObject,
+  isLfsOid,
+  lfsResponse,
+  parseLfsBatch,
+  putLfsObject,
+} from "#git/lfs.ts";
+import { type RepositoryDocument, resolveRepository } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
 
 /**
@@ -26,6 +34,8 @@ import { appLogger } from "#observability/logger.ts";
  * accepted, because it is what people type.
  */
 const GIT_SUFFIX = ".git";
+
+const LFS_PATH = "info/lfs/";
 
 function unauthorized(): Response {
   return new Response("Authentication required\n", {
@@ -82,6 +92,84 @@ async function mayReach(
   return canAccess(spaceId, target, caller.id, required);
 }
 
+/** Null when `caller` may read the repository, or also push to it for a `write`. */
+async function authorize(
+  caller: BasicAuthUser,
+  spaceId: string,
+  repository: RepositoryDocument,
+  write: boolean,
+): Promise<Response | null> {
+  const required = write ? Permission.EDITOR : Permission.VIEWER;
+  let allowed = false;
+  try {
+    allowed = await mayReach(caller, spaceId, repository.id, required);
+  } catch (error) {
+    if (!(error instanceof AclFailure)) throw error;
+  }
+  // A reader who may not see the repository and one who may not push to it get
+  // different answers: the second already knows it exists.
+  if (!allowed) {
+    if (!write) return notFound();
+    return (await mayReach(caller, spaceId, repository.id, Permission.VIEWER))
+      ? new Response("Write access required\n", { status: 403 })
+      : notFound();
+  }
+
+  // Archiving or locking a repository stops it accepting history without
+  // hiding the history it already has.
+  if (write && !repository.writable) {
+    return new Response("Repository is archived or read-only\n", {
+      status: 403,
+      headers: { "Content-Type": "text/plain" },
+    });
+  }
+  return null;
+}
+
+/** Git LFS batch API and basic transfers; `path` is relative to `info/lfs/`. */
+async function handleLfs(
+  context: ApiContext,
+  caller: BasicAuthUser,
+  spaceId: string,
+  repository: RepositoryDocument,
+  path: string,
+): Promise<Response> {
+  const method = context.req.method;
+  const storage = getFileStorage();
+
+  if (path === "objects/batch" && method === "POST") {
+    const request = parseLfsBatch(await context.req.raw.json().catch(() => null));
+    if (!request) return lfsResponse(422, { message: "Unsupported batch request" });
+    const refused = await authorize(caller, spaceId, repository, request.operation === "upload");
+    if (refused) return refused;
+    const batchUrl = new URL(context.req.raw.url);
+    return answerLfsBatch(
+      storage,
+      spaceId,
+      repository.id,
+      request,
+      `${batchUrl.origin}${batchUrl.pathname.slice(0, -"/batch".length)}`,
+      context.req.raw.headers.get("Authorization"),
+    );
+  }
+
+  const oid = path.startsWith("objects/") ? path.slice("objects/".length) : "";
+  const body = context.req.raw.body;
+  if (isLfsOid(oid) && method === "PUT" && body) {
+    const refused = await authorize(caller, spaceId, repository, true);
+    if (refused) return refused;
+    return putLfsObject(storage, spaceId, repository.id, oid, body);
+  }
+  if (isLfsOid(oid) && method === "GET") {
+    const refused = await authorize(caller, spaceId, repository, false);
+    if (refused) return refused;
+    return getLfsObject(storage, spaceId, repository.id, oid);
+  }
+
+  // Includes the locking API, which git-lfs treats as optional on a 404.
+  return notFound();
+}
+
 /**
  * Git smart HTTP reference discovery.
  *
@@ -117,33 +205,14 @@ export const ALL: ApiRouteHandler = async (context) => {
   const caller = await authenticate(context);
   if (!caller) return unauthorized();
 
+  if (path.startsWith(LFS_PATH)) {
+    return handleLfs(context, caller, space.id, repository, path.slice(LFS_PATH.length));
+  }
+
   const query = new URL(context.req.raw.url).search.slice(1);
   const write = isWrite(path, query);
-  const required = write ? Permission.EDITOR : Permission.VIEWER;
-
-  let allowed = false;
-  try {
-    allowed = await mayReach(caller, space.id, repository.id, required);
-  } catch (error) {
-    if (!(error instanceof AclFailure)) throw error;
-  }
-  // A reader who may not see the repository and one who may not push to it get
-  // different answers: the second already knows it exists.
-  if (!allowed) {
-    if (!write) return notFound();
-    return (await mayReach(caller, space.id, repository.id, Permission.VIEWER))
-      ? new Response("Write access required\n", { status: 403 })
-      : notFound();
-  }
-
-  // Archiving or locking a repository stops it accepting history without
-  // hiding the history it already has.
-  if (write && !repository.writable) {
-    return new Response("Repository is archived or read-only\n", {
-      status: 403,
-      headers: { "Content-Type": "text/plain" },
-    });
-  }
+  const refused = await authorize(caller, space.id, repository, write);
+  if (refused) return refused;
 
   const storage = getFileStorage();
 

@@ -170,6 +170,32 @@ class S3FileStorageAdapter implements FileStorageAdapter {
     }
   }
 
+  /** Staged on local disk like {@link putHashed}, so an aborted stream never reaches the bucket. */
+  async putStream(
+    spaceId: string,
+    key: string,
+    body: ReadableStream<Uint8Array>,
+    contentType?: string,
+  ): Promise<void> {
+    const objectKey = this.objectKey(spaceId, key);
+    if (!objectKey) throw new Error(`Refusing to write outside the space: ${key}`);
+    const stagingPath = join(this.options.stagingDir, randomUUID());
+    await mkdir(dirname(stagingPath), { recursive: true });
+    try {
+      const handle = await open(stagingPath, "w");
+      try {
+        for await (const chunk of body) await handle.write(chunk);
+      } finally {
+        await handle.close();
+      }
+      await this.client.file(objectKey).write(Bun.file(stagingPath), {
+        type: contentType,
+      });
+    } finally {
+      await rm(stagingPath, { force: true }).catch(() => {});
+    }
+  }
+
   async read(spaceId: string, key: string): Promise<Buffer | null> {
     const objectKey = this.objectKey(spaceId, key);
     if (!objectKey) return null;
