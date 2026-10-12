@@ -10,6 +10,8 @@ import { type CanvasGpu, parseColor } from "#canvas/render/webgl.ts";
 import { CanvasRichTextElement } from "#canvas/runtime/elementBase.ts";
 import type {
   CanvasClientPoint,
+  CanvasEditSession,
+  CanvasExtensionHost,
   CanvasPaintHelpers,
   CanvasShape,
 } from "#canvas/runtime/extensionApi.ts";
@@ -17,10 +19,10 @@ import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import { localPointInShape } from "#canvas/runtime/geometry.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 
-// The article's 1px border, the 18px drag grip and the editor's 4px padding.
+// The article's 1px border and the editor's padding (0.75rem in canvas.css).
 const BORDER = 1;
-const GRIP = 18;
-const PADDING = 4;
+const PADDING = 12;
+const MAX_WIDTH = 360;
 const THEME = editorTheme(15, "#111827");
 
 function paintNote(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
@@ -33,11 +35,6 @@ function paintNote(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpe
     stroke: parseColor(helpers.color("--canvas-shape-border")),
     strokeWidth: helpers.scale,
   });
-  const corner = 7 * helpers.scale;
-  drawRoundedRect(gpu, box(BORDER, BORDER, width - BORDER * 2, GRIP), {
-    radius: [corner, corner, 0, 0],
-    fill: parseColor(helpers.color("--canvas-handle-bg")),
-  });
   const inset = BORDER + PADDING;
   const contentWidth = width - inset * 2;
   const layout = shapeTextLayout(shape, THEME, contentWidth, helpers.invalidate);
@@ -48,15 +45,19 @@ function paintNote(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpe
     shapePlacement(
       shape,
       helpers,
-      { x: inset, y: BORDER + GRIP + PADDING },
+      { x: inset, y: inset },
       {
         x: -PADDING,
         y: -PADDING,
         width: contentWidth + PADDING * 2,
-        height: height - BORDER * 2 - GRIP,
+        height: height - BORDER * 2,
       },
     ),
   );
+}
+
+function noteEditor(shape: CanvasShape, at: CanvasClientPoint | null): CanvasEditSession {
+  return { shapeId: shape.id, tag: "canvas-note", props: { caret: at } };
 }
 
 const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
@@ -67,7 +68,7 @@ export const Note = CanvasElement.create({
   addOptions() {
     return {
       colors: NOTE_COLORS as readonly string[],
-      size: { width: 240, height: 150 },
+      size: { width: 180, height: 120 },
       minSize: { width: 140, height: 96 },
       text: "Note",
     };
@@ -106,30 +107,55 @@ export const Note = CanvasElement.create({
         const local = localPointInShape(shape.frame, world);
         if (local.x < 0 || local.y < 0) return null;
         if (local.x > shape.frame.width || local.y > shape.frame.height) return null;
-        return local.y <= BORDER + GRIP ? "grip" : "body";
+        return "body";
       },
-      cursor: (_shape: CanvasShape, region: string) =>
-        region === "grip" ? "move" : "text",
-      editor: (shape: CanvasShape, at: CanvasClientPoint | null) => ({
-        shapeId: shape.id,
-        tag: "canvas-note",
-        props: { caret: at },
-      }),
+      cursor: () => "move",
+      editor: noteEditor,
     };
   },
 
   addBehavior() {
     return {
       transform: { move: true, resize: "box" as const, rotate: true },
-      press: (_shape: CanvasShape, region: string) =>
-        region === "grip" ? ("drag" as const) : ("edit" as const),
+      measurement: {
+        // Grows to the text up to MAX_WIDTH, wrapping beyond that.
+        fit: (shape: CanvasShape) => {
+          const { minSize } = this.options;
+          const chrome = (BORDER + PADDING) * 2;
+          const layoutAt = (width: number) =>
+            shapeTextLayout(shape, THEME, width, () => {});
+          const natural = layoutAt(Number.POSITIVE_INFINITY);
+          if (!natural) return null;
+          const width = Math.min(
+            MAX_WIDTH,
+            Math.max(minSize.width, Math.ceil(natural.width + chrome)),
+          );
+          const wrapped = layoutAt(width - chrome);
+          if (!wrapped) return null;
+          return {
+            width,
+            height: Math.max(minSize.height, Math.ceil(wrapped.height + chrome)),
+          };
+        },
+      },
+    };
+  },
+
+  // A press drags; a click that did not drag starts editing at that point.
+  addEvents() {
+    return {
+      click: (
+        shape: CanvasShape,
+        host: CanvasExtensionHost,
+        hit: { event: PointerEvent },
+      ) => host.beginEdit(noteEditor(shape, hit.event)),
     };
   },
 });
 
-// The live note, mounted only while editing: a drag grip plus the editor.
+// The live note, mounted only while editing.
 class CanvasNoteElement extends CanvasRichTextElement {
-  protected readonly showHandle = true;
+  protected readonly showHandle = false;
   protected readonly removeWhenEmpty = false;
 }
 

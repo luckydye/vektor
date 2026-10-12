@@ -814,6 +814,14 @@ export function createCanvasController(
       const shape = shapesById().get(id);
       if (!shape || shape.locked) return;
       updateShapeData(id, patch);
+      const fitted = extensionManager
+        .get(shape.type)
+        .behavior.measurement?.fit?.({ ...shape, data: { ...shape.data, ...patch } });
+      if (
+        fitted &&
+        (fitted.width !== shape.frame.width || fitted.height !== shape.frame.height)
+      )
+        updateShapeFrame(id, fitted);
     },
     removeShape: (id) => {
       if (shapesById().get(id)?.locked) return;

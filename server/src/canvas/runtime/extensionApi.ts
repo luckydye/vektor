@@ -524,6 +524,8 @@ export interface CanvasElementExtension {
       /** Content size from the shape's own layout, or null until it can tell. */
       measure?: (shape: CanvasShape) => CanvasSize | null;
       fallback?: (shape: CanvasShape) => CanvasSize;
+      /** Box that fits the shape's content, applied to the stored frame whenever its data changes. */
+      fit?: (shape: CanvasShape) => CanvasSize | null;
       normalize?: (
         shape: CanvasShape,
         size: Partial<CanvasSize>,
