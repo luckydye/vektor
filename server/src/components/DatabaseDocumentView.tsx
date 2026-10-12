@@ -252,10 +252,10 @@ export function DatabaseDocumentView(props: Props) {
               <Icon class="h-4 w-4 text-neutral-400" name="chevron-down" />
             </button>
 
-            <div class="flex h-9 min-w-0 items-center rounded-lg bg-neutral-100/75 px-0.5 @max-[60rem]:hidden">
+            <div class="flex h-9 min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background px-1 @max-[60rem]:hidden">
               <div
                 role="tablist"
-                class="inline-flex min-w-0 items-center gap-1 overflow-x-auto"
+                class="inline-flex min-w-0 items-center gap-1 overflow-x-auto [&_[role=tab]]:h-7 [&_[role=tab]>span]:h-7 [&_[aria-selected=true]>span]:bg-neutral-100! [&_[aria-selected=true]>span]:shadow-none!"
                 aria-label="Database views"
                 onKeyDown={onTabKeyDown}
               >
@@ -289,7 +289,7 @@ export function DatabaseDocumentView(props: Props) {
                                 type="button"
                                 slot="trigger"
                                 aria-label={`Manage ${extensionViewTitle(view)} view`}
-                                class="flex h-8 w-6 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700"
+                                class="flex h-7 w-6 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700"
                               >
                                 <Icon class="h-4 w-4" name="context-menu-more" />
                               </button>
@@ -322,7 +322,7 @@ export function DatabaseDocumentView(props: Props) {
                       slot="trigger"
                       aria-label="Add view"
                       title="Add view"
-                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-700"
+                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-700"
                     >
                       <Icon class="h-4 w-4" name="add" />
                     </button>

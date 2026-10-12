@@ -461,7 +461,7 @@ export function DocumentActions(props: Props) {
   return (
     <div
       id="document-actions"
-      class="pointer-events-auto flex flex-none items-start gap-4xs"
+      class="pointer-events-auto flex flex-none items-center gap-4xs"
     >
       <div class="mr-3 flex-1">
         <Show when={documentId()}>{(id) => <Contributors documentId={id()} />}</Show>
@@ -482,7 +482,7 @@ export function DocumentActions(props: Props) {
       </Show>
 
       <Show when={canUseDocumentEditor() && !editing()}>
-        <button type="button" class="button-outline max-md:hidden" onClick={startEditing}>
+        <button type="button" class="button-outline h-9 rounded-lg! max-md:hidden" onClick={startEditing}>
           <Icon name="edit-document" />
           <span>{t("Edit")}</span>
         </button>
@@ -552,7 +552,7 @@ export function DocumentActions(props: Props) {
         <ContextMenu
           ariaLabel={t("Document actions")}
           triggerVariant="outline"
-          triggerClass="h-8 w-8 justify-center px-0"
+          triggerClass="h-9 w-9 justify-center rounded-lg! px-0"
         >
           <For each={actionsSpace()}>
             {([name, options]) => <MenuActionItem name={name} options={options} />}

@@ -491,7 +491,7 @@ export function DocumentPageView(props: Props) {
       <div
         class={twMerge(
           "pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background",
-          hasToolbarProperties() && !inlineAddProperty() ? "p-1 pr-2" : "p-1",
+          hasToolbarProperties() && !inlineAddProperty() ? "h-9 px-1 pr-2" : "h-9 px-1",
         )}
       >
         <Show when={!isDraft()}>
@@ -516,7 +516,7 @@ export function DocumentPageView(props: Props) {
       {/* These types have no title block, so their properties ride the toolbar
           in a pill of their own, folding away sideways. */}
       <Show when={hasToolbarProperties() && hasToolbarPropertyChips()}>
-        <div class="pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background p-1">
+        <div class="pointer-events-auto flex h-9 min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background px-1">
           <Show when={documentDetailsVisible()}>
             <div class="min-w-0">{documentPropertiesBlock("toolbar", "others")}</div>
             <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
