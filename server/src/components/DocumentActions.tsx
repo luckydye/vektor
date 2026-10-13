@@ -473,6 +473,7 @@ export function DocumentActions(props: Props) {
               }}
               documentId={id()}
               documentTitle={props.title}
+              canManageLinks={userCanEdit()}
             />
           )}
         </Show>

@@ -265,6 +265,9 @@
   --code-class: #953800;
   --code-invalid: #82071e;
   --code-inserted: #116329;
+  --shadow-large-contact: rgb(0 0 0 / 0.08);
+  --shadow-large-ambient: rgb(0 0 0 / 0.18);
+  --shadow-large-rim: transparent;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -279,6 +282,9 @@
     --code-class: #ffa657;
     --code-invalid: #ffa198;
     --code-inserted: #7ee787;
+    --shadow-large-contact: rgb(0 0 0 / 0.5);
+    --shadow-large-ambient: rgb(0 0 0 / 0.6);
+    --shadow-large-rim: rgb(255 255 255 / 0.14);
   }
 }
 
@@ -293,6 +299,9 @@
   --code-class: #ffa657;
   --code-invalid: #ffa198;
   --code-inserted: #7ee787;
+  --shadow-large-contact: rgb(0 0 0 / 0.5);
+  --shadow-large-ambient: rgb(0 0 0 / 0.6);
+  --shadow-large-rim: rgb(255 255 255 / 0.14);
 }
 
 /* Text Style Utilities */
@@ -323,7 +332,10 @@
 
 /* Drop Shadow Utilities */
 @utility shadow-large {
-  filter: drop-shadow(-1.6px 1.6px 19.2px rgba(0, 0, 0, 0.10000000149011612));
+  /* The rim outlines panels in dark mode, where a shadow on a dark page barely shows. */
+  filter: drop-shadow(0 0 0.5px var(--shadow-large-rim))
+    drop-shadow(0 1px 2px var(--shadow-large-contact))
+    drop-shadow(0 8px 24px var(--shadow-large-ambient));
 }
 @utility shadow-small {
   filter: drop-shadow(0px 0.8px 6.4px rgba(0, 0, 0, 0.10000000149011612));

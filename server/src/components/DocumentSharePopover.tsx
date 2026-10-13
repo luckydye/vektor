@@ -9,6 +9,7 @@ import { roleBadgeClass, roleLabel } from "#utils/accessToken.ts";
 import { t } from "#utils/lang.ts";
 import { Icon } from "./Icon.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
+import { TabButton } from "./Tabs.tsx";
 import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
 import { confirmDialog } from "#composeables/useDialogs.ts";
@@ -18,6 +19,8 @@ export type SharePopoverTrigger = HTMLElement & { show: () => void };
 
 interface Props {
   documentId: string;
+  /** Share links need edit access to the document itself. */
+  canManageLinks: boolean;
   documentTitle?: string;
   ref?: (trigger: SharePopoverTrigger) => void;
 }
@@ -81,7 +84,6 @@ export function DocumentSharePopover(props: Props) {
   const [showInherited, setShowInherited] = createSignal(false);
 
   const [links, setLinks] = createSignal<ShareLink[]>([]);
-  const [canManageLinks, setCanManageLinks] = createSignal(false);
   const [linkExpiryDays, setLinkExpiryDays] = createSignal(7);
   const [linkScope, setLinkScope] = createSignal<DocumentPermissionResource>("document");
   const [linkPassword, setLinkPassword] = createSignal("");
@@ -105,22 +107,16 @@ export function DocumentSharePopover(props: Props) {
 
   async function loadLinks() {
     const spaceId = currentSpaceId();
-    if (!spaceId || !props.documentId) return;
-    try {
-      const response = await api.shares.get(spaceId, props.documentId);
-      const now = Date.now();
-      setLinks(
-        response.links.filter(
-          (link) =>
-            !link.revokedAt &&
-            (!link.expiresAt || new Date(link.expiresAt).getTime() > now),
-        ),
-      );
-      setCanManageLinks(true);
-    } catch {
-      setLinks([]);
-      setCanManageLinks(false);
-    }
+    if (!spaceId || !props.documentId || !props.canManageLinks) return;
+    const response = await api.shares.get(spaceId, props.documentId);
+    const now = Date.now();
+    setLinks(
+      response.links.filter(
+        (link) =>
+          !link.revokedAt &&
+          (!link.expiresAt || new Date(link.expiresAt).getTime() > now),
+      ),
+    );
   }
 
   async function load() {
@@ -170,7 +166,6 @@ export function DocumentSharePopover(props: Props) {
       setLinkError(null);
       // Link rows contain actions and must not survive document navigation.
       setLinks([]);
-      setCanManageLinks(false);
     }),
   );
 
@@ -598,30 +593,16 @@ export function DocumentSharePopover(props: Props) {
     </div>
   );
 
-  const ShareModeSwitch = () => (
-    <div class="inline-flex rounded-lg bg-neutral-100 p-1">
-      <button
-        type="button"
-        class={`rounded-md px-3 py-1.5 font-medium text-size-small transition-colors ${
-          shareMode() === "people"
-            ? "bg-background text-neutral-900 shadow-xs"
-            : "text-neutral-500 hover:text-neutral-800"
-        }`}
-        onClick={() => setShareMode("people")}
-      >
-        {t("Invite people")}
-      </button>
-      <button
-        type="button"
-        class={`rounded-md px-3 py-1.5 font-medium text-size-small transition-colors ${
-          shareMode() === "link"
-            ? "bg-background text-neutral-900 shadow-xs"
-            : "text-neutral-500 hover:text-neutral-800"
-        }`}
-        onClick={() => setShareMode("link")}
-      >
-        {t("Share a link")}
-      </button>
+  const AppliesTo = () => (
+    <div class="mt-3xs flex min-w-0 items-center gap-1 text-neutral-500 text-size-small">
+      <span class="flex-none">{t("Applies to")}</span>
+      <QuietSelect
+        value={activeScope()}
+        ariaLabel={t("What this share applies to")}
+        options={documentScopeOptions(lang, props.documentTitle)}
+        groups={shareMode() === "people" ? categoryScopeGroups() : undefined}
+        onChange={setActiveScope}
+      />
     </div>
   );
 
@@ -641,41 +622,33 @@ export function DocumentSharePopover(props: Props) {
         <span>{t("Share")}</span>
       </button>
 
-      <a-popover class="group popover-sheet" placements="bottom-end,bottom">
+      <a-popover class="group popover-sheet" placements="bottom,bottom-end">
         <div class="my-3xs w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
           <a-popover-arrow class="max-md:hidden">
             <div class="contributors-arrow" />
           </a-popover-arrow>
-          <div class="max-h-[min(40rem,80vh)] origin-top-right scale-95 overflow-y-auto rounded-2xl border border-neutral-100 bg-neutral-10 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100 md:w-[32rem]">
-            <div class="relative flex min-h-10 min-w-0 items-center px-5 pt-4 pb-2">
-              <h2 class="font-semibold text-neutral-900 text-size-title leading-tight">
-                {t("Share")}
-              </h2>
-              <Show when={canManageLinks()}>
-                <div class="absolute top-1/2 left-1/2 hidden -translate-x-1/2 -translate-y-1/2 sm:block">
-                  <ShareModeSwitch />
+          <div class="max-h-[min(40rem,80vh)] origin-top scale-95 overflow-y-auto rounded-2xl border border-neutral-100 bg-neutral-10 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100 md:w-[32rem]">
+            <div class="px-5 pt-4 pb-5">
+              <Show when={props.canManageLinks}>
+                {/* Not TabsList: a-tabs-list slots its tabs into a shadow track that cannot stretch them. */}
+                <div
+                  role="tablist"
+                  class="mb-3 flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-neutral-100 bg-background px-1 [&>*>span]:flex-1 [&>*]:flex-1"
+                >
+                  <TabButton
+                    selected={shareMode() === "people"}
+                    onClick={() => setShareMode("people")}
+                  >
+                    {t("Invite people")}
+                  </TabButton>
+                  <TabButton
+                    selected={shareMode() === "link"}
+                    onClick={() => setShareMode("link")}
+                  >
+                    {t("Share a link")}
+                  </TabButton>
                 </div>
               </Show>
-            </div>
-            <div class="px-5 pt-2 pb-5">
-              <Show when={canManageLinks()}>
-                <div class="mb-3 flex justify-center sm:hidden">
-                  <ShareModeSwitch />
-                </div>
-              </Show>
-              <div class="mb-3 flex justify-center">
-                <div class="flex items-center gap-1 text-neutral-500 text-size-small">
-                  <span class="flex-none">{t("Applies to")}</span>
-                  <QuietSelect
-                    value={activeScope()}
-                    ariaLabel={t("What this share applies to")}
-                    options={documentScopeOptions(lang, props.documentTitle)}
-                    groups={shareMode() === "people" ? categoryScopeGroups() : undefined}
-                    onChange={setActiveScope}
-                  />
-                </div>
-              </div>
-
               <Show when={shareMode() === "people"}>
                 <form onSubmit={(e) => void handleInvite(e)}>
                   <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4xs">
@@ -707,6 +680,7 @@ export function DocumentSharePopover(props: Props) {
                       {addingMember() ? "…" : t("Invite")}
                     </button>
                   </div>
+                  <AppliesTo />
 
                   <Show when={addMemberError()}>
                     <p class="mt-5xs text-red-500 text-size-small">{addMemberError()}</p>
@@ -714,9 +688,14 @@ export function DocumentSharePopover(props: Props) {
                 </form>
               </Show>
 
-              <Show when={canManageLinks() && shareMode() === "link"}>
+              <Show when={props.canManageLinks && shareMode() === "link"}>
                 <section>
                   <form onSubmit={(e) => void handleCreateLink(e)}>
+                    <p class="mb-3 text-left text-neutral-500 text-size-small">
+                      {t(
+                        "Anyone with the link gets read-only access without an account.",
+                      )}
+                    </p>
                     <div class="grid sm:grid-cols-[3fr_5fr_auto]">
                       <div class="flex min-w-0 items-center gap-3 py-2 sm:pr-4">
                         <Icon class="h-5 w-5 flex-none text-neutral-500" name="date" />
@@ -784,12 +763,7 @@ export function DocumentSharePopover(props: Props) {
                         class="mt-3 h-9 w-full rounded-lg border border-neutral-200 bg-background px-3 text-neutral-900 text-size-small outline-none transition-colors placeholder:text-neutral-400 focus-visible:border-primary-300 focus-visible:ring-2 focus-visible:ring-primary-100"
                       />
                     </Show>
-
-                    <p class="mt-3 text-left text-neutral-500 text-size-small">
-                      {t(
-                        "Anyone with the link gets read-only access without an account.",
-                      )}
-                    </p>
+                    <AppliesTo />
 
                     <Show when={linkError()}>
                       <p class="mt-5xs text-red-500 text-size-small">{linkError()}</p>

@@ -71,7 +71,7 @@ export function UserProfile() {
         on:exit={() => setPreferencesOpen(false)}
       >
         <div
-          class={`overflow-hidden rounded-lg bg-background opacity-0 shadow-xl transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 ${width()}`}
+          class={`overflow-hidden rounded-lg border border-neutral-100 bg-background opacity-0 shadow-large transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 ${width()}`}
         >
           <div
             class={`relative origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 ${width()}`}
