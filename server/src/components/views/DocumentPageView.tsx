@@ -536,12 +536,12 @@ export function DocumentPageView(props: Props) {
         !transparent && "border-neutral-50 border-b bg-neutral-10",
       )}
     >
-      <Show
-        when={isWorkflow()}
-        fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
-      >
-        <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
-      </Show>
+      <div class="flex min-w-0 flex-1 items-center gap-3">
+        <Show when={isWorkflow()}>
+          <div id="workflow-breadcrumb-slot" class="shrink-0 empty:hidden" />
+        </Show>
+        <div class="min-w-0 flex-1">{breadcrumbs()}</div>
+      </div>
       <div id="document-toolbar-slot" class="pointer-events-auto shrink-0 empty:hidden" />
       {documentActions()}
     </div>

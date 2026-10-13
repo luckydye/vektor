@@ -28,7 +28,10 @@ import { Button } from "./Button.tsx";
 import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Contributors } from "./Contributors.tsx";
-import { DocumentShareDialog } from "./DocumentShareDialog.tsx";
+import {
+  DocumentSharePopover,
+  type SharePopoverTrigger,
+} from "./DocumentSharePopover.tsx";
 import { HeaderImageDialog } from "./HeaderImageDialog.tsx";
 import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
@@ -106,7 +109,7 @@ export function DocumentActions(props: Props) {
   );
 
   const [isDuplicating, setIsDuplicating] = createSignal(false);
-  const [showShareDialog, setShowShareDialog] = createSignal(false);
+  let shareTrigger: SharePopoverTrigger | undefined;
   const [emailMuted, setEmailMuted] = createSignal(false);
   const [emailPreferenceLoaded, setEmailPreferenceLoaded] = createSignal(false);
   const isSaving = createMemo(() => saveStatus() === "saving");
@@ -180,7 +183,6 @@ export function DocumentActions(props: Props) {
 
   const [actionsView, setActionsView] = createSignal<[string, ActionOptions][]>([]);
   const [actions, setActions] = createSignal<[string, ActionOptions][]>([]);
-  const [actionsSpace, setActionsSpace] = createSignal<[string, ActionOptions][]>([]);
   const [actionsDanger, setActionsDanger] = createSignal<[string, ActionOptions][]>([]);
   const [actionsDev, setActionsDev] = createSignal<[string, ActionOptions][]>([]);
   const [devMode, setDevMode] = createSignal(false);
@@ -193,10 +195,9 @@ export function DocumentActions(props: Props) {
   );
   const showEditItem = createMemo(() => canUseDocumentEditor() && !editing());
 
-  // The menu groups view preferences, content actions, space-wide actions and
-  // destructive ones; a group only gets a separator when something precedes it.
+  // The menu groups view preferences, content actions and destructive ones; a
+  // group only gets a separator when something precedes it.
   const sections = createMemo(() => [
-    actionsSpace().length > 0,
     showTableOfContents() || actionsView().length > 0,
     showWorkflowEdit() ||
       showEditItem() ||
@@ -227,7 +228,6 @@ export function DocumentActions(props: Props) {
   function refreshActionGroups() {
     setActionsView(Actions.group("document:view"));
     setActions(Actions.group("document"));
-    setActionsSpace(Actions.group("document:space"));
     setActionsDanger(Actions.group("document:danger"));
   }
 
@@ -422,7 +422,7 @@ export function DocumentActions(props: Props) {
       group: "document:space",
       order: 10,
       run: async () => {
-        setShowShareDialog(true);
+        shareTrigger?.show();
       },
     });
   });
@@ -463,8 +463,19 @@ export function DocumentActions(props: Props) {
       id="document-actions"
       class="pointer-events-auto flex flex-none items-center gap-4xs"
     >
-      <div class="mr-3 flex-1">
+      <div class="mx-xs flex items-center gap-3xs">
         <Show when={documentId()}>{(id) => <Contributors documentId={id()} />}</Show>
+        <Show when={userCanManageDocument() && documentId()}>
+          {(id) => (
+            <DocumentSharePopover
+              ref={(trigger) => {
+                shareTrigger = trigger;
+              }}
+              documentId={id()}
+              documentTitle={props.title}
+            />
+          )}
+        </Show>
       </div>
 
       <Show
@@ -482,7 +493,11 @@ export function DocumentActions(props: Props) {
       </Show>
 
       <Show when={canUseDocumentEditor() && !editing()}>
-        <button type="button" class="button-outline h-9 rounded-lg! max-md:hidden" onClick={startEditing}>
+        <button
+          type="button"
+          class="button-outline h-9 rounded-lg! max-md:hidden"
+          onClick={startEditing}
+        >
           <Icon name="edit-document" />
           <span>{t("Edit")}</span>
         </button>
@@ -539,29 +554,11 @@ export function DocumentActions(props: Props) {
             if (id) void uploadHeaderImage(id, file);
           }}
         />
-        <Show when={documentId()}>
-          {(id) => (
-            <DocumentShareDialog
-              show={showShareDialog()}
-              onUpdateShow={setShowShareDialog}
-              documentId={id()}
-              documentTitle={props.title}
-            />
-          )}
-        </Show>
         <ContextMenu
           ariaLabel={t("Document actions")}
           triggerVariant="outline"
           triggerClass="h-9 w-9 justify-center rounded-lg! px-0"
         >
-          <For each={actionsSpace()}>
-            {([name, options]) => <MenuActionItem name={name} options={options} />}
-          </For>
-
-          <Show when={separatorBefore(1)}>
-            <ContextMenuSeparator />
-          </Show>
-
           <Show when={showTableOfContents()}>
             <ContextMenuItem onClick={toggleTableOfContentsFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
@@ -579,7 +576,7 @@ export function DocumentActions(props: Props) {
             {([name, options]) => <MenuActionItem name={name} options={options} />}
           </For>
 
-          <Show when={separatorBefore(2)}>
+          <Show when={separatorBefore(1)}>
             <ContextMenuSeparator />
           </Show>
 

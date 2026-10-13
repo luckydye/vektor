@@ -572,7 +572,7 @@ export function WorkflowView(props: Props) {
         <div class="mx-auto flex @4xl/workflow:grid min-h-0 w-full flex-1 @4xl/workflow:grid-cols-[20rem_minmax(0,1fr)] flex-col">
           <aside
             ref={historySidebarEl}
-            class="@4xl/workflow:flex hidden min-h-0 min-w-0 flex-col border-neutral-100 @4xl/workflow:border-r pt-1 pl-xs md:pl-m"
+            class="@4xl/workflow:flex hidden min-h-0 min-w-0 flex-col border-neutral-100 @4xl/workflow:border-r pt-1 page-spacing"
           >
             <h3 class="mb-2 shrink-0 font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
               History

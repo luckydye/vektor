@@ -7,18 +7,19 @@ import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { roleBadgeClass, roleLabel } from "#utils/accessToken.ts";
 import { t } from "#utils/lang.ts";
-import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 import "./AvatarElement.ts";
+import "@atrium-ui/elements/popover";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 import { useToast } from "#composeables/useToast.ts";
 
+export type SharePopoverTrigger = HTMLElement & { show: () => void };
+
 interface Props {
-  show: boolean;
   documentId: string;
   documentTitle?: string;
-  onUpdateShow?: (value: boolean) => void;
+  ref?: (trigger: SharePopoverTrigger) => void;
 }
 
 type DocumentPermissionResource = "document" | "document_tree";
@@ -60,9 +61,11 @@ function linkScopeLabel(lang: string, resourceType: string) {
   );
 }
 
-export function DocumentShareDialog(props: Props) {
+export function DocumentSharePopover(props: Props) {
   const t = useTranslation();
   const lang = useLocale();
+
+  const [open, setOpen] = createSignal(false);
 
   const { currentSpaceId, currentSpace } = useSpace();
   const user = useUserProfile();
@@ -151,33 +154,30 @@ export function DocumentShareDialog(props: Props) {
   }
 
   createEffect(
-    on(
-      () => props.show,
-      (open) => {
-        if (!open) return;
-        setShareMode("people");
-        setScope("document");
-        setNewMemberEmail("");
-        setNewMemberRole(Permission.VIEWER);
-        setAddMemberError(null);
-        setShowInherited(false);
-        setLinkScope("document");
-        setLinkExpiryDays(7);
-        setWantsLinkPassword(false);
-        setCreatedLinkId(null);
-        setLinkPassword("");
-        setLinkError(null);
-        // Link rows contain actions and must not survive document navigation.
-        setLinks([]);
-        setCanManageLinks(false);
-      },
-    ),
+    on(open, (isOpen) => {
+      if (!isOpen) return;
+      setShareMode("people");
+      setScope("document");
+      setNewMemberEmail("");
+      setNewMemberRole(Permission.VIEWER);
+      setAddMemberError(null);
+      setShowInherited(false);
+      setLinkScope("document");
+      setLinkExpiryDays(7);
+      setWantsLinkPassword(false);
+      setCreatedLinkId(null);
+      setLinkPassword("");
+      setLinkError(null);
+      // Link rows contain actions and must not survive document navigation.
+      setLinks([]);
+      setCanManageLinks(false);
+    }),
   );
 
-  // Retry when the space id resolves after the dialog opens.
+  // Retry when the space id resolves after the popover opens.
   createEffect(
-    on([() => props.show, currentSpaceId], ([open, spaceId]) => {
-      if (!open || !spaceId) return;
+    on([open, currentSpaceId], ([isOpen, spaceId]) => {
+      if (!isOpen || !spaceId) return;
       void load();
     }),
   );
@@ -626,263 +626,285 @@ export function DocumentShareDialog(props: Props) {
   );
 
   return (
-    <Dialog
-      show={props.show}
-      maxWidth="md:max-w-lg"
-      bodyClass="p-0 overflow-y-auto"
-      onUpdateShow={(value) => props.onUpdateShow?.(value)}
-      header={
-        <div class="relative flex min-h-10 min-w-0 flex-1 items-center">
-          <div class="max-w-32 min-w-0">
-            <h2 class="font-semibold text-neutral-900 text-size-title leading-tight">
-              {t("Share")}
-            </h2>
-          </div>
-          <Show when={canManageLinks()}>
-            <div class="absolute top-1/2 left-[calc(50%+1.25rem)] hidden -translate-x-1/2 -translate-y-1/2 sm:block">
-              <ShareModeSwitch />
-            </div>
-          </Show>
-        </div>
-      }
+    <a-popover-trigger
+      ref={(el: HTMLElement) => props.ref?.(el as SharePopoverTrigger)}
+      class="group relative z-10 flex-none"
+      on:show={() => setOpen(true)}
+      on:hide={() => setOpen(false)}
     >
-      <div class="px-5 pt-2 pb-5">
-        <Show when={canManageLinks()}>
-          <div class="mb-3 flex justify-center sm:hidden">
-            <ShareModeSwitch />
-          </div>
-        </Show>
-        <div class="mb-3 flex justify-center">
-          <div class="flex items-center gap-1 text-neutral-500 text-size-small">
-            <span class="flex-none">{t("Applies to")}</span>
-            <QuietSelect
-              value={activeScope()}
-              ariaLabel={t("What this share applies to")}
-              options={documentScopeOptions(lang, props.documentTitle)}
-              groups={shareMode() === "people" ? categoryScopeGroups() : undefined}
-              onChange={setActiveScope}
-            />
-          </div>
-        </div>
+      <button
+        type="button"
+        slot="trigger"
+        class="button-outline h-9 rounded-lg! aria-expanded:bg-neutral-50"
+      >
+        <Icon name="users-group" />
+        <span>{t("Share")}</span>
+      </button>
 
-        <Show when={shareMode() === "people"}>
-          <form onSubmit={(e) => void handleInvite(e)}>
-            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4xs">
-              <div class="flex min-w-0 items-center rounded-lg border border-neutral-200 bg-background shadow-xs transition-colors focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-100">
-                <input
-                  id="share-email"
-                  value={newMemberEmail()}
-                  onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
-                  type="email"
-                  required
-                  placeholder={t("person@example.com")}
-                  class="h-10 min-w-0 flex-1 bg-transparent px-3xs text-neutral-900 text-size-medium outline-none placeholder:text-neutral-400"
-                />
-                <RowDivider />
-                <div class="mr-1">
-                  <QuietSelect
-                    value={newMemberRole()}
-                    ariaLabel={t("Access to grant")}
-                    options={roleOptions}
-                    onChange={setNewMemberRole}
-                  />
+      <a-popover class="group popover-sheet" placements="bottom-end,bottom">
+        <div class="my-3xs w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+          <a-popover-arrow class="max-md:hidden">
+            <div class="contributors-arrow" />
+          </a-popover-arrow>
+          <div class="max-h-[min(40rem,80vh)] origin-top-right scale-95 overflow-y-auto rounded-2xl border border-neutral-100 bg-neutral-10 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100 md:w-[32rem]">
+            <div class="relative flex min-h-10 min-w-0 items-center px-5 pt-4 pb-2">
+              <h2 class="font-semibold text-neutral-900 text-size-title leading-tight">
+                {t("Share")}
+              </h2>
+              <Show when={canManageLinks()}>
+                <div class="absolute top-1/2 left-1/2 hidden -translate-x-1/2 -translate-y-1/2 sm:block">
+                  <ShareModeSwitch />
                 </div>
-              </div>
-              <button
-                type="submit"
-                disabled={addingMember() || !newMemberEmail().trim()}
-                class="button-primary h-10 px-4"
-              >
-                {addingMember() ? "…" : t("Invite")}
-              </button>
+              </Show>
             </div>
-
-            <Show when={addMemberError()}>
-              <p class="mt-5xs text-red-500 text-size-small">{addMemberError()}</p>
-            </Show>
-          </form>
-        </Show>
-
-        <Show when={canManageLinks() && shareMode() === "link"}>
-          <section>
-            <form onSubmit={(e) => void handleCreateLink(e)}>
-              <div class="grid sm:grid-cols-[3fr_5fr_auto]">
-                <div class="flex min-w-0 items-center gap-3 py-2 sm:pr-4">
-                  <Icon class="h-5 w-5 flex-none text-neutral-500" name="date" />
-                  <div class="min-w-0 flex-1">
-                    <div class="text-neutral-500 text-size-extra-small">
-                      {t("Expires in")}
-                    </div>
-                    <div class="-ml-1.5">
-                      <QuietSelect
-                        value={String(linkExpiryDays())}
-                        ariaLabel={t("When the link expires")}
-                        options={linkExpiryOptions(lang)}
-                        onChange={(value) => setLinkExpiryDays(Number(value))}
-                      />
-                    </div>
-                  </div>
+            <div class="px-5 pt-2 pb-5">
+              <Show when={canManageLinks()}>
+                <div class="mb-3 flex justify-center sm:hidden">
+                  <ShareModeSwitch />
                 </div>
-
-                <div class="flex min-w-0 items-center gap-3 border-neutral-100 border-t py-2 sm:border-t-0 sm:border-l sm:px-4">
-                  <Icon class="h-5 w-5 flex-none text-neutral-500" name="lock-element" />
-                  <div class="min-w-0 flex-1">
-                    <div class="text-neutral-500 text-size-extra-small">
-                      {t("Password")}
-                    </div>
-                    <div class="font-medium text-neutral-800 text-size-small">
-                      {wantsLinkPassword() ? t("Enabled") : t("Add password")}
-                    </div>
-                  </div>
-                  <SwitchToggle
-                    value={wantsLinkPassword()}
-                    ariaLabel={t("Add a password to the link")}
-                    onInput={(enabled) => {
-                      setWantsLinkPassword(enabled);
-                      if (!enabled) setLinkPassword("");
-                    }}
+              </Show>
+              <div class="mb-3 flex justify-center">
+                <div class="flex items-center gap-1 text-neutral-500 text-size-small">
+                  <span class="flex-none">{t("Applies to")}</span>
+                  <QuietSelect
+                    value={activeScope()}
+                    ariaLabel={t("What this share applies to")}
+                    options={documentScopeOptions(lang, props.documentTitle)}
+                    groups={shareMode() === "people" ? categoryScopeGroups() : undefined}
+                    onChange={setActiveScope}
                   />
-                </div>
-
-                <div class="flex items-center justify-center border-neutral-100 border-t py-2 sm:border-t-0 sm:border-l sm:pl-4">
-                  <button
-                    type="submit"
-                    disabled={creatingLink()}
-                    class="button-primary whitespace-nowrap"
-                  >
-                    {creatingLink() ? "…" : t("Create link")}
-                  </button>
                 </div>
               </div>
 
-              <Show when={wantsLinkPassword()}>
-                <input
-                  value={linkPassword()}
-                  onInput={(e) => setLinkPassword(e.currentTarget.value)}
-                  type="password"
-                  autocomplete="new-password"
-                  minLength={MIN_LINK_PASSWORD_LENGTH}
-                  aria-label={t("Link password")}
-                  placeholder={t("Password, {count}+ characters").replace(
-                    "{count}",
-                    String(MIN_LINK_PASSWORD_LENGTH),
-                  )}
-                  class="mt-3 h-9 w-full rounded-lg border border-neutral-200 bg-background px-3 text-neutral-900 text-size-small outline-none transition-colors placeholder:text-neutral-400 focus-visible:border-primary-300 focus-visible:ring-2 focus-visible:ring-primary-100"
-                />
-              </Show>
-
-              <p class="mt-3 text-left text-neutral-500 text-size-small">
-                {t("Anyone with the link gets read-only access without an account.")}
-              </p>
-
-              <Show when={linkError()}>
-                <p class="mt-5xs text-red-500 text-size-small">{linkError()}</p>
-              </Show>
-            </form>
-
-            <Show when={links().length > 0}>
-              <div>
-                <GroupLabel
-                  label={
-                    links().length === 1
-                      ? t("1 active link")
-                      : t("{count} active links").replace(
-                          "{count}",
-                          String(links().length),
-                        )
-                  }
-                />
-                <For each={links()}>
-                  {(link) => (
-                    <div
-                      class={`-mx-2 flex items-center gap-4xs rounded-lg border px-2 py-1.5 transition-colors ${
-                        link.id === createdLinkId()
-                          ? "border-primary-200 bg-primary-10"
-                          : "border-transparent hover:bg-background"
-                      }`}
-                    >
-                      <Icon
-                        class="h-3.5 w-3.5 flex-none opacity-40"
-                        name={link.hasPassword ? "lock-element" : "link"}
+              <Show when={shareMode() === "people"}>
+                <form onSubmit={(e) => void handleInvite(e)}>
+                  <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4xs">
+                    <div class="flex min-w-0 items-center rounded-lg border border-neutral-200 bg-background shadow-xs transition-colors focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-100">
+                      <input
+                        id="share-email"
+                        value={newMemberEmail()}
+                        onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
+                        type="email"
+                        required
+                        placeholder={t("person@example.com")}
+                        class="h-10 min-w-0 flex-1 bg-transparent px-3xs text-neutral-900 text-size-medium outline-none placeholder:text-neutral-400"
                       />
-                      <div class="min-w-0 flex-1">
-                        <div class="truncate font-medium text-neutral-900 text-size-normal">
-                          {linkScopeLabel(lang, link.resourceType)}
-                        </div>
-                        <div class="truncate text-neutral-400 text-size-small">
-                          {linkHistoryLabel(link)}
+                      <RowDivider />
+                      <div class="mr-1">
+                        <QuietSelect
+                          value={newMemberRole()}
+                          ariaLabel={t("Access to grant")}
+                          options={roleOptions}
+                          onChange={setNewMemberRole}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={addingMember() || !newMemberEmail().trim()}
+                      class="button-primary h-10 px-4"
+                    >
+                      {addingMember() ? "…" : t("Invite")}
+                    </button>
+                  </div>
+
+                  <Show when={addMemberError()}>
+                    <p class="mt-5xs text-red-500 text-size-small">{addMemberError()}</p>
+                  </Show>
+                </form>
+              </Show>
+
+              <Show when={canManageLinks() && shareMode() === "link"}>
+                <section>
+                  <form onSubmit={(e) => void handleCreateLink(e)}>
+                    <div class="grid sm:grid-cols-[3fr_5fr_auto]">
+                      <div class="flex min-w-0 items-center gap-3 py-2 sm:pr-4">
+                        <Icon class="h-5 w-5 flex-none text-neutral-500" name="date" />
+                        <div class="min-w-0 flex-1">
+                          <div class="text-neutral-500 text-size-extra-small">
+                            {t("Expires in")}
+                          </div>
+                          <div class="-ml-1.5">
+                            <QuietSelect
+                              value={String(linkExpiryDays())}
+                              ariaLabel={t("When the link expires")}
+                              options={linkExpiryOptions(lang)}
+                              onChange={(value) => setLinkExpiryDays(Number(value))}
+                            />
+                          </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        class="button-secondary button-small bg-background"
-                        onClick={() => void copyLink(link)}
-                      >
-                        {copiedLinkId() === link.id ? t("Copied") : t("Copy")}
-                      </button>
-                      <button
-                        type="button"
-                        class="flex-none rounded-md px-1.5 py-0.5 text-neutral-400 text-size-small transition-colors hover:bg-red-500/10 hover:text-red-500"
-                        onClick={() => void revokeLink(link)}
-                      >
-                        {t("Revoke")}
-                      </button>
+
+                      <div class="flex min-w-0 items-center gap-3 border-neutral-100 border-t py-2 sm:border-t-0 sm:border-l sm:px-4">
+                        <Icon
+                          class="h-5 w-5 flex-none text-neutral-500"
+                          name="lock-element"
+                        />
+                        <div class="min-w-0 flex-1">
+                          <div class="text-neutral-500 text-size-extra-small">
+                            {t("Password")}
+                          </div>
+                          <div class="font-medium text-neutral-800 text-size-small">
+                            {wantsLinkPassword() ? t("Enabled") : t("Add password")}
+                          </div>
+                        </div>
+                        <SwitchToggle
+                          value={wantsLinkPassword()}
+                          ariaLabel={t("Add a password to the link")}
+                          onInput={(enabled) => {
+                            setWantsLinkPassword(enabled);
+                            if (!enabled) setLinkPassword("");
+                          }}
+                        />
+                      </div>
+
+                      <div class="flex items-center justify-center border-neutral-100 border-t py-2 sm:border-t-0 sm:border-l sm:pl-4">
+                        <button
+                          type="submit"
+                          disabled={creatingLink()}
+                          class="button-primary whitespace-nowrap"
+                        >
+                          {creatingLink() ? "…" : t("Create link")}
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </section>
-        </Show>
 
-        <section class="mt-5 border-neutral-100 border-t pt-4">
-          <h3 class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wider">
-            {accessHeading()}
-          </h3>
+                    <Show when={wantsLinkPassword()}>
+                      <input
+                        value={linkPassword()}
+                        onInput={(e) => setLinkPassword(e.currentTarget.value)}
+                        type="password"
+                        autocomplete="new-password"
+                        minLength={MIN_LINK_PASSWORD_LENGTH}
+                        aria-label={t("Link password")}
+                        placeholder={t("Password, {count}+ characters").replace(
+                          "{count}",
+                          String(MIN_LINK_PASSWORD_LENGTH),
+                        )}
+                        class="mt-3 h-9 w-full rounded-lg border border-neutral-200 bg-background px-3 text-neutral-900 text-size-small outline-none transition-colors placeholder:text-neutral-400 focus-visible:border-primary-300 focus-visible:ring-2 focus-visible:ring-primary-100"
+                      />
+                    </Show>
 
-          <Show when={!isLoading()} fallback={<Spinner />}>
-            <Show
-              when={!loadError()}
-              fallback={
-                <div class="mt-4xs">
-                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
-                </div>
-              }
-            >
-              <Show
-                when={sortedDocumentAccess().length > 0}
-                fallback={
-                  <p class="mt-4xs text-neutral-400 text-size-small">
-                    {t("No one has access to this document yet.")}
-                  </p>
-                }
-              >
-                <div class="mt-2 max-h-72 overflow-y-auto pr-1">
-                  <For each={directAccess()}>
-                    {(entry) => <PermissionRow entry={entry} />}
-                  </For>
-
-                  <Show when={inheritedAccess().length > 0}>
-                    <GroupToggle
-                      label={t("Inherited ({count})").replace(
-                        "{count}",
-                        String(inheritedAccess().length),
+                    <p class="mt-3 text-left text-neutral-500 text-size-small">
+                      {t(
+                        "Anyone with the link gets read-only access without an account.",
                       )}
-                      open={showInherited()}
-                      onToggle={() => setShowInherited(!showInherited())}
-                    />
-                    <Show when={showInherited()}>
-                      <For each={inheritedAccess()}>
-                        {(entry) => <PermissionRow entry={entry} />}
+                    </p>
+
+                    <Show when={linkError()}>
+                      <p class="mt-5xs text-red-500 text-size-small">{linkError()}</p>
+                    </Show>
+                  </form>
+
+                  <Show when={links().length > 0}>
+                    <div>
+                      <GroupLabel
+                        label={
+                          links().length === 1
+                            ? t("1 active link")
+                            : t("{count} active links").replace(
+                                "{count}",
+                                String(links().length),
+                              )
+                        }
+                      />
+                      <For each={links()}>
+                        {(link) => (
+                          <div
+                            class={`-mx-2 flex items-center gap-4xs rounded-lg border px-2 py-1.5 transition-colors ${
+                              link.id === createdLinkId()
+                                ? "border-primary-200 bg-primary-10"
+                                : "border-transparent hover:bg-background"
+                            }`}
+                          >
+                            <Icon
+                              class="h-3.5 w-3.5 flex-none opacity-40"
+                              name={link.hasPassword ? "lock-element" : "link"}
+                            />
+                            <div class="min-w-0 flex-1">
+                              <div class="truncate font-medium text-neutral-900 text-size-normal">
+                                {linkScopeLabel(lang, link.resourceType)}
+                              </div>
+                              <div class="truncate text-neutral-400 text-size-small">
+                                {linkHistoryLabel(link)}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              class="button-secondary button-small bg-background"
+                              onClick={() => void copyLink(link)}
+                            >
+                              {copiedLinkId() === link.id ? t("Copied") : t("Copy")}
+                            </button>
+                            <button
+                              type="button"
+                              class="flex-none rounded-md px-1.5 py-0.5 text-neutral-400 text-size-small transition-colors hover:bg-red-500/10 hover:text-red-500"
+                              onClick={() => void revokeLink(link)}
+                            >
+                              {t("Revoke")}
+                            </button>
+                          </div>
+                        )}
                       </For>
+                    </div>
+                  </Show>
+                </section>
+              </Show>
+
+              <section class="mt-5 border-neutral-100 border-t pt-4">
+                <h3 class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wider">
+                  {accessHeading()}
+                </h3>
+
+                <Show when={!isLoading()} fallback={<Spinner />}>
+                  <Show
+                    when={!loadError()}
+                    fallback={
+                      <div class="mt-4xs">
+                        <LoadError
+                          message={loadError() ?? ""}
+                          onRetry={() => void load()}
+                        />
+                      </div>
+                    }
+                  >
+                    <Show
+                      when={sortedDocumentAccess().length > 0}
+                      fallback={
+                        <p class="mt-4xs text-neutral-400 text-size-small">
+                          {t("No one has access to this document yet.")}
+                        </p>
+                      }
+                    >
+                      <div class="mt-2 max-h-72 overflow-y-auto pr-1">
+                        <For each={directAccess()}>
+                          {(entry) => <PermissionRow entry={entry} />}
+                        </For>
+
+                        <Show when={inheritedAccess().length > 0}>
+                          <GroupToggle
+                            label={t("Inherited ({count})").replace(
+                              "{count}",
+                              String(inheritedAccess().length),
+                            )}
+                            open={showInherited()}
+                            onToggle={() => setShowInherited(!showInherited())}
+                          />
+                          <Show when={showInherited()}>
+                            <For each={inheritedAccess()}>
+                              {(entry) => <PermissionRow entry={entry} />}
+                            </For>
+                          </Show>
+                        </Show>
+                      </div>
                     </Show>
                   </Show>
-                </div>
-              </Show>
-            </Show>
-          </Show>
-        </section>
-      </div>
-    </Dialog>
+                </Show>
+              </section>
+            </div>
+          </div>
+        </div>
+      </a-popover>
+    </a-popover-trigger>
   );
 }
