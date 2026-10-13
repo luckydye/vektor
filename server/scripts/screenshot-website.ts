@@ -17,7 +17,14 @@
  */
 import { existsSync } from "node:fs";
 import { chromium, type Browser, type Page } from "@playwright/test";
+import * as Y from "yjs";
 import { transform } from "#files/native/addon.ts";
+import {
+  WsMsgType,
+  wsDecode,
+  wsDecodeYjsUpdate,
+  wsEncode,
+} from "#realtime/protocol.ts";
 import { startTestServer, testBaseUrl, waitForServer } from "#test/helpers/server.ts";
 import { ORGANIZATION_TOUR_KEY } from "#utils/onboarding.ts";
 import { THEME_STORAGE_KEY } from "#utils/themePreference.ts";
@@ -34,6 +41,13 @@ const APP_DIR = new URL("..", import.meta.url).pathname;
  */
 const OUT_DIR =
   process.env.VEKTOR_WEBSITE_IMAGES ?? `${APP_DIR}../../vektor-cloud/src/assets/images`;
+
+/**
+ * The database shot shows the roadmap as a board, so the kanban extension is
+ * installed from the website's registry — the newest version it publishes, which
+ * is what a visitor would install.
+ */
+const KANBAN_DIR = `${APP_DIR}../../vektor-cloud/data/extensions/kanban`;
 
 /**
  * The website uses these as plain `<img>` with no Astro image pipeline behind
@@ -102,7 +116,9 @@ const SHOTS: Shot[] = [
   {
     name: "vektor-database",
     path: (seeded) => `/${seeded.space}/doc/${seeded.roadmap}`,
+    // The board renders inside the extension's own view, after the host page.
     ready: "text=Onboarding templates",
+    settleMs: 900,
   },
   {
     name: "vektor-workspace",
@@ -241,6 +257,21 @@ const PAGES: { title: string; category: string; parent?: string; body: string }[
 const ROADMAP = {
   title: "Launch roadmap",
   category: "product",
+  /**
+   * The kanban view's own configuration. Without it the board groups by a
+   * lowercase `status` and orders columns by whichever record it meets first;
+   * this names the column and puts the stages in the order work moves through them.
+   * Four stages, because that is what fits across the viewport without a column
+   * cut off at the edge.
+   */
+  kanban: {
+    statusProperty: "Status",
+    columns: ["Exploring", "Planned", "In progress", "Review"].map((value) => ({
+      value,
+      title: value,
+    })),
+    cardFields: ["Owner", "Priority", "Target date"],
+  },
   rows: [
     {
       title: "Public hosted beta",
@@ -273,7 +304,7 @@ const ROADMAP = {
     {
       title: "Launch performance pass",
       Owner: "Amara Singh",
-      Status: "Ready",
+      Status: "Review",
       Priority: "P1",
       "Target date": "2026-04-11",
     },
@@ -283,6 +314,62 @@ const ROADMAP = {
       Status: "Exploring",
       Priority: "P2",
       "Target date": "2026-05-02",
+    },
+    {
+      title: "Pricing page refresh",
+      Owner: "Maya Chen",
+      Status: "Exploring",
+      Priority: "P2",
+      "Target date": "2026-05-08",
+    },
+    {
+      title: "Offline sync for canvases",
+      Owner: "Leo Martins",
+      Status: "Exploring",
+      Priority: "P1",
+      "Target date": "2026-05-20",
+    },
+    {
+      title: "Template gallery",
+      Owner: "Sofia Rossi",
+      Status: "Exploring",
+      Priority: "P2",
+      "Target date": "2026-05-14",
+    },
+    {
+      title: "Calendar view",
+      Owner: "Iris Okafor",
+      Status: "Planned",
+      Priority: "P1",
+      "Target date": "2026-04-30",
+    },
+    {
+      title: "Workspace import from Notion",
+      Owner: "Noah Williams",
+      Status: "Planned",
+      Priority: "P1",
+      "Target date": "2026-04-28",
+    },
+    {
+      title: "Launch webinar",
+      Owner: "Amara Singh",
+      Status: "Planned",
+      Priority: "P2",
+      "Target date": "2026-05-06",
+    },
+    {
+      title: "Comment notifications",
+      Owner: "Iris Okafor",
+      Status: "In progress",
+      Priority: "P1",
+      "Target date": "2026-04-16",
+    },
+    {
+      title: "Changelog and release notes",
+      Owner: "Sofia Rossi",
+      Status: "Review",
+      Priority: "P2",
+      "Target date": "2026-04-10",
     },
   ],
 };
@@ -495,11 +582,138 @@ async function featureOnHome(
   }
 }
 
+/**
+ * People editing the narrative alongside the viewer, so the hero shows the
+ * collaboration it is captioned with: carets and selections in the text, and
+ * faces in the header.
+ *
+ * Each names the phrase it is on rather than a position, since positions shift
+ * whenever the narrative is edited. The phrases sit on lines below a heading:
+ * a caret's name label rises above its line and would cover text there. `select: false` leaves a caret at the end of
+ * the phrase instead of highlighting it.
+ */
+const COLLABORATORS: {
+  id: string;
+  name: string;
+  color: string;
+  phrase: string;
+  select: boolean;
+}[] = [
+  {
+    id: "maya",
+    name: "Maya Chen",
+    color: "#e5484d",
+    phrase: "a calmer place to turn scattered thinking",
+    select: true,
+  },
+  {
+    id: "leo",
+    name: "Leo Martins",
+    color: "#0091ff",
+    phrase: "aligning a cross-functional",
+    select: false,
+  },
+  {
+    id: "iris",
+    name: "Iris Okafor",
+    color: "#30a46c",
+    phrase: "Align the story across product, design, and community.",
+    select: true,
+  },
+];
+
+/**
+ * Where `phrase` starts in the editor's document, in ProseMirror positions.
+ *
+ * Walks the Yjs fragment the editor is bound to: an element opens and closes a
+ * position each side of its children, and text counts per character — the same
+ * arithmetic y-prosemirror maps it with.
+ */
+function findPhrase(fragment: Y.XmlFragment, phrase: string): number {
+  let position = 0;
+  const walk = (node: Y.XmlElement | Y.XmlText | Y.XmlFragment): number | null => {
+    if (node instanceof Y.XmlText) {
+      // `toString` would include formatting as markup; the delta is the bare
+      // characters, which is what positions count.
+      const text = node
+        .toDelta()
+        .map((op: { insert: unknown }) => (typeof op.insert === "string" ? op.insert : " "))
+        .join("");
+      const index = text.indexOf(phrase);
+      if (index !== -1) return position + index;
+      position += node.length;
+      return null;
+    }
+    const element = node instanceof Y.XmlElement;
+    if (element) position += 1;
+    for (const child of node.toArray()) {
+      const found = walk(child as Y.XmlElement | Y.XmlText);
+      if (found !== null) return found;
+    }
+    if (element) position += 1;
+    return null;
+  };
+  const found = walk(fragment);
+  if (found === null) throw new Error(`collaborator phrase not in the document: "${phrase}"`);
+  return found;
+}
+
+/**
+ * Joins the document as every collaborator, one socket each, as a second browser
+ * would. Presence carries whatever user a client names, so no accounts are needed.
+ */
+async function joinCollaborators(spaceId: string, documentId: string): Promise<void> {
+  const url = `${baseUrl.replace(/^http/, "ws")}/events/${spaceId}`;
+  const open = () =>
+    new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(url);
+      socket.binaryType = "arraybuffer";
+      socket.onopen = () => resolve(socket);
+      socket.onerror = () => reject(new Error(`cannot open ${url}`));
+    });
+
+  const reader = await open();
+  const doc = new Y.Doc();
+  await new Promise<void>((resolve) => {
+    reader.onmessage = (event) => {
+      const { type, payload } = wsDecode(new Uint8Array(event.data as ArrayBuffer));
+      if (type !== WsMsgType.YjsUpdate) return;
+      Y.applyUpdate(doc, wsDecodeYjsUpdate(payload).update);
+      resolve();
+    };
+    reader.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+  });
+  reader.close();
+  const fragment = doc.getXmlFragment("default");
+
+  for (const collaborator of COLLABORATORS) {
+    const start = findPhrase(fragment, collaborator.phrase);
+    const end = start + collaborator.phrase.length;
+    const socket = await open();
+    socket.send(
+      wsEncode(WsMsgType.PresenceJoin, {
+        room: documentId,
+        clientId: `screenshot-${collaborator.id}`,
+        user: { id: collaborator.id, name: collaborator.name, color: collaborator.color },
+        state: {
+          kind: "editor",
+          focused: true,
+          selection: { absoluteAnchor: collaborator.select ? start : end, absoluteHead: end },
+        },
+      }),
+    );
+    // The server drops sockets idle for 90s, and both themes take longer than that.
+    setInterval(() => socket.send(wsEncode(WsMsgType.Ping, {})), 25_000);
+  }
+}
+
 export interface Seeded {
   space: string;
   narrative: string;
   canvas: string;
   roadmap: string;
+  /** Keys the browser's remembered view for the roadmap. */
+  roadmapId: string;
   /**
    * What the sidebar should have open, as the ids the tree persists.
    *
@@ -510,6 +724,18 @@ export interface Seeded {
    * collected here rather than written as literals.
    */
   expanded: string[];
+}
+
+/** `<extension id>:<route path>`, as the database's view picker names it. */
+const KANBAN_VIEW_ID = "kanban:kanban";
+
+async function latestKanbanPackage(): Promise<string> {
+  const { published } = (await Bun.file(`${KANBAN_DIR}/extension.json`).json()) as {
+    published: Record<string, string>;
+  };
+  const [latest] = Object.entries(published).sort(([, a], [, b]) => b.localeCompare(a));
+  if (!latest) throw new Error(`no published kanban version in ${KANBAN_DIR}`);
+  return `${KANBAN_DIR}/versions/${latest[0]}.zip`;
 }
 
 /**
@@ -534,6 +760,16 @@ async function seed(baseUrl: string): Promise<Seeded> {
   };
 
   const { space } = await post("/spaces", SPACE);
+
+  const kanban = new FormData();
+  kanban.append("file", Bun.file(await latestKanbanPackage()), "kanban.zip");
+  const installed = await fetch(`${api}/spaces/${space.id}/extensions`, {
+    method: "POST",
+    body: kanban,
+  });
+  if (!installed.ok) {
+    throw new Error(`kanban install -> ${installed.status} ${await installed.text()}`);
+  }
 
   const expanded: string[] = [];
   for (const definition of CATEGORIES) {
@@ -567,7 +803,12 @@ async function seed(baseUrl: string): Promise<Seeded> {
   const roadmap = await createDocument({
     type: "database",
     content: EMPTY_BODY,
-    properties: { title: ROADMAP.title, category: ROADMAP.category },
+    properties: {
+      title: ROADMAP.title,
+      category: ROADMAP.category,
+      _databaseViews: JSON.stringify({ viewIds: [KANBAN_VIEW_ID] }),
+      _kanban: JSON.stringify(ROADMAP.kanban),
+    },
   });
 
   for (const row of ROADMAP.rows) {
@@ -607,6 +848,7 @@ async function seed(baseUrl: string): Promise<Seeded> {
   }
 
   await featureOnHome(api, space.id, byTitle);
+  await joinCollaborators(space.id, narrative.id);
 
   // The pages that have children of their own; without these the tree shows the
   // branches but not that they nest.
@@ -622,6 +864,7 @@ async function seed(baseUrl: string): Promise<Seeded> {
     narrative: narrative.slug,
     canvas: canvas.slug,
     roadmap: roadmap.slug,
+    roadmapId: roadmap.id,
     expanded,
   };
 }
@@ -657,10 +900,13 @@ function primeBrowser(state: {
   themeKey: string;
   tourKey: string;
   expanded: string[];
+  roadmapViewKey: string;
+  roadmapView: string;
 }): void {
   try {
     localStorage.setItem(state.themeKey, state.theme);
     localStorage.setItem("wiki-expanded-items", JSON.stringify(state.expanded));
+    localStorage.setItem(state.roadmapViewKey, JSON.stringify(state.roadmapView));
     // A first-run browser opens the document-organization tour over the whole
     // page, which is what every shot would otherwise be a picture of.
     localStorage.setItem(state.tourKey, "true");
@@ -687,6 +933,20 @@ async function capture(browser: Browser, seeded: Seeded, theme: Theme): Promise<
     themeKey: THEME_STORAGE_KEY,
     tourKey: ORGANIZATION_TOUR_KEY,
     expanded: seeded.expanded,
+    roadmapViewKey: `database-view:${seeded.roadmapId}`,
+    roadmapView: KANBAN_VIEW_ID,
+  });
+
+  // The collaborators have no accounts, and an avatar whose user lookup finds
+  // nobody stays an empty circle. Answering the lookup gives them the generated
+  // face every real member gets.
+  await context.route(/\/api\/v1\/users\?id=/, (route) => {
+    const id = new URL(route.request().url()).searchParams.get("id");
+    const collaborator = COLLABORATORS.find((c) => c.id === id);
+    if (!collaborator) return route.continue();
+    return route.fulfill({
+      json: { id: collaborator.id, name: collaborator.name, image: null },
+    });
   });
 
   const page = await context.newPage();
@@ -743,6 +1003,11 @@ const server = startTestServer(PORT, {
   VEKTOR_IN_MEMORY_DB: "1",
   VEKTOR_SITE_URL: baseUrl,
   VEKTOR_API_URL: baseUrl,
+  // The home view only shows its AI input when a model is configured. Nothing is
+  // sent to the provider while shooting, so a placeholder key is enough.
+  VEKTOR_AI_PROVIDER: "anthropic",
+  VEKTOR_AI_MODEL: "claude-sonnet-5-5",
+  VEKTOR_AI_API_KEY: "screenshot-placeholder",
 });
 const stop = () => {
   try {
