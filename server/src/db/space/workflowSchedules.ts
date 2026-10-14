@@ -19,8 +19,6 @@ export interface PropertyWorkflowSchedule {
   propertyKey: string;
   workflowId: string;
   runAt: Date | null;
-  /** An occurrence armed after this instant is already expired. */
-  expiresAt: Date | null;
   /** Only an explicit trigger write changes its execution identity. */
   triggerWritten: boolean;
   changed: boolean;
@@ -75,6 +73,13 @@ export async function syncPropertyWorkflowSchedules(
       }
       continue;
     }
+    const createdBy =
+      current && !entry.triggerWritten ? current.createdBy : userId;
+    if (!createdBy) {
+      throw new InvalidDocumentPropertyPatchError(
+        `Trigger "${entry.propertyKey}" needs a user to run its workflow as`,
+      );
+    }
     if (
       current?.documentId === entry.workflowId &&
       current.nextRunAt?.getTime() === nextRunAt?.getTime()
@@ -87,17 +92,17 @@ export async function syncPropertyWorkflowSchedules(
           entry.propertyKey,
         );
       }
+      // A writer change must not re-arm an occurrence that already fired.
+      if (current.createdBy !== createdBy) {
+        await s.db
+          .update(workflowSchedule)
+          .set({ createdBy, updatedAt: now })
+          .where(eq(workflowSchedule.id, current.id));
+      }
       continue;
     }
-    const createdBy =
-      current && !entry.triggerWritten ? current.createdBy : userId;
-    if (!createdBy) {
-      throw new InvalidDocumentPropertyPatchError(
-        `Trigger "${entry.propertyKey}" needs a user to run its workflow as`,
-      );
-    }
 
-    const expired = entry.expiresAt !== null && entry.expiresAt <= now;
+    const expired = entry.runAt !== null && entry.runAt <= now;
     const values = {
       propertyKey: entry.propertyKey,
       documentId: entry.workflowId,

@@ -102,23 +102,23 @@ export async function authorizeTriggerWrites(
   }
 }
 
-/** When a trigger is due, and the instant that hangs off: its `at`, or the date it follows. */
+/** When a trigger is due, including any offset from the date it follows. */
 function resolveSchedule(
   spec: TriggerSpec,
   values: Map<string, string>,
-): { anchor: Date; fireAt: Date } | null {
-  if ("at" in spec) return { anchor: new Date(spec.at), fireAt: new Date(spec.at) };
+): Date | null {
+  if ("at" in spec) return new Date(spec.at);
   const date = values.get(canonicalPropertyKey(spec.from));
   if (!date) return null;
   const time = new Date(date).getTime();
   if (Number.isNaN(time)) return null;
-  return { anchor: new Date(time), fireAt: new Date(time + spec.offsetMinutes * 60_000) };
+  return new Date(time + spec.offsetMinutes * 60_000);
 }
 
 /**
  * Bring a document's one-shot workflow schedules in line with its trigger properties, inside the transaction that wrote `writtenKeys`.
  * Writing a trigger sets its execution identity to `userId`. Moving only the
- * date it follows preserves that identity. Past anchors are already consumed.
+ * date it follows preserves that identity. Past due times are already consumed.
  */
 export async function syncPropertyTriggers(
   s: SpaceStore,
@@ -143,8 +143,7 @@ export async function syncPropertyTriggers(
       return {
         propertyKey: row.key,
         workflowId: spec.workflow,
-        runAt: schedule?.fireAt ?? null,
-        expiresAt: schedule?.anchor ?? null,
+        runAt: schedule,
         triggerWritten: writtenKeys.has(canonicalPropertyKey(row.key)),
         changed:
           writtenKeys.has(canonicalPropertyKey(row.key)) ||
