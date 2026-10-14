@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
-import { document, property } from "#db/schema/space.ts";
+import { document, property, propertyTrigger } from "#db/schema/space.ts";
 import {
   aggregateStoredProperties,
   canonicalPropertyKey,
@@ -12,11 +12,13 @@ import {
   type DocumentPropertyValue,
   normalizeDocumentPropertyPatch,
   parseStoredPropertyValue,
+  parseTriggerSpec,
   propertyValueToText,
   type SpaceProperty,
   type StoredPropertyKeyRow,
   serializePropertyValue,
   storedPropertyKey,
+  TRIGGER_PROPERTY_TYPE,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
@@ -121,9 +123,23 @@ export async function patchDocumentProperties(
   if (operations.length === 0) return {};
   await authorizeTriggerWrites(s, documentId, operations, userId);
 
-  const result = await s.tx((txStore) =>
-    applyDocumentPropertyOperations(txStore, documentId, operations, userId, expected),
-  );
+  const result = await s.tx(async (txStore) => {
+    const applied = await applyDocumentPropertyOperations(
+      txStore,
+      documentId,
+      operations,
+      userId,
+      expected,
+    );
+    if (applied.conflict) return applied;
+    await syncPropertyTriggers(
+      txStore,
+      documentId,
+      new Set(operations.map((operation) => canonicalPropertyKey(operation.key))),
+      userId,
+    );
+    return applied;
+  });
 
   if (result.conflict) return result;
 
@@ -261,13 +277,6 @@ async function applyDocumentPropertyOperations(
     });
   }
 
-  await syncPropertyTriggers(
-    txStore,
-    documentId,
-    new Set(operations.map((operation) => canonicalPropertyKey(operation.key))),
-    userId,
-  );
-
   txStore.emit({
     kind: "documentProperties",
     documentId,
@@ -365,19 +374,46 @@ export async function renameDatabaseColumn(
       );
     }
 
+    // A rename moves triggers rather than re-arming them, so they keep their writer and schedule.
+    const patches = new Map<string, DocumentPropertyPatch>();
     for (const row of sources.values()) {
       const renamed = { value: parseStoredPropertyValue(row.value), type: row.type };
       // A case-only rename is an update: the write's spelling replaces the stored one.
-      const patch: DocumentPropertyPatch =
-        toKey === fromKey ? { [to]: renamed } : { [row.key]: null, [to]: renamed };
+      patches.set(
+        row.documentId,
+        toKey === fromKey ? { [to]: renamed } : { [row.key]: null, [to]: renamed },
+      );
+      if (row.type === TRIGGER_PROPERTY_TYPE) {
+        await tx.db
+          .update(propertyTrigger)
+          .set({ propertyKey: stored })
+          .where(
+            and(
+              eq(propertyTrigger.documentId, row.documentId),
+              eq(propertyTrigger.propertyKey, row.key),
+            ),
+          );
+      }
+    }
+    for (const row of rows) {
+      if (row.type !== TRIGGER_PROPERTY_TYPE || row.value === "") continue;
+      const spec = parseTriggerSpec(row.key, parseStoredPropertyValue(row.value));
+      if (!("from" in spec) || canonicalPropertyKey(spec.from) !== fromKey) continue;
+      patches.set(row.documentId, {
+        ...patches.get(row.documentId),
+        [row.key]: { value: { ...spec, from: stored }, type: TRIGGER_PROPERTY_TYPE },
+      });
+    }
+
+    for (const [documentId, patch] of patches) {
       await applyDocumentPropertyOperations(
         tx,
-        row.documentId,
+        documentId,
         normalizeDocumentPropertyPatch(patch),
         userId,
       );
     }
-    return { touchedIds: [databaseId, ...sources.keys()], schemaJson };
+    return { touchedIds: [databaseId, ...patches.keys()], schemaJson };
   });
 
   for (const id of touchedIds) scheduleDocumentSearchRefresh(s, id);

@@ -22,6 +22,7 @@ import {
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
+  serializeTriggerValue,
   storedPropertyKey,
   TRIGGER_PROPERTY_TYPE,
   toDocumentProperties,
@@ -236,8 +237,8 @@ export async function createDocument(
     const propValue = isWrappedValue ? raw.value : raw;
     const propType = isWrappedValue ? (raw.type ?? null) : null;
     const storedValue =
-      propType === TRIGGER_PROPERTY_TYPE && typeof propValue === "object"
-        ? JSON.stringify(propValue)
+      propType === TRIGGER_PROPERTY_TYPE
+        ? serializeTriggerValue(key, propValue)
         : serializePropertyValue(propValue);
     storedProperties.set(key, parseStoredPropertyValue(storedValue));
     await s.db.insert(property).values({
@@ -251,12 +252,7 @@ export async function createDocument(
     });
   }
 
-  await syncPropertyTriggers(
-    s,
-    id,
-    new Set([...initialEntries.keys()]),
-    createdBy,
-  );
+  await syncPropertyTriggers(s, id, new Set([...initialEntries.keys()]), createdBy);
   scheduleDocumentSearchRefresh(s, id);
 
   await createAuditLog(s, {

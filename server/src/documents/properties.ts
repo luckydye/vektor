@@ -205,13 +205,14 @@ export function normalizeDocumentPropertyPatch(
         }
       }
 
-      const value = Array.isArray(rawValue)
-        ? rawValue
-            .filter((item) => item !== null && item !== undefined)
-            .map((item) => String(item))
-        : type === TRIGGER_PROPERTY_TYPE && typeof rawValue === "object"
-          ? JSON.stringify(rawValue)
-          : String(rawValue);
+      const value =
+        type === TRIGGER_PROPERTY_TYPE
+          ? serializeTriggerValue(key, rawValue)
+          : Array.isArray(rawValue)
+            ? rawValue
+                .filter((item) => item !== null && item !== undefined)
+                .map((item) => String(item))
+            : String(rawValue);
 
       // A stored date is read back by serializers that construct a Date from
       // it, so an unparseable one is a persistent failure for every consumer of
@@ -225,7 +226,6 @@ export function normalizeDocumentPropertyPatch(
           }
         }
       }
-      if (type === TRIGGER_PROPERTY_TYPE && value !== "") parseTriggerSpec(key, value);
 
       return { kind: "update", key, value, type };
     },
@@ -289,6 +289,16 @@ export function parseTriggerSpec(key: string, value: DocumentPropertyValue): Tri
     throw invalid('"offsetMinutes" must be a number');
   }
   return { workflow, from: storedPropertyKey(from), offsetMinutes };
+}
+
+/** Store a trigger's value, given as a spec object or its JSON; refuses a malformed spec. */
+export function serializeTriggerValue(key: string, value: unknown): string {
+  const stored =
+    typeof value === "object" && value !== null
+      ? JSON.stringify(value)
+      : serializePropertyValue(value);
+  if (stored !== "") parseTriggerSpec(key, stored);
+  return stored;
 }
 
 /**
@@ -424,7 +434,10 @@ export interface StoredPropertyKeyRow {
  * a plain object would resolve `constructor` or `__proto__` to inherited members.
  */
 export function aggregateStoredProperties(rows: StoredPropertyKeyRow[]): SpaceProperty[] {
-  const byKey = new Map<string, { spellings: Map<string, number>; type: string | null }>();
+  const byKey = new Map<
+    string,
+    { spellings: Map<string, number>; type: string | null }
+  >();
 
   for (const row of rows) {
     const canonical = canonicalPropertyKey(row.key);

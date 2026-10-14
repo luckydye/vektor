@@ -354,7 +354,10 @@ export const POST: ApiRouteHandler = (context) =>
     // Ahead of the create's transaction: the ACL lookup reads outside it.
     const triggers = Object.entries(properties ?? {}).filter(
       ([, init]) =>
-        typeof init === "object" && !Array.isArray(init) && init.type === TRIGGER_PROPERTY_TYPE,
+        typeof init === "object" &&
+        init !== null &&
+        !Array.isArray(init) &&
+        init.type === TRIGGER_PROPERTY_TYPE,
     );
     await authorizeTriggerWrites(
       store,

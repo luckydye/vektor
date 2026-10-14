@@ -5,7 +5,12 @@ import { Permission, ResourceType } from "#acl/permissions.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
-import { document, type PropertyTrigger, property, propertyTrigger } from "#db/schema/space.ts";
+import {
+  document,
+  type PropertyTrigger,
+  property,
+  propertyTrigger,
+} from "#db/schema/space.ts";
 import {
   canonicalPropertyKey,
   type DocumentPropertyPatchOperation,
@@ -80,7 +85,10 @@ export async function authorizeTriggerWrites(
     const writer = writerOf(operation.key, userId);
     const { workflow } = parseTriggerSpec(operation.key, operation.value);
     const target = await one(
-      s.db.select({ type: document.type }).from(document).where(eq(document.id, workflow)),
+      s.db
+        .select({ type: document.type })
+        .from(document)
+        .where(eq(document.id, workflow)),
     );
     if (target?.type !== "workflow") {
       throw new InvalidDocumentPropertyPatchError(
@@ -96,29 +104,27 @@ export async function authorizeTriggerWrites(
   }
 }
 
-function resolveFireAt(spec: TriggerSpec, values: Map<string, string>): Date | null {
-  if ("at" in spec) return new Date(spec.at);
+/** When a trigger is due, and the instant that hangs off: its `at`, or the date it follows. */
+function resolveSchedule(
+  spec: TriggerSpec,
+  values: Map<string, string>,
+): { anchor: Date; fireAt: Date } | null {
+  if ("at" in spec) return { anchor: new Date(spec.at), fireAt: new Date(spec.at) };
   const date = values.get(canonicalPropertyKey(spec.from));
   if (!date) return null;
   const time = new Date(date).getTime();
   if (Number.isNaN(time)) return null;
-  return new Date(time + spec.offsetMinutes * 60_000);
+  return { anchor: new Date(time), fireAt: new Date(time + spec.offsetMinutes * 60_000) };
 }
 
 /**
- * Bring a document's `property_trigger` rows in line with its trigger
- * properties. Call inside the transaction that wrote the properties, after the
- * writes, with the canonical keys the write touched.
- *
- * A trigger the write itself set runs as `userId` from now on; one that only
- * moved because the date it follows changed keeps its writer. A due time that
- * lands in the past is recorded as already fired, so arming a trigger never
- * fires it on the spot.
+ * Bring a document's `property_trigger` rows in line with its trigger properties, inside the transaction that wrote `writtenKeys`.
+ * A trigger the write moved, itself or through the date it follows, re-arms to run as `userId`, already fired if that date has passed.
  */
 export async function syncPropertyTriggers(
   s: SpaceStore,
   documentId: string,
-  changedKeys: Set<string>,
+  writtenKeys: Set<string>,
   userId: string | undefined,
 ): Promise<void> {
   const now = new Date();
@@ -149,39 +155,41 @@ export async function syncPropertyTriggers(
   for (const row of triggerRows) {
     const key = canonicalPropertyKey(row.key);
     const spec = parseTriggerSpec(row.key, parseStoredPropertyValue(row.value));
-    const fireAt = resolveFireAt(spec, values);
-    const current = existing.find((entry) => canonicalPropertyKey(entry.propertyKey) === key);
-    const rewritten = changedKeys.has(key);
-    if (!rewritten && current && current.fireAt?.getTime() === fireAt?.getTime()) {
+    const rearmed =
+      writtenKeys.has(key) ||
+      ("from" in spec && writtenKeys.has(canonicalPropertyKey(spec.from)));
+    if (!rearmed) continue;
+
+    const schedule = resolveSchedule(spec, values);
+    const fireAt = schedule?.fireAt ?? null;
+    const current = existing.find(
+      (entry) => canonicalPropertyKey(entry.propertyKey) === key,
+    );
+    // Re-saving an unchanged schedule must not re-arm a trigger that already fired.
+    if (
+      current?.workflowId === spec.workflow &&
+      current.fireAt?.getTime() === fireAt?.getTime()
+    ) {
       continue;
     }
 
-    const due = {
+    const armed = {
+      propertyKey: row.key,
+      workflowId: spec.workflow,
+      createdBy: writerOf(row.key, userId),
       fireAt,
-      firedAt: fireAt && fireAt <= now ? now : null,
+      firedAt: schedule && schedule.anchor <= now ? now : null,
       updatedAt: now,
     };
-    if (!current) {
-      await s.db.insert(propertyTrigger).values({
-        id: createId("propertyTrigger"),
-        documentId,
-        propertyKey: row.key,
-        workflowId: spec.workflow,
-        createdBy: writerOf(row.key, userId),
-        ...due,
-      });
-    } else if (rewritten) {
+    if (current) {
       await s.db
         .update(propertyTrigger)
-        .set({
-          propertyKey: row.key,
-          workflowId: spec.workflow,
-          createdBy: writerOf(row.key, userId),
-          ...due,
-        })
+        .set(armed)
         .where(eq(propertyTrigger.id, current.id));
     } else {
-      await s.db.update(propertyTrigger).set(due).where(eq(propertyTrigger.id, current.id));
+      await s.db
+        .insert(propertyTrigger)
+        .values({ id: createId("propertyTrigger"), documentId, ...armed });
     }
   }
 }
@@ -196,13 +204,16 @@ export async function claimDuePropertyTriggers(
 ): Promise<PropertyTrigger[]> {
   const due = await many(
     s.db
-      .select({ id: propertyTrigger.id })
+      .select({ id: propertyTrigger.id, archived: document.archived })
       .from(propertyTrigger)
+      .innerJoin(document, eq(document.id, propertyTrigger.documentId))
       .where(and(isNull(propertyTrigger.firedAt), lte(propertyTrigger.fireAt, now))),
   );
 
+  // A trashed document's trigger is consumed without running, so restoring the
+  // document doesn't fire it late.
   const claimed: PropertyTrigger[] = [];
-  for (const { id } of due) {
+  for (const { id, archived } of due) {
     const [trigger] = await s.db
       .update(propertyTrigger)
       .set({ firedAt: now })
@@ -214,7 +225,7 @@ export async function claimDuePropertyTriggers(
         ),
       )
       .returning();
-    if (trigger) claimed.push(trigger);
+    if (trigger && !archived) claimed.push(trigger);
   }
   return claimed;
 }
