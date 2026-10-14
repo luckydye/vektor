@@ -35,9 +35,10 @@ import {
 import { HeaderImageDialog } from "./HeaderImageDialog.tsx";
 import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
+import { saveDocumentTitle } from "./TitleEditor.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
-import { confirmDialog } from "#composeables/useDialogs.ts";
+import { confirmDialog, promptDialog } from "#composeables/useDialogs.ts";
 
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
@@ -73,6 +74,8 @@ interface Props {
   headerImage?: string | null;
   tableOfContentsVisible?: boolean;
   onToggleTableOfContents?: () => void;
+  /** Phones only: opens the properties that don't fit the toolbar. */
+  onShowProperties?: () => void;
 }
 
 export function DocumentActions(props: Props) {
@@ -137,6 +140,29 @@ export function DocumentActions(props: Props) {
     );
   }
 
+  function showPropertiesFromMenu(event: Event) {
+    props.onShowProperties?.();
+    (event.target as Element | null)?.dispatchEvent(
+      new CustomEvent("exit", { bubbles: true }),
+    );
+  }
+
+  // Phones can't double-tap the title to edit it.
+  async function renameFromMenu(event: Event) {
+    (event.target as Element | null)?.dispatchEvent(
+      new CustomEvent("exit", { bubbles: true }),
+    );
+    const spaceId = currentSpaceId();
+    const docId = documentId();
+    if (!spaceId || !docId) throw new Error("Renaming needs a saved document");
+    const title = await promptDialog("", props.title ?? "", {
+      title: t("Rename"),
+      confirmLabel: t("Rename"),
+    });
+    if (title === null || title === props.title) return;
+    await saveDocumentTitle(spaceId, docId, title, navigate);
+  }
+
   function toggleTableOfContentsFromMenu(event: Event) {
     props.onToggleTableOfContents?.();
     (event.target as Element | null)?.dispatchEvent(
@@ -194,13 +220,17 @@ export function DocumentActions(props: Props) {
     () => documentType() === "workflow" && !!documentId() && userCanEdit(),
   );
   const showEditItem = createMemo(() => canUseDocumentEditor() && !editing());
+  const showShareItem = createMemo(() => !!userCanManageDocument() && !!documentId());
+  const showRenameItem = createMemo(() => !!userCanEdit() && !!documentId());
 
   // The menu groups view preferences, content actions and destructive ones; a
   // group only gets a separator when something precedes it.
   const sections = createMemo(() => [
-    showTableOfContents() || actionsView().length > 0,
+    showTableOfContents() || !!props.onShowProperties || actionsView().length > 0,
     showWorkflowEdit() ||
       showEditItem() ||
+      showShareItem() ||
+      showRenameItem() ||
       actions().length > 0 ||
       actionsDanger().length > 0,
   ]);
@@ -573,6 +603,15 @@ export function DocumentActions(props: Props) {
             </ContextMenuItem>
           </Show>
 
+          <Show when={props.onShowProperties}>
+            <ContextMenuItem class="md:hidden" onClick={showPropertiesFromMenu}>
+              <div class="aspect-sqaure w-[1rem] flex-none">
+                <Icon name="generic-property" class="align-middle" />
+              </div>
+              <span class="mr-2 block w-full text-left">{t("Properties")}</span>
+            </ContextMenuItem>
+          </Show>
+
           <For each={actionsView()}>
             {([name, options]) => <MenuActionItem name={name} options={options} />}
           </For>
@@ -599,6 +638,30 @@ export function DocumentActions(props: Props) {
                 <Icon name="edit-document" class="align-middle" />
               </div>
               <span class="mr-2 block w-full text-left">{t("Edit")}</span>
+            </ContextMenuItem>
+          </Show>
+
+          <Show when={showRenameItem()}>
+            <ContextMenuItem
+              class="md:hidden"
+              onClick={(event) => void renameFromMenu(event)}
+            >
+              <div class="aspect-sqaure w-[1rem] flex-none">
+                <Icon name="edit-entry" class="align-middle" />
+              </div>
+              <span class="mr-2 block w-full text-left">{t("Rename")}</span>
+            </ContextMenuItem>
+          </Show>
+
+          <Show when={showShareItem()}>
+            <ContextMenuItem
+              class="md:hidden"
+              onClick={(event) => runContextMenuAction(event, "document:share")}
+            >
+              <div class="aspect-sqaure w-[1rem] flex-none">
+                <Icon name="users-group" class="align-middle" />
+              </div>
+              <span class="mr-2 block w-full text-left">{t("Share")}</span>
             </ContextMenuItem>
           </Show>
 

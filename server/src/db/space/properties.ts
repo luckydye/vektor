@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -16,6 +16,7 @@ import {
   type SpaceProperty,
   type StoredPropertyKeyRow,
   serializePropertyValue,
+  storedPropertyKey,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
@@ -120,158 +121,267 @@ export async function patchDocumentProperties(
   if (operations.length === 0) return {};
   await authorizeTriggerWrites(s, documentId, operations, userId);
 
-  const result = await s.tx(async (txStore): Promise<PatchDocumentPropertiesResult> => {
-    const now = new Date();
-    const existingRows = await many(
-      txStore.db.select().from(property).where(eq(property.documentId, documentId)),
-    );
-    const existingByKey = new Map<string, typeof existingRows>();
-    for (const row of existingRows) {
-      const canonical = canonicalPropertyKey(row.key);
-      const group = existingByKey.get(canonical);
-      if (group) group.push(row);
-      else existingByKey.set(canonical, [row]);
-    }
-    for (const group of existingByKey.values()) {
-      group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-    }
-    const changes: DocumentPropertyChange[] = [];
-
-    // First write in the transaction, so a refusal rolls back cleanly.
-    const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
-    const written = await touchDocument(
-      txStore,
-      documentId,
-      { ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now },
-      expected,
-    );
-    if (!written.ok) return { conflict: true } as const;
-
-    // Folding two spellings together destroys a stored value, so it is logged and
-    // broadcast like any other delete.
-    const removeRow = async (row: (typeof existingRows)[number]) => {
-      const value = parseStoredPropertyValue(row.value);
-      await txStore.db.delete(property).where(eq(property.id, row.id));
-      await createAuditLog(txStore, {
-        docId: documentId,
-        userId,
-        event: "property_delete",
-        details: {
-          propertyKey: row.key,
-          propertyType: row.type || undefined,
-          previousValue: propertyValueToText(value),
-        },
-      });
-
-      changes.push({
-        kind: "document_property_deleted",
-        propertyKey: row.key,
-        propertyType: row.type ?? null,
-        previousValue: value,
-      });
-    };
-
-    for (const operation of operations) {
-      const group = existingByKey.get(canonicalPropertyKey(operation.key)) ?? [];
-      // The row the patch already names, else the one written most recently: that
-      // row is renamed, so the spelling of the last write is the one stored.
-      const current = group.find((row) => row.key === operation.key) ?? group[0];
-      const previousValue = current ? parseStoredPropertyValue(current.value) : undefined;
-
-      for (const row of group) {
-        if (row !== current) await removeRow(row);
-      }
-
-      if (operation.kind === "delete") {
-        if (current) await removeRow(current);
-        else {
-          changes.push({
-            kind: "document_property_deleted",
-            propertyKey: operation.key,
-            propertyType: null,
-            previousValue: null,
-          });
-        }
-        continue;
-      }
-
-      const storedValue = serializePropertyValue(operation.value);
-      const nextType =
-        operation.type === undefined ? (current?.type ?? null) : operation.type;
-      if (current) {
-        const updateData: {
-          key: string;
-          value: string;
-          updatedAt: Date;
-          type?: string | null;
-        } = { key: operation.key, value: storedValue, updatedAt: now };
-        if (operation.type !== undefined) updateData.type = operation.type;
-        await txStore.db
-          .update(property)
-          .set(updateData)
-          .where(eq(property.id, current.id));
-      } else {
-        await txStore.db.insert(property).values({
-          id: createId("property"),
-          documentId,
-          key: operation.key,
-          value: storedValue,
-          type: nextType || null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      await createAuditLog(txStore, {
-        docId: documentId,
-        userId,
-        event: "property_update",
-        details: {
-          propertyKey: operation.key,
-          propertyType: nextType || undefined,
-          previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
-          newValue: propertyValueToText(operation.value),
-        },
-      });
-
-      changes.push({
-        kind: "document_property_changed",
-        propertyKey: operation.key,
-        propertyType: nextType,
-        previousValue: previousValue ?? null,
-        value: operation.value,
-      });
-    }
-
-    await syncPropertyTriggers(
-      txStore,
-      documentId,
-      new Set(operations.map((operation) => canonicalPropertyKey(operation.key))),
-      userId,
-    );
-
-    txStore.emit({
-      kind: "documentProperties",
-      documentId,
-      affectsTree: operations.some((operation) =>
-        ["title", "category", "collection"].includes(operation.key),
-      ),
-      data: {
-        kind: "document_properties_changed",
-        documentId,
-        changes,
-      },
-    });
-
-    return renamedSlug
-      ? { slug: renamedSlug, changeSeq: written.changeSeq }
-      : { changeSeq: written.changeSeq };
-  });
+  const result = await s.tx((txStore) =>
+    applyDocumentPropertyOperations(txStore, documentId, operations, userId, expected),
+  );
 
   if (result.conflict) return result;
 
   scheduleDocumentSearchRefresh(s, documentId);
   return result;
+}
+
+/** The writes of a property patch, for a caller that owns the transaction and the search refresh. */
+async function applyDocumentPropertyOperations(
+  txStore: SpaceStore,
+  documentId: string,
+  operations: DocumentPropertyPatchOperation[],
+  userId?: string,
+  expected?: number[],
+): Promise<PatchDocumentPropertiesResult> {
+  const now = new Date();
+  const existingRows = await many(
+    txStore.db.select().from(property).where(eq(property.documentId, documentId)),
+  );
+  const existingByKey = new Map<string, typeof existingRows>();
+  for (const row of existingRows) {
+    const canonical = canonicalPropertyKey(row.key);
+    const group = existingByKey.get(canonical);
+    if (group) group.push(row);
+    else existingByKey.set(canonical, [row]);
+  }
+  for (const group of existingByKey.values()) {
+    group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+  const changes: DocumentPropertyChange[] = [];
+
+  // First write in the transaction, so a refusal rolls back cleanly.
+  const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
+  const written = await touchDocument(
+    txStore,
+    documentId,
+    { ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now },
+    expected,
+  );
+  if (!written.ok) return { conflict: true } as const;
+
+  // Folding two spellings together destroys a stored value, so it is logged and
+  // broadcast like any other delete.
+  const removeRow = async (row: (typeof existingRows)[number]) => {
+    const value = parseStoredPropertyValue(row.value);
+    await txStore.db.delete(property).where(eq(property.id, row.id));
+    await createAuditLog(txStore, {
+      docId: documentId,
+      userId,
+      event: "property_delete",
+      details: {
+        propertyKey: row.key,
+        propertyType: row.type || undefined,
+        previousValue: propertyValueToText(value),
+      },
+    });
+
+    changes.push({
+      kind: "document_property_deleted",
+      propertyKey: row.key,
+      propertyType: row.type ?? null,
+      previousValue: value,
+    });
+  };
+
+  for (const operation of operations) {
+    const group = existingByKey.get(canonicalPropertyKey(operation.key)) ?? [];
+    // The row the patch already names, else the one written most recently: that
+    // row is renamed, so the spelling of the last write is the one stored.
+    const current = group.find((row) => row.key === operation.key) ?? group[0];
+    const previousValue = current ? parseStoredPropertyValue(current.value) : undefined;
+
+    for (const row of group) {
+      if (row !== current) await removeRow(row);
+    }
+
+    if (operation.kind === "delete") {
+      if (current) await removeRow(current);
+      else {
+        changes.push({
+          kind: "document_property_deleted",
+          propertyKey: operation.key,
+          propertyType: null,
+          previousValue: null,
+        });
+      }
+      continue;
+    }
+
+    const storedValue = serializePropertyValue(operation.value);
+    const nextType =
+      operation.type === undefined ? (current?.type ?? null) : operation.type;
+    if (current) {
+      const updateData: {
+        key: string;
+        value: string;
+        updatedAt: Date;
+        type?: string | null;
+      } = { key: operation.key, value: storedValue, updatedAt: now };
+      if (operation.type !== undefined) updateData.type = operation.type;
+      await txStore.db
+        .update(property)
+        .set(updateData)
+        .where(eq(property.id, current.id));
+    } else {
+      await txStore.db.insert(property).values({
+        id: createId("property"),
+        documentId,
+        key: operation.key,
+        value: storedValue,
+        type: nextType || null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await createAuditLog(txStore, {
+      docId: documentId,
+      userId,
+      event: "property_update",
+      details: {
+        propertyKey: operation.key,
+        propertyType: nextType || undefined,
+        previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
+        newValue: propertyValueToText(operation.value),
+      },
+    });
+
+    changes.push({
+      kind: "document_property_changed",
+      propertyKey: operation.key,
+      propertyType: nextType,
+      previousValue: previousValue ?? null,
+      value: operation.value,
+    });
+  }
+
+  await syncPropertyTriggers(
+    txStore,
+    documentId,
+    new Set(operations.map((operation) => canonicalPropertyKey(operation.key))),
+    userId,
+  );
+
+  txStore.emit({
+    kind: "documentProperties",
+    documentId,
+    affectsTree: operations.some((operation) =>
+      ["title", "category", "collection"].includes(operation.key),
+    ),
+    data: {
+      kind: "document_properties_changed",
+      documentId,
+      changes,
+    },
+  });
+
+  return renamedSlug
+    ? { slug: renamedSlug, changeSeq: written.changeSeq }
+    : { changeSeq: written.changeSeq };
+}
+
+/** Thrown when a column rename would land on a name the database already uses. */
+export class PropertyRenameConflictError extends Error {}
+
+/**
+ * Rename a database column: the key on every row and the column in `_schema`,
+ * in one transaction. Archived rows are included, so restoring one brings no old key back.
+ * Returns the rewritten `_schema`, or `undefined` when the database declares none.
+ */
+export async function renameDatabaseColumn(
+  s: SpaceStore,
+  databaseId: string,
+  from: string,
+  to: string,
+  userId?: string,
+): Promise<string | undefined> {
+  const fromKey = canonicalPropertyKey(from);
+  const toKey = canonicalPropertyKey(to);
+  const stored = storedPropertyKey(to);
+  const { touchedIds, schemaJson } = await s.tx(async (tx) => {
+    const rows = await many(
+      tx.db
+        .select({
+          documentId: property.documentId,
+          key: property.key,
+          value: property.value,
+          type: property.type,
+        })
+        .from(property)
+        .innerJoin(document, eq(document.id, property.documentId))
+        .where(eq(document.parentId, databaseId))
+        .orderBy(desc(property.updatedAt)),
+    );
+    // Newest first, so a row holding two spellings carries the last-written value.
+    const sources = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      const key = canonicalPropertyKey(row.key);
+      if (key === toKey && toKey !== fromKey) {
+        throw new PropertyRenameConflictError(
+          `Rows already have a property named "${to}"`,
+        );
+      }
+      if (key === fromKey && !sources.has(row.documentId))
+        sources.set(row.documentId, row);
+    }
+
+    const schemaRow = await one(
+      tx.db
+        .select({ value: property.value })
+        .from(property)
+        .where(and(eq(property.documentId, databaseId), eq(property.key, "_schema"))),
+    );
+    let schemaJson: string | undefined;
+    if (schemaRow) {
+      const raw = parseStoredPropertyValue(schemaRow.value);
+      if (typeof raw !== "string")
+        throw new Error("Database _schema is not a JSON string");
+      const schema = JSON.parse(raw) as {
+        columns: Array<{ name: string; label: string }>;
+      };
+      if (
+        toKey !== fromKey &&
+        schema.columns.some((column) => canonicalPropertyKey(column.name) === toKey)
+      ) {
+        throw new PropertyRenameConflictError(`A column named "${to}" already exists`);
+      }
+      const columns = schema.columns.map((column) =>
+        canonicalPropertyKey(column.name) === fromKey
+          ? { ...column, name: stored, label: stored }
+          : column,
+      );
+      schemaJson = JSON.stringify({ ...schema, columns });
+      await applyDocumentPropertyOperations(
+        tx,
+        databaseId,
+        normalizeDocumentPropertyPatch({ _schema: schemaJson }),
+        userId,
+      );
+    }
+
+    for (const row of sources.values()) {
+      const renamed = { value: parseStoredPropertyValue(row.value), type: row.type };
+      // A case-only rename is an update: the write's spelling replaces the stored one.
+      const patch: DocumentPropertyPatch =
+        toKey === fromKey ? { [to]: renamed } : { [row.key]: null, [to]: renamed };
+      await applyDocumentPropertyOperations(
+        tx,
+        row.documentId,
+        normalizeDocumentPropertyPatch(patch),
+        userId,
+      );
+    }
+    return { touchedIds: [databaseId, ...sources.keys()], schemaJson };
+  });
+
+  for (const id of touchedIds) scheduleDocumentSearchRefresh(s, id);
+  return schemaJson;
 }
 
 /**

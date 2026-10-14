@@ -32,6 +32,8 @@ interface Props {
   defaultMode?: "docked" | "floating";
   /** On mobile, render as a drawer on the right edge that a left swipe anywhere opens. */
   swipeToOpen?: boolean;
+  /** Controls shown in the header, before the close button. */
+  actions?: JSX.Element;
   children?: JSX.Element;
 }
 
@@ -281,6 +283,16 @@ export function DockedPanel(props: Props) {
             <Dialog
               show={isOpen()}
               title={props.title}
+              header={
+                props.actions && (
+                  <div class="flex flex-1 items-center gap-2">
+                    <h2 class="flex-1 font-semibold text-neutral-900 text-size-medium">
+                      {props.title}
+                    </h2>
+                    {props.actions}
+                  </div>
+                )
+              }
               expand
               bodyClass="p-0 flex flex-col min-h-0 overflow-hidden"
               onUpdateShow={(v) => {
@@ -293,6 +305,7 @@ export function DockedPanel(props: Props) {
         >
           <SwipeDrawer
             title={props.title}
+            actions={props.actions}
             open={isOpen()}
             onUpdateOpen={(v) => (v ? open(props.id) : onClose())}
           >
@@ -316,6 +329,7 @@ export function DockedPanel(props: Props) {
               {props.title}
             </span>
             <div class="panel-close flex items-center gap-0.5">
+              {props.actions}
               <IconButton icon="cancel" label={t("Close")} onClick={onClose} />
             </div>
           </div>

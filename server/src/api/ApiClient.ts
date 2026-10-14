@@ -1665,6 +1665,20 @@ export class ApiClient {
       );
     },
 
+    /** Rename a database column on every row; returns the rewritten `_schema`, if declared. */
+    renameColumn: async (
+      spaceId: string,
+      databaseId: string,
+      from: string,
+      to: string,
+    ) => {
+      return await this.apiPost<{ schema: string | null }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${databaseId}/columns/rename`,
+        { from, to },
+      );
+    },
+
     archive: async (spaceId: string, documentId: string) => {
       await this.withOptimisticReplica(
         () => this.replica.archiveDocumentOptimistic(spaceId, documentId),

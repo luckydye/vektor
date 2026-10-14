@@ -227,42 +227,6 @@ details[open] .details-chevron {
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.user-markdown a {
-  color: inherit;
-}
-
-/* ── Chat bubble theming ────────────────────────────────────────────── */
-
-.status-bubble {
-  background-color: #0b0c10;
-  color: #e2e5eb;
-  border: 1px solid #2b3140;
-}
-
-.status-bubble-label {
-  color: var(--color-neutral-400);
-}
-
-.tool-message-bg {
-  background-color: #f9fafb;
-  border-color: #e5e7eb;
-}
-
-.tool-message-header {
-  border-color: #e5e7eb;
-}
-
-.tool-message-name {
-  color: #52525b;
-}
-
-.tool-message-label {
-  color: #a1a1aa;
-}
-
-.tool-error-bg {
-  background-color: rgba(254, 242, 242, 0.4);
-}
 
 /**
  * The app's wordmark ships as two monochrome silhouettes rather than one tinted
@@ -297,59 +261,11 @@ details[open] .details-chevron {
     background: var(--color-neutral-200);
     color: var(--color-neutral-800);
   }
-  .status-bubble {
-    background-color: var(--color-neutral-100);
-    color: var(--color-neutral-700);
-    border-color: var(--color-neutral-200);
-  }
-  .status-bubble-label {
-    color: var(--color-neutral-500);
-  }
-  .tool-message-bg {
-    background-color: var(--color-neutral-100);
-    border-color: var(--color-neutral-200);
-  }
-  .tool-message-header {
-    border-color: var(--color-neutral-200);
-  }
-  .tool-message-name {
-    color: var(--color-neutral-600);
-  }
-  .tool-message-label {
-    color: var(--color-neutral-500);
-  }
-  .tool-error-bg {
-    background-color: rgba(33, 33, 33, 0.4);
-  }
 }
 
 :root[data-theme="dark"] .markdown-content pre {
   background: var(--color-neutral-200);
   color: var(--color-neutral-800);
-}
-:root[data-theme="dark"] .status-bubble {
-  background-color: var(--color-neutral-100);
-  color: var(--color-neutral-700);
-  border-color: var(--color-neutral-200);
-}
-:root[data-theme="dark"] .status-bubble-label {
-  color: var(--color-neutral-500);
-}
-:root[data-theme="dark"] .tool-message-bg {
-  background-color: var(--color-neutral-100);
-  border-color: var(--color-neutral-200);
-}
-:root[data-theme="dark"] .tool-message-header {
-  border-color: var(--color-neutral-200);
-}
-:root[data-theme="dark"] .tool-message-name {
-  color: var(--color-neutral-600);
-}
-:root[data-theme="dark"] .tool-message-label {
-  color: var(--color-neutral-500);
-}
-:root[data-theme="dark"] .tool-error-bg {
-  background-color: rgba(33, 33, 33, 0.4);
 }
 
 /* ── FilePreviews lightbox ──────────────────────────────────────────── */

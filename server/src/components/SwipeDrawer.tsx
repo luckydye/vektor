@@ -10,6 +10,8 @@ interface Props {
   title: string;
   open: boolean;
   onUpdateOpen: (open: boolean) => void;
+  /** Controls shown in the header, before the close button. */
+  actions?: JSX.Element;
   children?: JSX.Element;
 }
 
@@ -58,6 +60,7 @@ export function SwipeDrawer(props: Props) {
             <span class="flex-1 font-semibold text-neutral-800 text-size-medium">
               {props.title}
             </span>
+            {props.actions}
             <IconButton
               icon="cancel"
               label={t("Close")}

@@ -4,16 +4,15 @@ import {
   createMemo,
   createSignal,
   For,
-  type JSX,
   onCleanup,
   onMount,
   Show,
 } from "solid-js";
-import { Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { useDatabaseFileImport } from "#composeables/useDatabaseFileImport.ts";
 import type { DatabaseColumn, DatabaseSort } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
@@ -23,7 +22,7 @@ import {
   readDocumentProperty,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
-import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
+import { ContextMenu } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -81,95 +80,92 @@ export function DatabaseView(props: Props) {
     );
   }
 
-  const sortItem = (key: string, order: DatabaseSort["order"]) => (
-    <ContextMenuItem
-      onClick={(event) => {
-        closeMenu(event);
-        commitSort({ key, order });
-      }}
-    >
-      <Icon
-        name="arrow-left"
-        class={twMerge("h-4 w-4 flex-none", order === "asc" ? "rotate-90" : "-rotate-90")}
-      />
-      <span
-        class={
-          sort()?.key === key && sort()?.order === order
-            ? "font-medium text-primary-600"
-            : "text-neutral-900"
+  // Clicking a header cycles ascending → descending → unsorted.
+  function cycleSort(key: string) {
+    const current = sort();
+    if (current?.key !== key) commitSort({ key, order: "asc" });
+    else if (current.order === "asc") commitSort({ key, order: "desc" });
+    else commitSort(null);
+  }
+
+  // Column actions sit behind the dots, so the header itself stays a plain
+  // sort toggle; the cell keeps its highlight while the menu is open.
+  const columnHeader = (key: string, label: string, editable: boolean) => (
+    <div class="flex w-full items-center transition-colors has-[[aria-expanded=true]]:bg-neutral-100 has-[input]:bg-neutral-100">
+      <Show
+        when={renamingColumn() === key}
+        fallback={
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-2.5 pl-3 text-left transition-colors hover:text-neutral-950"
+            onClick={() => cycleSort(key)}
+          >
+            <span class="truncate">{label}</span>
+            <Show when={sort()?.key === key}>
+              <Icon
+                name="arrow-left"
+                class={twMerge(
+                  "h-3.5 w-3.5 shrink-0 text-primary-600",
+                  sort()?.order === "asc" ? "rotate-90" : "-rotate-90",
+                )}
+              />
+            </Show>
+          </button>
         }
       >
-        {order === "asc" ? "Sort ascending" : "Sort descending"}
-      </span>
-    </ContextMenuItem>
-  );
-
-  // The whole cell opens the column menu; its icon only shows on hover so the
-  // header row stays quiet.
-  const columnHeader = (
-    key: string,
-    label: string,
-    onDelete?: (anchor: Element) => void,
-  ) => (
-    <ContextMenu
-      class="block w-full"
-      placements="bottom-start"
-      ariaLabel={`${label} column`}
-      trigger={
-        <button
-          type="button"
-          slot="trigger"
-          class="group/header flex w-full cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left transition-colors hover:text-neutral-950"
-        >
-          <span class="truncate">{label}</span>
-          <Show when={sort()?.key === key}>
-            <Icon
-              name="arrow-left"
-              class={twMerge(
-                "h-3.5 w-3.5 shrink-0 text-primary-600",
-                sort()?.order === "asc" ? "rotate-90" : "-rotate-90",
-              )}
-            />
-          </Show>
-          <Icon
-            name="context-menu-more"
-            class="ml-auto h-4 w-4 shrink-0 text-neutral-400 opacity-0 transition-opacity group-hover/header:opacity-100"
-          />
-        </button>
-      }
-    >
-      {sortItem(key, "asc")}
-      {sortItem(key, "desc")}
-      <Show when={sort()?.key === key}>
-        <ContextMenuItem
-          onClick={(event) => {
-            closeMenu(event);
-            commitSort(null);
+        <input
+          ref={(el) =>
+            requestAnimationFrame(() => {
+              el.focus();
+              el.select();
+            })
+          }
+          value={label}
+          aria-label="Column name"
+          class="min-w-0 flex-1 bg-transparent py-2.5 pl-3 font-semibold text-neutral-950 outline-none"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void commitRename(key, event.currentTarget.value);
+            if (event.key === "Escape") setRenamingColumn(null);
           }}
-        >
-          <Icon name="cancel" class="h-4 w-4 flex-none" />
-          <span class="text-neutral-900">Clear sort</span>
-        </ContextMenuItem>
+          onBlur={(event) => void commitRename(key, event.currentTarget.value)}
+        />
       </Show>
-      <Show when={onDelete}>
-        {(remove) => (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={(event) => {
-                const anchor = (event.currentTarget as Element).closest("th");
-                closeMenu(event);
-                if (!anchor) throw new Error("Column menu is not inside a header cell");
-                remove()(anchor);
-              }}
+      <Show when={editable} fallback={<span class="pr-3" />}>
+        <ContextMenu
+          placements="bottom-end"
+          ariaLabel={`${label} column`}
+          trigger={
+            <button
+              type="button"
+              slot="trigger"
+              aria-label={`${label} column actions`}
+              class="mr-1.5 ml-1 flex cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 aria-expanded:bg-neutral-200 aria-expanded:text-neutral-700"
             >
-              <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
-              <span class="text-red-600">Delete column</span>
-            </ContextMenuItem>
-          </>
-        )}
+              <Icon name="context-menu-more" class="h-4 w-4" />
+            </button>
+          }
+        >
+          <ContextMenuItem
+            onClick={(event) => {
+              closeMenu(event);
+              setRenamingColumn(key);
+            }}
+          >
+            <Icon name="edit-entry" class="h-4 w-4 flex-none" />
+            <span class="text-neutral-900">Rename</span>
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={(event) => {
+              closeMenu(event);
+              void deleteColumnConfirmed(key, label);
+            }}
+          >
+            <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
+            <span class="text-red-600">Delete column</span>
+          </ContextMenuItem>
+        </ContextMenu>
       </Show>
-    </ContextMenu>
+    </div>
   );
   const { currentSpace } = useSpace();
   const { error: toastError } = useToast();
@@ -189,6 +185,7 @@ export function DatabaseView(props: Props) {
     addColumn,
     addColumns,
     deleteColumn,
+    renameColumn,
   } = useDatabaseRows(() => props.databaseDocumentId, sort);
 
   createEffect(() => setSchemaStr(props.schemaJson));
@@ -247,48 +244,43 @@ export function DatabaseView(props: Props) {
     if (e.key === "Escape") addColumnTriggerRef?.hide?.();
   }
 
-  const [deletingColumn, setDeletingColumn] = createSignal<string | null>(null);
-  const [columnPopoverStyle, setColumnPopoverStyle] = createSignal<JSX.CSSProperties>({});
+  const [renamingColumn, setRenamingColumn] = createSignal<string | null>(null);
 
-  function openDeleteColumn(name: string, anchor: Element) {
-    setDeletingColumn(name);
-    const rect = anchor.getBoundingClientRect();
-    setColumnPopoverStyle({ top: `${rect.bottom + 4}px`, left: `${rect.left}px` });
+  // Enter and Escape clear the signal first, so the blur that follows is a no-op.
+  async function commitRename(from: string, value: string) {
+    if (renamingColumn() !== from) return;
+    setRenamingColumn(null);
+    const to = value.trim();
+    if (!to || to === from) return;
+    try {
+      await renameColumn(from, to);
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Failed to rename column");
+      return;
+    }
+    const current = sort();
+    if (current?.key === from) commitSort({ key: to, order: current.order });
   }
 
-  async function confirmDeleteColumn(name: string) {
+  async function deleteColumnConfirmed(name: string, label: string) {
+    if (!(await confirmDialog(`Delete column "${label}"?`, { tone: "danger" }))) return;
     await deleteColumn(name);
-    setDeletingColumn(null);
   }
 
-  const [deletingRow, setDeletingRow] = createSignal<string | null>(null);
-  const [rowPopoverStyle, setRowPopoverStyle] = createSignal<JSX.CSSProperties>({});
+  async function deleteRowConfirmed(rowId: string) {
+    if (!(await confirmDialog("Delete this row?", { tone: "danger" }))) return;
+    try {
+      await deleteRow(rowId);
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Failed to delete row");
+    }
+  }
 
   createEffect(() => {
     void props.databaseDocumentId;
     setEditingCell(null);
-    setDeletingColumn(null);
-    setDeletingRow(null);
+    setRenamingColumn(null);
   });
-
-  function openDeleteRow(rowId: string, event: MouseEvent) {
-    setDeletingRow(rowId);
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setRowPopoverStyle({
-      top: `${rect.bottom + 4}px`,
-      right: `${window.innerWidth - rect.right}px`,
-    });
-  }
-
-  async function confirmDeleteRow(rowId: string) {
-    try {
-      await deleteRow(rowId);
-      setDeletingRow(null);
-    } catch (e) {
-      setDeletingRow(null);
-      toastError(e instanceof Error ? e.message : "Failed to delete row");
-    }
-  }
 
   let importInputRef: HTMLInputElement | undefined;
   const { isImporting, importFile } = useDatabaseFileImport({
@@ -415,443 +407,359 @@ export function DatabaseView(props: Props) {
   });
 
   return (
-    <>
-      <div class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-neutral-100">
-        <div class="min-h-0 flex-1 overflow-auto">
-          <Show
-            when={!isLoading()}
-            fallback={
-              <table
-                class="border-separate border-spacing-0 animate-pulse [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
-                style={{ "table-layout": "fixed", width: "100%" }}
-              >
-                <thead>
-                  <tr class="bg-neutral-50">
-                    <th class="px-3 py-2.5" style={{ width: `${NAME_COL_WIDTH}px` }}>
-                      <div class="h-2.5 w-16 rounded-full bg-skeleton-strong" />
-                    </th>
-                    <For each={[0, 1]}>
-                      {() => (
-                        <th
-                          class="px-3 py-2.5"
-                          style={{ width: `${DEFAULT_COL_WIDTH}px` }}
-                        >
-                          <div class="h-2.5 w-14 rounded-full bg-skeleton-strong" />
-                        </th>
-                      )}
-                    </For>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={[0.9, 0.6, 0.75]}>
-                    {(width) => (
-                      <tr>
-                        <td class="px-3 py-2.5">
-                          <div
-                            class="h-2.5 rounded-full bg-skeleton"
-                            style={{ width: `${width * 100}%` }}
-                          />
-                        </td>
-                        <For each={[0.5, 0.7]}>
-                          {(cellWidth) => (
-                            <td class="px-3 py-2.5">
-                              <div
-                                class="h-2.5 rounded-full bg-neutral-100"
-                                style={{ width: `${cellWidth * 100}%` }}
-                              />
-                            </td>
-                          )}
-                        </For>
-                        <td />
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            }
-          >
+    <div class="relative flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-neutral-100">
+      <div class="min-h-0 flex-1 overflow-auto">
+        <Show
+          when={!isLoading()}
+          fallback={
             <table
-              class="border-separate border-spacing-0 text-size-medium [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
-              style={{
-                "table-layout": "fixed",
-                // An explicit sum, not `max-content`: that measured the cells,
-                // so nowrap content widened its column instead of truncating,
-                // and the width moved as rows scrolled in and out.
-                width: `${tableWidth()}px`,
-                "min-width": "100%",
-              }}
+              class="border-separate border-spacing-0 animate-pulse [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
+              style={{ "table-layout": "fixed", width: "100%" }}
             >
               <thead>
-                <tr class="bg-neutral-50 text-left">
-                  <th
-                    class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
-                    style={{ ...stickyHeaderStyle, width: `${NAME_COL_WIDTH}px` }}
-                    aria-sort={ariaSort("title")}
-                  >
-                    {columnHeader("title", "Name")}
+                <tr class="bg-neutral-50">
+                  <th class="px-3 py-2.5" style={{ width: `${NAME_COL_WIDTH}px` }}>
+                    <div class="h-2.5 w-16 rounded-full bg-skeleton-strong" />
                   </th>
-
-                  <For each={derivedColumns()}>
-                    {(col) => (
-                      <th
-                        class="whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
-                        style={{ ...stickyHeaderStyle, width: `${DEFAULT_COL_WIDTH}px` }}
-                        aria-sort={ariaSort(col.name)}
-                      >
-                        {columnHeader(col.name, col.label, (anchor) =>
-                          openDeleteColumn(col.name, anchor),
-                        )}
+                  <For each={[0, 1]}>
+                    {() => (
+                      <th class="px-3 py-2.5" style={{ width: `${DEFAULT_COL_WIDTH}px` }}>
+                        <div class="h-2.5 w-14 rounded-full bg-skeleton-strong" />
                       </th>
                     )}
                   </For>
-
-                  <th
-                    class="bg-neutral-50 px-2"
-                    style={{ ...stickyHeaderStyle, width: `${ACTION_COL_WIDTH}px` }}
-                  >
-                    <a-popover-trigger ref={addColumnTriggerRef as never}>
-                      <button
-                        type="button"
-                        slot="trigger"
-                        class="flex h-6 w-6 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
-                        title="Add column"
-                        onClick={onAddColumnTrigger}
-                      >
-                        <Icon class="h-3.5 w-3.5" name="add" />
-                      </button>
-                      <a-popover class="group" placements="bottom-end">
-                        <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                          <div class="mt-1 flex w-56 flex-col gap-3 rounded-xl border border-neutral-200 bg-background p-4 shadow-large">
-                            <div class="font-medium text-neutral-700 text-size-small">
-                              Add column
-                            </div>
-                            <input
-                              ref={newColumnInputRef}
-                              value={newColumnName()}
-                              onInput={(e) => setNewColumnName(e.currentTarget.value)}
-                              type="text"
-                              placeholder="Column name"
-                              class="rounded-lg border border-neutral-200 bg-background px-3 py-1.5 text-size-medium focus:border-primary-400 focus:outline-none"
-                              onKeyDown={onAddColKeydown}
-                            />
-                            <select
-                              value={newColumnType()}
-                              onChange={(e) =>
-                                setNewColumnType(
-                                  e.currentTarget.value as DatabaseColumn["type"],
-                                )
-                              }
-                              class="rounded-lg border border-neutral-200 bg-background px-3 py-1.5 text-size-medium focus:border-primary-400 focus:outline-none"
-                            >
-                              <option value="text">Text</option>
-                              <option value="number">Number</option>
-                              <option value="date">Date</option>
-                              <option value="select">Select</option>
-                            </select>
-                            <button
-                              type="button"
-                              class="rounded bg-primary-600 px-3 py-1.5 text-size-small text-white transition-colors hover:bg-primary-700"
-                              onClick={() => void commitAddColumn()}
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      </a-popover>
-                    </a-popover-trigger>
-                  </th>
+                  <th />
                 </tr>
               </thead>
-
-              <tbody ref={bodyRef}>
-                <Show when={spacerBefore() > 0}>
-                  <tr>
-                    <td
-                      colspan={derivedColumns().length + 2}
-                      class="border-0! p-0!"
-                      style={{ height: `${spacerBefore()}px` }}
-                    />
-                  </tr>
-                </Show>
-
-                <For each={visibleRows()}>
-                  {(row) => (
-                    <tr class="group" data-row>
-                      <td
-                        class="px-3 py-2.5 align-top"
-                        style={{ width: `${NAME_COL_WIDTH}px` }}
-                      >
-                        <Show
-                          when={
-                            editingCell()?.rowId === row.id &&
-                            editingCell()?.col === "title"
-                          }
-                          fallback={
-                            <div class="flex min-w-0 items-center gap-2">
-                              <a
-                                href={spacePath(currentSpace()?.slug, `/doc/${row.slug}`)}
-                                class="flex-1 truncate font-medium text-neutral-800 transition-colors hover:text-primary-600 hover:underline"
-                              >
-                                {rowTitle(row.properties)}
-                              </a>
-                              <button
-                                type="button"
-                                class="shrink-0 text-neutral-400 opacity-0 transition-all hover:text-neutral-700 group-hover:opacity-100"
-                                title="Edit name"
-                                onClick={() =>
-                                  startEdit(row.id, "title", rowTitle(row.properties))
-                                }
-                              >
-                                <Icon class="h-3.5 w-3.5" name="edit-entry" />
-                              </button>
-                            </div>
-                          }
-                        >
-                          <div class="flex items-center">
-                            <input
-                              ref={focusEditInput}
-                              value={editingValue()}
-                              onInput={(e) => setEditingValue(e.currentTarget.value)}
-                              class="flex-1 border-none bg-transparent text-neutral-800 text-size-medium outline-none"
-                              onBlur={() => void commitEdit()}
-                              onKeyDown={onCellKeydown}
-                            />
-                          </div>
-                        </Show>
+              <tbody>
+                <For each={[0.9, 0.6, 0.75]}>
+                  {(width) => (
+                    <tr>
+                      <td class="px-3 py-2.5">
+                        <div
+                          class="h-2.5 rounded-full bg-skeleton"
+                          style={{ width: `${width * 100}%` }}
+                        />
                       </td>
-
-                      <For each={derivedColumns()}>
-                        {(col) => (
-                          // biome-ignore lint/a11y/noStaticElementInteractions: the cell is the edit affordance; the input it opens is the control.
-                          // biome-ignore lint/a11y/useKeyWithClickEvents: the row link and the edit button are the keyboard paths.
-                          <td
-                            class="cursor-text px-3 py-2.5 align-top transition-colors hover:bg-neutral-50"
-                            classList={{
-                              "bg-background! shadow-[inset_0_0_0_2px_var(--color-primary-400)]":
-                                editingCell()?.rowId === row.id &&
-                                editingCell()?.col === col.name,
-                            }}
-                            style={{ width: `${DEFAULT_COL_WIDTH}px` }}
-                            onClick={() =>
-                              startEdit(
-                                row.id,
-                                col.name,
-                                cellValue(row.properties, col.name),
-                              )
-                            }
-                          >
-                            <Show
-                              when={
-                                editingCell()?.rowId === row.id &&
-                                editingCell()?.col === col.name
-                              }
-                              fallback={
-                                <div
-                                  class="min-h-[1.25rem] truncate text-neutral-700"
-                                  classList={{
-                                    "text-neutral-300 italic": !cellValue(
-                                      row.properties,
-                                      col.name,
-                                    ),
-                                  }}
-                                >
-                                  <Show
-                                    when={cellHref(cellValue(row.properties, col.name))}
-                                    fallback={cellValue(row.properties, col.name) || "—"}
-                                  >
-                                    {(href) => (
-                                      <a
-                                        href={href()}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        class="text-primary-600 hover:underline"
-                                        onClick={(event) => event.stopPropagation()}
-                                      >
-                                        {cellValue(row.properties, col.name)}
-                                      </a>
-                                    )}
-                                  </Show>
-                                </div>
-                              }
-                            >
-                              {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the cell's own click from restarting the edit it opened. */}
-                              {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
-                              <div
-                                class="flex items-center"
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <input
-                                  ref={focusEditInput}
-                                  value={editingValue()}
-                                  onInput={(e) => setEditingValue(e.currentTarget.value)}
-                                  type={
-                                    col.type === "number"
-                                      ? "number"
-                                      : col.type === "date"
-                                        ? "date"
-                                        : "text"
-                                  }
-                                  class="w-full border-none bg-transparent text-neutral-700 text-size-medium outline-none"
-                                  onBlur={() => void commitEdit()}
-                                  onKeyDown={onCellKeydown}
-                                />
-                              </div>
-                            </Show>
+                      <For each={[0.5, 0.7]}>
+                        {(cellWidth) => (
+                          <td class="px-3 py-2.5">
+                            <div
+                              class="h-2.5 rounded-full bg-neutral-100"
+                              style={{ width: `${cellWidth * 100}%` }}
+                            />
                           </td>
                         )}
                       </For>
-
-                      <td
-                        class="px-2 py-2.5 align-top"
-                        style={{ width: `${ACTION_COL_WIDTH}px` }}
-                      >
-                        <button
-                          type="button"
-                          class="text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
-                          title="Delete row"
-                          onClick={(event) => openDeleteRow(row.id, event)}
-                        >
-                          <Icon class="h-3.5 w-3.5" name="delete-entry" />
-                        </button>
-                      </td>
+                      <td />
                     </tr>
                   )}
                 </For>
-
-                <Show when={spacerAfter() > 0}>
-                  <tr>
-                    <td
-                      colspan={derivedColumns().length + 2}
-                      class="border-0! p-0!"
-                      style={{ height: `${spacerAfter()}px` }}
-                    />
-                  </tr>
-                </Show>
-
-                <Show when={rows().length === 0 && !isLoading()}>
-                  <tr>
-                    <td
-                      colspan={derivedColumns().length + 2}
-                      class="px-4 py-8 text-center text-neutral-400 text-size-small"
-                    >
-                      No rows yet. Click "New row" or import a CSV to get started.
-                    </td>
-                  </tr>
-                </Show>
               </tbody>
             </table>
-          </Show>
-        </div>
-
-        <div class="flex shrink-0 items-center justify-between gap-3 border-neutral-100 border-t px-3 py-2">
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
-            onClick={() => void addRow()}
+          }
+        >
+          <table
+            class="border-separate border-spacing-0 text-size-medium [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
+            style={{
+              "table-layout": "fixed",
+              // An explicit sum, not `max-content`: that measured the cells,
+              // so nowrap content widened its column instead of truncating,
+              // and the width moved as rows scrolled in and out.
+              width: `${tableWidth()}px`,
+              "min-width": "100%",
+            }}
           >
-            <Icon class="h-3.5 w-3.5" name="add" />
-            New row
-          </button>
-          <div class="flex items-center gap-3">
-            <span class="text-neutral-400 text-size-small">{rows().length} rows</span>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,text/csv,.ics,text/calendar"
-              class="hidden"
-              onChange={(event) => void onImportFileChange(event)}
-            />
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-50"
-              title="Import"
-              disabled={isImporting()}
-              onClick={openImportPicker}
-            >
-              <Icon class="h-3.5 w-3.5" name="csv-file" />
-              Import
-            </button>
-          </div>
-        </div>
+            <thead>
+              <tr class="bg-neutral-50 text-left">
+                <th
+                  class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
+                  style={{ ...stickyHeaderStyle, width: `${NAME_COL_WIDTH}px` }}
+                  aria-sort={ariaSort("title")}
+                >
+                  {columnHeader("title", "Name", false)}
+                </th>
+
+                <For each={derivedColumns()}>
+                  {(col) => (
+                    <th
+                      class="whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
+                      style={{ ...stickyHeaderStyle, width: `${DEFAULT_COL_WIDTH}px` }}
+                      aria-sort={ariaSort(col.name)}
+                    >
+                      {columnHeader(col.name, col.label, true)}
+                    </th>
+                  )}
+                </For>
+
+                <th
+                  class="bg-neutral-50 px-2"
+                  style={{ ...stickyHeaderStyle, width: `${ACTION_COL_WIDTH}px` }}
+                >
+                  <a-popover-trigger ref={addColumnTriggerRef as never}>
+                    <button
+                      type="button"
+                      slot="trigger"
+                      class="flex h-6 w-6 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                      title="Add column"
+                      onClick={onAddColumnTrigger}
+                    >
+                      <Icon class="h-3.5 w-3.5" name="add" />
+                    </button>
+                    <a-popover class="group" placements="bottom-end">
+                      <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+                        <div class="mt-1 flex w-56 flex-col gap-3 rounded-xl border border-neutral-200 bg-background p-4 shadow-large">
+                          <div class="font-medium text-neutral-700 text-size-small">
+                            Add column
+                          </div>
+                          <input
+                            ref={newColumnInputRef}
+                            value={newColumnName()}
+                            onInput={(e) => setNewColumnName(e.currentTarget.value)}
+                            type="text"
+                            placeholder="Column name"
+                            class="rounded-lg border border-neutral-200 bg-background px-3 py-1.5 text-size-medium focus:border-primary-400 focus:outline-none"
+                            onKeyDown={onAddColKeydown}
+                          />
+                          <select
+                            value={newColumnType()}
+                            onChange={(e) =>
+                              setNewColumnType(
+                                e.currentTarget.value as DatabaseColumn["type"],
+                              )
+                            }
+                            class="rounded-lg border border-neutral-200 bg-background px-3 py-1.5 text-size-medium focus:border-primary-400 focus:outline-none"
+                          >
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="select">Select</option>
+                          </select>
+                          <button
+                            type="button"
+                            class="rounded bg-primary-600 px-3 py-1.5 text-size-small text-white transition-colors hover:bg-primary-700"
+                            onClick={() => void commitAddColumn()}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </a-popover>
+                  </a-popover-trigger>
+                </th>
+              </tr>
+            </thead>
+
+            <tbody ref={bodyRef}>
+              <Show when={spacerBefore() > 0}>
+                <tr>
+                  <td
+                    colspan={derivedColumns().length + 2}
+                    class="border-0! p-0!"
+                    style={{ height: `${spacerBefore()}px` }}
+                  />
+                </tr>
+              </Show>
+
+              <For each={visibleRows()}>
+                {(row) => (
+                  <tr class="group" data-row>
+                    <td
+                      class="px-3 py-2.5 align-top"
+                      style={{ width: `${NAME_COL_WIDTH}px` }}
+                    >
+                      <Show
+                        when={
+                          editingCell()?.rowId === row.id &&
+                          editingCell()?.col === "title"
+                        }
+                        fallback={
+                          <div class="flex min-w-0 items-center gap-2">
+                            <a
+                              href={spacePath(currentSpace()?.slug, `/doc/${row.slug}`)}
+                              class="flex-1 truncate font-medium text-neutral-800 transition-colors hover:text-primary-600 hover:underline"
+                            >
+                              {rowTitle(row.properties)}
+                            </a>
+                            <button
+                              type="button"
+                              class="shrink-0 text-neutral-400 opacity-0 transition-all hover:text-neutral-700 group-hover:opacity-100"
+                              title="Edit name"
+                              onClick={() =>
+                                startEdit(row.id, "title", rowTitle(row.properties))
+                              }
+                            >
+                              <Icon class="h-3.5 w-3.5" name="edit-entry" />
+                            </button>
+                          </div>
+                        }
+                      >
+                        <div class="flex items-center">
+                          <input
+                            ref={focusEditInput}
+                            value={editingValue()}
+                            onInput={(e) => setEditingValue(e.currentTarget.value)}
+                            class="flex-1 border-none bg-transparent text-neutral-800 text-size-medium outline-none"
+                            onBlur={() => void commitEdit()}
+                            onKeyDown={onCellKeydown}
+                          />
+                        </div>
+                      </Show>
+                    </td>
+
+                    <For each={derivedColumns()}>
+                      {(col) => (
+                        // biome-ignore lint/a11y/noStaticElementInteractions: the cell is the edit affordance; the input it opens is the control.
+                        // biome-ignore lint/a11y/useKeyWithClickEvents: the row link and the edit button are the keyboard paths.
+                        <td
+                          class="cursor-text px-3 py-2.5 align-top transition-colors hover:bg-neutral-50"
+                          classList={{
+                            "bg-background! shadow-[inset_0_0_0_2px_var(--color-primary-400)]":
+                              editingCell()?.rowId === row.id &&
+                              editingCell()?.col === col.name,
+                          }}
+                          style={{ width: `${DEFAULT_COL_WIDTH}px` }}
+                          onClick={() =>
+                            startEdit(
+                              row.id,
+                              col.name,
+                              cellValue(row.properties, col.name),
+                            )
+                          }
+                        >
+                          <Show
+                            when={
+                              editingCell()?.rowId === row.id &&
+                              editingCell()?.col === col.name
+                            }
+                            fallback={
+                              <div
+                                class="min-h-[1.25rem] truncate text-neutral-700"
+                                classList={{
+                                  "text-neutral-300 italic": !cellValue(
+                                    row.properties,
+                                    col.name,
+                                  ),
+                                }}
+                              >
+                                <Show
+                                  when={cellHref(cellValue(row.properties, col.name))}
+                                  fallback={cellValue(row.properties, col.name) || "—"}
+                                >
+                                  {(href) => (
+                                    <a
+                                      href={href()}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      class="text-primary-600 hover:underline"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {cellValue(row.properties, col.name)}
+                                    </a>
+                                  )}
+                                </Show>
+                              </div>
+                            }
+                          >
+                            {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the cell's own click from restarting the edit it opened. */}
+                            {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
+                            <div
+                              class="flex items-center"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <input
+                                ref={focusEditInput}
+                                value={editingValue()}
+                                onInput={(e) => setEditingValue(e.currentTarget.value)}
+                                type={
+                                  col.type === "number"
+                                    ? "number"
+                                    : col.type === "date"
+                                      ? "date"
+                                      : "text"
+                                }
+                                class="w-full border-none bg-transparent text-neutral-700 text-size-medium outline-none"
+                                onBlur={() => void commitEdit()}
+                                onKeyDown={onCellKeydown}
+                              />
+                            </div>
+                          </Show>
+                        </td>
+                      )}
+                    </For>
+
+                    <td
+                      class="px-2 py-2.5 align-top"
+                      style={{ width: `${ACTION_COL_WIDTH}px` }}
+                    >
+                      <button
+                        type="button"
+                        class="text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
+                        title="Delete row"
+                        onClick={() => void deleteRowConfirmed(row.id)}
+                      >
+                        <Icon class="h-3.5 w-3.5" name="delete-entry" />
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+
+              <Show when={spacerAfter() > 0}>
+                <tr>
+                  <td
+                    colspan={derivedColumns().length + 2}
+                    class="border-0! p-0!"
+                    style={{ height: `${spacerAfter()}px` }}
+                  />
+                </tr>
+              </Show>
+
+              <Show when={rows().length === 0 && !isLoading()}>
+                <tr>
+                  <td
+                    colspan={derivedColumns().length + 2}
+                    class="px-4 py-8 text-center text-neutral-400 text-size-small"
+                  >
+                    No rows yet. Click "New row" or import a CSV to get started.
+                  </td>
+                </tr>
+              </Show>
+            </tbody>
+          </table>
+        </Show>
       </div>
 
-      <Show when={hasMounted()}>
-        <Portal>
-          <Show when={deletingColumn()}>
-            {(name) => (
-              // biome-ignore lint/a11y/noStaticElementInteractions: a click-away backdrop; the Cancel button is the keyboard path.
-              <div
-                class="fixed inset-0 z-50"
-                onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) setDeletingColumn(null);
-                }}
-              >
-                <div
-                  class="absolute flex w-44 flex-col gap-2 rounded-lg border border-neutral-200 bg-background p-3 shadow-large"
-                  style={columnPopoverStyle()}
-                >
-                  <div class="text-neutral-700 text-size-small">
-                    Delete column "
-                    {derivedColumns().find((c) => c.name === name())?.label}"?
-                  </div>
-                  <div class="flex gap-2">
-                    <button
-                      type="button"
-                      class="rounded border border-neutral-200 px-2 py-1 text-size-small transition-colors hover:bg-neutral-50"
-                      onClick={() => setDeletingColumn(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded bg-red-500 px-2 py-1 text-size-small text-white transition-colors hover:bg-red-600"
-                      onClick={() => void confirmDeleteColumn(name())}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Show>
-
-          <Show when={deletingRow()}>
-            {(rowId) => (
-              // biome-ignore lint/a11y/noStaticElementInteractions: a click-away backdrop; the Cancel button is the keyboard path.
-              <div
-                class="fixed inset-0 z-50"
-                onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) setDeletingRow(null);
-                }}
-              >
-                <div
-                  class="absolute flex w-44 flex-col gap-2 rounded-lg border border-neutral-200 bg-background p-3 shadow-large"
-                  style={rowPopoverStyle()}
-                >
-                  <div class="text-neutral-700 text-size-small">Delete this row?</div>
-                  <div class="flex gap-2">
-                    <button
-                      type="button"
-                      class="rounded border border-neutral-200 px-2 py-1 text-neutral-700 text-size-small transition-colors hover:bg-neutral-50"
-                      onClick={() => setDeletingRow(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded bg-red-500 px-2 py-1 text-size-small text-white transition-colors hover:bg-red-600"
-                      onClick={() => void confirmDeleteRow(rowId())}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Show>
-        </Portal>
-      </Show>
-    </>
+      <div class="flex shrink-0 items-center justify-between gap-3 border-neutral-100 border-t px-3 py-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
+          onClick={() => void addRow()}
+        >
+          <Icon class="h-3.5 w-3.5" name="add" />
+          New row
+        </button>
+        <div class="flex items-center gap-3">
+          <span class="text-neutral-400 text-size-small">{rows().length} rows</span>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv,.ics,text/calendar"
+            class="hidden"
+            onChange={(event) => void onImportFileChange(event)}
+          />
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-50"
+            title="Import"
+            disabled={isImporting()}
+            onClick={openImportPicker}
+          >
+            <Icon class="h-3.5 w-3.5" name="csv-file" />
+            Import
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

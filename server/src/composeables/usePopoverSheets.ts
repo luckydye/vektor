@@ -1,8 +1,10 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { useSwipeDrawer } from "./useSwipeDrawer.ts";
 
-// The panel of an open popover sheet; see `.popover-sheet` in components.css.
-const PANEL_SELECTOR = ".popover-sheet[enabled] > * > *";
+// The panel of an open popover sheet (see `.popover-sheet` in components.css)
+// or of an open Dialog, which is the same bottom sheet on phones.
+const PANEL_SELECTOR =
+  ".popover-sheet[enabled] > * > *, .dialog-layer[enabled] .dialog-panel";
 
 /**
  * Lets every open popover sheet be swiped down to dismiss. Sheets are plain
@@ -24,7 +26,7 @@ export function usePopoverSheets() {
     isOpen: () => panel !== null,
     setOpen: (open) => {
       if (open) return;
-      // The popover closes itself on an exit event from inside it.
+      // Popovers and Dialogs both close on an exit event from inside them.
       currentPanel().dispatchEvent(new CustomEvent("exit", { bubbles: true }));
     },
   });
@@ -39,7 +41,8 @@ export function usePopoverSheets() {
 
   function findPanel(e: TouchEvent) {
     const target = e.target;
-    panel = target instanceof Element ? target.closest<HTMLElement>(PANEL_SELECTOR) : null;
+    panel =
+      target instanceof Element ? target.closest<HTMLElement>(PANEL_SELECTOR) : null;
     if (panel) drawer.startFromDrawer(e);
   }
 

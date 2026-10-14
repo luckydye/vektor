@@ -17,6 +17,8 @@ interface Props {
   activeIndex?: number;
   onInput?: (value: string) => void;
   onSelect?: (item: SelectMenuItem) => void;
+  /** Lets the enclosing page scroll instead of capping the menu's own height. */
+  uncapped?: boolean;
 }
 
 export function SelectMenu(props: Props) {
@@ -26,7 +28,10 @@ export function SelectMenu(props: Props) {
     Array.isArray(merged.value) ? merged.value.includes(id) : id === merged.value;
 
   return (
-    <div class="flex max-h-[400px] w-full min-w-[180px] flex-col gap-[4px] overflow-y-auto py-[4px]">
+    <div
+      class="flex w-full min-w-[180px] flex-col gap-[4px] py-[4px]"
+      classList={{ "max-h-[400px] overflow-y-auto": !merged.uncapped }}
+    >
       <For each={merged.items}>
         {(item, index) => (
           <SelectItem

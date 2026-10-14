@@ -103,6 +103,10 @@ export function DatabaseDocumentView(props: Props) {
   const selectedExtensionView = createMemo(() =>
     configuredExtensionViews().find((view) => extensionViewId(view) === selectedViewId()),
   );
+  const selectedViewTitle = () => {
+    const view = selectedExtensionView();
+    return view ? extensionViewTitle(view) : "Table";
+  };
 
   createEffect(() => {
     const viewIds = orderedViewIds();
@@ -231,24 +235,15 @@ export function DatabaseDocumentView(props: Props) {
             <button
               type="button"
               class="flex h-9 items-center gap-2 rounded-lg border border-neutral-100 bg-background px-3 text-label @min-[60rem]:hidden"
+              title={selectedViewTitle()}
               onClick={() => setViewSheetOpen(true)}
             >
-              <Show
-                when={selectedExtensionView()}
-                fallback={
-                  <>
-                    <Icon class="h-4 w-4" name="table" />
-                    Table
-                  </>
-                }
-              >
-                {(view) => (
-                  <>
-                    <Icon class="h-4 w-4" name="grid-grid" />
-                    {extensionViewTitle(view())}
-                  </>
-                )}
-              </Show>
+              <Icon
+                class="h-4 w-4"
+                name={selectedExtensionView() ? "grid-grid" : "table"}
+              />
+              {/* On phones the breadcrumb needs the room; the sheet names every view. */}
+              <span class="@max-[30rem]:sr-only">{selectedViewTitle()}</span>
               <Icon class="h-4 w-4 text-neutral-400" name="chevron-down" />
             </button>
 

@@ -616,7 +616,7 @@ export function DocumentSharePopover(props: Props) {
       <button
         type="button"
         slot="trigger"
-        class="button-outline h-9 rounded-lg! aria-expanded:bg-neutral-50"
+        class="button-outline h-9 rounded-lg! aria-expanded:bg-neutral-50 max-md:hidden"
       >
         <Icon name="users-group" />
         <span>{t("Share")}</span>

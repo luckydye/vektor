@@ -19,6 +19,7 @@ import type {
   RichTextEditorFormat,
 } from "#editor/elements/rich-text-editor.ts";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 
 export type PendingAttachment = {
   id: string;
@@ -189,6 +190,7 @@ export function MessageInput(props: Props) {
     if (
       (merged.submitKey === "enter" &&
         isEnterNoShift &&
+        !matchMedia("(pointer: coarse)").matches &&
         !isInList &&
         !isMentionSuggestionOpen) ||
       (merged.submitKey === "ctrl+enter" && isCtrlEnter)
@@ -233,6 +235,25 @@ export function MessageInput(props: Props) {
     pendingAttachments: () => [...pendingAttachments],
     el: () => editorElement()?.el ?? null,
   });
+
+  const submitAction = () => (
+    <Show
+      when={actions()}
+      fallback={
+        <button
+          type="button"
+          disabled={!canSubmit()}
+          class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500 disabled:opacity-40"
+          title="Send"
+          onClick={() => merged.onSubmit?.()}
+        >
+          <Icon class="h-4 w-4" name="send-message" />
+        </button>
+      }
+    >
+      {actions()}
+    </Show>
+  );
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the drop surface wraps the editor; the editor and buttons inside are the controls.
@@ -287,7 +308,7 @@ export function MessageInput(props: Props) {
         </div>
       </Show>
 
-      <div class="relative flex items-start gap-2 pr-7">
+      <div class="relative flex items-start gap-2" classList={{ "pr-7": !merged.attachments }}>
         {merged.left}
 
         <rich-text-editor
@@ -320,35 +341,24 @@ export function MessageInput(props: Props) {
           }
         />
 
-        <div class="absolute inset-y-0 right-0 flex w-5 flex-col items-center justify-between">
-          <Show when={merged.attachments}>
-            <button
-              type="button"
-              title="Attach files"
-              class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700"
-              onClick={() => fileInputRef?.click()}
-            >
-              <Icon class="h-4 w-4" name="add-attachments" />
-            </button>
-          </Show>
-          <Show
-            when={actions()}
-            fallback={
-              <button
-                type="button"
-                disabled={!canSubmit()}
-                class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500 disabled:opacity-40"
-                title="Send"
-                onClick={() => merged.onSubmit?.()}
-              >
-                <Icon class="h-4 w-4" name="send-message" />
-              </button>
-            }
-          >
-            {actions()}
-          </Show>
-        </div>
+        <Show when={!merged.attachments}>
+          <div class="absolute inset-y-0 right-0 flex w-5 flex-col items-center justify-between">
+            {submitAction()}
+          </div>
+        </Show>
       </div>
+
+      <Show when={merged.attachments}>
+        <div class="mt-2 -mx-1 -mb-1 flex items-center justify-between">
+          <IconButton
+            icon="add-attachments"
+            label="Attach files"
+            class="pointer-coarse:h-9 pointer-coarse:w-9"
+            onClick={() => fileInputRef?.click()}
+          />
+          {submitAction()}
+        </div>
+      </Show>
 
       <Show when={merged.attachments}>
         <Show when={merged.isUploading}>

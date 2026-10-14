@@ -31,6 +31,7 @@ declare module "solid-js" {
       "on:task-toggle-request"?: (event: Event) => void;
       "attr:hidden"?: string | undefined;
       "attr:enabled"?: string | undefined;
+      "attr:placements"?: string;
       // `prop:` assigns a DOM property instead of an attribute — the only way
       // to hand a custom element an object.
       "prop:user"?: unknown;

@@ -8,7 +8,9 @@ import {
   Show,
   Switch,
 } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import { Button } from "./Button.tsx";
+import { SheetPage } from "./SheetPage.tsx";
 import { SelectMenu, type SelectMenuItem, useSelectMenuKeys } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import type { Property, SpaceProperty } from "#documents/properties.ts";
@@ -20,6 +22,8 @@ interface Props {
   propertyValues?: SelectMenuItem[];
   spaceProperties?: SpaceProperty[];
   isOpen?: boolean;
+  /** Opens as a page covering the enclosing sheet, which would clip a popover. */
+  sheet?: boolean;
   onUpdateIsOpen?: (value: boolean) => void;
   onCreate?: (property: {
     name: string;
@@ -39,6 +43,8 @@ export function PropertyPopover(props: Props) {
   const [mode, setMode] = createSignal<Mode>("select");
   let inputElement: HTMLInputElement | undefined;
   let searchElement: HTMLInputElement | undefined;
+  // The sheet page renders into its Dialog's panel, so it is tracked directly.
+  let sheetElement: HTMLDivElement | undefined;
   const [search, setSearch] = createSignal("");
   const [propertyName, setPropertyName] = createSignal("");
   const [selectedType, setSelectedType] = createSignal("");
@@ -48,7 +54,8 @@ export function PropertyPopover(props: Props) {
     ...(props.spaceProperties ?? [])
       .filter(
         (p) =>
-          p.name !== "title" && p.name.toLowerCase().includes(search().trim().toLowerCase()),
+          p.name !== "title" &&
+          p.name.toLowerCase().includes(search().trim().toLowerCase()),
       )
       .map((sp) => ({
         id: sp.name,
@@ -106,7 +113,8 @@ export function PropertyPopover(props: Props) {
   });
 
   createEffect(() => {
-    if (props.isOpen === true) {
+    // On a sheet the keyboard would cover the list; only the name field needs typing.
+    if (props.isOpen === true && !(props.sheet && mode() === "select")) {
       const target = mode() === "create" ? inputElement : searchElement;
       const handle = setTimeout(() => target?.focus(), 25);
       onCleanup(() => clearTimeout(handle));
@@ -119,7 +127,11 @@ export function PropertyPopover(props: Props) {
 
   onMount(() => {
     const onPointerDown = (e: PointerEvent) => {
-      if (!(e.target as Element | null)?.closest("a-blur") && props.isOpen === true) {
+      const target = e.target as Element | null;
+      const outside = props.sheet
+        ? !sheetElement?.contains(target)
+        : !target?.closest("a-blur");
+      if (outside && props.isOpen === true) {
         handleExit();
       }
     };
@@ -127,72 +139,97 @@ export function PropertyPopover(props: Props) {
     onCleanup(() => window.removeEventListener("pointerdown", onPointerDown));
   });
 
+  const fieldClass = () =>
+    props.sheet
+      ? "h-10 w-full flex-none rounded-lg border border-neutral-100 bg-neutral-50 px-3 text-interactive outline-none"
+      : "w-full border-none bg-transparent text-interactive outline-none";
+
+  const content = () => (
+    <Switch>
+      <Match when={mode() === "select"}>
+        <input
+          ref={searchElement}
+          value={search()}
+          onInput={(e) => setSearch(e.currentTarget.value)}
+          onKeyDown={searchKeys.onKeyDown}
+          class={twMerge(fieldClass(), !props.sheet && "mt-4xs px-4xs")}
+          placeholder={t("Search properties")}
+        />
+        <SelectMenu
+          uncapped={props.sheet}
+          items={spacePropertyItems()}
+          value={selectedPropertyName()}
+          activeIndex={searchKeys.activeIndex()}
+          onSelect={handleSpacePropertySelect}
+        />
+      </Match>
+
+      <Match when={mode() === "create"}>
+        {/* The sheet page's own back button steps back from here. */}
+        <Show when={!props.sheet}>
+          <div class="mt-4xs flex items-center justify-between px-4xs">
+            <div class="font-medium text-neutral-600 text-size-small">
+              {t("New Property")}
+            </div>
+            <button
+              type="button"
+              onClick={handleBack}
+              class="text-neutral-500 text-size-small hover:text-neutral-700"
+            >
+              {t("Back")}
+            </button>
+          </div>
+        </Show>
+
+        <input
+          value={propertyName()}
+          onInput={(e) => setPropertyName(e.currentTarget.value)}
+          ref={inputElement}
+          class={twMerge(fieldClass(), !props.sheet && "mt-4xs px-3xs")}
+          placeholder={t("Property name")}
+        />
+
+        <SelectMenu
+          uncapped={props.sheet}
+          items={props.propertyTypes ?? []}
+          value={selectedType()}
+          onSelect={(item) => setSelectedType(item.id)}
+        />
+
+        <Button
+          text={t("Create")}
+          class="justify-center"
+          disabled={!propertyName().trim() || !selectedType()}
+          onClick={handleCreate}
+        />
+      </Match>
+    </Switch>
+  );
+
   return (
     <Show when={props.isOpen}>
-      <a-blur
-        enabled
-        on:exit={handleExit}
-        class="absolute -top-4xs -left-5xs z-50 flex min-w-[200px] flex-col gap-4xs rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
+      <Show
+        when={props.sheet}
+        fallback={
+          <a-blur
+            enabled
+            on:exit={handleExit}
+            class="absolute -top-4xs -left-5xs z-50 flex min-w-[200px] flex-col gap-4xs rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
+          >
+            {content()}
+          </a-blur>
+        }
       >
-        <Switch>
-          <Match when={mode() === "select"}>
-            <input
-              ref={searchElement}
-              value={search()}
-              onInput={(e) => setSearch(e.currentTarget.value)}
-              onKeyDown={searchKeys.onKeyDown}
-              class="mt-4xs w-full border-none bg-transparent px-4xs text-interactive outline-none"
-              placeholder={t("Search properties")}
-            />
-            <SelectMenu
-              items={spacePropertyItems()}
-              value={selectedPropertyName()}
-              activeIndex={searchKeys.activeIndex()}
-              onSelect={handleSpacePropertySelect}
-            />
-          </Match>
-
-          <Match when={mode() === "create"}>
-            <div class="mt-4xs flex items-center justify-between px-4xs">
-              <div class="font-medium text-neutral-600 text-size-small">
-                {t("New Property")}
-              </div>
-              <button
-                type="button"
-                onClick={handleBack}
-                class="text-neutral-500 text-size-small hover:text-neutral-700"
-              >
-                {t("Back")}
-              </button>
-            </div>
-
-            <div class="mt-4xs flex w-full flex-col gap-2.5 px-4xs">
-              <div class="flex-1 overflow-hidden">
-                <input
-                  value={propertyName()}
-                  onInput={(e) => setPropertyName(e.currentTarget.value)}
-                  ref={inputElement}
-                  class="w-full border-none bg-transparent px-5xs text-interactive outline-none"
-                  placeholder={t("Property name")}
-                />
-              </div>
-            </div>
-
-            <SelectMenu
-              items={props.propertyTypes ?? []}
-              value={selectedType()}
-              onSelect={(item) => setSelectedType(item.id)}
-            />
-
-            <Button
-              text={t("Create")}
-              class="justify-center"
-              disabled={!propertyName().trim() || !selectedType()}
-              onClick={handleCreate}
-            />
-          </Match>
-        </Switch>
-      </a-blur>
+        <SheetPage
+          ref={(element) => {
+            sheetElement = element;
+          }}
+          title={t("New property")}
+          onBack={() => (mode() === "create" ? handleBack() : handleExit())}
+        >
+          {content()}
+        </SheetPage>
+      </Show>
     </Show>
   );
 }

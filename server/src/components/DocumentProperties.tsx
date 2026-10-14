@@ -19,7 +19,7 @@ import type { TranslationKey } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Button } from "./Button.tsx";
 import type { CategoryBadgeData } from "./CategoryBadge.tsx";
-import type { IconName } from "./Icon.tsx";
+import { Icon, type IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
 import type { SelectMenuItem } from "./SelectMenu.tsx";
@@ -28,7 +28,8 @@ import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 interface Props {
   documentId?: string;
   documentType?: string;
-  layout?: "inline" | "labeled" | "toolbar";
+  /** `sheet` is a full-width list for phones; editors open as pages over it. */
+  layout?: "inline" | "labeled" | "toolbar" | "sheet";
   /** Splits the set so the category chip can render apart from the rest. */
   part?: "category" | "others";
   readonly?: boolean;
@@ -414,91 +415,151 @@ export function DocumentProperties(props: Props) {
     <div
       class={twMerge(
         "pointer-events-none flex gap-3xs -mx-0.5",
-        props.layout === "labeled" ? "flex-col items-start" : "flex-wrap items-center",
-        props.layout === "toolbar" && "mx-0 gap-5xs",
+        props.layout === "labeled"
+          ? "flex-col items-start"
+          : props.layout === "sheet"
+            ? "mx-0 flex-col gap-0 divide-y divide-neutral-100"
+            : "flex-wrap items-center",
+        props.layout === "toolbar" && "mx-0 flex-nowrap gap-5xs",
       )}
     >
-      <For each={properties()}>
-        {(property) => {
-          // The chip already reads "Template", so the labeled layout keeps the
-          // name column empty for it — width and all, to stay on the grid.
-          const isMarker = property.id === templatePropertyKey;
-          const readonly = () =>
-            props.readonly ||
-            isMarker ||
-            (property.type === TRIGGER_PROPERTY_TYPE && !triggersEnabled());
+      {/* The toolbar scrolls its chips sideways instead of wrapping out of its bar. */}
+      <div
+        class={
+          props.layout === "toolbar"
+            ? "flex min-w-0 items-center gap-5xs overflow-x-auto empty:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
+            : "contents"
+        }
+      >
+        <For each={properties()}>
+          {(property) => {
+            // The chip already reads "Template", so the labeled layout keeps the
+            // name column empty for it — width and all, to stay on the grid.
+            const isMarker = property.id === templatePropertyKey;
+            const readonly = () =>
+              props.readonly ||
+              isMarker ||
+              (property.type === TRIGGER_PROPERTY_TYPE && !triggersEnabled());
 
-          return (
-            <div
-              class={twMerge(
-                "pointer-events-auto",
-                props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
-              )}
-            >
-              <Show when={props.layout === "labeled"}>
-                <span
-                  class="w-28 shrink-0 truncate text-interactive text-neutral-700"
-                  title={isMarker ? undefined : getPropertyName(property)}
-                >
-                  {isMarker ? "" : getPropertyName(property)}
-                </span>
-              </Show>
+            // On phones the toolbar's category shrinks to its badge to leave the title room;
+            // the chip's label-side padding would then push the separator away.
+            const badgeOnly = props.layout === "toolbar" && property.id === "category";
+            const sheet = props.layout === "sheet";
+            // The sheet names each row, so an empty value can't fall back to the name.
+            const isEmpty = () =>
+              sheet &&
+              (Array.isArray(property.value)
+                ? property.value.length === 0
+                : !propertyValueToScalar(property.value));
 
-              <PropertyChip
-                label={getPropertyLabel(property)}
-                nameLabel={getPropertyName(property)}
-                valueLabels={getPropertyValueLabels(property)}
-                icon={getPropertyIcon(property)}
-                badge={getPropertyBadge(property)}
-                variant={
-                  props.layout === "toolbar" ? "quiet" : getPropertyVariant(property)
-                }
-                readonly={readonly()}
-                property={property}
-                showTooltip={props.layout !== "labeled" && !isMarker}
-                tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
-                allowMultiple={
-                  property.type === "multi-select" || Array.isArray(property.value)
-                }
-                propertyValues={getPropertyValues}
-                trigger={getTriggerEditor(property)}
-                onUpdate={
-                  readonly() ? undefined : (updated) => void handleUpdateProperty(updated)
-                }
-                onDelete={
-                  readonly() ? undefined : (deleted) => void handleDeleteProperty(deleted)
-                }
-              />
-            </div>
-          );
-        }}
-      </For>
+            return (
+              <div
+                class={twMerge(
+                  "pointer-events-auto",
+                  props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
+                  sheet && "flex min-h-12 items-center gap-3xs",
+                  badgeOnly && "max-md:-mr-2",
+                )}
+              >
+                <Show when={props.layout === "labeled" || sheet}>
+                  <span
+                    class={twMerge(
+                      "w-28 shrink-0 truncate text-interactive text-neutral-700",
+                      sheet && "text-neutral-500",
+                    )}
+                    title={isMarker ? undefined : getPropertyName(property)}
+                  >
+                    {isMarker ? "" : getPropertyName(property)}
+                  </span>
+                </Show>
+
+                <PropertyChip
+                  label={isEmpty() ? t("Empty") : getPropertyLabel(property)}
+                  nameLabel={getPropertyName(property)}
+                  valueLabels={getPropertyValueLabels(property)}
+                  labelClass={
+                    badgeOnly
+                      ? "max-md:hidden"
+                      : sheet
+                        ? twMerge("max-w-none", isEmpty() && "text-neutral-400")
+                        : undefined
+                  }
+                  sheet={sheet}
+                  icon={getPropertyIcon(property)}
+                  badge={getPropertyBadge(property)}
+                  variant={
+                    props.layout === "toolbar" || sheet
+                      ? "quiet"
+                      : getPropertyVariant(property)
+                  }
+                  readonly={readonly()}
+                  property={property}
+                  showTooltip={props.layout !== "labeled" && !sheet && !isMarker}
+                  tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
+                  allowMultiple={
+                    property.type === "multi-select" || Array.isArray(property.value)
+                  }
+                  propertyValues={getPropertyValues}
+                  trigger={getTriggerEditor(property)}
+                  onUpdate={
+                    readonly()
+                      ? undefined
+                      : (updated) => void handleUpdateProperty(updated)
+                  }
+                  onDelete={
+                    readonly()
+                      ? undefined
+                      : (deleted) => void handleDeleteProperty(deleted)
+                  }
+                />
+              </div>
+            );
+          }}
+        </For>
+      </div>
 
       <Show when={!props.readonly && props.part !== "category"}>
         <div
           class={twMerge(
             "pointer-events-auto",
-            props.layout === "labeled" ? "relative ml-28 pl-3xs" : "relative",
+            props.layout === "labeled" && "relative ml-28 pl-3xs",
+            // Unpositioned in the sheet, so the form's page covers the whole sheet.
+            props.layout !== "labeled" && props.layout !== "sheet" && "relative",
           )}
         >
-          <Button
-            variant="outline"
-            size="small"
-            icon="add"
-            ariaLabel={t("New property")}
-            tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
-            class={`w-full justify-center border-transparent! bg-transparent! hover:bg-neutral-100! [&_svg]:text-neutral-700 hover:[&_svg]:text-neutral-900 ${props.layout === "toolbar" ? "w-7! px-0!" : ""}`}
-            onClick={() => setIsCreatePopoverOpen(!isCreatePopoverOpen())}
-          />
+          <Show
+            when={props.layout === "sheet"}
+            fallback={
+              <Button
+                variant="outline"
+                size="small"
+                icon="add"
+                ariaLabel={t("New property")}
+                tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
+                class={`w-full justify-center border-transparent! bg-transparent! hover:bg-neutral-100! [&_svg]:text-neutral-700 hover:[&_svg]:text-neutral-900 ${props.layout === "toolbar" ? "w-7! px-0!" : ""}`}
+                onClick={() => setIsCreatePopoverOpen(!isCreatePopoverOpen())}
+              />
+            }
+          >
+            <button
+              type="button"
+              class="flex h-12 w-full items-center gap-3xs text-interactive text-neutral-500"
+              onClick={() => setIsCreatePopoverOpen(true)}
+            >
+              <Icon name="add" class="h-4 w-4" />
+              {t("New property")}
+            </button>
+          </Show>
 
           <PropertyPopover
+            sheet={props.layout === "sheet"}
             isOpen={isCreatePopoverOpen()}
             propertyTypes={propertyTypes
               .filter((item) => item.id !== TRIGGER_PROPERTY_TYPE || triggersEnabled())
               .map((item) => ({
-              ...item,
-              label: t(item.label),
-            }))}
+                ...item,
+                label: t(item.label),
+              }))}
             spaceProperties={availableNewProperties()}
             onUpdateIsOpen={setIsCreatePopoverOpen}
             onCreate={(property) => void handleCreate(property)}

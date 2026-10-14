@@ -76,7 +76,7 @@ export function ContextMenu(props: Props) {
 
       <a-popover
         class="group popover-sheet"
-        placements={props.placements ?? "bottom-end"}
+        attr:placements={props.placements ?? "bottom-end"}
       >
         <div class="w-max p-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
           <div
