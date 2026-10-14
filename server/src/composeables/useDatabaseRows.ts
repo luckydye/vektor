@@ -1,6 +1,6 @@
 import { type Accessor, createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
-import type { DocumentProperties } from "#documents/properties.ts";
+import type { DocumentProperties, DocumentPropertyValue } from "#documents/properties.ts";
 import { canonicalPropertyKey } from "#documents/properties.ts";
 import { placeholderDocumentTitle } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
@@ -148,7 +148,11 @@ export function useDatabaseRows(
   });
 
   const updateRowPropertyMutation = useMutation({
-    mutationFn: async (params: { rowId: string; name: string; value: string }) => {
+    mutationFn: async (params: {
+      rowId: string;
+      name: string;
+      value: DocumentPropertyValue;
+    }) => {
       const id = spaceId();
       if (!id) throw new Error("No space ID");
       await api.document.patch(id, params.rowId, {
@@ -193,7 +197,11 @@ export function useDatabaseRows(
     });
   }
 
-  async function updateRowProperty(rowId: string, name: string, value: string) {
+  async function updateRowProperty(
+    rowId: string,
+    name: string,
+    value: DocumentPropertyValue,
+  ) {
     await updateRowPropertyMutation.mutateAsync({ rowId, name, value });
   }
 
@@ -233,6 +241,20 @@ export function useDatabaseRows(
     await updateSchemaMutation.mutateAsync(updated);
   }
 
+  async function changeColumnType(columnName: string, type: DatabaseColumn["type"]) {
+    const updated: DatabaseSchema = {
+      columns: derivedColumns().map((c) => (c.name === columnName ? { ...c, type } : c)),
+    };
+    await updateSchemaMutation.mutateAsync(updated);
+  }
+
+  /** The values rows already hold for a column, offered as a select's options. */
+  async function listColumnValues(columnName: string): Promise<string[]> {
+    const id = spaceId();
+    if (!id) throw new Error("No space ID");
+    return (await api.properties.values(id, columnName, { limit: 500 })).values;
+  }
+
   async function renameColumn(from: string, to: string) {
     const id = spaceId();
     if (!id) throw new Error("No space ID");
@@ -266,5 +288,7 @@ export function useDatabaseRows(
     addColumns,
     deleteColumn,
     renameColumn,
+    changeColumnType,
+    listColumnValues,
   };
 }

@@ -9,6 +9,7 @@ import {
   Show,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
+import { useColumnWidths } from "#composeables/useColumnWidths.ts";
 import { useDatabaseFileImport } from "#composeables/useDatabaseFileImport.ts";
 import type { DatabaseColumn, DatabaseSort } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
@@ -22,14 +23,22 @@ import {
   readDocumentProperty,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
-import { ContextMenu } from "./ContextMenu.tsx";
+import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
+import { PropertyChip } from "./PropertyChip.tsx";
 
 interface Props {
   databaseDocumentId: string;
   schemaJson?: string;
 }
+
+const COLUMN_TYPES: { type: DatabaseColumn["type"]; label: string }[] = [
+  { type: "text", label: "Text" },
+  { type: "number", label: "Number" },
+  { type: "date", label: "Date" },
+  { type: "select", label: "Select" },
+];
 
 const DEFAULT_COL_WIDTH = 180;
 const NAME_COL_WIDTH = 240;
@@ -90,7 +99,8 @@ export function DatabaseView(props: Props) {
 
   // Column actions sit behind the dots, so the header itself stays a plain
   // sort toggle; the cell keeps its highlight while the menu is open.
-  const columnHeader = (key: string, label: string, editable: boolean) => (
+  // `type` is unset for the fixed name column, which has no actions.
+  const columnHeader = (key: string, label: string, type?: DatabaseColumn["type"]) => (
     <div class="flex w-full items-center transition-colors has-[[aria-expanded=true]]:bg-neutral-100 has-[input]:bg-neutral-100">
       <Show
         when={renamingColumn() === key}
@@ -130,7 +140,7 @@ export function DatabaseView(props: Props) {
           onBlur={(event) => void commitRename(key, event.currentTarget.value)}
         />
       </Show>
-      <Show when={editable} fallback={<span class="pr-3" />}>
+      <Show when={type} fallback={<span class="pr-3" />}>
         <ContextMenu
           placements="bottom-end"
           ariaLabel={`${label} column`}
@@ -139,32 +149,88 @@ export function DatabaseView(props: Props) {
               type="button"
               slot="trigger"
               aria-label={`${label} column actions`}
+              onClick={() => setTypeMenuColumn(null)}
               class="mr-1.5 ml-1 flex cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 aria-expanded:bg-neutral-200 aria-expanded:text-neutral-700"
             >
               <Icon name="context-menu-more" class="h-4 w-4" />
             </button>
           }
         >
-          <ContextMenuItem
-            onClick={(event) => {
-              closeMenu(event);
-              setRenamingColumn(key);
-            }}
+          <Show
+            when={typeMenuColumn() === key}
+            fallback={
+              <>
+                <ContextMenuItem
+                  onClick={(event) => {
+                    closeMenu(event);
+                    setRenamingColumn(key);
+                  }}
+                >
+                  <Icon name="edit-entry" class="h-4 w-4 flex-none" />
+                  <span class="text-neutral-900">Rename</span>
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => setTypeMenuColumn(key)}
+                  class="min-w-[10rem]"
+                >
+                  <Icon name="generic-property" class="h-4 w-4 flex-none" />
+                  <span class="flex-1 text-left text-neutral-900">Type</span>
+                  <span class="text-neutral-500">
+                    {COLUMN_TYPES.find((option) => option.type === type)?.label}
+                  </span>
+                  <Icon
+                    name="chevron-right-small"
+                    class="h-3 w-3 flex-none text-neutral-500"
+                  />
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onClick={(event) => {
+                    closeMenu(event);
+                    void deleteColumnConfirmed(key, label);
+                  }}
+                >
+                  <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
+                  <span class="text-red-600">Delete column</span>
+                </ContextMenuItem>
+              </>
+            }
           >
-            <Icon name="edit-entry" class="h-4 w-4 flex-none" />
-            <span class="text-neutral-900">Rename</span>
-          </ContextMenuItem>
-          <ContextMenuItem
-            onClick={(event) => {
-              closeMenu(event);
-              void deleteColumnConfirmed(key, label);
-            }}
-          >
-            <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
-            <span class="text-red-600">Delete column</span>
-          </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => setTypeMenuColumn(null)}
+              class="min-w-[10rem]"
+            >
+              <Icon name="chevron-left-thin" class="h-4 w-4 flex-none text-neutral-500" />
+              <span class="text-neutral-500">Type</span>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <For each={COLUMN_TYPES}>
+              {(option) => (
+                <ContextMenuItem
+                  onClick={(event) => {
+                    closeMenu(event);
+                    if (option.type !== type) void changeColumnType(key, option.type);
+                  }}
+                >
+                  <Icon
+                    name="confirmation"
+                    class={
+                      option.type === type
+                        ? "h-4 w-4 flex-none"
+                        : "invisible h-4 w-4 flex-none"
+                    }
+                  />
+                  <span class="text-neutral-900">{option.label}</span>
+                </ContextMenuItem>
+              )}
+            </For>
+          </Show>
         </ContextMenu>
       </Show>
+      <div
+        class="absolute top-0 -right-px z-10 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary-400 active:bg-primary-400"
+        onPointerDown={(event) => startResize(key, event)}
+      />
     </div>
   );
   const { currentSpace } = useSpace();
@@ -186,6 +252,8 @@ export function DatabaseView(props: Props) {
     addColumns,
     deleteColumn,
     renameColumn,
+    changeColumnType,
+    listColumnValues,
   } = useDatabaseRows(() => props.databaseDocumentId, sort);
 
   createEffect(() => setSchemaStr(props.schemaJson));
@@ -245,6 +313,8 @@ export function DatabaseView(props: Props) {
   }
 
   const [renamingColumn, setRenamingColumn] = createSignal<string | null>(null);
+  // The column whose menu shows the type options instead of its actions.
+  const [typeMenuColumn, setTypeMenuColumn] = createSignal<string | null>(null);
 
   // Enter and Escape clear the signal first, so the blur that follows is a no-op.
   async function commitRename(from: string, value: string) {
@@ -261,6 +331,36 @@ export function DatabaseView(props: Props) {
     const current = sort();
     if (current?.key === from) commitSort({ key: to, order: current.order });
   }
+
+  // A row holding several values keeps them; one holding a single value stays single.
+  const selectCell = (rowId: string, properties: DocumentProperties, col: string) => {
+    const value = () => readDocumentProperty(properties, col);
+    const labels = () => {
+      const current = value();
+      return Array.isArray(current) ? current : current ? [current] : [];
+    };
+    return (
+      <PropertyChip
+        variant="quiet"
+        icon="generic-property"
+        label="—"
+        nameLabel={col}
+        valueLabels={labels()}
+        showTooltip={false}
+        allowMultiple={Array.isArray(value())}
+        property={{ id: col, name: col, type: "select", value: value() }}
+        propertyValues={async () =>
+          (await listColumnValues(col)).map((option) => ({
+            id: option,
+            label: option,
+            icon: "generic-property",
+          }))
+        }
+        onUpdate={(updated) => void updateRowProperty(rowId, col, updated.value ?? "")}
+        onDelete={() => void updateRowProperty(rowId, col, "")}
+      />
+    );
+  };
 
   async function deleteColumnConfirmed(name: string, label: string) {
     if (!(await confirmDialog(`Delete column "${label}"?`, { tone: "danger" }))) return;
@@ -319,8 +419,16 @@ export function DatabaseView(props: Props) {
   // inside its own scroller.
   const stickyHeaderStyle = { position: "sticky", top: "0", "z-index": "1" } as const;
 
+  const { width: columnWidth, startResize } = useColumnWidths({
+    key: () => `database-col-widths:${props.databaseDocumentId}`,
+    defaultWidth: (col) => (col === "title" ? NAME_COL_WIDTH : DEFAULT_COL_WIDTH),
+  });
+
   const tableWidth = createMemo(
-    () => NAME_COL_WIDTH + derivedColumns().length * DEFAULT_COL_WIDTH + ACTION_COL_WIDTH,
+    () =>
+      columnWidth("title") +
+      derivedColumns().reduce((sum, col) => sum + columnWidth(col.name), 0) +
+      ACTION_COL_WIDTH,
   );
 
   const isVirtualized = createMemo(
@@ -474,20 +582,23 @@ export function DatabaseView(props: Props) {
               <tr class="bg-neutral-50 text-left">
                 <th
                   class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
-                  style={{ ...stickyHeaderStyle, width: `${NAME_COL_WIDTH}px` }}
+                  style={{ ...stickyHeaderStyle, width: `${columnWidth("title")}px` }}
                   aria-sort={ariaSort("title")}
                 >
-                  {columnHeader("title", "Name", false)}
+                  {columnHeader("title", "Name")}
                 </th>
 
                 <For each={derivedColumns()}>
                   {(col) => (
                     <th
                       class="whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
-                      style={{ ...stickyHeaderStyle, width: `${DEFAULT_COL_WIDTH}px` }}
+                      style={{
+                        ...stickyHeaderStyle,
+                        width: `${columnWidth(col.name)}px`,
+                      }}
                       aria-sort={ariaSort(col.name)}
                     >
-                      {columnHeader(col.name, col.label, true)}
+                      {columnHeader(col.name, col.label, col.type)}
                     </th>
                   )}
                 </For>
@@ -566,7 +677,7 @@ export function DatabaseView(props: Props) {
                   <tr class="group" data-row>
                     <td
                       class="px-3 py-2.5 align-top"
-                      style={{ width: `${NAME_COL_WIDTH}px` }}
+                      style={{ width: `${columnWidth("title")}px` }}
                     >
                       <Show
                         when={
@@ -609,82 +720,93 @@ export function DatabaseView(props: Props) {
 
                     <For each={derivedColumns()}>
                       {(col) => (
-                        // biome-ignore lint/a11y/noStaticElementInteractions: the cell is the edit affordance; the input it opens is the control.
-                        // biome-ignore lint/a11y/useKeyWithClickEvents: the row link and the edit button are the keyboard paths.
-                        <td
-                          class="cursor-text px-3 py-2.5 align-top transition-colors hover:bg-neutral-50"
-                          classList={{
-                            "bg-background! shadow-[inset_0_0_0_2px_var(--color-primary-400)]":
-                              editingCell()?.rowId === row.id &&
-                              editingCell()?.col === col.name,
-                          }}
-                          style={{ width: `${DEFAULT_COL_WIDTH}px` }}
-                          onClick={() =>
-                            startEdit(
-                              row.id,
-                              col.name,
-                              cellValue(row.properties, col.name),
-                            )
+                        <Show
+                          when={col.type !== "select"}
+                          fallback={
+                            <td
+                              class="px-1.5 py-1.5 align-top"
+                              style={{ width: `${columnWidth(col.name)}px` }}
+                            >
+                              {selectCell(row.id, row.properties, col.name)}
+                            </td>
                           }
                         >
-                          <Show
-                            when={
-                              editingCell()?.rowId === row.id &&
-                              editingCell()?.col === col.name
-                            }
-                            fallback={
-                              <div
-                                class="min-h-[1.25rem] truncate text-neutral-700"
-                                classList={{
-                                  "text-neutral-300 italic": !cellValue(
-                                    row.properties,
-                                    col.name,
-                                  ),
-                                }}
-                              >
-                                <Show
-                                  when={cellHref(cellValue(row.properties, col.name))}
-                                  fallback={cellValue(row.properties, col.name) || "—"}
-                                >
-                                  {(href) => (
-                                    <a
-                                      href={href()}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      class="text-primary-600 hover:underline"
-                                      onClick={(event) => event.stopPropagation()}
-                                    >
-                                      {cellValue(row.properties, col.name)}
-                                    </a>
-                                  )}
-                                </Show>
-                              </div>
+                          {/* biome-ignore lint/a11y/useKeyWithClickEvents: the row link and the edit button are the keyboard paths. */}
+                          <td
+                            class="cursor-text px-3 py-2.5 align-top transition-colors hover:bg-neutral-50"
+                            classList={{
+                              "bg-background! shadow-[inset_0_0_0_2px_var(--color-primary-400)]":
+                                editingCell()?.rowId === row.id &&
+                                editingCell()?.col === col.name,
+                            }}
+                            style={{ width: `${columnWidth(col.name)}px` }}
+                            onClick={() =>
+                              startEdit(
+                                row.id,
+                                col.name,
+                                cellValue(row.properties, col.name),
+                              )
                             }
                           >
-                            {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the cell's own click from restarting the edit it opened. */}
-                            {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
-                            <div
-                              class="flex items-center"
-                              onClick={(event) => event.stopPropagation()}
+                            <Show
+                              when={
+                                editingCell()?.rowId === row.id &&
+                                editingCell()?.col === col.name
+                              }
+                              fallback={
+                                <div
+                                  class="min-h-[1.25rem] truncate text-neutral-700"
+                                  classList={{
+                                    "text-neutral-300 italic": !cellValue(
+                                      row.properties,
+                                      col.name,
+                                    ),
+                                  }}
+                                >
+                                  <Show
+                                    when={cellHref(cellValue(row.properties, col.name))}
+                                    fallback={cellValue(row.properties, col.name) || "—"}
+                                  >
+                                    {(href) => (
+                                      <a
+                                        href={href()}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="text-primary-600 hover:underline"
+                                        onClick={(event) => event.stopPropagation()}
+                                      >
+                                        {cellValue(row.properties, col.name)}
+                                      </a>
+                                    )}
+                                  </Show>
+                                </div>
+                              }
                             >
-                              <input
-                                ref={focusEditInput}
-                                value={editingValue()}
-                                onInput={(e) => setEditingValue(e.currentTarget.value)}
-                                type={
-                                  col.type === "number"
-                                    ? "number"
-                                    : col.type === "date"
-                                      ? "date"
-                                      : "text"
-                                }
-                                class="w-full border-none bg-transparent text-neutral-700 text-size-medium outline-none"
-                                onBlur={() => void commitEdit()}
-                                onKeyDown={onCellKeydown}
-                              />
-                            </div>
-                          </Show>
-                        </td>
+                              {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the cell's own click from restarting the edit it opened. */}
+                              {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
+                              <div
+                                class="flex items-center"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <input
+                                  ref={focusEditInput}
+                                  value={editingValue()}
+                                  onInput={(e) => setEditingValue(e.currentTarget.value)}
+                                  type={
+                                    col.type === "number"
+                                      ? "number"
+                                      : col.type === "date"
+                                        ? "date"
+                                        : "text"
+                                  }
+                                  class="w-full border-none bg-transparent text-neutral-700 text-size-medium outline-none"
+                                  onBlur={() => void commitEdit()}
+                                  onKeyDown={onCellKeydown}
+                                />
+                              </div>
+                            </Show>
+                          </td>
+                        </Show>
                       )}
                     </For>
 

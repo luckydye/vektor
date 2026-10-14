@@ -1,14 +1,5 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Index,
-  on,
-  onCleanup,
-  Show,
-} from "solid-js";
-import { usePersistedState } from "#composeables/usePersistedState.ts";
+import { createEffect, createMemo, createSignal, For, Index, on, Show } from "solid-js";
+import { useColumnWidths } from "#composeables/useColumnWidths.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/xlsx.ts";
@@ -213,52 +204,15 @@ export function DataTable(props: Props) {
     return spacePath(currentSpace()?.slug, `/doc/${encodeURIComponent(text)}`);
   }
 
-  const {
-    value: columnWidths,
-    commit: commitColumnWidths,
-    set: setColumnWidths,
-  } = usePersistedState<Record<string, number>>({
+  const { width: columnWidth, startResize } = useColumnWidths({
     key: () => (props.documentId ? `datatable-col-widths-${props.documentId}` : null),
-    fallback: {},
+    defaultWidth: () => DEFAULT_COL_WIDTH,
     area: "session",
   });
 
   function colWidth(col: string): string {
-    return `${columnWidths()[col] ?? DEFAULT_COL_WIDTH}px`;
+    return `${columnWidth(col)}px`;
   }
-
-  let resizeCol: string | null = null;
-  let resizeStartX = 0;
-  let resizeStartWidth = 0;
-
-  function onResizeMouseMove(e: MouseEvent) {
-    if (!resizeCol) return;
-    const newWidth = Math.max(80, resizeStartWidth + (e.clientX - resizeStartX));
-    setColumnWidths({ ...columnWidths(), [resizeCol]: newWidth });
-  }
-
-  function onResizeMouseUp() {
-    resizeCol = null;
-    document.removeEventListener("mousemove", onResizeMouseMove);
-    document.removeEventListener("mouseup", onResizeMouseUp);
-    commitColumnWidths(columnWidths());
-  }
-
-  function onResizeMouseDown(col: string, e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    resizeCol = col;
-    resizeStartX = e.clientX;
-    resizeStartWidth = columnWidths()[col] ?? DEFAULT_COL_WIDTH;
-    document.addEventListener("mousemove", onResizeMouseMove);
-    document.addEventListener("mouseup", onResizeMouseUp);
-  }
-
-  onCleanup(() => {
-    if (typeof document === "undefined") return;
-    document.removeEventListener("mousemove", onResizeMouseMove);
-    document.removeEventListener("mouseup", onResizeMouseUp);
-  });
 
   return (
     <div>
@@ -318,7 +272,7 @@ export function DataTable(props: Props) {
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: a pointer-only resize affordance; keyboard resizing has no equivalent here. */}
                     <div
                       class="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-neutral-300 active:bg-neutral-400"
-                      onMouseDown={(event) => onResizeMouseDown(col, event)}
+                      onPointerDown={(event) => startResize(col, event)}
                     />
                   </th>
                 )}
