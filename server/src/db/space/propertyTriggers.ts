@@ -1,4 +1,5 @@
 import { and, eq, isNull, lte } from "drizzle-orm";
+import { PermissionDeniedError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { many, one } from "#db/client/query.ts";
@@ -14,6 +15,8 @@ import {
   TRIGGER_PROPERTY_TYPE,
   type TriggerSpec,
 } from "#documents/properties.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import { getSpace } from "./spaces.ts";
 
 function writerOf(key: string, userId: string | undefined): string {
   if (!userId) {
@@ -24,10 +27,17 @@ function writerOf(key: string, userId: string | undefined): string {
   return userId;
 }
 
+/** Triggers start workflows, so they exist only where workflows are enabled. */
+export async function assertTriggersEnabled(spaceId: string): Promise<void> {
+  if (!isWorkflowCreationEnabled((await getSpace(spaceId))?.preferences)) {
+    throw new PermissionDeniedError("Workflows are disabled for this space");
+  }
+}
+
 /**
  * Refuse a patch that arms a trigger its writer could not run by hand: the
- * workflow must exist and the writer must hold EDITOR on it, the role a manual
- * run requires. Runs before the write's transaction, since the ACL lookup reads
+ * space must have workflows enabled, the workflow must exist and the writer
+ * must hold EDITOR on it, the role a manual run requires. Runs before the write's transaction, since the ACL lookup reads
  * outside it.
  *
  * @param documentId The patched document, or null for one being created.
@@ -63,7 +73,9 @@ export async function authorizeTriggerWrites(
       operation.type === TRIGGER_PROPERTY_TYPE ||
       (operation.type === undefined &&
         existingTriggerKeys.has(canonicalPropertyKey(operation.key)));
-    if (!writesTrigger || operation.value === "") continue;
+    if (!writesTrigger) continue;
+    await assertTriggersEnabled(s.spaceId);
+    if (operation.value === "") continue;
 
     const writer = writerOf(operation.key, userId);
     const { workflow } = parseTriggerSpec(operation.key, operation.value);

@@ -4,6 +4,7 @@ import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { usePropertyMutations, useProperties } from "#composeables/useProperties.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { useWorkflows } from "#composeables/useWorkflows.ts";
 import type { Property, TriggerSpec } from "#documents/properties.ts";
 import {
@@ -15,6 +16,7 @@ import {
 } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import type { TranslationKey } from "#utils/lang.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Button } from "./Button.tsx";
 import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import type { IconName } from "./Icon.tsx";
@@ -61,7 +63,12 @@ export function DocumentProperties(props: Props) {
   const { properties: spaceProperties, listValues } = useProperties();
   const { updateProperty, deleteProperty } = usePropertyMutations();
   const { members } = useMembers();
-  const { workflows } = useWorkflows();
+  const { currentSpace } = useSpace();
+  // Triggers start workflows, so they are offered only where workflows are on.
+  const triggersEnabled = createMemo(() =>
+    isWorkflowCreationEnabled(currentSpace()?.preferences),
+  );
+  const { workflows } = useWorkflows(triggersEnabled);
 
   const documentProperties = createMemo(
     () => document()?.properties || props.initialProperties || {},
@@ -398,6 +405,7 @@ export function DocumentProperties(props: Props) {
 
     return spaceProperties().filter((sp) => {
       if (isHiddenDocumentPropertyKey(sp.name)) return false;
+      if (sp.type === TRIGGER_PROPERTY_TYPE && !triggersEnabled()) return false;
       return !held.has(canonicalPropertyKey(sp.name));
     });
   });
@@ -415,7 +423,10 @@ export function DocumentProperties(props: Props) {
           // The chip already reads "Template", so the labeled layout keeps the
           // name column empty for it — width and all, to stay on the grid.
           const isMarker = property.id === templatePropertyKey;
-          const readonly = () => props.readonly || isMarker;
+          const readonly = () =>
+            props.readonly ||
+            isMarker ||
+            (property.type === TRIGGER_PROPERTY_TYPE && !triggersEnabled());
 
           return (
             <div
@@ -482,7 +493,9 @@ export function DocumentProperties(props: Props) {
 
           <PropertyPopover
             isOpen={isCreatePopoverOpen()}
-            propertyTypes={propertyTypes.map((item) => ({
+            propertyTypes={propertyTypes
+              .filter((item) => item.id !== TRIGGER_PROPERTY_TYPE || triggersEnabled())
+              .map((item) => ({
               ...item,
               label: t(item.label),
             }))}

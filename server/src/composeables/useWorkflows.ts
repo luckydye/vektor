@@ -18,7 +18,7 @@ export interface WorkflowSummary {
 }
 
 /** The workflows of the current space the reader can see, sorted by title. */
-export function useWorkflows() {
+export function useWorkflows(enabled: () => boolean) {
   const { currentSpaceId: spaceId } = useSpace();
 
   const { data } = useQuery({
@@ -38,7 +38,7 @@ export function useWorkflows() {
         }))
         .sort((left, right) => left.title.localeCompare(right.title));
     },
-    enabled: createMemo(() => !!spaceId()),
+    enabled: createMemo(() => !!spaceId() && enabled()),
   });
 
   const workflows = createMemo(() => data() ?? []);

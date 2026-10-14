@@ -3,7 +3,10 @@ import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import type { PropertyTrigger, WorkflowSchedule } from "#db/schema/space.ts";
-import { claimDuePropertyTriggers } from "#db/space/propertyTriggers.ts";
+import {
+  assertTriggersEnabled,
+  claimDuePropertyTriggers,
+} from "#db/space/propertyTriggers.ts";
 import { purgeExpiredSpaces } from "#db/space/spaces.ts";
 import {
   claimDueWorkflowSchedules,
@@ -152,7 +155,9 @@ async function runScheduledWorkflow(
 async function runPropertyTrigger(store: SpaceStore, trigger: PropertyTrigger): Promise<void> {
   const { spaceId } = store;
   try {
-    // Checked again at fire time: the writer may have lost the workflow since.
+    // Checked again at fire time: workflows may have been disabled, or the
+    // writer may have lost the workflow since.
+    await assertTriggersEnabled(spaceId);
     await verifyAccess(
       spaceId,
       { type: ResourceType.DOCUMENT, id: trigger.workflowId },

@@ -66,6 +66,7 @@ beforeAll(async () => {
     body: JSON.stringify({
       name: "Property Triggers Test Space",
       slug: `property-triggers-test-${Date.now()}`,
+      preferences: { workflowCreationEnabled: "true" },
     }),
   });
   spaceId = (await spaceResponse.json()).space.id;
@@ -83,6 +84,30 @@ afterAll(() => {
 });
 
 describe("Trigger properties - validation", () => {
+  it("refuses a trigger in a space with workflows disabled", async () => {
+    const spaceResponse = await apiRequest("/api/v1/spaces", ownerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Workflows Disabled Space",
+        slug: `property-triggers-disabled-${Date.now()}`,
+      }),
+    });
+    const disabledSpaceId = (await spaceResponse.json()).space.id;
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${disabledSpaceId}/documents`,
+      ownerToken,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "",
+          properties: { reminder: { value: "", type: "trigger" } },
+        }),
+      },
+    );
+    expect(response.status).toBe(403);
+  });
+
   it("rejects a trigger without a workflow", async () => {
     const response = await createDocument({
       properties: {
