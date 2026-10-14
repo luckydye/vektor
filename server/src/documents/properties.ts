@@ -209,7 +209,9 @@ export function normalizeDocumentPropertyPatch(
         ? rawValue
             .filter((item) => item !== null && item !== undefined)
             .map((item) => String(item))
-        : String(rawValue);
+        : type === TRIGGER_PROPERTY_TYPE && typeof rawValue === "object"
+          ? JSON.stringify(rawValue)
+          : String(rawValue);
 
       // A stored date is read back by serializers that construct a Date from
       // it, so an unparseable one is a persistent failure for every consumer of
@@ -223,6 +225,7 @@ export function normalizeDocumentPropertyPatch(
           }
         }
       }
+      if (type === TRIGGER_PROPERTY_TYPE) parseTriggerSpec(key, value);
 
       return { kind: "update", key, value, type };
     },
@@ -233,6 +236,59 @@ export function normalizeDocumentPropertyPatch(
     byCanonicalKey.set(canonicalPropertyKey(operation.key), operation);
   }
   return Array.from(byCanonicalKey.values());
+}
+
+/**
+ * The property type of a trigger: a stored JSON {@link TriggerSpec} that starts
+ * a workflow once its time has come.
+ */
+export const TRIGGER_PROPERTY_TYPE = "trigger";
+
+/**
+ * When a trigger fires and which workflow it starts. `at` is a fixed instant;
+ * `from` names a date property of the same document, so the trigger follows
+ * that date when it is edited.
+ */
+export type TriggerSpec = { workflow: string } & (
+  | { at: string }
+  | { from: string; offsetMinutes: number }
+);
+
+export function parseTriggerSpec(key: string, value: DocumentPropertyValue): TriggerSpec {
+  const invalid = (reason: string) =>
+    new InvalidDocumentPropertyPatchError(`Trigger "${key}" ${reason}`);
+  if (typeof value !== "string") throw invalid("must be a single JSON object");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw invalid("is not valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw invalid("must be a JSON object");
+  }
+
+  const { workflow, at, from, offsetMinutes = 0 } = parsed as Record<string, unknown>;
+  if (typeof workflow !== "string" || !workflow) {
+    throw invalid('needs a "workflow" document id');
+  }
+  if ((at === undefined) === (from === undefined)) {
+    throw invalid('needs exactly one of "at" or "from"');
+  }
+  if (at !== undefined) {
+    if (typeof at !== "string" || Number.isNaN(new Date(at).getTime())) {
+      throw invalid('"at" is not a valid date');
+    }
+    return { workflow, at };
+  }
+  if (typeof from !== "string" || !from.trim()) {
+    throw invalid('"from" must name a date property');
+  }
+  if (typeof offsetMinutes !== "number" || !Number.isFinite(offsetMinutes)) {
+    throw invalid('"offsetMinutes" must be a number');
+  }
+  return { workflow, from: storedPropertyKey(from), offsetMinutes };
 }
 
 /**

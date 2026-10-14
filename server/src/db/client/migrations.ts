@@ -221,6 +221,14 @@ async function aiChatSessionSource(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
 }
 
+async function propertyTriggers(db: SpaceDb): Promise<void> {
+  await createTables(db, [spaceSchema.propertyTrigger]);
+  await run(db, [
+    "CREATE UNIQUE INDEX IF NOT EXISTS property_trigger_document_key_unique ON property_trigger (document_id, property_key)",
+    "CREATE INDEX IF NOT EXISTS property_trigger_due_idx ON property_trigger (fired_at, fire_at)",
+  ]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -236,4 +244,5 @@ export const spaceMigrations: Migration[] = [
   },
   { id: 9, name: "audit-log-attribution", up: auditLogAttribution },
   { id: 10, name: "ai-chat-session-source", up: aiChatSessionSource },
+  { id: 11, name: "property-triggers", up: propertyTriggers },
 ];

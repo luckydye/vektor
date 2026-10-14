@@ -23,6 +23,7 @@ import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { touchDocument } from "./changeSeq.ts";
 import { generateUniqueSlug } from "./documents.ts";
+import { authorizeTriggerWrites, syncPropertyTriggers } from "./propertyTriggers.ts";
 import { nonArchivedDocumentCondition } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
@@ -117,6 +118,7 @@ export async function patchDocumentProperties(
 ): Promise<PatchDocumentPropertiesResult> {
   const operations = normalizeDocumentPropertyPatch(patch);
   if (operations.length === 0) return {};
+  await authorizeTriggerWrites(s, documentId, operations, userId);
 
   const result = await s.tx(async (txStore): Promise<PatchDocumentPropertiesResult> => {
     const now = new Date();
@@ -240,6 +242,13 @@ export async function patchDocumentProperties(
         value: operation.value,
       });
     }
+
+    await syncPropertyTriggers(
+      txStore,
+      documentId,
+      new Set(operations.map((operation) => canonicalPropertyKey(operation.key))),
+      userId,
+    );
 
     txStore.emit({
       kind: "documentProperties",

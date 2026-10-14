@@ -23,6 +23,7 @@ import {
   propertyValueToText,
   serializePropertyValue,
   storedPropertyKey,
+  TRIGGER_PROPERTY_TYPE,
   toDocumentProperties,
   toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
@@ -55,6 +56,7 @@ import {
 } from "./changeSeq.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
+import { syncPropertyTriggers } from "./propertyTriggers.ts";
 import { decompressRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
@@ -233,7 +235,10 @@ export async function createDocument(
       typeof raw === "object" && raw !== null && !Array.isArray(raw) && "value" in raw;
     const propValue = isWrappedValue ? raw.value : raw;
     const propType = isWrappedValue ? (raw.type ?? null) : null;
-    const storedValue = serializePropertyValue(propValue);
+    const storedValue =
+      propType === TRIGGER_PROPERTY_TYPE && typeof propValue === "object"
+        ? JSON.stringify(propValue)
+        : serializePropertyValue(propValue);
     storedProperties.set(key, parseStoredPropertyValue(storedValue));
     await s.db.insert(property).values({
       id: createId("property"),
@@ -246,6 +251,12 @@ export async function createDocument(
     });
   }
 
+  await syncPropertyTriggers(
+    s,
+    id,
+    new Set([...initialEntries.keys()]),
+    createdBy,
+  );
   scheduleDocumentSearchRefresh(s, id);
 
   await createAuditLog(s, {

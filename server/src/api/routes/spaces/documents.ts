@@ -28,6 +28,7 @@ import {
   type PropertyInit,
 } from "#db/space/documents.ts";
 import { insertUniqueProperty } from "#db/space/properties.ts";
+import { authorizeTriggerWrites } from "#db/space/propertyTriggers.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import {
   getDocumentTypeForContentType,
@@ -35,10 +36,13 @@ import {
   prepareDocumentContent,
 } from "#documents/content.ts";
 import {
+  InvalidDocumentPropertyPatchError,
+  normalizeDocumentPropertyPatch,
   parseStoredPropertyValue,
   propertyValueToText,
   ReservedDocumentPropertyKeyError,
   serializePropertyValue,
+  TRIGGER_PROPERTY_TYPE,
 } from "#documents/properties.ts";
 import { isSerializedDocumentType, repositoryDocumentType } from "#documents/types.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
@@ -347,6 +351,26 @@ export const POST: ApiRouteHandler = (context) =>
 
     // createDocument now handles slug uniqueness internally
     const store = await openSpaceStore(spaceId);
+    // Ahead of the create's transaction: the ACL lookup reads outside it.
+    const triggers = Object.entries(properties ?? {}).filter(
+      ([, init]) =>
+        typeof init === "object" && !Array.isArray(init) && init.type === TRIGGER_PROPERTY_TYPE,
+    );
+    await authorizeTriggerWrites(
+      store,
+      null,
+      normalizeDocumentPropertyPatch(Object.fromEntries(triggers)),
+      userId,
+    ).catch((error) => {
+      if (
+        error instanceof InvalidDocumentPropertyPatchError ||
+        error instanceof ReservedDocumentPropertyKeyError
+      ) {
+        throw badRequestResponse(error.message);
+      }
+      throw error;
+    });
+
     const created = await store
       .tx(async (tx) => {
         // Held back from the create so a refusal rolls the document back.
@@ -386,6 +410,7 @@ export const POST: ApiRouteHandler = (context) =>
       .catch((error) => {
         if (
           error instanceof InvalidDocumentParentError ||
+          error instanceof InvalidDocumentPropertyPatchError ||
           error instanceof ReservedDocumentPropertyKeyError
         ) {
           throw badRequestResponse(error.message);

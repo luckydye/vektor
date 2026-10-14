@@ -338,6 +338,37 @@ export const workflowSchedule = sqliteTable("workflow_schedule", {
 export type WorkflowSchedule = typeof workflowSchedule.$inferSelect;
 export type WorkflowScheduleInsert = typeof workflowSchedule.$inferInsert;
 
+/**
+ * One row per trigger property, holding its resolved due time so the scheduler
+ * tick is a range query rather than a parse of every trigger in the space.
+ */
+export const propertyTrigger = sqliteTable(
+  "property_trigger",
+  {
+    id: text("id").primaryKey(),
+    /** The document carrying the trigger property */
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    propertyKey: text("property_key").notNull(),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    /** Null while a `from` trigger's date property is empty */
+    fireAt: integer("fire_at", { mode: "timestamp" }),
+    firedAt: integer("fired_at", { mode: "timestamp" }),
+    /** The user who wrote the trigger; its workflow runs as them */
+    createdBy: text("created_by").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("property_trigger_document_key_unique").on(t.documentId, t.propertyKey),
+    index("property_trigger_due_idx").on(t.firedAt, t.fireAt),
+  ],
+);
+
+export type PropertyTrigger = typeof propertyTrigger.$inferSelect;
+
 export const aiChatSession = sqliteTable("ai_chat_session", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
