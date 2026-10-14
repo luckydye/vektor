@@ -754,5 +754,12 @@
   "{percent}% rain": "강수 확률 {percent}%",
   "Tidy up": "정리",
   "Clear selection": "선택 해제",
-  "Selection": "선택"
+  "Selection": "선택",
+  "Trigger": "트리거",
+  "Not scheduled": "예약 안 됨",
+  "At time": "특정 시간",
+  "From date": "날짜 기준",
+  "Offset in minutes": "오프셋(분)",
+  "No workflows in this space": "이 스페이스에 워크플로가 없습니다",
+  "No date properties on this document": "이 문서에 날짜 속성이 없습니다"
 }

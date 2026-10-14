@@ -4,14 +4,20 @@ import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { usePropertyMutations, useProperties } from "#composeables/useProperties.ts";
-import type { Property } from "#documents/properties.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useWorkflows } from "#composeables/useWorkflows.ts";
+import type { Property, TriggerSpec } from "#documents/properties.ts";
 import {
   canonicalPropertyKey,
+  InvalidDocumentPropertyPatchError,
   isHiddenDocumentPropertyKey,
+  parseTriggerSpec,
   propertyValueToScalar,
+  TRIGGER_PROPERTY_TYPE,
 } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import type { TranslationKey } from "#utils/lang.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Button } from "./Button.tsx";
 import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -47,6 +53,7 @@ const propertyTypes: TranslatableSelectMenuItem[] = [
   { id: "multi-select", label: "Multi Select", icon: "add" },
   { id: "date", label: "Date", icon: "add" },
   { id: "user", label: "User", icon: "people" },
+  { id: TRIGGER_PROPERTY_TYPE, label: "Trigger", icon: "bolt" },
 ];
 
 export function DocumentProperties(props: Props) {
@@ -58,6 +65,12 @@ export function DocumentProperties(props: Props) {
   const { properties: spaceProperties, listValues } = useProperties();
   const { updateProperty, deleteProperty } = usePropertyMutations();
   const { members } = useMembers();
+  const { currentSpace } = useSpace();
+  // Triggers start workflows, so they are offered only where workflows are on.
+  const triggersEnabled = createMemo(() =>
+    isWorkflowCreationEnabled(currentSpace()?.preferences),
+  );
+  const { workflows } = useWorkflows(triggersEnabled);
 
   const documentProperties = createMemo(
     () => document()?.properties || props.initialProperties || {},
@@ -154,6 +167,23 @@ export function DocumentProperties(props: Props) {
 
     const value = propertyValueToScalar(property.value);
 
+    if (property.type === TRIGGER_PROPERTY_TYPE) {
+      const spec = triggerSpecOf(property);
+      if (!spec) return t("Not scheduled");
+      if ("at" in spec) {
+        return new Date(spec.at).toLocaleString(lang, {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      }
+      const name = getPropertyName({ ...property, name: spec.from });
+      if (spec.offsetMinutes === 0) return name;
+      const sign = spec.offsetMinutes > 0 ? "+" : "−";
+      return `${name} ${sign}${Math.abs(spec.offsetMinutes)} min`;
+    }
+
     if (property.type === "user" && value) {
       const member = members().find((m) => m.userId === value);
       if (member?.user) return member.user.name || member.user.email || value;
@@ -206,6 +236,7 @@ export function DocumentProperties(props: Props) {
     }
     if (property.type === "user") return "people";
     if (property.type === "date") return "date";
+    if (property.type === TRIGGER_PROPERTY_TYPE) return "bolt";
     return "generic-property";
   };
 
@@ -232,6 +263,36 @@ export function DocumentProperties(props: Props) {
       .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
       .replace(/[-_]+/g, " ")
       .replace(/^./, (character) => character.toUpperCase());
+  };
+
+  /** An empty trigger is one not armed yet. */
+  const triggerSpecOf = (property: Property): TriggerSpec | null => {
+    const value = propertyValueToScalar(property.value);
+    if (!value) return null;
+    try {
+      return parseTriggerSpec(property.name, value);
+    } catch (error) {
+      if (error instanceof InvalidDocumentPropertyPatchError) return null;
+      throw error;
+    }
+  };
+
+  const getTriggerEditor = (property: Property) => {
+    if (property.type !== TRIGGER_PROPERTY_TYPE) return undefined;
+    return {
+      spec: triggerSpecOf(property),
+      workflows: workflows().map((workflow) => ({
+        id: workflow.id,
+        label: workflow.title,
+      })),
+      dateProperties: properties()
+        .filter((candidate) => candidate.type === "date")
+        .map((candidate) => ({
+          id: candidate.name,
+          label: getPropertyName(candidate),
+          icon: "date" as const,
+        })),
+    };
   };
 
   const getPropertyValues = async (property: Property): Promise<SelectMenuItem[]> => {
@@ -328,7 +389,13 @@ export function DocumentProperties(props: Props) {
         const spaceProperty = spaceProperties()?.find(
           (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(key),
         );
-        const propertyType = (spaceProperty?.type as Property["type"]) || "text";
+        const localTypes = document()?.propertyTypes;
+        // A space-wide suggestion cannot determine an existing value's type.
+        // Before the document read arrives, do not infer a trigger editor.
+        const suggestedType =
+          spaceProperty?.type === TRIGGER_PROPERTY_TYPE ? "text" : spaceProperty?.type;
+        const propertyType =
+          ((localTypes ? localTypes[key] : suggestedType) as Property["type"]) || "text";
 
         return {
           id: key,
@@ -352,6 +419,7 @@ export function DocumentProperties(props: Props) {
 
     return spaceProperties().filter((sp) => {
       if (isHiddenDocumentPropertyKey(sp.name)) return false;
+      if (sp.type === TRIGGER_PROPERTY_TYPE && !triggersEnabled()) return false;
       return !held.has(canonicalPropertyKey(sp.name));
     });
   });
@@ -381,7 +449,10 @@ export function DocumentProperties(props: Props) {
             // The chip already reads "Template", so the labeled layout keeps the
             // name column empty for it — width and all, to stay on the grid.
             const isMarker = property.id === templatePropertyKey;
-            const readonly = () => props.readonly || isMarker;
+            const readonly = () =>
+              props.readonly ||
+              isMarker ||
+              (property.type === TRIGGER_PROPERTY_TYPE && !triggersEnabled());
 
             // On phones the toolbar's category shrinks to its badge to leave the title room;
             // the chip's label-side padding would then push the separator away.
@@ -442,6 +513,7 @@ export function DocumentProperties(props: Props) {
                     property.type === "multi-select" || Array.isArray(property.value)
                   }
                   propertyValues={getPropertyValues}
+                  trigger={getTriggerEditor(property)}
                   onUpdate={
                     readonly()
                       ? undefined
@@ -495,10 +567,12 @@ export function DocumentProperties(props: Props) {
           <PropertyPopover
             sheet={props.layout === "sheet"}
             isOpen={isCreatePopoverOpen()}
-            propertyTypes={propertyTypes.map((item) => ({
-              ...item,
-              label: t(item.label),
-            }))}
+            propertyTypes={propertyTypes
+              .filter((item) => item.id !== TRIGGER_PROPERTY_TYPE || triggersEnabled())
+              .map((item) => ({
+                ...item,
+                label: t(item.label),
+              }))}
             spaceProperties={availableNewProperties()}
             onUpdateIsOpen={setIsCreatePopoverOpen}
             onCreate={(property) => void handleCreate(property)}

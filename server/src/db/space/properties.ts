@@ -12,11 +12,13 @@ import {
   type DocumentPropertyValue,
   normalizeDocumentPropertyPatch,
   parseStoredPropertyValue,
+  parseTriggerSpec,
   propertyValueToText,
   type SpaceProperty,
   type StoredPropertyKeyRow,
   serializePropertyValue,
   storedPropertyKey,
+  TRIGGER_PROPERTY_TYPE,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
@@ -24,7 +26,9 @@ import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { touchDocument } from "./changeSeq.ts";
 import { generateUniqueSlug } from "./documents.ts";
+import { authorizeTriggerWrites, syncPropertyTriggers } from "./propertyTriggers.ts";
 import { nonArchivedDocumentCondition } from "./search.ts";
+import { renamePropertyWorkflowSchedule } from "./workflowSchedules.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
@@ -118,10 +122,25 @@ export async function patchDocumentProperties(
 ): Promise<PatchDocumentPropertiesResult> {
   const operations = normalizeDocumentPropertyPatch(patch);
   if (operations.length === 0) return {};
+  await authorizeTriggerWrites(s, documentId, operations, userId);
 
-  const result = await s.tx((txStore) =>
-    applyDocumentPropertyOperations(txStore, documentId, operations, userId, expected),
-  );
+  const result = await s.tx(async (txStore) => {
+    const applied = await applyDocumentPropertyOperations(
+      txStore,
+      documentId,
+      operations,
+      userId,
+      expected,
+    );
+    if (applied.conflict) return applied;
+    await syncPropertyTriggers(
+      txStore,
+      documentId,
+      new Set(operations.map((operation) => canonicalPropertyKey(operation.key))),
+      userId,
+    );
+    return applied;
+  });
 
   if (result.conflict) return result;
 
@@ -356,19 +375,38 @@ export async function renameDatabaseColumn(
       );
     }
 
+    // A rename moves triggers rather than re-arming them, so they keep their writer and schedule.
+    const patches = new Map<string, DocumentPropertyPatch>();
     for (const row of sources.values()) {
       const renamed = { value: parseStoredPropertyValue(row.value), type: row.type };
       // A case-only rename is an update: the write's spelling replaces the stored one.
-      const patch: DocumentPropertyPatch =
-        toKey === fromKey ? { [to]: renamed } : { [row.key]: null, [to]: renamed };
+      patches.set(
+        row.documentId,
+        toKey === fromKey ? { [to]: renamed } : { [row.key]: null, [to]: renamed },
+      );
+      if (row.type === TRIGGER_PROPERTY_TYPE) {
+        await renamePropertyWorkflowSchedule(tx, row.documentId, row.key, stored);
+      }
+    }
+    for (const row of rows) {
+      if (row.type !== TRIGGER_PROPERTY_TYPE || row.value === "") continue;
+      const spec = parseTriggerSpec(row.key, parseStoredPropertyValue(row.value));
+      if (!("from" in spec) || canonicalPropertyKey(spec.from) !== fromKey) continue;
+      patches.set(row.documentId, {
+        ...patches.get(row.documentId),
+        [row.key]: { value: { ...spec, from: stored }, type: TRIGGER_PROPERTY_TYPE },
+      });
+    }
+
+    for (const [documentId, patch] of patches) {
       await applyDocumentPropertyOperations(
         tx,
-        row.documentId,
+        documentId,
         normalizeDocumentPropertyPatch(patch),
         userId,
       );
     }
-    return { touchedIds: [databaseId, ...sources.keys()], schemaJson };
+    return { touchedIds: [databaseId, ...patches.keys()], schemaJson };
   });
 
   for (const id of touchedIds) scheduleDocumentSearchRefresh(s, id);

@@ -8,12 +8,13 @@ import {
   Show,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
-import type { Property } from "#documents/properties.ts";
+import type { Property, TriggerSpec } from "#documents/properties.ts";
 import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { SheetPage } from "./SheetPage.tsx";
 import { SelectMenu, type SelectMenuItem, useSelectMenuKeys } from "./SelectMenu.tsx";
+import { TriggerPropertyEditor } from "./TriggerPropertyEditor.tsx";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -35,6 +36,12 @@ interface Props {
   showTooltip?: boolean;
   tooltipPos?: "bottom";
   propertyValues?: (property: Property) => Promise<SelectMenuItem[]>;
+  /** What a trigger property's editor offers; set for trigger properties only. */
+  trigger?: {
+    spec: TriggerSpec | null;
+    workflows: SelectMenuItem[];
+    dateProperties: SelectMenuItem[];
+  };
   onUpdate?: (property: Property & { search: string }) => void;
   onDelete?: (property: Property) => void;
 }
@@ -87,7 +94,7 @@ export function PropertyChip(props: Props) {
 
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    if (property.type !== "date") {
+    if (property.type !== "date" && !props.trigger) {
       inputElement?.focus();
 
       props.propertyValues?.(property).then(setValueOptions);
@@ -165,6 +172,18 @@ export function PropertyChip(props: Props) {
       ...property,
       name: propertyName(),
       value: target.value,
+      search: "",
+    });
+    handleExit();
+  };
+
+  const handleTriggerSave = (spec: TriggerSpec) => {
+    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
+    if (!property) return;
+    props.onUpdate?.({
+      ...property,
+      name: propertyName(),
+      value: JSON.stringify(spec),
       search: "",
     });
     handleExit();
@@ -323,13 +342,27 @@ export function PropertyChip(props: Props) {
             <Show
               when={property().type === "date"}
               fallback={
-                <SelectMenu
-                  uncapped={props.sheet}
-                  items={filteredValueOptions()}
-                  value={selectedValue() ?? null}
-                  activeIndex={valueKeys.activeIndex()}
-                  onSelect={handleValueSelect}
-                />
+                <Show
+                  when={props.trigger}
+                  fallback={
+                    <SelectMenu
+                      uncapped={props.sheet}
+                      items={filteredValueOptions()}
+                      value={selectedValue() ?? null}
+                      activeIndex={valueKeys.activeIndex()}
+                      onSelect={handleValueSelect}
+                    />
+                  }
+                >
+                  {(trigger) => (
+                    <TriggerPropertyEditor
+                      spec={trigger().spec}
+                      workflows={trigger().workflows}
+                      dateProperties={trigger().dateProperties}
+                      onSave={handleTriggerSave}
+                    />
+                  )}
+                </Show>
               }
             >
               <div class={props.sheet ? "flex justify-center" : undefined}>
@@ -366,7 +399,7 @@ export function PropertyChip(props: Props) {
                     </Show>
                     <div class="flex-1 overflow-hidden whitespace-nowrap">
                       <Show
-                        when={property().type !== "date"}
+                        when={property().type !== "date" && !props.trigger}
                         fallback={<span class="text-interactive">{property().name}</span>}
                       >
                         {searchField(
@@ -396,7 +429,7 @@ export function PropertyChip(props: Props) {
                 }}
                 onBack={handleExit}
               >
-                <Show when={property().type !== "date"}>
+                <Show when={property().type !== "date" && !props.trigger}>
                   <div class="flex h-10 flex-none items-center gap-4xs rounded-lg border border-neutral-100 bg-neutral-50 px-3">
                     <Icon name="search" class="h-4 w-4 text-neutral-500" />
                     {searchField(

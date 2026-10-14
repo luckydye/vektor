@@ -1,6 +1,9 @@
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
+import { assertTriggersEnabled } from "#db/space/propertyTriggers.ts";
 import { purgeExpiredSpaces } from "#db/space/spaces.ts";
 import {
   claimDueWorkflowSchedules,
@@ -57,8 +60,8 @@ async function tick(): Promise<void> {
         const store = await openSpaceStore(spaceId);
         const due = await claimDueWorkflowSchedules(store, now);
         for (const schedule of due) {
-          // Fire-and-forget: the overlap guard inside runScheduledWorkflow
-          // prevents concurrent runs of the same workflow document.
+          // Recurring schedules avoid overlapping runs; each one-shot property
+          // trigger is independent and must run even if another is in progress.
           void runScheduledWorkflow(store, schedule);
         }
         await maintainSpaceSeries(store, now);
@@ -104,7 +107,10 @@ async function runScheduledWorkflow(
   try {
     // Overlap guard: a slow-running workflow shouldn't stack concurrent runs
     // from later ticks — skip this fire if the last run hasn't finished.
-    const latestRunId = await getLatestRunIdForDoc(store, schedule.documentId);
+    const latestRunId =
+      schedule.cronExpression === null
+        ? null
+        : await getLatestRunIdForDoc(store, schedule.documentId);
     if (latestRunId) {
       const latestRun = await getRunForRead(store, latestRunId);
       if (
@@ -122,6 +128,16 @@ async function runScheduledWorkflow(
         );
         return;
       }
+    }
+
+    if (schedule.sourceDocumentId) {
+      await assertTriggersEnabled(spaceId);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: schedule.documentId },
+        schedule.createdBy,
+        Permission.EDITOR,
+      );
     }
 
     await startWorkflowRun(store, schedule.documentId, {

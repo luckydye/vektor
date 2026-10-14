@@ -314,26 +314,40 @@ export const emailNotificationOutbox = sqliteTable(
 
 export type EmailNotificationOutbox = typeof emailNotificationOutbox.$inferSelect;
 
-export const workflowSchedule = sqliteTable("workflow_schedule", {
-  id: text("id").primaryKey(),
-  /** Workflow document id this schedule runs on each tick */
-  documentId: text("document_id")
-    .notNull()
-    .references(() => document.id, { onDelete: "cascade" }),
-  /** Standard 5-field cron expression, e.g. "0 6 * * 1" */
-  cronExpression: text("cron_expression").notNull(),
-  /** IANA timezone for evaluating the expression (defaults to server time) */
-  timezone: text("timezone"),
-  /** JSON-encoded runtime inputs passed to the workflow script on each run */
-  inputs: text("inputs"),
-  enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
-  /** Next due time, precomputed so the scheduler tick is a cheap range query */
-  nextRunAt: integer("next_run_at", { mode: "timestamp" }),
-  lastRunAt: integer("last_run_at", { mode: "timestamp" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-});
+export const workflowSchedule = sqliteTable(
+  "workflow_schedule",
+  {
+    id: text("id").primaryKey(),
+    /** Workflow document id this schedule runs on each tick */
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    /** Null for a one-shot schedule; otherwise a standard 5-field cron expression. */
+    cronExpression: text("cron_expression"),
+    /** Document property that owns a one-shot schedule. */
+    sourceDocumentId: text("source_document_id")
+      .references(() => document.id, { onDelete: "cascade" }),
+    propertyKey: text("property_key"),
+    /** IANA timezone for evaluating the expression (defaults to server time) */
+    timezone: text("timezone"),
+    /** JSON-encoded runtime inputs passed to the workflow script on each run */
+    inputs: text("inputs"),
+    enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
+    /** Due time; retained after a one-shot is consumed to detect unchanged writes. */
+    nextRunAt: integer("next_run_at", { mode: "timestamp" }),
+    lastRunAt: integer("last_run_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [
+    uniqueIndex("workflow_schedule_source_property_unique").on(
+      t.sourceDocumentId,
+      t.propertyKey,
+    ),
+    index("workflow_schedule_next_run_at_idx").on(t.enabled, t.nextRunAt),
+  ],
+);
 
 export type WorkflowSchedule = typeof workflowSchedule.$inferSelect;
 export type WorkflowScheduleInsert = typeof workflowSchedule.$inferInsert;

@@ -22,7 +22,9 @@ import {
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
+  serializeTriggerValue,
   storedPropertyKey,
+  TRIGGER_PROPERTY_TYPE,
   toDocumentProperties,
   toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
@@ -55,6 +57,7 @@ import {
 } from "./changeSeq.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
+import { syncPropertyTriggers } from "./propertyTriggers.ts";
 import { decompressRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
@@ -67,6 +70,8 @@ export interface DocumentWithProperties {
   publishedRev: number | null;
   changeSeq: number;
   properties: DocumentProperties;
+  /** Individual property types, populated by document reads. */
+  propertyTypes?: Record<string, string | null>;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -233,7 +238,10 @@ export async function createDocument(
       typeof raw === "object" && raw !== null && !Array.isArray(raw) && "value" in raw;
     const propValue = isWrappedValue ? raw.value : raw;
     const propType = isWrappedValue ? (raw.type ?? null) : null;
-    const storedValue = serializePropertyValue(propValue);
+    const storedValue =
+      propType === TRIGGER_PROPERTY_TYPE
+        ? serializeTriggerValue(key, propValue)
+        : serializePropertyValue(propValue);
     storedProperties.set(key, parseStoredPropertyValue(storedValue));
     await s.db.insert(property).values({
       id: createId("property"),
@@ -246,6 +254,7 @@ export async function createDocument(
     });
   }
 
+  await syncPropertyTriggers(s, id, new Set([...initialEntries.keys()]), createdBy);
   scheduleDocumentSearchRefresh(s, id);
 
   await createAuditLog(s, {
@@ -317,7 +326,12 @@ export async function getDocument(
   );
   const properties = toDocumentProperties(props);
 
-  return { ...doc, parentId: doc.parentId || null, properties };
+  return {
+    ...doc,
+    parentId: doc.parentId || null,
+    properties,
+    propertyTypes: Object.fromEntries(props.map((row) => [row.key, row.type])),
+  };
 }
 
 /** The document carrying this property key and value, if one does. */
@@ -461,6 +475,7 @@ export async function getDocumentBySlug(
     publishedRev: doc.publishedRev,
     changeSeq: doc.changeSeq,
     properties,
+    propertyTypes: Object.fromEntries(props.map((row) => [row.key, row.type])),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     createdBy: doc.createdBy,

@@ -1,5 +1,5 @@
 import { parseCronExpression } from "cron-schedule";
-import { and, eq, isNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -7,7 +7,150 @@ import {
   type WorkflowSchedule,
   type WorkflowScheduleInsert,
   workflowSchedule,
+  document,
 } from "#db/schema/space.ts";
+import {
+  canonicalPropertyKey,
+  InvalidDocumentPropertyPatchError,
+} from "#documents/properties.ts";
+
+/** A resolved property trigger; the scheduler never reads its definition. */
+export interface PropertyWorkflowSchedule {
+  propertyKey: string;
+  workflowId: string;
+  runAt: Date | null;
+  /** Only an explicit trigger write changes its execution identity. */
+  triggerWritten: boolean;
+  changed: boolean;
+}
+
+/**
+ * Reconcile a document's complete set of property-owned schedules. The caller
+ * supplies the transaction that writes the properties, so both commit together.
+ */
+export async function syncPropertyWorkflowSchedules(
+  s: SpaceStore,
+  sourceDocumentId: string,
+  desired: PropertyWorkflowSchedule[],
+  userId: string | undefined,
+): Promise<void> {
+  const now = new Date();
+  const existing = await many(
+    s.db
+      .select()
+      .from(workflowSchedule)
+      .where(eq(workflowSchedule.sourceDocumentId, sourceDocumentId)),
+  );
+  const byKey = new Map(
+    existing.map((entry) => [canonicalPropertyKey(entry.propertyKey ?? ""), entry]),
+  );
+  const desiredKeys = new Set(
+    desired.map((entry) => canonicalPropertyKey(entry.propertyKey)),
+  );
+  for (const stale of existing) {
+    if (!desiredKeys.has(canonicalPropertyKey(stale.propertyKey ?? ""))) {
+      await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, stale.id));
+    }
+  }
+
+  for (const entry of desired) {
+    if (!entry.changed) continue;
+    const current = byKey.get(canonicalPropertyKey(entry.propertyKey));
+    // Match SQLite's whole-second precision, including after an occurrence fired.
+    const nextRunAt = entry.runAt
+      ? new Date(Math.floor(entry.runAt.getTime() / 1000) * 1000)
+      : null;
+    const target = await one(
+      s.db
+        .select({ type: document.type })
+        .from(document)
+        .where(eq(document.id, entry.workflowId)),
+    );
+    // A deleted target must not prevent edits to the source document.
+    if (target?.type !== "workflow") {
+      if (current) {
+        await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, current.id));
+      }
+      continue;
+    }
+    const createdBy =
+      current && !entry.triggerWritten ? current.createdBy : userId;
+    if (!createdBy) {
+      throw new InvalidDocumentPropertyPatchError(
+        `Trigger "${entry.propertyKey}" needs a user to run its workflow as`,
+      );
+    }
+    if (
+      current?.documentId === entry.workflowId &&
+      current.nextRunAt?.getTime() === nextRunAt?.getTime()
+    ) {
+      if (current.propertyKey !== entry.propertyKey && current.propertyKey !== null) {
+        await renamePropertyWorkflowSchedule(
+          s,
+          sourceDocumentId,
+          current.propertyKey,
+          entry.propertyKey,
+        );
+      }
+      // A writer change must not re-arm an occurrence that already fired.
+      if (current.createdBy !== createdBy) {
+        await s.db
+          .update(workflowSchedule)
+          .set({ createdBy, updatedAt: now })
+          .where(eq(workflowSchedule.id, current.id));
+      }
+      continue;
+    }
+
+    const expired = entry.runAt !== null && entry.runAt <= now;
+    const values = {
+      propertyKey: entry.propertyKey,
+      documentId: entry.workflowId,
+      sourceDocumentId,
+      inputs: JSON.stringify({
+        documentId: sourceDocumentId,
+        propertyKey: entry.propertyKey,
+      }),
+      cronExpression: null,
+      createdBy,
+      nextRunAt,
+      enabled: nextRunAt !== null && !expired,
+      lastRunAt: expired ? now : null,
+      updatedAt: now,
+    };
+    if (current) {
+      await s.db
+        .update(workflowSchedule)
+        .set(values)
+        .where(eq(workflowSchedule.id, current.id));
+    } else {
+      await s.db
+        .insert(workflowSchedule)
+        .values({ id: createId("workflowSchedule"), createdAt: now, ...values });
+    }
+  }
+}
+
+/** Move a schedule's source without changing its due time or consumed state. */
+export async function renamePropertyWorkflowSchedule(
+  s: SpaceStore,
+  sourceDocumentId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  await s.db
+    .update(workflowSchedule)
+    .set({
+      propertyKey: to,
+      inputs: JSON.stringify({ documentId: sourceDocumentId, propertyKey: to }),
+    })
+    .where(
+      and(
+        eq(workflowSchedule.sourceDocumentId, sourceDocumentId),
+        eq(workflowSchedule.propertyKey, from),
+      ),
+    );
+}
 
 /**
  * cron-schedule evaluates expressions in the process's local time and has no
@@ -186,16 +329,21 @@ export async function createWorkflowSchedule(
 export async function getWorkflowSchedule(
   s: SpaceStore,
   id: string,
-): Promise<WorkflowSchedule | null> {
+): Promise<(WorkflowSchedule & { cronExpression: string }) | null> {
   const result = await one(
     s.db.select().from(workflowSchedule).where(eq(workflowSchedule.id, id)),
   );
 
-  return result || null;
+  // Property-owned one-shot schedules are edited through their property.
+  return result?.cronExpression != null
+    ? { ...result, cronExpression: result.cronExpression }
+    : null;
 }
 
 export async function listWorkflowSchedules(s: SpaceStore): Promise<WorkflowSchedule[]> {
-  return many(s.db.select().from(workflowSchedule));
+  return many(
+    s.db.select().from(workflowSchedule).where(isNotNull(workflowSchedule.cronExpression)),
+  );
 }
 
 export async function updateWorkflowSchedule(
@@ -256,29 +404,37 @@ export async function updateWorkflowSchedule(
 }
 
 export async function deleteWorkflowSchedule(s: SpaceStore, id: string): Promise<void> {
-  await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, id));
+  await s.db.delete(workflowSchedule).where(
+    and(eq(workflowSchedule.id, id), isNotNull(workflowSchedule.cronExpression)),
+  );
 }
 
 /**
- * Atomically claim all due schedules: advance next_run_at past `now` and set
- * last_run_at in the same statement that selects them, so a slow run cannot
- * be picked up again by the next tick. Missed occurrences (e.g. server was
- * down) collapse into a single fire.
+ * Claim due schedules with a guarded update: advance recurring schedules,
+ * disable one-shots, and record last_run_at. Missed recurring occurrences
+ * (e.g. server was down) collapse into a single fire.
  */
 export async function claimDueWorkflowSchedules(
   s: SpaceStore,
   now: Date = new Date(),
 ): Promise<WorkflowSchedule[]> {
-  // Backfill next_run_at for enabled schedules that lost it (e.g. rows
-  // written by an older version). They start firing from their next
-  // occurrence rather than immediately.
+  // Deprecated compatibility backfill for recurring schedules written without
+  // next_run_at by older versions. Start at their next occurrence; never
+  // backfill one-shot schedules.
   const missing = await many(
     s.db
       .select()
       .from(workflowSchedule)
-      .where(and(eq(workflowSchedule.enabled, true), isNull(workflowSchedule.nextRunAt))),
+      .where(
+        and(
+          eq(workflowSchedule.enabled, true),
+          isNotNull(workflowSchedule.cronExpression),
+          isNull(workflowSchedule.nextRunAt),
+        ),
+      ),
   );
   for (const schedule of missing) {
+    if (schedule.cronExpression === null) continue;
     try {
       await s.db
         .update(workflowSchedule)
@@ -304,28 +460,52 @@ export async function claimDueWorkflowSchedules(
 
   const claimed: WorkflowSchedule[] = [];
   for (const schedule of due) {
-    let nextRunAt: Date | null = null;
-    try {
-      nextRunAt = computeNextRunAt(schedule.cronExpression, schedule.timezone, now);
-    } catch {
-      // Invalid expression: park the schedule instead of re-firing every tick.
+    if (schedule.nextRunAt === null) continue;
+    const oneShot = schedule.cronExpression === null;
+    // Retain a consumed one-shot's due time to recognize unchanged property writes.
+    let nextRunAt: Date | null = schedule.nextRunAt;
+    if (schedule.cronExpression !== null) {
+      try {
+        nextRunAt = computeNextRunAt(schedule.cronExpression, schedule.timezone, now);
+      } catch {
+        // Invalid expression: park the schedule instead of re-firing every tick.
+        nextRunAt = null;
+      }
     }
 
     const result = await s.db
       .update(workflowSchedule)
-      .set({ nextRunAt, lastRunAt: now })
+      .set({ nextRunAt, lastRunAt: now, enabled: !oneShot })
       .where(
         and(
           eq(workflowSchedule.id, schedule.id),
           eq(workflowSchedule.enabled, true),
-          lte(workflowSchedule.nextRunAt, now),
+          eq(workflowSchedule.nextRunAt, schedule.nextRunAt),
+          schedule.cronExpression === null
+            ? isNull(workflowSchedule.cronExpression)
+            : eq(workflowSchedule.cronExpression, schedule.cronExpression),
+          schedule.timezone === null
+            ? isNull(workflowSchedule.timezone)
+            : eq(workflowSchedule.timezone, schedule.timezone),
         ),
       )
-      .returning({ id: workflowSchedule.id });
+      .returning();
 
-    // Guarded update: only the claimer that actually advanced the row runs the workflow.
-    if (result[0]) {
-      claimed.push(schedule);
+    // Timing must still match what we computed above. Execution metadata comes
+    // from the claimed row, so an intervening edit cannot run a stale workflow.
+    const claimedSchedule = result[0];
+    if (claimedSchedule) {
+      if (claimedSchedule.sourceDocumentId) {
+        const source = await one(
+          s.db
+            .select({ archived: document.archived })
+            .from(document)
+            .where(eq(document.id, claimedSchedule.sourceDocumentId)),
+        );
+        // Consume trashed documents' triggers so restoring them cannot fire late.
+        if (!source || source.archived) continue;
+      }
+      claimed.push(claimedSchedule);
     }
   }
 
