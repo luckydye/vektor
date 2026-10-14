@@ -37,13 +37,12 @@ interface AddRowMutationVariables {
   invalidate: boolean;
 }
 
-function parseSchema(raw: string | undefined): DatabaseSchema {
-  if (!raw) return { columns: [] };
-  try {
-    return JSON.parse(raw) as DatabaseSchema;
-  } catch {
-    return { columns: [] };
-  }
+/** `undefined` when the database declares no schema; its columns are then
+ * derived from the rows. A declared schema, even an empty one, is authoritative,
+ * or deleting the last column would bring the derived ones back. */
+function parseSchema(raw: string | undefined): DatabaseSchema | undefined {
+  if (!raw) return undefined;
+  return JSON.parse(raw) as DatabaseSchema;
 }
 
 /**
@@ -100,14 +99,15 @@ export function useDatabaseRows(
 
   const [schemaStr, writeSchemaStr] = createSignal<string | undefined>(undefined);
 
-  const schema = createMemo<DatabaseSchema>(() => parseSchema(schemaStr()));
+  const schema = createMemo(() => parseSchema(schemaStr()));
 
   function setSchemaStr(raw: string | undefined) {
     writeSchemaStr(raw);
   }
 
   const derivedColumns = createMemo<DatabaseColumn[]>(() => {
-    if (schema().columns.length > 0) return schema().columns;
+    const declared = schema();
+    if (declared) return declared.columns;
     const columnKeys = new Map<string, string>();
     for (const row of rows()) {
       for (const key of Object.keys(row.properties)) {
@@ -225,9 +225,10 @@ export function useDatabaseRows(
   }
 
   async function deleteColumn(columnName: string) {
-    const current = schema();
+    // From the displayed columns: without a declared schema they are derived
+    // from the rows, and the schema written here declares them from now on.
     const updated: DatabaseSchema = {
-      columns: current.columns.filter((c) => c.name !== columnName),
+      columns: derivedColumns().filter((c) => c.name !== columnName),
     };
     await updateSchemaMutation.mutateAsync(updated);
   }

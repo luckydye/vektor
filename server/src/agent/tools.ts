@@ -781,12 +781,12 @@ async function databaseColumns(
   database: { id: string; properties: Record<string, unknown> },
 ): Promise<Array<{ name: string; type: string | null }>> {
   const schema = database.properties._schema;
-  const declared =
-    typeof schema === "string" && schema
-      ? ((JSON.parse(schema) as { columns?: Array<{ name: string; type: string }> })
-          .columns ?? [])
-      : [];
-  if (declared.length > 0) return declared.map(({ name, type }) => ({ name, type }));
+  if (typeof schema === "string" && schema) {
+    const declared = JSON.parse(schema) as {
+      columns: Array<{ name: string; type: string }>;
+    };
+    return declared.columns.map(({ name, type }) => ({ name, type }));
+  }
 
   const { properties } = (await apiRequest(
     config,
