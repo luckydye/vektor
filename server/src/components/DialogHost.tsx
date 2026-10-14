@@ -1,5 +1,5 @@
-import { createEffect, createSignal, Show } from "solid-js";
-import { useDialogRequest } from "#composeables/useDialogs.ts";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { type DialogRequest, useDialogRequest } from "#composeables/useDialogs.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
@@ -9,6 +9,11 @@ export function DialogHost() {
   const t = useTranslation();
   const { request, settle } = useDialogRequest();
   const [value, setValue] = createSignal("");
+  // Settling clears the request at once; the closing dialog keeps showing it.
+  const shown = createMemo<DialogRequest | null>(
+    (previous) => request() ?? previous,
+    request(),
+  );
   let input: HTMLInputElement | undefined;
 
   createEffect(() => {
@@ -30,14 +35,14 @@ export function DialogHost() {
   return (
     <Dialog
       show={!!request()}
-      title={request()?.title}
-      bodyClass={`overflow-y-auto px-5 pb-5 ${request()?.title ? "pt-1" : "pt-5"}`}
+      title={shown()?.title}
+      bodyClass={`overflow-y-auto px-5 pb-5 ${shown()?.title ? "pt-1" : "pt-5"}`}
       onClose={() => settle(false)}
       footer={
         <DialogFooter
           form="dialog-host-form"
-          tone={request()?.tone}
-          confirmLabel={request()?.confirmLabel ?? t("Confirm")}
+          tone={shown()?.tone}
+          confirmLabel={shown()?.confirmLabel ?? t("Confirm")}
           onCancel={() => settle(false)}
         />
       }
@@ -51,9 +56,9 @@ export function DialogHost() {
         }}
       >
         <p class="whitespace-pre-line text-neutral-700 text-size-medium">
-          {request()?.message}
+          {shown()?.message}
         </p>
-        <Show when={request()?.kind === "prompt"}>
+        <Show when={shown()?.kind === "prompt"}>
           <input
             ref={input}
             type="text"
