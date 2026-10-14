@@ -1,4 +1,12 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  createUniqueId,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { Property } from "#documents/properties.ts";
 import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
@@ -47,6 +55,8 @@ export function PropertyChip(props: Props) {
   );
   const [searchInput, setSearchInput] = createSignal("");
   const [dateValue, setDateValue] = createSignal("");
+  // Fixed to this anchor, so a scrolling row of chips can't clip the popover.
+  const anchorName = `--property-${createUniqueId()}`;
 
   const selectedValues = createMemo(() => {
     const value = selectedValue();
@@ -206,7 +216,11 @@ export function PropertyChip(props: Props) {
         : "[&_svg]:text-primary-600";
 
   return (
-    <div ref={rootElement} class={props.sheet ? "contents" : "relative"}>
+    <div
+      ref={rootElement}
+      class={props.sheet ? "contents" : "relative"}
+      style={`anchor-name: ${anchorName}`}
+    >
       <Show
         when={props.property}
         fallback={
@@ -335,7 +349,8 @@ export function PropertyChip(props: Props) {
                 <a-blur
                   enabled
                   on:exit={handleExit}
-                  class="popover-enter absolute -top-[5px] -left-[5px] z-50 flex w-max max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
+                  style={`position-anchor: ${anchorName}`}
+                  class="popover-enter fixed top-[anchor(top)] left-[anchor(left)] z-50 -mt-[5px] -ml-[5px] flex w-max max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
                 >
                   {/* Border and padding match the chip, so the header sits exactly over it. */}
                   <div class="flex h-7 w-full items-center gap-4xs border border-transparent pr-4xs pl-5xs">

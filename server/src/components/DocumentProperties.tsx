@@ -365,86 +365,99 @@ export function DocumentProperties(props: Props) {
           : props.layout === "sheet"
             ? "mx-0 flex-col gap-0 divide-y divide-neutral-100"
             : "flex-wrap items-center",
-        props.layout === "toolbar" && "mx-0 gap-5xs",
+        props.layout === "toolbar" && "mx-0 flex-nowrap gap-5xs",
       )}
     >
-      <For each={properties()}>
-        {(property) => {
-          // The chip already reads "Template", so the labeled layout keeps the
-          // name column empty for it — width and all, to stay on the grid.
-          const isMarker = property.id === templatePropertyKey;
-          const readonly = () => props.readonly || isMarker;
+      {/* The toolbar scrolls its chips sideways instead of wrapping out of its bar. */}
+      <div
+        class={
+          props.layout === "toolbar"
+            ? "flex min-w-0 items-center gap-5xs overflow-x-auto empty:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
+            : "contents"
+        }
+      >
+        <For each={properties()}>
+          {(property) => {
+            // The chip already reads "Template", so the labeled layout keeps the
+            // name column empty for it — width and all, to stay on the grid.
+            const isMarker = property.id === templatePropertyKey;
+            const readonly = () => props.readonly || isMarker;
 
-          // On phones the toolbar's category shrinks to its badge to leave the title room;
-          // the chip's label-side padding would then push the separator away.
-          const badgeOnly = props.layout === "toolbar" && property.id === "category";
-          const sheet = props.layout === "sheet";
-          // The sheet names each row, so an empty value can't fall back to the name.
-          const isEmpty = () =>
-            sheet &&
-            (Array.isArray(property.value)
-              ? property.value.length === 0
-              : !propertyValueToScalar(property.value));
+            // On phones the toolbar's category shrinks to its badge to leave the title room;
+            // the chip's label-side padding would then push the separator away.
+            const badgeOnly = props.layout === "toolbar" && property.id === "category";
+            const sheet = props.layout === "sheet";
+            // The sheet names each row, so an empty value can't fall back to the name.
+            const isEmpty = () =>
+              sheet &&
+              (Array.isArray(property.value)
+                ? property.value.length === 0
+                : !propertyValueToScalar(property.value));
 
-          return (
-            <div
-              class={twMerge(
-                "pointer-events-auto",
-                props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
-                sheet && "flex min-h-12 items-center gap-3xs",
-                badgeOnly && "max-md:-mr-2",
-              )}
-            >
-              <Show when={props.layout === "labeled" || sheet}>
-                <span
-                  class={twMerge(
-                    "w-28 shrink-0 truncate text-interactive text-neutral-700",
-                    sheet && "text-neutral-500",
-                  )}
-                  title={isMarker ? undefined : getPropertyName(property)}
-                >
-                  {isMarker ? "" : getPropertyName(property)}
-                </span>
-              </Show>
+            return (
+              <div
+                class={twMerge(
+                  "pointer-events-auto",
+                  props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
+                  sheet && "flex min-h-12 items-center gap-3xs",
+                  badgeOnly && "max-md:-mr-2",
+                )}
+              >
+                <Show when={props.layout === "labeled" || sheet}>
+                  <span
+                    class={twMerge(
+                      "w-28 shrink-0 truncate text-interactive text-neutral-700",
+                      sheet && "text-neutral-500",
+                    )}
+                    title={isMarker ? undefined : getPropertyName(property)}
+                  >
+                    {isMarker ? "" : getPropertyName(property)}
+                  </span>
+                </Show>
 
-              <PropertyChip
-                label={isEmpty() ? t("Empty") : getPropertyLabel(property)}
-                nameLabel={getPropertyName(property)}
-                valueLabels={getPropertyValueLabels(property)}
-                labelClass={
-                  badgeOnly
-                    ? "max-md:hidden"
-                    : sheet
-                      ? twMerge("max-w-none", isEmpty() && "text-neutral-400")
-                      : undefined
-                }
-                sheet={sheet}
-                icon={getPropertyIcon(property)}
-                badge={getPropertyBadge(property)}
-                variant={
-                  props.layout === "toolbar" || sheet
-                    ? "quiet"
-                    : getPropertyVariant(property)
-                }
-                readonly={readonly()}
-                property={property}
-                showTooltip={props.layout !== "labeled" && !sheet && !isMarker}
-                tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
-                allowMultiple={
-                  property.type === "multi-select" || Array.isArray(property.value)
-                }
-                propertyValues={getPropertyValues}
-                onUpdate={
-                  readonly() ? undefined : (updated) => void handleUpdateProperty(updated)
-                }
-                onDelete={
-                  readonly() ? undefined : (deleted) => void handleDeleteProperty(deleted)
-                }
-              />
-            </div>
-          );
-        }}
-      </For>
+                <PropertyChip
+                  label={isEmpty() ? t("Empty") : getPropertyLabel(property)}
+                  nameLabel={getPropertyName(property)}
+                  valueLabels={getPropertyValueLabels(property)}
+                  labelClass={
+                    badgeOnly
+                      ? "max-md:hidden"
+                      : sheet
+                        ? twMerge("max-w-none", isEmpty() && "text-neutral-400")
+                        : undefined
+                  }
+                  sheet={sheet}
+                  icon={getPropertyIcon(property)}
+                  badge={getPropertyBadge(property)}
+                  variant={
+                    props.layout === "toolbar" || sheet
+                      ? "quiet"
+                      : getPropertyVariant(property)
+                  }
+                  readonly={readonly()}
+                  property={property}
+                  showTooltip={props.layout !== "labeled" && !sheet && !isMarker}
+                  tooltipPos={props.layout === "toolbar" ? "bottom" : undefined}
+                  allowMultiple={
+                    property.type === "multi-select" || Array.isArray(property.value)
+                  }
+                  propertyValues={getPropertyValues}
+                  onUpdate={
+                    readonly()
+                      ? undefined
+                      : (updated) => void handleUpdateProperty(updated)
+                  }
+                  onDelete={
+                    readonly()
+                      ? undefined
+                      : (deleted) => void handleDeleteProperty(deleted)
+                  }
+                />
+              </div>
+            );
+          }}
+        </For>
+      </div>
 
       <Show when={!props.readonly && props.part !== "category"}>
         <div
