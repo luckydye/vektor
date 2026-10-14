@@ -4,11 +4,9 @@ import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
-import { createId } from "#db/ids.ts";
 import {
   document,
   property,
-  workflowSchedule,
 } from "#db/schema/space.ts";
 import {
   canonicalPropertyKey,
@@ -21,6 +19,7 @@ import {
 } from "#documents/properties.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { getSpace } from "./spaces.ts";
+import { syncPropertyWorkflowSchedules } from "./workflowSchedules.ts";
 
 function writerOf(key: string, userId: string | undefined): string {
   if (!userId) {
@@ -126,95 +125,30 @@ export async function syncPropertyTriggers(
   writtenKeys: Set<string>,
   userId: string | undefined,
 ): Promise<void> {
-  const now = new Date();
   const rows = await many(
     s.db.select().from(property).where(eq(property.documentId, documentId)),
   );
-  const existing = await many(
-    s.db
-      .select()
-      .from(workflowSchedule)
-      .where(eq(workflowSchedule.sourceDocumentId, documentId)),
-  );
-
   const values = new Map<string, string>();
   for (const row of rows) {
     const value = parseStoredPropertyValue(row.value);
     if (typeof value === "string") values.set(canonicalPropertyKey(row.key), value);
   }
 
-  const triggerRows = rows.filter(
-    (row) => row.type === TRIGGER_PROPERTY_TYPE && row.value !== "",
-  );
-  const triggerKeys = new Set(triggerRows.map((row) => canonicalPropertyKey(row.key)));
+  const triggers = rows
+    .filter((row) => row.type === TRIGGER_PROPERTY_TYPE && row.value !== "")
+    .map((row) => {
+      const spec = parseTriggerSpec(row.key, parseStoredPropertyValue(row.value));
+      const schedule = resolveSchedule(spec, values);
+      return {
+        propertyKey: row.key,
+        workflowId: spec.workflow,
+        runAt: schedule?.fireAt ?? null,
+        expiresAt: schedule?.anchor ?? null,
+        changed:
+          writtenKeys.has(canonicalPropertyKey(row.key)) ||
+          ("from" in spec && writtenKeys.has(canonicalPropertyKey(spec.from))),
+      };
+    });
 
-  for (const stale of existing) {
-    if (!triggerKeys.has(canonicalPropertyKey(stale.propertyKey ?? ""))) {
-      await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, stale.id));
-    }
-  }
-
-  for (const row of triggerRows) {
-    const key = canonicalPropertyKey(row.key);
-    const spec = parseTriggerSpec(row.key, parseStoredPropertyValue(row.value));
-    const rearmed =
-      writtenKeys.has(key) ||
-      ("from" in spec && writtenKeys.has(canonicalPropertyKey(spec.from)));
-    if (!rearmed) continue;
-
-    const schedule = resolveSchedule(spec, values);
-    // SQLite timestamp columns store whole seconds. Compare at that same
-    // precision so an unchanged ISO date with milliseconds stays consumed.
-    const fireAt = schedule
-      ? new Date(Math.floor(schedule.fireAt.getTime() / 1000) * 1000)
-      : null;
-    const current = existing.find(
-      (entry) => canonicalPropertyKey(entry.propertyKey ?? "") === key,
-    );
-    const target = await one(
-      s.db
-        .select({ type: document.type })
-        .from(document)
-        .where(eq(document.id, spec.workflow)),
-    );
-    // Deleting a workflow cascades its schedule rows, but the document's
-    // property remains editable. A date edit must not recreate a dangling FK.
-    if (target?.type !== "workflow") {
-      if (current) {
-        await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, current.id));
-      }
-      continue;
-    }
-    // Re-saving an unchanged schedule must not re-arm a trigger that already fired.
-    if (
-      current?.documentId === spec.workflow &&
-      current.nextRunAt?.getTime() === fireAt?.getTime()
-    ) {
-      continue;
-    }
-
-    const armed = {
-      propertyKey: row.key,
-      documentId: spec.workflow,
-      sourceDocumentId: documentId,
-      inputs: JSON.stringify({ documentId, propertyKey: row.key }),
-      cronExpression: null,
-      createdBy: writerOf(row.key, userId),
-      nextRunAt: fireAt,
-      enabled: !!schedule && schedule.anchor > now,
-      lastRunAt: schedule && schedule.anchor <= now ? now : null,
-      updatedAt: now,
-    };
-    if (current) {
-      await s.db
-        .update(workflowSchedule)
-        .set(armed)
-        .where(eq(workflowSchedule.id, current.id));
-    } else {
-      await s.db
-        .insert(workflowSchedule)
-        .values({ id: createId("workflowSchedule"), createdAt: now, ...armed });
-    }
-  }
+  await syncPropertyWorkflowSchedules(s, documentId, triggers, userId);
 }
-

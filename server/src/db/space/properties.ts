@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
-import { document, property, workflowSchedule } from "#db/schema/space.ts";
+import { document, property } from "#db/schema/space.ts";
 import {
   aggregateStoredProperties,
   canonicalPropertyKey,
@@ -28,6 +28,7 @@ import { touchDocument } from "./changeSeq.ts";
 import { generateUniqueSlug } from "./documents.ts";
 import { authorizeTriggerWrites, syncPropertyTriggers } from "./propertyTriggers.ts";
 import { nonArchivedDocumentCondition } from "./search.ts";
+import { renamePropertyWorkflowSchedule } from "./workflowSchedules.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
@@ -384,18 +385,7 @@ export async function renameDatabaseColumn(
         toKey === fromKey ? { [to]: renamed } : { [row.key]: null, [to]: renamed },
       );
       if (row.type === TRIGGER_PROPERTY_TYPE) {
-        await tx.db
-          .update(workflowSchedule)
-          .set({
-            propertyKey: stored,
-            inputs: JSON.stringify({ documentId: row.documentId, propertyKey: stored }),
-          })
-          .where(
-            and(
-              eq(workflowSchedule.sourceDocumentId, row.documentId),
-              eq(workflowSchedule.propertyKey, row.key),
-            ),
-          );
+        await renamePropertyWorkflowSchedule(tx, row.documentId, row.key, stored);
       }
     }
     for (const row of rows) {

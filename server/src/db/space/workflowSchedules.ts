@@ -9,6 +9,131 @@ import {
   workflowSchedule,
   document,
 } from "#db/schema/space.ts";
+import {
+  canonicalPropertyKey,
+  InvalidDocumentPropertyPatchError,
+} from "#documents/properties.ts";
+
+/** A resolved property trigger; the scheduler never reads its definition. */
+export interface PropertyWorkflowSchedule {
+  propertyKey: string;
+  workflowId: string;
+  runAt: Date | null;
+  /** An occurrence armed after this instant is already expired. */
+  expiresAt: Date | null;
+  changed: boolean;
+}
+
+/**
+ * Reconcile a document's complete set of property-owned schedules. The caller
+ * supplies the transaction that writes the properties, so both commit together.
+ */
+export async function syncPropertyWorkflowSchedules(
+  s: SpaceStore,
+  sourceDocumentId: string,
+  desired: PropertyWorkflowSchedule[],
+  userId: string | undefined,
+): Promise<void> {
+  const now = new Date();
+  const existing = await many(
+    s.db
+      .select()
+      .from(workflowSchedule)
+      .where(eq(workflowSchedule.sourceDocumentId, sourceDocumentId)),
+  );
+  const byKey = new Map(
+    existing.map((entry) => [canonicalPropertyKey(entry.propertyKey ?? ""), entry]),
+  );
+  const desiredKeys = new Set(
+    desired.map((entry) => canonicalPropertyKey(entry.propertyKey)),
+  );
+  for (const stale of existing) {
+    if (!desiredKeys.has(canonicalPropertyKey(stale.propertyKey ?? ""))) {
+      await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, stale.id));
+    }
+  }
+
+  for (const entry of desired) {
+    if (!entry.changed) continue;
+    const current = byKey.get(canonicalPropertyKey(entry.propertyKey));
+    // Match SQLite's whole-second precision, including after an occurrence fired.
+    const nextRunAt = entry.runAt
+      ? new Date(Math.floor(entry.runAt.getTime() / 1000) * 1000)
+      : null;
+    const target = await one(
+      s.db
+        .select({ type: document.type })
+        .from(document)
+        .where(eq(document.id, entry.workflowId)),
+    );
+    // A deleted target must not prevent edits to the source document.
+    if (target?.type !== "workflow") {
+      if (current) {
+        await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, current.id));
+      }
+      continue;
+    }
+    if (
+      current?.documentId === entry.workflowId &&
+      current.nextRunAt?.getTime() === nextRunAt?.getTime()
+    ) {
+      continue;
+    }
+    if (!userId) {
+      throw new InvalidDocumentPropertyPatchError(
+        `Trigger "${entry.propertyKey}" needs a user to run its workflow as`,
+      );
+    }
+
+    const expired = entry.expiresAt !== null && entry.expiresAt <= now;
+    const values = {
+      propertyKey: entry.propertyKey,
+      documentId: entry.workflowId,
+      sourceDocumentId,
+      inputs: JSON.stringify({
+        documentId: sourceDocumentId,
+        propertyKey: entry.propertyKey,
+      }),
+      cronExpression: null,
+      createdBy: userId,
+      nextRunAt,
+      enabled: nextRunAt !== null && !expired,
+      lastRunAt: expired ? now : null,
+      updatedAt: now,
+    };
+    if (current) {
+      await s.db
+        .update(workflowSchedule)
+        .set(values)
+        .where(eq(workflowSchedule.id, current.id));
+    } else {
+      await s.db
+        .insert(workflowSchedule)
+        .values({ id: createId("workflowSchedule"), createdAt: now, ...values });
+    }
+  }
+}
+
+/** Move a schedule's source without changing its due time or consumed state. */
+export async function renamePropertyWorkflowSchedule(
+  s: SpaceStore,
+  sourceDocumentId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  await s.db
+    .update(workflowSchedule)
+    .set({
+      propertyKey: to,
+      inputs: JSON.stringify({ documentId: sourceDocumentId, propertyKey: to }),
+    })
+    .where(
+      and(
+        eq(workflowSchedule.sourceDocumentId, sourceDocumentId),
+        eq(workflowSchedule.propertyKey, from),
+      ),
+    );
+}
 
 /**
  * cron-schedule evaluates expressions in the process's local time and has no
