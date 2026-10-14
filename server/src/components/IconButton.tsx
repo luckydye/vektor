@@ -9,6 +9,8 @@ interface Props {
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
   class?: string;
+  /** Shows the label in the app tooltip instead of the native title. */
+  tooltipPos?: "top" | "bottom";
   onClick?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>;
 }
 
@@ -27,7 +29,9 @@ export function IconButton(props: Props) {
       class={twMerge(DEFAULT_CLASS, merged.class)}
       disabled={merged.disabled}
       aria-label={merged.label}
-      title={merged.label}
+      title={merged.tooltipPos ? undefined : merged.label}
+      data-tooltip={merged.tooltipPos ? merged.label : undefined}
+      data-tooltip-pos={merged.tooltipPos}
       onClick={merged.onClick}
     >
       <Icon name={merged.icon} />

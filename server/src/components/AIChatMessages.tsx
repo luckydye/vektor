@@ -14,6 +14,7 @@ import { formatTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 
 export interface AIChatMessagesHandle {
   scrollToBottom: () => void;
@@ -355,51 +356,57 @@ export function AIChatMessages(props: Props) {
     setExpandedToolMessages(next);
   }
 
+  function renderToolHeader(
+    key: string,
+    label: string,
+    name: string,
+    detail: string,
+    isError: boolean,
+  ) {
+    return (
+      <button
+        type="button"
+        class="flex min-w-0 max-w-full items-center gap-1.5 py-0.5 pointer-coarse:py-2 text-left text-size-small transition-colors"
+        classList={{
+          "text-red-600 hover:text-red-700": isError,
+          "text-neutral-500 hover:text-neutral-800": !isError,
+        }}
+        onClick={() => toggleToolMessageExpanded(key)}
+      >
+        <Icon
+          class={`h-3.5 w-3.5 shrink-0 transition-transform ${isToolMessageExpanded(key) ? "rotate-90" : ""}`}
+          name="chevron-right-small"
+        />
+        <span class="shrink-0">{label}</span>
+        <span class="truncate font-medium">{name}</span>
+        <Show when={detail}>
+          <span class="min-w-0 flex-1 truncate text-neutral-400">{detail}</span>
+        </Show>
+      </button>
+    );
+  }
+
   function renderToolMessage(message: AIChatMessage, key: string) {
     return (
-      <div class="ml-9 flex min-w-0" classList={{ "flex-1": isToolMessageExpanded(key) }}>
-        <div class="mr-1.5 shrink-0 pt-1.5">
-          <Icon class="tool-message-icon h-4 w-4" name="link" />
-        </div>
-        <div class="min-w-0 flex-1">
-          <button
-            type="button"
-            class="tool-message-bg max-w-full cursor-pointer overflow-hidden rounded-lg border text-left transition-colors hover:bg-neutral-100"
+      <div class="min-w-0">
+        {renderToolHeader(
+          key,
+          "Used",
+          message.toolName || "Tool",
+          collapsedToolInput(message),
+          Boolean(message.isError),
+        )}
+        <Show when={isToolMessageExpanded(key)}>
+          <pre
+            class="mt-1 mb-2 ml-5 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 font-mono text-size-extra-small leading-relaxed"
             classList={{
-              "w-full": isToolMessageExpanded(key),
-              "inline-block": !isToolMessageExpanded(key),
+              "border-red-500/30 bg-red-500/5 text-red-600": message.isError,
+              "border-neutral-200 bg-neutral-50 text-neutral-700": !message.isError,
             }}
-            onClick={() => toggleToolMessageExpanded(key)}
           >
-            <div
-              class="tool-message-header flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-size-extra-small"
-              classList={{
-                "border-b": isToolMessageExpanded(key),
-              }}
-            >
-              <span class="tool-message-label shrink-0">Used</span>
-              <span class="tool-message-name truncate font-semibold">
-                {message.toolName || "Tool"}
-              </span>
-              <Show when={collapsedToolInput(message)}>
-                <span class="min-w-0 flex-1 truncate font-normal text-neutral-500">
-                  {collapsedToolInput(message)}
-                </span>
-              </Show>
-            </div>
-            <Show when={isToolMessageExpanded(key)}>
-              <pre
-                class="overflow-x-auto whitespace-pre-wrap px-3.5 py-3 text-size-small leading-relaxed transition-all"
-                classList={{
-                  "tool-error-bg text-red-700": message.isError,
-                  "text-neutral-700": !message.isError,
-                }}
-              >
-                {toolPreview(message)}
-              </pre>
-            </Show>
-          </button>
-        </div>
+            {toolPreview(message)}
+          </pre>
+        </Show>
       </div>
     );
   }
@@ -411,31 +418,20 @@ export function AIChatMessages(props: Props) {
         when={run().items.length > 1}
         fallback={renderToolMessage(run().items[0].message, run().items[0].key)}
       >
-        <div class="min-w-0 flex-1 space-y-1.5">
-          <div class="ml-9 flex min-w-0">
-            <div class="mr-1.5 shrink-0 pt-1.5">
-              <Icon class="tool-message-icon h-4 w-4" name="link" />
-            </div>
-            <button
-              type="button"
-              class="tool-message-bg tool-message-header flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-left text-size-extra-small transition-colors hover:bg-neutral-100"
-              onClick={() => toggleToolMessageExpanded(run().key)}
-            >
-              <span class="tool-message-label shrink-0">
-                Used {run().items.length} tools
-              </span>
-              <span class="tool-message-name truncate font-semibold">
-                {summarizeToolRun(run())}
-              </span>
-              <Show when={failed()}>
-                <span class="shrink-0 text-red-700">· {failed()} failed</span>
-              </Show>
-            </button>
-          </div>
+        <div class="min-w-0 flex-1">
+          {renderToolHeader(
+            run().key,
+            `Used ${run().items.length} tools`,
+            summarizeToolRun(run()),
+            failed() ? `· ${failed()} failed` : "",
+            false,
+          )}
           <Show when={isToolMessageExpanded(run().key)}>
-            <Index each={run().items}>
-              {(item) => renderToolMessage(item().message, item().key)}
-            </Index>
+            <div class="mt-1 ml-[7px] border-neutral-200 border-l pl-3">
+              <Index each={run().items}>
+                {(item) => renderToolMessage(item().message, item().key)}
+              </Index>
+            </div>
           </Show>
         </div>
       </Show>
@@ -536,9 +532,22 @@ export function AIChatMessages(props: Props) {
   return (
     <div
       ref={messagesContainer}
-      class="messages-container flex-1 space-y-3 overflow-y-auto px-2xs py-4"
+      class="messages-container flex-1 space-y-4 overflow-y-auto px-4 py-4"
       onScroll={onMessagesScroll}
     >
+      <Show when={props.messages.length === 0 && !props.isGenerating}>
+        <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
+          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-500/10">
+            <Icon class="h-5 w-5 text-primary-600" name="agent-chat" />
+          </div>
+          <div>
+            <p class="font-medium text-neutral-800 text-size-medium">How can I help?</p>
+            <p class="mt-1 text-neutral-500 text-size-small">
+              Ask about this document, or @mention others.
+            </p>
+          </div>
+        </div>
+      </Show>
       <Show when={props.sessionStartedAt}>
         <div class="text-center text-neutral-400 text-size-extra-small">
           {formatSessionStartTime(props.sessionStartedAt, lang)}
@@ -548,12 +557,10 @@ export function AIChatMessages(props: Props) {
         {(message) => (
           <Show when={isMessageShown(message)}>
             <div
-              class="animate-message-slide-in"
+              class="flex animate-message-slide-in"
               classList={{
-                "flex justify-center": message.role === "system",
-                "flex gap-2": message.role !== "system",
+                "justify-center": message.role === "system",
                 "justify-end": message.role === "user",
-                "justify-start": message.role !== "user" && message.role !== "system",
               }}
             >
               <Show when={message.role === "system"}>
@@ -563,69 +570,50 @@ export function AIChatMessages(props: Props) {
               </Show>
 
               <Show when={message.role === "status"}>
-                <div class="status-bubble max-w-[85%] rounded-xl px-3 py-2 shadow-sm">
-                  <div class="status-bubble-label mb-1 text-size-extra-small uppercase tracking-wide">
+                <div class="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+                  <div class="mb-1 font-medium text-neutral-500 text-size-extra-small">
                     Agent log
                   </div>
-                  <pre class="whitespace-pre-wrap font-mono text-size-small leading-relaxed">
+                  <pre class="whitespace-pre-wrap font-mono text-neutral-700 text-size-extra-small leading-relaxed">
                     {message.content}
                   </pre>
                 </div>
               </Show>
 
               <Show when={message.role === "thinking"}>
-                <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-100">
-                  <Icon class="h-4 w-4 text-neutral-500" name="thinking" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex max-h-72 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-sm">
-                    <div class="shrink-0 border-neutral-200 border-b px-3.5 py-2 font-medium text-neutral-500 text-size-extra-small uppercase tracking-wide">
-                      Thinking
-                    </div>
-                    <pre class="thinking-content min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap px-3.5 py-3 font-mono text-neutral-700 text-size-small leading-relaxed">
-                      {message.content}
-                    </pre>
+                <div class="min-w-0 flex-1 border-neutral-200 border-l-2 pl-3">
+                  <div class="mb-1 flex items-center gap-1.5 font-medium text-neutral-500 text-size-small">
+                    <Icon class="h-3.5 w-3.5" name="thinking" />
+                    Thinking
                   </div>
+                  <pre class="thinking-content max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-neutral-500 text-size-small leading-relaxed">
+                    {message.content}
+                  </pre>
                 </div>
               </Show>
 
               <Show when={message.role === "assistant"}>
-                <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50">
-                  <Icon class="h-4 w-4 text-primary-500" name="agent-chat" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="group relative w-max max-w-full overflow-hidden rounded-xl border border-neutral-100 bg-neutral-10 shadow-sm">
-                    <button
-                      type="button"
-                      class="absolute top-1.5 right-1.5 z-10 rounded p-1 text-neutral-400 opacity-0 transition-opacity hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100"
-                      title={
+                <div class="group min-w-0 flex-1">
+                  <div
+                    class="markdown-content text-neutral-800 text-size-medium leading-relaxed"
+                    innerHTML={renderMessageMarkdown(message.content)}
+                  />
+                  <div class="mt-1 -ml-1.5 flex items-center gap-1 text-neutral-400 text-size-extra-small transition-opacity pointer-fine:opacity-0 pointer-fine:focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
+                    <IconButton
+                      class="h-6 w-6 pointer-coarse:h-9 pointer-coarse:w-9 [&_.svg-icon]:h-3.5 [&_.svg-icon]:w-3.5"
+                      icon={
+                        copiedAssistantMessageTimestamp() === message.timestamp
+                          ? "confirmation"
+                          : "copy"
+                      }
+                      label={
                         copiedAssistantMessageTimestamp() === message.timestamp
                           ? "Copied!"
                           : "Copy"
                       }
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void copyAssistantMessage(message);
-                      }}
-                    >
-                      <Show
-                        when={copiedAssistantMessageTimestamp() === message.timestamp}
-                        fallback={<Icon class="h-3.5 w-3.5" name="copy" />}
-                      >
-                        <Icon class="h-3.5 w-3.5 text-green-600" name="confirmation" />
-                      </Show>
-                    </button>
-                    <div
-                      class="markdown-content px-3.5 py-3 pr-9 text-neutral-800 text-size-medium leading-relaxed"
-                      innerHTML={renderMessageMarkdown(message.content)}
+                      onClick={() => void copyAssistantMessage(message)}
                     />
-                  </div>
-                  <div class="mt-1.5 px-0.5 text-neutral-500 text-size-extra-small">
-                    {new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {"  ·  Agent"}
+                    {formatTime(message.timestamp, lang)}
                   </div>
                 </div>
               </Show>
@@ -635,34 +623,34 @@ export function AIChatMessages(props: Props) {
               </Show>
 
               <Show when={message.role === "user"}>
-                <div class="ml-auto max-w-[80%] rounded-xl bg-primary-600 px-3.5 py-2.5 text-white">
+                <div class="max-w-[85%] rounded-2xl rounded-br-md bg-neutral-100 px-3.5 py-2 text-neutral-800">
                   <div
-                    class="markdown-content user-markdown text-size-medium leading-relaxed"
+                    class="markdown-content text-size-medium leading-relaxed"
                     innerHTML={renderMessageMarkdown(message.content)}
                   />
                   <Show when={message.attachments?.length}>
-                    <div class="mt-2 space-y-1.5">
+                    <div class="mt-2 mb-1 space-y-1.5">
                       <For each={message.attachments}>
                         {(attachment) => (
                           <a
                             href={attachment.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="block overflow-hidden rounded-lg border border-white/20 bg-white/10 text-size-small transition-colors hover:bg-white/15"
+                            class="block overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small transition-colors hover:bg-neutral-50"
                           >
                             <Show when={attachment.isImage}>
                               <img
                                 src={attachmentPreviewUrl(attachment)}
                                 alt={attachment.name}
-                                class="block max-h-80 w-full bg-black/10 object-contain"
+                                class="block max-h-80 w-full bg-neutral-50 object-contain"
                                 decoding="async"
                                 loading="lazy"
                               />
                             </Show>
                             <span class="block px-2 py-1.5">
                               <span class="font-medium">{attachment.name}</span>
-                              <span class="ml-1 opacity-80">
-                                ({formatFileSize(attachment.size)})
+                              <span class="ml-1 text-neutral-500">
+                                {formatFileSize(attachment.size)}
                               </span>
                             </span>
                           </a>
@@ -682,35 +670,23 @@ export function AIChatMessages(props: Props) {
           const state = waitingState();
           if (state?.kind !== "tool_executing") return null;
           return (
-            <div class="flex animate-message-slide-in justify-start">
-              <div class="tool-message-bg mt-0.5 ml-9 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-3 py-1.5 text-size-extra-small">
-                <Icon class="tool-message-icon h-4 w-4 shrink-0" name="link" />
-                <span class="tool-message-label shrink-0">Running</span>
-                <span class="tool-message-name truncate font-semibold">
-                  {state.tool.toolName}
+            <div class="flex min-w-0 animate-message-slide-in items-center gap-1.5 text-neutral-500 text-size-small">
+              <Icon class="h-3.5 w-3.5 shrink-0 animate-spin" name="spinner" />
+              <span class="shrink-0">Running</span>
+              <span class="truncate font-medium">{state.tool.toolName}</span>
+              <Show when={collapsedToolInput(state.tool)}>
+                <span class="min-w-0 truncate text-neutral-400">
+                  {collapsedToolInput(state.tool)}
                 </span>
-                <Show when={collapsedToolInput(state.tool)}>
-                  <span class="min-w-0 truncate text-neutral-500">
-                    {collapsedToolInput(state.tool)}
-                  </span>
-                </Show>
-                <span class="flex shrink-0 items-center gap-0.5">
-                  <TypingDots />
-                </span>
-              </div>
+              </Show>
             </div>
           );
         }}
       </Show>
 
       <Show when={waitingState()?.kind === "waiting"}>
-        <div class="flex animate-message-slide-in justify-start gap-2">
-          <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50">
-            <Icon class="h-4 w-4 text-primary-500" name="agent-chat" />
-          </div>
-          <div class="mt-0.5 flex items-center gap-1 rounded-xl border border-neutral-100 bg-neutral-10 px-3.5 py-3">
-            <TypingDots />
-          </div>
+        <div class="flex h-6 animate-message-slide-in items-center gap-1 px-0.5">
+          <TypingDots />
         </div>
       </Show>
     </div>

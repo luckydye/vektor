@@ -21,6 +21,7 @@ import { AIChatMessages, type AIChatMessagesHandle } from "./AIChatMessages.tsx"
 import { AIChatSessions } from "./AIChatSessions.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 import { MessageInput, type MessageInputHandle } from "./MessageInput.tsx";
 
 interface Props {
@@ -288,29 +289,61 @@ export function AIChatPanel(props: Props) {
   return (
     <DockedPanel
       id="ai-chat"
-      title="AI Assistant"
+      title="Assistant"
       defaultSide="right"
       defaultWidth={380}
       swipeToOpen={isAgentConfigured()}
+      actions={
+        <>
+          <Show when={sessions().length > 0}>
+            <IconButton
+              icon="activity"
+              label="Chat history"
+              tooltipPos="bottom"
+              class={`pointer-coarse:h-9 pointer-coarse:w-9 ${showSessionPicker() ? "bg-neutral-100 text-neutral-900" : ""}`}
+              onClick={() => setShowSessionPicker(!showSessionPicker())}
+            />
+          </Show>
+          <Show when={contextUrl()}>
+            {(url) => (
+              <IconButton
+                icon="source-code"
+                label="Model context of the latest turn"
+                tooltipPos="bottom"
+                class="pointer-coarse:h-9 pointer-coarse:w-9"
+                onClick={() => window.open(url(), "_blank", "noopener,noreferrer")}
+              />
+            )}
+          </Show>
+          <Show when={!showSessionPicker()}>
+            <IconButton
+              icon="edit-entry"
+              label="New chat"
+              tooltipPos="bottom"
+              class="pointer-coarse:h-9 pointer-coarse:w-9"
+              disabled={isGenerating()}
+              onClick={startNewChat}
+            />
+          </Show>
+          <span class="mx-1 h-4 w-px bg-neutral-200" />
+        </>
+      }
     >
-      <div class="flex h-full flex-col bg-neutral-50">
-        <AIChatSessions
-          sessions={visibleSessions()}
-          hasSessions={sessions().length > 0}
-          showJobSessions={showJobSessions()}
-          onUpdateShowJobSessions={setShowJobSessions}
-          currentSessionId={currentSessionId()}
-          contextUrl={contextUrl()}
-          showPicker={showSessionPicker()}
-          isGenerating={isGenerating()}
-          getSessionStatus={getSessionStatus}
-          onUpdateShowPicker={setShowSessionPicker}
-          onNewChat={startNewChat}
-          onResume={resumeSession}
-          onRemove={(session) => void removeSession(session.id)}
-        />
-
-        <Show when={!showSessionPicker()}>
+      <div class="flex h-full flex-col bg-neutral-10">
+        <Show
+          when={!showSessionPicker()}
+          fallback={
+            <AIChatSessions
+              sessions={visibleSessions()}
+              showJobSessions={showJobSessions()}
+              onUpdateShowJobSessions={setShowJobSessions}
+              currentSessionId={currentSessionId()}
+              getSessionStatus={getSessionStatus}
+              onResume={resumeSession}
+              onRemove={(session) => void removeSession(session.id)}
+            />
+          }
+        >
           <AIChatMessages
             ref={setMessagesRef}
             messages={messages}
@@ -319,14 +352,14 @@ export function AIChatPanel(props: Props) {
           />
         </Show>
 
-        <div class="shrink-0 px-3 pt-2 pb-2">
-          <div class="rounded-md border border-neutral-100 bg-neutral-10 px-3 py-2">
+        <div class="shrink-0 px-3 pb-3">
+          <div class="rounded-xl border border-neutral-200 bg-neutral-10 px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-neutral-300">
             <MessageInput
               ref={setMessageInputEl}
               value={messageInput()}
               onInput={setMessageInput}
-              placeholder="Ask anything..."
-              rows={3}
+              placeholder="Ask anything…"
+              rows={2}
               autoGrow
               attachments
               mentions
@@ -344,21 +377,25 @@ export function AIChatPanel(props: Props) {
                     <button
                       type="button"
                       onClick={() => void sendMessage()}
-                      disabled={!canSend()}
-                      class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500 disabled:opacity-40"
+                      disabled={
+                        !canSend() ||
+                        (!messageInput().trim() &&
+                          !messageInputEl()?.pendingAttachments().length)
+                      }
+                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:opacity-30"
                       title="Send (↵)"
                     >
-                      <Icon class="h-4 w-4" name="send-message" />
+                      <Icon class="h-3.5 w-3.5" name="send-message" />
                     </button>
                   }
                 >
                   <button
                     type="button"
                     onClick={cancelGeneration}
-                    class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-red-500"
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-neutral-800 text-neutral-10 transition-colors hover:bg-neutral-900"
                     title="Stop generating"
                   >
-                    <Icon class="h-4 w-4" name="stop" />
+                    <Icon class="h-3 w-3" name="stop" />
                   </button>
                 </Show>
               }

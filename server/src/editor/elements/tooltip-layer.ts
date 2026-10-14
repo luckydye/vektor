@@ -117,7 +117,12 @@ function triggerFrom(target: EventTarget | null): HTMLElement | null {
   return target.closest<HTMLElement>("[data-tooltip]");
 }
 
+/** Focus only explains a control when the keyboard moved it; a tap focuses too. */
+let keyboardFocus = false;
+
 document.addEventListener("pointerover", (event) => {
+  // A tap is no hover: the bubble would cover the control and never leave.
+  if (event.pointerType !== "mouse" && event.pointerType !== "pen") return;
   const trigger = triggerFrom(event.target);
   if (trigger === activeTrigger) return;
   if (trigger) show(trigger);
@@ -126,12 +131,22 @@ document.addEventListener("pointerover", (event) => {
 
 document.addEventListener("focusin", (event) => {
   const trigger = triggerFrom(event.target);
-  if (trigger) show(trigger);
+  if (trigger && keyboardFocus) show(trigger);
 });
 
+document.addEventListener("keydown", () => {
+  keyboardFocus = true;
+});
+document.addEventListener(
+  "pointerdown",
+  () => {
+    keyboardFocus = false;
+    hide();
+  },
+  true,
+);
 document.addEventListener("focusout", hide);
 // A drag never fires `pointerout`, so the bubble would hang around mid-drag.
 document.addEventListener("dragstart", hide);
-document.addEventListener("pointerdown", hide);
 window.addEventListener("scroll", hide, true);
 window.addEventListener("blur", hide);

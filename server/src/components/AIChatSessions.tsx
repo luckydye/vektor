@@ -2,24 +2,16 @@ import { For, Show } from "solid-js";
 import type { AIChatSessionListEntry } from "#api/client.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
-import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 
 interface Props {
   /** The sessions to list, after the job-session filter. */
   sessions: AIChatSessionListEntry[];
-  /** Whether any session exists, listed or not. */
-  hasSessions: boolean;
   /** Whether sessions opened by jobs, such as workflow runs, are listed. */
   showJobSessions: boolean;
   onUpdateShowJobSessions?: (value: boolean) => void;
   currentSessionId: string | null;
-  /** Where the current session's latest model context can be inspected. */
-  contextUrl: string | null;
-  showPicker: boolean;
-  isGenerating: boolean;
   getSessionStatus: (session: AIChatSessionListEntry) => string;
-  onUpdateShowPicker?: (value: boolean) => void;
-  onNewChat?: () => void;
   onResume?: (session: AIChatSessionListEntry) => void;
   onRemove?: (session: AIChatSessionListEntry) => void;
 }
@@ -27,137 +19,63 @@ interface Props {
 export function AIChatSessions(props: Props) {
   const lang = useLocale();
   return (
-    <>
-      <Show when={!props.showPicker}>
-        <div class="flex shrink-0 items-center gap-3 border-neutral-100 border-b bg-neutral-10 px-3 py-4">
-          <Show when={props.hasSessions}>
-            <button
-              type="button"
-              onClick={() => props.onUpdateShowPicker?.(true)}
-              class="flex items-center gap-1.5 text-neutral-500 text-size-small transition-colors hover:text-neutral-700"
-              title="Recent conversations"
-            >
-              <Icon class="h-3.5 w-3.5" name="activity" />
-              History
-            </button>
-          </Show>
-          <Show when={props.contextUrl}>
-            {(url) => (
-              <a
-                href={url()}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="flex items-center gap-1.5 text-neutral-500 text-size-small transition-colors hover:text-neutral-700"
-                title="Model context of the latest turn"
-              >
-                <Icon class="h-3.5 w-3.5" name="source-code" />
-                Context
-              </a>
-            )}
-          </Show>
-          <div class="flex-1" />
-          <button
-            type="button"
-            onClick={() => props.onNewChat?.()}
-            disabled={props.isGenerating}
-            class="flex items-center gap-1 font-medium text-primary-600 text-size-small transition-colors hover:text-primary-700"
-            title="New chat"
-          >
-            <Icon class="h-3.5 w-3.5" name="edit-entry" />
-            <span>New chat</span>
-          </button>
-        </div>
+    <div class="flex-1 overflow-y-auto px-2 py-3">
+      <div class="mb-1 flex items-center justify-between px-2 py-1">
+        <p class="font-medium text-neutral-500 text-size-extra-small">Recent chats</p>
+        <label class="flex items-center gap-1.5 text-neutral-500 text-size-extra-small">
+          <input
+            type="checkbox"
+            checked={props.showJobSessions}
+            onChange={(event) => props.onUpdateShowJobSessions?.(event.currentTarget.checked)}
+          />
+          Workflows
+        </label>
+      </div>
+      <Show when={props.sessions.length === 0}>
+        <p class="px-2 py-6 text-center text-neutral-400 text-size-small">No chats yet</p>
       </Show>
-
-      <Show when={props.showPicker}>
-        <div class="flex-1 overflow-y-auto px-3 py-4">
-          <div class="mb-3 flex items-center justify-between">
-            <p class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wide">
-              Recent conversations
-            </p>
-            <label class="flex items-center gap-1.5 text-neutral-500 text-size-small">
-              <input
-                type="checkbox"
-                checked={props.showJobSessions}
-                onChange={(event) =>
-                  props.onUpdateShowJobSessions?.(event.currentTarget.checked)
-                }
-              />
-              Workflows
-            </label>
-            <button
-              type="button"
-              onClick={() => props.onNewChat?.()}
-              class="flex items-center gap-1 font-medium text-primary-600 text-size-small transition-colors hover:text-primary-700"
+      <For each={props.sessions}>
+        {(session) => {
+          const status = () => props.getSessionStatus(session);
+          return (
+            /* biome-ignore lint/a11y/noStaticElementInteractions: the row preserves the list layout. */
+            /* biome-ignore lint/a11y/useKeyWithClickEvents: navigation is handled by the command interface. */
+            <div
+              class="group flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 pointer-coarse:py-2.5 transition-colors hover:bg-neutral-100"
+              classList={{ "bg-neutral-100": session.id === props.currentSessionId }}
+              onClick={() => props.onResume?.(session)}
             >
-              <Icon class="h-3.5 w-3.5" name="add" />
-              New chat
-            </button>
-          </div>
-          <div class="space-y-0.5">
-            <For each={props.sessions}>
-              {(session) => {
-                const status = () => props.getSessionStatus(session);
-                return (
-                  /* biome-ignore lint/a11y/noStaticElementInteractions: the row preserves the list layout. */
-                  /* biome-ignore lint/a11y/useKeyWithClickEvents: navigation is handled by the command interface. */
-                  <div
-                    class="group flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2.5 transition-colors hover:bg-neutral-100"
-                    onClick={() => props.onResume?.(session)}
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-neutral-800 text-size-small">{session.title}</p>
+                <p class="mt-0.5 flex items-center gap-1.5 text-neutral-400 text-size-extra-small">
+                  <Show
+                    when={status() === "generating" || status() === "awaiting"}
+                    fallback={formatAbsoluteDate(session.updatedAt, lang)}
                   >
-                    <div class="mt-0.5 shrink-0">
-                      <span
-                        class="block h-2 w-2 rounded-full"
-                        classList={{
-                          "animate-pulse bg-primary-500": status() === "generating",
-                          "bg-amber-400": status() === "awaiting",
-                          "bg-neutral-200":
-                            status() !== "generating" && status() !== "awaiting",
-                        }}
-                      />
-                    </div>
-
-                    <div class="min-w-0 flex-1">
-                      <p class="truncate text-neutral-800 text-size-medium">
-                        {session.title}
-                      </p>
-                      <p class="mt-0.5 text-size-small">
-                        <Show when={status() === "generating"}>
-                          <span class="font-medium text-primary-500">
-                            Generating response…
-                          </span>
-                        </Show>
-                        <Show when={status() === "awaiting"}>
-                          <span class="font-medium text-amber-500">
-                            Awaiting response
-                          </span>
-                        </Show>
-                        <Show when={status() !== "generating" && status() !== "awaiting"}>
-                          <span class="text-neutral-400">
-                            {formatAbsoluteDate(session.updatedAt, lang)}
-                          </span>
-                        </Show>
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        props.onRemove?.(session);
+                    <span
+                      class="h-1.5 w-1.5 rounded-full"
+                      classList={{
+                        "animate-pulse bg-primary-500": status() === "generating",
+                        "bg-amber-400": status() === "awaiting",
                       }}
-                      class="shrink-0 p-1 text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
-                      title="Delete"
-                    >
-                      <Icon class="h-3.5 w-3.5" name="delete-entry" />
-                    </button>
-                  </div>
-                );
-              }}
-            </For>
-          </div>
-        </div>
-      </Show>
-    </>
+                    />
+                    {status() === "generating" ? "Generating…" : "Awaiting response"}
+                  </Show>
+                </p>
+              </div>
+              <IconButton
+                icon="delete-entry"
+                label="Delete"
+                class="pointer-coarse:h-9 pointer-coarse:w-9 pointer-fine:opacity-0 pointer-fine:focus:opacity-100 pointer-fine:group-hover:opacity-100"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onRemove?.(session);
+                }}
+              />
+            </div>
+          );
+        }}
+      </For>
+    </div>
   );
 }
