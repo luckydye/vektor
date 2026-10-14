@@ -99,8 +99,13 @@ export function DatabaseView(props: Props) {
 
   // Column actions sit behind the dots, so the header itself stays a plain
   // sort toggle; the cell keeps its highlight while the menu is open.
-  // `type` is unset for the fixed name column, which has no actions.
-  const columnHeader = (key: string, label: string, type?: DatabaseColumn["type"]) => (
+  // Accessors, so a type change updates the header in place instead of
+  // remounting it under its open menu. `type` is unset for the name column.
+  const columnHeader = (
+    key: string,
+    label: () => string,
+    type: () => DatabaseColumn["type"] | undefined,
+  ) => (
     <div class="flex w-full items-center transition-colors has-[[aria-expanded=true]]:bg-neutral-100 has-[input]:bg-neutral-100">
       <Show
         when={renamingColumn() === key}
@@ -110,7 +115,7 @@ export function DatabaseView(props: Props) {
             class="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-2.5 pl-3 text-left transition-colors hover:text-neutral-950"
             onClick={() => cycleSort(key)}
           >
-            <span class="truncate">{label}</span>
+            <span class="truncate">{label()}</span>
             <Show when={sort()?.key === key}>
               <Icon
                 name="arrow-left"
@@ -130,7 +135,7 @@ export function DatabaseView(props: Props) {
               el.select();
             })
           }
-          value={label}
+          value={label()}
           aria-label="Column name"
           class="min-w-0 flex-1 bg-transparent py-2.5 pl-3 font-semibold text-neutral-950 outline-none"
           onKeyDown={(event) => {
@@ -140,15 +145,15 @@ export function DatabaseView(props: Props) {
           onBlur={(event) => void commitRename(key, event.currentTarget.value)}
         />
       </Show>
-      <Show when={type} fallback={<span class="pr-3" />}>
+      <Show when={type()} fallback={<span class="pr-3" />}>
         <ContextMenu
           placements="bottom-end"
-          ariaLabel={`${label} column`}
+          ariaLabel={`${label()} column`}
           trigger={
             <button
               type="button"
               slot="trigger"
-              aria-label={`${label} column actions`}
+              aria-label={`${label()} column actions`}
               onClick={() => setTypeMenuColumn(null)}
               class="mr-1.5 ml-1 flex cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 aria-expanded:bg-neutral-200 aria-expanded:text-neutral-700"
             >
@@ -176,7 +181,7 @@ export function DatabaseView(props: Props) {
                   <Icon name="generic-property" class="h-4 w-4 flex-none" />
                   <span class="flex-1 text-left text-neutral-900">Type</span>
                   <span class="text-neutral-500">
-                    {COLUMN_TYPES.find((option) => option.type === type)?.label}
+                    {COLUMN_TYPES.find((option) => option.type === type())?.label}
                   </span>
                   <Icon
                     name="chevron-right-small"
@@ -187,7 +192,7 @@ export function DatabaseView(props: Props) {
                 <ContextMenuItem
                   onClick={(event) => {
                     closeMenu(event);
-                    void deleteColumnConfirmed(key, label);
+                    void deleteColumnConfirmed(key, label());
                   }}
                 >
                   <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
@@ -209,13 +214,13 @@ export function DatabaseView(props: Props) {
                 <ContextMenuItem
                   onClick={(event) => {
                     closeMenu(event);
-                    if (option.type !== type) void changeColumnType(key, option.type);
+                    if (option.type !== type()) void changeColumnType(key, option.type);
                   }}
                 >
                   <Icon
                     name="confirmation"
                     class={
-                      option.type === type
+                      option.type === type()
                         ? "h-4 w-4 flex-none"
                         : "invisible h-4 w-4 flex-none"
                     }
@@ -227,10 +232,13 @@ export function DatabaseView(props: Props) {
           </Show>
         </ContextMenu>
       </Show>
+      {/* Centred on the cell's 1px right border, styled after the sidebar's handle. */}
       <div
-        class="absolute top-0 -right-px z-10 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary-400 active:bg-primary-400"
+        class="absolute top-2 -right-[2.5px] bottom-2 z-10 w-1 cursor-col-resize rounded-[99px] transition-colors hover:bg-neutral-300 active:bg-neutral-300"
         onPointerDown={(event) => startResize(key, event)}
-      />
+      >
+        <div class="absolute -inset-x-1 inset-y-0" />
+      </div>
     </div>
   );
   const { currentSpace } = useSpace();
@@ -416,8 +424,18 @@ export function DatabaseView(props: Props) {
 
   // Inline rather than `sticky top-0`: the app shell offsets every
   // `.sticky.top-0` by the titlebar height, which would push the header down
-  // inside its own scroller.
+  // inside its own scroller. Hovered headers lift above their neighbour
+  // (`hover:z-2!`), which would otherwise cover the overhanging resize handle.
   const stickyHeaderStyle = { position: "sticky", top: "0", "z-index": "1" } as const;
+
+  // Header cells are keyed by name: a column's object is replaced on every
+  // schema write, which would rebuild its header.
+  const columnNames = createMemo(() => derivedColumns().map((col) => col.name));
+  function columnByName(name: string): DatabaseColumn {
+    const col = derivedColumns().find((candidate) => candidate.name === name);
+    if (!col) throw new Error(`Unknown column "${name}"`);
+    return col;
+  }
 
   const { width: columnWidth, startResize } = useColumnWidths({
     key: () => `database-col-widths:${props.databaseDocumentId}`,
@@ -581,32 +599,39 @@ export function DatabaseView(props: Props) {
             <thead>
               <tr class="bg-neutral-50 text-left">
                 <th
-                  class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
+                  class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small hover:z-2!"
                   style={{ ...stickyHeaderStyle, width: `${columnWidth("title")}px` }}
                   aria-sort={ariaSort("title")}
                 >
-                  {columnHeader("title", "Name")}
+                  {columnHeader(
+                    "title",
+                    () => "Name",
+                    () => undefined,
+                  )}
                 </th>
 
-                <For each={derivedColumns()}>
-                  {(col) => (
+                <For each={columnNames()}>
+                  {(name) => (
                     <th
-                      class="whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small"
+                      class="whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small hover:z-2!"
                       style={{
                         ...stickyHeaderStyle,
-                        width: `${columnWidth(col.name)}px`,
+                        width: `${columnWidth(name)}px`,
                       }}
-                      aria-sort={ariaSort(col.name)}
+                      aria-sort={ariaSort(name)}
                     >
-                      {columnHeader(col.name, col.label, col.type)}
+                      {columnHeader(
+                        name,
+                        () => columnByName(name).label,
+                        () => columnByName(name).type,
+                      )}
                     </th>
                   )}
                 </For>
 
-                <th
-                  class="bg-neutral-50 px-2"
-                  style={{ ...stickyHeaderStyle, width: `${ACTION_COL_WIDTH}px` }}
-                >
+                {/* Unsized, so it takes up the slack when the table is narrower than its
+                    container; sized columns then keep their width while resizing. */}
+                <th class="bg-neutral-50 px-2" style={stickyHeaderStyle}>
                   <a-popover-trigger ref={addColumnTriggerRef as never}>
                     <button
                       type="button"
@@ -810,13 +835,10 @@ export function DatabaseView(props: Props) {
                       )}
                     </For>
 
-                    <td
-                      class="px-2 py-2.5 align-top"
-                      style={{ width: `${ACTION_COL_WIDTH}px` }}
-                    >
+                    <td class="px-2 align-middle">
                       <button
                         type="button"
-                        class="text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
+                        class="flex h-6 w-6 items-center justify-center rounded text-neutral-400 opacity-0 transition-all hover:bg-neutral-100 hover:text-red-500 group-hover:opacity-100"
                         title="Delete row"
                         onClick={() => void deleteRowConfirmed(row.id)}
                       >
