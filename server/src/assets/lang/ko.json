@@ -525,6 +525,8 @@
   "Search \"{query}\" in {space}": "{space}에서 \"{query}\" 검색",
   "Create Document with title \"{title}\"": "\"{title}\" 제목으로 문서 만들기",
   "Open a new document with this title": "이 제목으로 새 문서 열기",
+  "Ask the agent \"{query}\"": "에이전트에게 묻기 \"{query}\"",
+  "Start a new agent chat with this message": "이 메시지로 새 에이전트 채팅 시작",
   "Toggle Command Palatte": "명령 팔레트 전환",
   "Open or close the command menu": "명령 메뉴 열기 또는 닫기",
   "Toggle Mobile Sidebar": "모바일 사이드바 전환",

@@ -521,6 +521,8 @@
   "Search \"{query}\" in {space}": "„{query}“ in {space} suchen",
   "Create Document with title \"{title}\"": "Dokument mit dem Titel „{title}“ erstellen",
   "Open a new document with this title": "Ein neues Dokument mit diesem Titel öffnen",
+  "Ask the agent \"{query}\"": "Den Agenten fragen: „{query}“",
+  "Start a new agent chat with this message": "Einen neuen Agent-Chat mit dieser Nachricht starten",
   "Toggle Command Palatte": "Befehlspalette umschalten",
   "Open or close the command menu": "Befehlsmenü öffnen oder schließen",
   "Toggle Mobile Sidebar": "Mobile Seitenleiste umschalten",

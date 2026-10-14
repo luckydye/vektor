@@ -4,6 +4,7 @@ import { Dynamic } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
+import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import {
@@ -27,12 +28,14 @@ type Result =
   | { type: "document"; data: Doc; id?: undefined }
   | { type: "action"; id: string; data: { title?: string; description?: string } }
   | { type: "search"; title: string; space: string; id?: undefined }
-  | { type: "create"; title: string; id?: undefined };
+  | { type: "create"; title: string; id?: undefined }
+  | { type: "agent"; title: string; id?: undefined };
 
 function sectionLabel(type: Result["type"], lang: string): string {
   if (type === "document") return t("Documents", lang);
   if (type === "action") return t("Actions", lang);
   if (type === "search") return t("Search", lang);
+  if (type === "agent") return t("Agent", lang);
   return t("Create", lang);
 }
 
@@ -40,6 +43,7 @@ const RESULT_ICONS: Record<Exclude<Result["type"], "document">, IconName> = {
   action: "bolt",
   search: "search",
   create: "new-document",
+  agent: "agent-chat",
 };
 
 function resultIcon(result: Result): IconName {
@@ -56,6 +60,8 @@ function resultLabel(result: Result, lang: string): string {
     return t('Search "{query}" in {space}', lang)
       .replace("{query}", result.title)
       .replace("{space}", result.space);
+  if (result.type === "agent")
+    return t('Ask the agent "{query}"', lang).replace("{query}", result.title);
   return t('Create Document with title "{title}"', lang).replace("{title}", result.title);
 }
 
@@ -63,6 +69,7 @@ function resultDescription(result: Result, lang: string): string | undefined {
   if (result.type === "action") return result.data.description;
   if (result.type === "search") return t("Search the full text of every document", lang);
   if (result.type === "create") return t("Open a new document with this title", lang);
+  if (result.type === "agent") return t("Start a new agent chat with this message", lang);
   return undefined;
 }
 
@@ -75,6 +82,7 @@ export function CommandPalatte() {
   const { documents } = useDocuments();
   const { documentContext } = useDocumentContext();
   const { currentSpace } = useSpace();
+  const agentAvailable = useAgentAvailable();
 
   const [isOpen, setIsOpen] = createSignal(false);
   const [searchQuery, setSearchQuery] = createSignal("");
@@ -89,8 +97,9 @@ export function CommandPalatte() {
 
   const getLastVisited = (doc: Doc) => lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
 
-  const filteredResults = createMemo<Result[]>(() => {
-    if (!isOpen()) return [];
+  // Closed keeps the last list so it fades out with the overlay instead of emptying first.
+  const filteredResults = createMemo<Result[]>((previous) => {
+    if (!isOpen()) return previous;
 
     const typed = searchQuery().trim();
     const query = typed.toLowerCase();
@@ -127,6 +136,10 @@ export function CommandPalatte() {
       }
     }
 
+    // Nothing matched, so the input reads as a question: offer the agent first.
+    const askFirst = results.length === 0;
+    if (typed && askFirst && agentAvailable()) results.push({ type: "agent", title: typed });
+
     const space = currentSpace();
     if (typed && space) {
       results.push({ type: "search", title: typed, space: space.name || "this space" });
@@ -134,8 +147,10 @@ export function CommandPalatte() {
 
     if (typed && space) results.push({ type: "create", title: typed });
 
+    if (typed && !askFirst && agentAvailable()) results.push({ type: "agent", title: typed });
+
     return results;
-  });
+  }, []);
 
   const sectionStarts = createMemo(() => {
     const starts = new Map<Result["type"], number>();
@@ -156,8 +171,6 @@ export function CommandPalatte() {
 
   function closePalette() {
     setIsOpen(false);
-    setSearchQuery("");
-    setSelectedIndex(0);
   }
 
   function togglePalette() {
@@ -167,6 +180,8 @@ export function CommandPalatte() {
   createEffect(
     on(isOpen, (open) => {
       if (open) {
+        setSearchQuery("");
+        setSelectedIndex(0);
         void loadHistory();
         requestAnimationFrame(() => searchInput?.focus());
       } else if (searchInput && document.activeElement === searchInput) {
@@ -210,6 +225,11 @@ export function CommandPalatte() {
     navigate(`/new?${query.toString()}`);
   }
 
+  function askAgent(message: string) {
+    closePalette();
+    Actions.emit("ai-chat:ask", { detail: message });
+  }
+
   function searchSpace(query: string) {
     closePalette();
     const trimmed = query.trim();
@@ -220,6 +240,7 @@ export function CommandPalatte() {
     if (result.type === "document") void navigateToDocument(result.data);
     else if (result.type === "action") executeAction(result.id);
     else if (result.type === "search") searchSpace(result.title);
+    else if (result.type === "agent") askAgent(result.title);
     else createDocumentWithTitle(result.title);
   }
 
@@ -297,7 +318,7 @@ export function CommandPalatte() {
 
           <div
             ref={resultsContainer}
-            class="min-h-0 flex-1 overflow-y-auto py-1 md:max-h-[400px]"
+            class="min-h-0 flex-1 overflow-y-auto py-1 max-h-[400px]"
           >
             <Show when={isOpen() && filteredResults().length === 0}>
               <div class="px-4 py-10 text-center">

@@ -525,6 +525,8 @@
   "Search \"{query}\" in {space}": "{space}で「{query}」を検索",
   "Create Document with title \"{title}\"": "「{title}」というタイトルのドキュメントを作成",
   "Open a new document with this title": "このタイトルで新しいドキュメントを開く",
+  "Ask the agent \"{query}\"": "エージェントに質問「{query}」",
+  "Start a new agent chat with this message": "このメッセージでエージェントとの新しいチャットを開始",
   "Toggle Command Palatte": "コマンドパレットを切り替え",
   "Open or close the command menu": "コマンドメニューを開く／閉じる",
   "Toggle Mobile Sidebar": "モバイルサイドバーを切り替え",

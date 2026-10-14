@@ -525,6 +525,8 @@
   "Search \"{query}\" in {space}": "Search \"{query}\" in {space}",
   "Create Document with title \"{title}\"": "Create Document with title \"{title}\"",
   "Open a new document with this title": "Open a new document with this title",
+  "Ask the agent \"{query}\"": "Ask the agent \"{query}\"",
+  "Start a new agent chat with this message": "Start a new agent chat with this message",
   "Toggle Command Palatte": "Toggle Command Palatte",
   "Open or close the command menu": "Open or close the command menu",
   "Toggle Mobile Sidebar": "Toggle Mobile Sidebar",
