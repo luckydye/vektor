@@ -1,5 +1,5 @@
 import { parseCronExpression } from "cron-schedule";
-import { and, eq, isNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -7,6 +7,7 @@ import {
   type WorkflowSchedule,
   type WorkflowScheduleInsert,
   workflowSchedule,
+  document,
 } from "#db/schema/space.ts";
 
 /**
@@ -186,16 +187,21 @@ export async function createWorkflowSchedule(
 export async function getWorkflowSchedule(
   s: SpaceStore,
   id: string,
-): Promise<WorkflowSchedule | null> {
+): Promise<(WorkflowSchedule & { cronExpression: string }) | null> {
   const result = await one(
     s.db.select().from(workflowSchedule).where(eq(workflowSchedule.id, id)),
   );
 
-  return result || null;
+  // Property-owned one-shot schedules are edited through their property.
+  return result?.cronExpression != null
+    ? { ...result, cronExpression: result.cronExpression }
+    : null;
 }
 
 export async function listWorkflowSchedules(s: SpaceStore): Promise<WorkflowSchedule[]> {
-  return many(s.db.select().from(workflowSchedule));
+  return many(
+    s.db.select().from(workflowSchedule).where(isNotNull(workflowSchedule.cronExpression)),
+  );
 }
 
 export async function updateWorkflowSchedule(
@@ -256,29 +262,37 @@ export async function updateWorkflowSchedule(
 }
 
 export async function deleteWorkflowSchedule(s: SpaceStore, id: string): Promise<void> {
-  await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, id));
+  await s.db.delete(workflowSchedule).where(
+    and(eq(workflowSchedule.id, id), isNotNull(workflowSchedule.cronExpression)),
+  );
 }
 
 /**
- * Atomically claim all due schedules: advance next_run_at past `now` and set
- * last_run_at in the same statement that selects them, so a slow run cannot
- * be picked up again by the next tick. Missed occurrences (e.g. server was
- * down) collapse into a single fire.
+ * Claim due schedules with a guarded update: advance recurring schedules,
+ * disable one-shots, and record last_run_at. Missed recurring occurrences
+ * (e.g. server was down) collapse into a single fire.
  */
 export async function claimDueWorkflowSchedules(
   s: SpaceStore,
   now: Date = new Date(),
 ): Promise<WorkflowSchedule[]> {
-  // Backfill next_run_at for enabled schedules that lost it (e.g. rows
-  // written by an older version). They start firing from their next
-  // occurrence rather than immediately.
+  // Deprecated compatibility backfill for recurring schedules written without
+  // next_run_at by older versions. Start at their next occurrence; never
+  // backfill one-shot schedules.
   const missing = await many(
     s.db
       .select()
       .from(workflowSchedule)
-      .where(and(eq(workflowSchedule.enabled, true), isNull(workflowSchedule.nextRunAt))),
+      .where(
+        and(
+          eq(workflowSchedule.enabled, true),
+          isNotNull(workflowSchedule.cronExpression),
+          isNull(workflowSchedule.nextRunAt),
+        ),
+      ),
   );
   for (const schedule of missing) {
+    if (schedule.cronExpression === null) continue;
     try {
       await s.db
         .update(workflowSchedule)
@@ -304,16 +318,21 @@ export async function claimDueWorkflowSchedules(
 
   const claimed: WorkflowSchedule[] = [];
   for (const schedule of due) {
-    let nextRunAt: Date | null = null;
-    try {
-      nextRunAt = computeNextRunAt(schedule.cronExpression, schedule.timezone, now);
-    } catch {
-      // Invalid expression: park the schedule instead of re-firing every tick.
+    const oneShot = schedule.cronExpression === null;
+    // Retain a consumed one-shot's due time to recognize unchanged property writes.
+    let nextRunAt: Date | null = schedule.nextRunAt;
+    if (schedule.cronExpression !== null) {
+      try {
+        nextRunAt = computeNextRunAt(schedule.cronExpression, schedule.timezone, now);
+      } catch {
+        // Invalid expression: park the schedule instead of re-firing every tick.
+        nextRunAt = null;
+      }
     }
 
     const result = await s.db
       .update(workflowSchedule)
-      .set({ nextRunAt, lastRunAt: now })
+      .set({ nextRunAt, lastRunAt: now, enabled: !oneShot })
       .where(
         and(
           eq(workflowSchedule.id, schedule.id),
@@ -325,6 +344,16 @@ export async function claimDueWorkflowSchedules(
 
     // Guarded update: only the claimer that actually advanced the row runs the workflow.
     if (result[0]) {
+      if (schedule.sourceDocumentId) {
+        const source = await one(
+          s.db
+            .select({ archived: document.archived })
+            .from(document)
+            .where(eq(document.id, schedule.sourceDocumentId)),
+        );
+        // Consume trashed documents' triggers so restoring them cannot fire late.
+        if (!source || source.archived) continue;
+      }
       claimed.push(schedule);
     }
   }

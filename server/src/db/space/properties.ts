@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
-import { document, property, propertyTrigger } from "#db/schema/space.ts";
+import { document, property, workflowSchedule } from "#db/schema/space.ts";
 import {
   aggregateStoredProperties,
   canonicalPropertyKey,
@@ -385,12 +385,15 @@ export async function renameDatabaseColumn(
       );
       if (row.type === TRIGGER_PROPERTY_TYPE) {
         await tx.db
-          .update(propertyTrigger)
-          .set({ propertyKey: stored })
+          .update(workflowSchedule)
+          .set({
+            propertyKey: stored,
+            inputs: JSON.stringify({ documentId: row.documentId, propertyKey: stored }),
+          })
           .where(
             and(
-              eq(propertyTrigger.documentId, row.documentId),
-              eq(propertyTrigger.propertyKey, row.key),
+              eq(workflowSchedule.sourceDocumentId, row.documentId),
+              eq(workflowSchedule.propertyKey, row.key),
             ),
           );
       }

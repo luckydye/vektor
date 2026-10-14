@@ -9,7 +9,6 @@ const idPrefixes = {
   oauthIntegrationState: "oauth_state",
   preference: "pref",
   property: "prop",
-  propertyTrigger: "trigger",
   revision: "rev",
   run: "run",
   secret: "secret",

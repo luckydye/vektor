@@ -2,11 +2,8 @@ import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
-import type { PropertyTrigger, WorkflowSchedule } from "#db/schema/space.ts";
-import {
-  assertTriggersEnabled,
-  claimDuePropertyTriggers,
-} from "#db/space/propertyTriggers.ts";
+import type { WorkflowSchedule } from "#db/schema/space.ts";
+import { assertTriggersEnabled } from "#db/space/propertyTriggers.ts";
 import { purgeExpiredSpaces } from "#db/space/spaces.ts";
 import {
   claimDueWorkflowSchedules,
@@ -63,14 +60,9 @@ async function tick(): Promise<void> {
         const store = await openSpaceStore(spaceId);
         const due = await claimDueWorkflowSchedules(store, now);
         for (const schedule of due) {
-          // Fire-and-forget: the overlap guard inside runScheduledWorkflow
-          // prevents concurrent runs of the same workflow document.
+          // Recurring schedules avoid overlapping runs; each one-shot property
+          // trigger is independent and must run even if another is in progress.
           void runScheduledWorkflow(store, schedule);
-        }
-        // No overlap guard: each trigger is its own occurrence, and two due in
-        // one tick must both run rather than the second being skipped.
-        for (const trigger of await claimDuePropertyTriggers(store, now)) {
-          void runPropertyTrigger(store, trigger);
         }
         await maintainSpaceSeries(store, now);
       } catch (error) {
@@ -115,7 +107,10 @@ async function runScheduledWorkflow(
   try {
     // Overlap guard: a slow-running workflow shouldn't stack concurrent runs
     // from later ticks — skip this fire if the last run hasn't finished.
-    const latestRunId = await getLatestRunIdForDoc(store, schedule.documentId);
+    const latestRunId =
+      schedule.cronExpression === null
+        ? null
+        : await getLatestRunIdForDoc(store, schedule.documentId);
     if (latestRunId) {
       const latestRun = await getRunForRead(store, latestRunId);
       if (
@@ -135,6 +130,16 @@ async function runScheduledWorkflow(
       }
     }
 
+    if (schedule.sourceDocumentId) {
+      await assertTriggersEnabled(spaceId);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: schedule.documentId },
+        schedule.createdBy,
+        Permission.EDITOR,
+      );
+    }
+
     await startWorkflowRun(store, schedule.documentId, {
       initiatedByUserId: schedule.createdBy,
       sourceExtensionId: null,
@@ -147,34 +152,6 @@ async function runScheduledWorkflow(
       spaceId,
       scheduleId: schedule.id,
       documentId: schedule.documentId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-async function runPropertyTrigger(store: SpaceStore, trigger: PropertyTrigger): Promise<void> {
-  const { spaceId } = store;
-  try {
-    // Checked again at fire time: workflows may have been disabled, or the
-    // writer may have lost the workflow since.
-    await assertTriggersEnabled(spaceId);
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.DOCUMENT, id: trigger.workflowId },
-      trigger.createdBy,
-      Permission.EDITOR,
-    );
-    await startWorkflowRun(store, trigger.workflowId, {
-      initiatedByUserId: trigger.createdBy,
-      sourceExtensionId: null,
-      runtimeInputs: { documentId: trigger.documentId, propertyKey: trigger.propertyKey },
-    });
-  } catch (error) {
-    appLogger.error("Property trigger failed", {
-      spaceId,
-      documentId: trigger.documentId,
-      propertyKey: trigger.propertyKey,
-      workflowId: trigger.workflowId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

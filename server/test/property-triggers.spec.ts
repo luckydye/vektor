@@ -142,6 +142,88 @@ describe("Trigger properties - validation", () => {
 });
 
 describe("Trigger properties - firing", () => {
+  it("keeps property-owned schedules out of the recurring schedule API", async () => {
+    const trigger = await createDocument({
+      properties: {
+        reminder: {
+          value: { at: "2099-01-01T00:00:00Z", workflow: workflowId },
+          type: "trigger",
+        },
+      },
+    });
+    expect(trigger.ok).toBe(true);
+    const path = `/api/v1/spaces/${spaceId}/workflows/schedules`;
+    const created = await apiRequest(path, ownerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        documentId: workflowId,
+        cronExpression: "0 6 * * 1",
+        enabled: false,
+      }),
+    });
+    expect(created.ok).toBe(true);
+    const { schedule } = await created.json();
+    const listed = await apiRequest(path, ownerToken);
+    expect((await listed.json()).schedules.map((entry: { id: string }) => entry.id))
+      .toEqual([schedule.id]);
+    const removed = await apiRequest(`${path}/${schedule.id}`, ownerToken, {
+      method: "DELETE",
+    });
+    expect(removed.ok).toBe(true);
+  });
+
+  it("keeps per-document types when property names overlap", async () => {
+    const trigger = await createDocument({
+      properties: {
+        reminder: {
+          value: { at: "2099-01-01T00:00:00Z", workflow: workflowId },
+          type: "trigger",
+        },
+      },
+    });
+    const triggerId = (await trigger.json()).document.id;
+    const triggerRead = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${triggerId}`,
+      ownerToken,
+    );
+    expect((await triggerRead.json()).document.propertyTypes.reminder).toBe("trigger");
+    const response = await createDocument({
+      properties: { reminder: { value: "Call tomorrow", type: "text" } },
+    });
+    const id = (await response.json()).document.id;
+    const read = await apiRequest(`/api/v1/spaces/${spaceId}/documents/${id}`, ownerToken);
+    const { document } = await read.json();
+    expect(document.propertyTypes.reminder).toBe("text");
+    expect(document.properties.reminder).toBe("Call tomorrow");
+  });
+
+  it("allows date edits after the target workflow is permanently deleted", async () => {
+    const workflow = await createDocument({ type: "workflow", content: "const done = true;" });
+    const targetId = (await workflow.json()).document.id;
+    const response = await createDocument({
+      properties: {
+        eventStart: { value: "2099-01-01T00:00:00Z", type: "date" },
+        reminder: {
+          value: { from: "eventStart", workflow: targetId },
+          type: "trigger",
+        },
+      },
+    });
+    const id = (await response.json()).document.id;
+    const deleted = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${targetId}?permanent=true`,
+      ownerToken,
+      { method: "DELETE" },
+    );
+    expect(deleted.ok).toBe(true);
+    const changed = await patchProperties(id, {
+      eventStart: { value: "2099-02-01T00:00:00Z", type: "date" },
+    });
+    expect(changed.status).toBe(200);
+    const read = await apiRequest(`/api/v1/spaces/${spaceId}/documents/${id}`, ownerToken);
+    expect((await read.json()).document.properties.eventStart).toBe("2099-02-01T00:00:00Z");
+  });
+
   it("fires at, follows its from date, and never fires one armed in the past", async () => {
     const soon = () => new Date(Date.now() + 2_000).toISOString();
 
@@ -160,18 +242,32 @@ describe("Trigger properties - firing", () => {
     });
     const pastId = (await past.json()).document.id;
 
+    const archived = await createDocument({
+      properties: {
+        reminder: { value: { at: soon(), workflow: workflowId }, type: "trigger" },
+      },
+    });
+    const archivedId = (await archived.json()).document.id;
+    expect((await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${archivedId}`,
+      ownerToken,
+      { method: "DELETE" },
+    )).ok).toBe(true);
+
     // Armed against a date far away, then pulled in by editing that date.
     const event = await createDocument({
       properties: {
         eventStart: { value: "2099-01-01T00:00:00Z", type: "date" },
         reminder: {
-          value: { from: "eventStart", offsetMinutes: 0, workflow: workflowId },
+          value: { from: "eventStart", offsetMinutes: -10, workflow: workflowId },
           type: "trigger",
         },
       },
     });
     const eventId = (await event.json()).document.id;
-    expect((await patchProperties(eventId, { eventStart: { value: soon(), type: "date" } })).status).toBe(200);
+    // Keep the anchor in the future after firing, with nonzero milliseconds.
+    const anchor = new Date(Math.floor(Date.now() / 1000) * 1000 + 602_123).toISOString();
+    expect((await patchProperties(eventId, { eventStart: { value: anchor, type: "date" } })).status).toBe(200);
 
     const deadline = Date.now() + 45_000;
     let fired: string[] = [];
@@ -184,6 +280,11 @@ describe("Trigger properties - firing", () => {
     expect(fired).toContain(fixedId);
     expect(fired).toContain(eventId);
     expect(fired).not.toContain(pastId);
+    expect(fired).not.toContain(archivedId);
     expect(fired.filter((id) => id === fixedId)).toHaveLength(1);
-  }, 60_000);
+    expect((await patchProperties(eventId, { eventStart: { value: anchor, type: "date" } })).status).toBe(200);
+    // Give another scheduler tick time to expose an incorrectly re-armed trigger.
+    await new Promise((resolve) => setTimeout(resolve, 35_000));
+    expect((await triggeredDocumentIds()).filter((id) => id === eventId)).toHaveLength(1);
+  }, 100_000);
 });

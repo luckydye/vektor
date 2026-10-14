@@ -9,7 +9,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
 import type { Migration } from "./migrator.ts";
-import { exec } from "./query.ts";
+import { exec, one } from "./query.ts";
 import {
   addColumnIfMissing,
   generateCreateTableSQL,
@@ -221,11 +221,44 @@ async function aiChatSessionSource(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
 }
 
-async function propertyTriggers(db: SpaceDb): Promise<void> {
-  await createTables(db, [spaceSchema.propertyTrigger]);
+async function oneShotWorkflowSchedules(db: SpaceDb): Promise<void> {
+  // Rebuild to allow NULL cron_expression for one-shot schedules.
+  const create = generateCreateTableSQL(spaceSchema.workflowSchedule).replace(
+    "CREATE TABLE IF NOT EXISTS workflow_schedule",
+    "CREATE TABLE workflow_schedule_new",
+  );
+  const columns =
+    "id, document_id, cron_expression, timezone, inputs, enabled, next_run_at, last_run_at, created_at, updated_at, created_by";
   await run(db, [
-    "CREATE UNIQUE INDEX IF NOT EXISTS property_trigger_document_key_unique ON property_trigger (document_id, property_key)",
-    "CREATE INDEX IF NOT EXISTS property_trigger_due_idx ON property_trigger (fired_at, fire_at)",
+    create,
+    `INSERT INTO workflow_schedule_new (${columns}) SELECT ${columns} FROM workflow_schedule`,
+    "DROP TABLE workflow_schedule",
+    "ALTER TABLE workflow_schedule_new RENAME TO workflow_schedule",
+  ]);
+  await migrateDeprecatedPropertyTriggers(db);
+  await run(db, [
+    "CREATE UNIQUE INDEX workflow_schedule_source_property_unique ON workflow_schedule (source_document_id, property_key)",
+    "CREATE INDEX workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
+  ]);
+}
+
+/** @deprecated Only migrates databases opened by the branch's former migration 11. */
+async function migrateDeprecatedPropertyTriggers(db: SpaceDb): Promise<void> {
+  const oldTable = await one<{ name: string }>(db, sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'property_trigger'
+  `);
+  if (!oldTable) return;
+  await run(db, [
+    `INSERT INTO workflow_schedule (
+      id, document_id, source_document_id, property_key, inputs, enabled,
+      next_run_at, last_run_at, created_by, created_at, updated_at
+    ) SELECT
+      id, workflow_id, document_id, property_key,
+      json_object('documentId', document_id, 'propertyKey', property_key),
+      fired_at IS NULL AND fire_at IS NOT NULL,
+      fire_at, fired_at, created_by, updated_at, updated_at
+    FROM property_trigger`,
+    "DROP TABLE property_trigger",
   ]);
 }
 
@@ -244,5 +277,6 @@ export const spaceMigrations: Migration[] = [
   },
   { id: 9, name: "audit-log-attribution", up: auditLogAttribution },
   { id: 10, name: "ai-chat-session-source", up: aiChatSessionSource },
-  { id: 11, name: "property-triggers", up: propertyTriggers },
+  // 11 was the superseded property-trigger table; 12 also upgrades those databases.
+  { id: 12, name: "one-shot-workflow-schedules", up: oneShotWorkflowSchedules },
 ];

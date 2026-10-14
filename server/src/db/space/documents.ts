@@ -70,6 +70,8 @@ export interface DocumentWithProperties {
   publishedRev: number | null;
   changeSeq: number;
   properties: DocumentProperties;
+  /** Individual property types, populated by document reads. */
+  propertyTypes?: Record<string, string | null>;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -324,7 +326,12 @@ export async function getDocument(
   );
   const properties = toDocumentProperties(props);
 
-  return { ...doc, parentId: doc.parentId || null, properties };
+  return {
+    ...doc,
+    parentId: doc.parentId || null,
+    properties,
+    propertyTypes: Object.fromEntries(props.map((row) => [row.key, row.type])),
+  };
 }
 
 /** The document carrying this property key and value, if one does. */
@@ -468,6 +475,7 @@ export async function getDocumentBySlug(
     publishedRev: doc.publishedRev,
     changeSeq: doc.changeSeq,
     properties,
+    propertyTypes: Object.fromEntries(props.map((row) => [row.key, row.type])),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     createdBy: doc.createdBy,

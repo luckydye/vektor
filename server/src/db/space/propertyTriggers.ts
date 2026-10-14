@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { PermissionDeniedError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
@@ -7,9 +7,8 @@ import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import {
   document,
-  type PropertyTrigger,
   property,
-  propertyTrigger,
+  workflowSchedule,
 } from "#db/schema/space.ts";
 import {
   canonicalPropertyKey,
@@ -118,7 +117,7 @@ function resolveSchedule(
 }
 
 /**
- * Bring a document's `property_trigger` rows in line with its trigger properties, inside the transaction that wrote `writtenKeys`.
+ * Bring a document's one-shot workflow schedules in line with its trigger properties, inside the transaction that wrote `writtenKeys`.
  * A trigger the write moved, itself or through the date it follows, re-arms to run as `userId`, already fired if that date has passed.
  */
 export async function syncPropertyTriggers(
@@ -132,7 +131,10 @@ export async function syncPropertyTriggers(
     s.db.select().from(property).where(eq(property.documentId, documentId)),
   );
   const existing = await many(
-    s.db.select().from(propertyTrigger).where(eq(propertyTrigger.documentId, documentId)),
+    s.db
+      .select()
+      .from(workflowSchedule)
+      .where(eq(workflowSchedule.sourceDocumentId, documentId)),
   );
 
   const values = new Map<string, string>();
@@ -147,8 +149,8 @@ export async function syncPropertyTriggers(
   const triggerKeys = new Set(triggerRows.map((row) => canonicalPropertyKey(row.key)));
 
   for (const stale of existing) {
-    if (!triggerKeys.has(canonicalPropertyKey(stale.propertyKey))) {
-      await s.db.delete(propertyTrigger).where(eq(propertyTrigger.id, stale.id));
+    if (!triggerKeys.has(canonicalPropertyKey(stale.propertyKey ?? ""))) {
+      await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, stale.id));
     }
   }
 
@@ -161,71 +163,58 @@ export async function syncPropertyTriggers(
     if (!rearmed) continue;
 
     const schedule = resolveSchedule(spec, values);
-    const fireAt = schedule?.fireAt ?? null;
+    // SQLite timestamp columns store whole seconds. Compare at that same
+    // precision so an unchanged ISO date with milliseconds stays consumed.
+    const fireAt = schedule
+      ? new Date(Math.floor(schedule.fireAt.getTime() / 1000) * 1000)
+      : null;
     const current = existing.find(
-      (entry) => canonicalPropertyKey(entry.propertyKey) === key,
+      (entry) => canonicalPropertyKey(entry.propertyKey ?? "") === key,
     );
+    const target = await one(
+      s.db
+        .select({ type: document.type })
+        .from(document)
+        .where(eq(document.id, spec.workflow)),
+    );
+    // Deleting a workflow cascades its schedule rows, but the document's
+    // property remains editable. A date edit must not recreate a dangling FK.
+    if (target?.type !== "workflow") {
+      if (current) {
+        await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, current.id));
+      }
+      continue;
+    }
     // Re-saving an unchanged schedule must not re-arm a trigger that already fired.
     if (
-      current?.workflowId === spec.workflow &&
-      current.fireAt?.getTime() === fireAt?.getTime()
+      current?.documentId === spec.workflow &&
+      current.nextRunAt?.getTime() === fireAt?.getTime()
     ) {
       continue;
     }
 
     const armed = {
       propertyKey: row.key,
-      workflowId: spec.workflow,
+      documentId: spec.workflow,
+      sourceDocumentId: documentId,
+      inputs: JSON.stringify({ documentId, propertyKey: row.key }),
+      cronExpression: null,
       createdBy: writerOf(row.key, userId),
-      fireAt,
-      firedAt: schedule && schedule.anchor <= now ? now : null,
+      nextRunAt: fireAt,
+      enabled: !!schedule && schedule.anchor > now,
+      lastRunAt: schedule && schedule.anchor <= now ? now : null,
       updatedAt: now,
     };
     if (current) {
       await s.db
-        .update(propertyTrigger)
+        .update(workflowSchedule)
         .set(armed)
-        .where(eq(propertyTrigger.id, current.id));
+        .where(eq(workflowSchedule.id, current.id));
     } else {
       await s.db
-        .insert(propertyTrigger)
-        .values({ id: createId("propertyTrigger"), documentId, ...armed });
+        .insert(workflowSchedule)
+        .values({ id: createId("workflowSchedule"), createdAt: now, ...armed });
     }
   }
 }
 
-/**
- * Claim every trigger whose time has come. The guarded update marks each one
- * fired, so a trigger is handed out once even if two ticks race.
- */
-export async function claimDuePropertyTriggers(
-  s: SpaceStore,
-  now: Date,
-): Promise<PropertyTrigger[]> {
-  const due = await many(
-    s.db
-      .select({ id: propertyTrigger.id, archived: document.archived })
-      .from(propertyTrigger)
-      .innerJoin(document, eq(document.id, propertyTrigger.documentId))
-      .where(and(isNull(propertyTrigger.firedAt), lte(propertyTrigger.fireAt, now))),
-  );
-
-  // A trashed document's trigger is consumed without running, so restoring the
-  // document doesn't fire it late.
-  const claimed: PropertyTrigger[] = [];
-  for (const { id, archived } of due) {
-    const [trigger] = await s.db
-      .update(propertyTrigger)
-      .set({ firedAt: now })
-      .where(
-        and(
-          eq(propertyTrigger.id, id),
-          isNull(propertyTrigger.firedAt),
-          lte(propertyTrigger.fireAt, now),
-        ),
-      )
-      .returning();
-    if (trigger && !archived) claimed.push(trigger);
-  }
-  return claimed;
-}

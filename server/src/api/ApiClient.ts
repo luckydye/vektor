@@ -122,6 +122,8 @@ export interface Document {
 
 export interface DocumentWithProperties extends Document {
   properties: DocumentProperties;
+  /** Individual property types, populated by document reads. */
+  propertyTypes?: Record<string, string | null>;
   mentionCount?: number;
   /** Natural width/height ratio derived from the stored header image. */
   headerImageAspectRatio?: number | null;

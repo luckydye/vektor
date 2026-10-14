@@ -9,6 +9,7 @@ import { useWorkflows } from "#composeables/useWorkflows.ts";
 import type { Property, TriggerSpec } from "#documents/properties.ts";
 import {
   canonicalPropertyKey,
+  InvalidDocumentPropertyPatchError,
   isHiddenDocumentPropertyKey,
   parseTriggerSpec,
   propertyValueToScalar,
@@ -267,7 +268,13 @@ export function DocumentProperties(props: Props) {
   /** An empty trigger is one not armed yet. */
   const triggerSpecOf = (property: Property): TriggerSpec | null => {
     const value = propertyValueToScalar(property.value);
-    return value ? parseTriggerSpec(property.name, value) : null;
+    if (!value) return null;
+    try {
+      return parseTriggerSpec(property.name, value);
+    } catch (error) {
+      if (error instanceof InvalidDocumentPropertyPatchError) return null;
+      throw error;
+    }
   };
 
   const getTriggerEditor = (property: Property) => {
@@ -382,7 +389,13 @@ export function DocumentProperties(props: Props) {
         const spaceProperty = spaceProperties()?.find(
           (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(key),
         );
-        const propertyType = (spaceProperty?.type as Property["type"]) || "text";
+        const localTypes = document()?.propertyTypes;
+        // A space-wide suggestion cannot determine an existing value's type.
+        // Before the document read arrives, do not infer a trigger editor.
+        const suggestedType =
+          spaceProperty?.type === TRIGGER_PROPERTY_TYPE ? "text" : spaceProperty?.type;
+        const propertyType =
+          ((localTypes ? localTypes[key] : suggestedType) as Property["type"]) || "text";
 
         return {
           id: key,
