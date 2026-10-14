@@ -117,7 +117,8 @@ function resolveSchedule(
 
 /**
  * Bring a document's one-shot workflow schedules in line with its trigger properties, inside the transaction that wrote `writtenKeys`.
- * A trigger the write moved, itself or through the date it follows, re-arms to run as `userId`, already fired if that date has passed.
+ * Writing a trigger sets its execution identity to `userId`. Moving only the
+ * date it follows preserves that identity. Past anchors are already consumed.
  */
 export async function syncPropertyTriggers(
   s: SpaceStore,
@@ -144,6 +145,7 @@ export async function syncPropertyTriggers(
         workflowId: spec.workflow,
         runAt: schedule?.fireAt ?? null,
         expiresAt: schedule?.anchor ?? null,
+        triggerWritten: writtenKeys.has(canonicalPropertyKey(row.key)),
         changed:
           writtenKeys.has(canonicalPropertyKey(row.key)) ||
           ("from" in spec && writtenKeys.has(canonicalPropertyKey(spec.from))),

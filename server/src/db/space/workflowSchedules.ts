@@ -21,6 +21,8 @@ export interface PropertyWorkflowSchedule {
   runAt: Date | null;
   /** An occurrence armed after this instant is already expired. */
   expiresAt: Date | null;
+  /** Only an explicit trigger write changes its execution identity. */
+  triggerWritten: boolean;
   changed: boolean;
 }
 
@@ -77,9 +79,19 @@ export async function syncPropertyWorkflowSchedules(
       current?.documentId === entry.workflowId &&
       current.nextRunAt?.getTime() === nextRunAt?.getTime()
     ) {
+      if (current.propertyKey !== entry.propertyKey && current.propertyKey !== null) {
+        await renamePropertyWorkflowSchedule(
+          s,
+          sourceDocumentId,
+          current.propertyKey,
+          entry.propertyKey,
+        );
+      }
       continue;
     }
-    if (!userId) {
+    const createdBy =
+      current && !entry.triggerWritten ? current.createdBy : userId;
+    if (!createdBy) {
       throw new InvalidDocumentPropertyPatchError(
         `Trigger "${entry.propertyKey}" needs a user to run its workflow as`,
       );
@@ -95,7 +107,7 @@ export async function syncPropertyWorkflowSchedules(
         propertyKey: entry.propertyKey,
       }),
       cronExpression: null,
-      createdBy: userId,
+      createdBy,
       nextRunAt,
       enabled: nextRunAt !== null && !expired,
       lastRunAt: expired ? now : null,
@@ -443,6 +455,7 @@ export async function claimDueWorkflowSchedules(
 
   const claimed: WorkflowSchedule[] = [];
   for (const schedule of due) {
+    if (schedule.nextRunAt === null) continue;
     const oneShot = schedule.cronExpression === null;
     // Retain a consumed one-shot's due time to recognize unchanged property writes.
     let nextRunAt: Date | null = schedule.nextRunAt;
@@ -462,24 +475,32 @@ export async function claimDueWorkflowSchedules(
         and(
           eq(workflowSchedule.id, schedule.id),
           eq(workflowSchedule.enabled, true),
-          lte(workflowSchedule.nextRunAt, now),
+          eq(workflowSchedule.nextRunAt, schedule.nextRunAt),
+          schedule.cronExpression === null
+            ? isNull(workflowSchedule.cronExpression)
+            : eq(workflowSchedule.cronExpression, schedule.cronExpression),
+          schedule.timezone === null
+            ? isNull(workflowSchedule.timezone)
+            : eq(workflowSchedule.timezone, schedule.timezone),
         ),
       )
-      .returning({ id: workflowSchedule.id });
+      .returning();
 
-    // Guarded update: only the claimer that actually advanced the row runs the workflow.
-    if (result[0]) {
-      if (schedule.sourceDocumentId) {
+    // Timing must still match what we computed above. Execution metadata comes
+    // from the claimed row, so an intervening edit cannot run a stale workflow.
+    const claimedSchedule = result[0];
+    if (claimedSchedule) {
+      if (claimedSchedule.sourceDocumentId) {
         const source = await one(
           s.db
             .select({ archived: document.archived })
             .from(document)
-            .where(eq(document.id, schedule.sourceDocumentId)),
+            .where(eq(document.id, claimedSchedule.sourceDocumentId)),
         );
         // Consume trashed documents' triggers so restoring them cannot fire late.
         if (!source || source.archived) continue;
       }
-      claimed.push(schedule);
+      claimed.push(claimedSchedule);
     }
   }
 
