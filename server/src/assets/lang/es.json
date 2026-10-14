@@ -750,5 +750,12 @@
   "{percent}% rain": "{percent}% de lluvia",
   "Tidy up": "Ordenar",
   "Clear selection": "Borrar selección",
-  "Selection": "Selección"
+  "Selection": "Selección",
+  "Trigger": "Disparador",
+  "Not scheduled": "Sin programar",
+  "At time": "A una hora",
+  "From date": "Desde fecha",
+  "Offset in minutes": "Desfase en minutos",
+  "No workflows in this space": "No hay flujos de trabajo en este espacio",
+  "No date properties on this document": "Este documento no tiene propiedades de fecha"
 }

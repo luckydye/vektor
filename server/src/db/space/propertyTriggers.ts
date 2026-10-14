@@ -63,7 +63,7 @@ export async function authorizeTriggerWrites(
       operation.type === TRIGGER_PROPERTY_TYPE ||
       (operation.type === undefined &&
         existingTriggerKeys.has(canonicalPropertyKey(operation.key)));
-    if (!writesTrigger) continue;
+    if (!writesTrigger || operation.value === "") continue;
 
     const writer = writerOf(operation.key, userId);
     const { workflow } = parseTriggerSpec(operation.key, operation.value);
@@ -123,7 +123,9 @@ export async function syncPropertyTriggers(
     if (typeof value === "string") values.set(canonicalPropertyKey(row.key), value);
   }
 
-  const triggerRows = rows.filter((row) => row.type === TRIGGER_PROPERTY_TYPE);
+  const triggerRows = rows.filter(
+    (row) => row.type === TRIGGER_PROPERTY_TYPE && row.value !== "",
+  );
   const triggerKeys = new Set(triggerRows.map((row) => canonicalPropertyKey(row.key)));
 
   for (const stale of existing) {

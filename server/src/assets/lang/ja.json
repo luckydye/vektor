@@ -750,5 +750,12 @@
   "{percent}% rain": "降水確率 {percent}%",
   "Tidy up": "整列",
   "Clear selection": "選択を解除",
-  "Selection": "選択"
+  "Selection": "選択",
+  "Trigger": "トリガー",
+  "Not scheduled": "未設定",
+  "At time": "日時指定",
+  "From date": "日付から",
+  "Offset in minutes": "オフセット（分）",
+  "No workflows in this space": "このスペースにワークフローはありません",
+  "No date properties on this document": "このドキュメントに日付プロパティはありません"
 }

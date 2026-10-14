@@ -750,5 +750,12 @@
   "{percent}% rain": "{percent}% rain",
   "Tidy up": "Tidy up",
   "Clear selection": "Clear selection",
-  "Selection": "Selection"
+  "Selection": "Selection",
+  "Trigger": "Trigger",
+  "Not scheduled": "Not scheduled",
+  "At time": "At time",
+  "From date": "From date",
+  "Offset in minutes": "Offset in minutes",
+  "No workflows in this space": "No workflows in this space",
+  "No date properties on this document": "No date properties on this document"
 }

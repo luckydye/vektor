@@ -225,7 +225,7 @@ export function normalizeDocumentPropertyPatch(
           }
         }
       }
-      if (type === TRIGGER_PROPERTY_TYPE) parseTriggerSpec(key, value);
+      if (type === TRIGGER_PROPERTY_TYPE && value !== "") parseTriggerSpec(key, value);
 
       return { kind: "update", key, value, type };
     },
@@ -240,7 +240,7 @@ export function normalizeDocumentPropertyPatch(
 
 /**
  * The property type of a trigger: a stored JSON {@link TriggerSpec} that starts
- * a workflow once its time has come.
+ * a workflow once its time has come. An empty value is a trigger not yet armed.
  */
 export const TRIGGER_PROPERTY_TYPE = "trigger";
 
@@ -389,7 +389,13 @@ export function propertyValueIncludes(
 // Property shapes used by the property UI
 // ---------------------------------------------------------------------------
 
-export type PropertyType = "text" | "select" | "multi-select" | "date" | "user";
+export type PropertyType =
+  | "text"
+  | "select"
+  | "multi-select"
+  | "date"
+  | "user"
+  | typeof TRIGGER_PROPERTY_TYPE;
 
 /** A single property on a document, as edited in the property UI. */
 export interface Property {
