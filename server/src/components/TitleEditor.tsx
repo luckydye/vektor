@@ -14,6 +14,21 @@ interface Props {
   onTitleUpdated?: (title: string) => void;
 }
 
+/** Saves the title and follows the slug it may have changed. */
+export async function saveDocumentTitle(
+  spaceId: string,
+  documentId: string,
+  title: string,
+  navigate: (path: string, options: { replace: boolean }) => void,
+) {
+  const data = await api.document.patch(spaceId, documentId, {
+    properties: { title: { value: title } },
+  });
+  if (data.slug && /\/doc\/[^/]+/.test(window.location.pathname)) {
+    navigate(`/doc/${data.slug}`, { replace: true });
+  }
+}
+
 export function TitleEditor(props: Props) {
   const navigate = useNavigate();
   const [localTitle, setLocalTitle] = createSignal(props.title);
@@ -61,14 +76,7 @@ export function TitleEditor(props: Props) {
 
       try {
         if (!props.spaceId) throw new Error("No space selected");
-
-        const data = await api.document.patch(props.spaceId, props.documentId, {
-          properties: { title: { value: localTitle() } },
-        });
-
-        if (data.slug && /\/doc\/[^/]+/.test(window.location.pathname)) {
-          navigate(`/doc/${data.slug}`, { replace: true });
-        }
+        await saveDocumentTitle(props.spaceId, props.documentId, localTitle(), navigate);
       } catch (error) {
         console.error("Error saving title:", error);
       }

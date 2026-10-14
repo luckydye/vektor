@@ -86,7 +86,7 @@ export function Dialog(props: Props) {
         <div
           role="dialog"
           aria-modal="true"
-          class={`dialog-panel relative flex w-full flex-col overflow-hidden rounded-t-2xl bg-background shadow-xl md:rounded-2xl ${merged.maxWidth} ${merged.panelHeight} ${
+          class={`dialog-panel relative flex w-full flex-col overflow-clip rounded-t-2xl bg-background shadow-xl md:rounded-2xl ${merged.maxWidth} ${merged.panelHeight} ${
             merged.expand ? "h-[90%] md:h-[85%]" : "max-h-[90%] md:max-h-[85%]"
           }`}
           onClick={(event) => event.stopPropagation()}

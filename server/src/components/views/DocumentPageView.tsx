@@ -15,6 +15,7 @@ import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
+import { Dialog } from "#components/Dialog.tsx";
 import { DocumentActions } from "#components/DocumentActions.tsx";
 import { DocumentBody } from "#components/DocumentBody.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
@@ -447,7 +448,7 @@ export function DocumentPageView(props: Props) {
   );
 
   const documentPropertiesBlock = (
-    layout?: "labeled" | "toolbar",
+    layout?: "labeled" | "toolbar" | "sheet",
     part?: "category" | "others",
   ): JSX.Element => (
     <DocumentProperties
@@ -483,6 +484,8 @@ export function DocumentPageView(props: Props) {
     </button>
   );
 
+  const [propertiesSheetOpen, setPropertiesSheetOpen] = createSignal(false);
+
   const inlineAddProperty = () =>
     hasToolbarProperties() && !hasToolbarPropertyChips() && userCanEdit();
 
@@ -507,16 +510,19 @@ export function DocumentPageView(props: Props) {
             class={hasToolbarProperties() ? undefined : "max-md:hidden"}
           />
         </Show>
-        {/* A lone add button would be an empty box of its own. */}
+        {/* A lone add button would be an empty box of its own. On phones the
+            properties live in a sheet opened from the actions menu. */}
         <Show when={inlineAddProperty()}>
-          <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
-          <div class="shrink-0">{documentPropertiesBlock("toolbar", "others")}</div>
+          <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200 max-md:hidden" />
+          <div class="shrink-0 max-md:hidden">
+            {documentPropertiesBlock("toolbar", "others")}
+          </div>
         </Show>
       </div>
       {/* These types have no title block, so their properties ride the toolbar
           in a pill of their own, folding away sideways. */}
       <Show when={hasToolbarProperties() && hasToolbarPropertyChips()}>
-        <div class="pointer-events-auto flex h-9 min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background px-1">
+        <div class="pointer-events-auto flex h-9 min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background px-1 max-md:hidden">
           <Show when={documentDetailsVisible()}>
             <div class="min-w-0">{documentPropertiesBlock("toolbar", "others")}</div>
             <div class="mx-0.5 h-4 w-px shrink-0 bg-neutral-200" />
@@ -544,6 +550,17 @@ export function DocumentPageView(props: Props) {
       </div>
       <div id="document-toolbar-slot" class="pointer-events-auto shrink-0 empty:hidden" />
       {documentActions()}
+      <Show when={hasToolbarProperties()}>
+        <Dialog
+          show={propertiesSheetOpen()}
+          title={t("Properties")}
+          // Full height, so the editor pages sliding over it have room.
+          expand
+          onUpdateShow={setPropertiesSheetOpen}
+        >
+          {documentPropertiesBlock("sheet")}
+        </Dialog>
+      </Show>
     </div>
   );
 
@@ -590,6 +607,9 @@ export function DocumentPageView(props: Props) {
         isRegularDocument()
           ? () => setTableOfContentsVisible(!tableOfContentsVisible())
           : undefined
+      }
+      onShowProperties={
+        hasToolbarProperties() ? () => setPropertiesSheetOpen(true) : undefined
       }
     />
   );

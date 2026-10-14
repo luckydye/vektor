@@ -15,8 +15,16 @@ export function DialogHost() {
     const current = request();
     if (current?.kind !== "prompt") return;
     setValue(current.defaultValue);
-    input?.focus();
-    input?.select();
+    const field = input;
+    const layer = field?.closest<HTMLElement & { updateComplete: Promise<boolean> }>(
+      "a-blur",
+    );
+    if (!field || !layer) throw new Error("Prompt input is not mounted");
+    // The layer stays inert, refusing focus, until its own update enables it.
+    void layer.updateComplete.then(() => {
+      field.focus();
+      field.select();
+    });
   });
 
   return (
