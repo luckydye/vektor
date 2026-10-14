@@ -233,6 +233,19 @@ export function useDatabaseRows(
     await updateSchemaMutation.mutateAsync(updated);
   }
 
+  async function renameColumn(from: string, to: string) {
+    const id = spaceId();
+    if (!id) throw new Error("No space ID");
+    const { schema: renamed } = await api.document.renameColumn(
+      id,
+      databaseDocumentId(),
+      from,
+      to,
+    );
+    if (renamed) writeSchemaStr(renamed);
+    refreshRows();
+  }
+
   useSync(spaceId, [realtimeTopics.properties], (_keys) => {
     queryClient.invalidateQueries({ queryKey: databaseKey() });
   });
@@ -252,5 +265,6 @@ export function useDatabaseRows(
     addColumn,
     addColumns,
     deleteColumn,
+    renameColumn,
   };
 }

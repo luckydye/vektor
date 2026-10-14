@@ -23,7 +23,7 @@ import {
   readDocumentProperty,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
-import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
+import { ContextMenu } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -81,95 +81,94 @@ export function DatabaseView(props: Props) {
     );
   }
 
-  const sortItem = (key: string, order: DatabaseSort["order"]) => (
-    <ContextMenuItem
-      onClick={(event) => {
-        closeMenu(event);
-        commitSort({ key, order });
-      }}
-    >
-      <Icon
-        name="arrow-left"
-        class={twMerge("h-4 w-4 flex-none", order === "asc" ? "rotate-90" : "-rotate-90")}
-      />
-      <span
-        class={
-          sort()?.key === key && sort()?.order === order
-            ? "font-medium text-primary-600"
-            : "text-neutral-900"
+  // Clicking a header cycles ascending → descending → unsorted.
+  function cycleSort(key: string) {
+    const current = sort();
+    if (current?.key !== key) commitSort({ key, order: "asc" });
+    else if (current.order === "asc") commitSort({ key, order: "desc" });
+    else commitSort(null);
+  }
+
+  // Column actions sit behind the dots, so the header itself stays a plain
+  // sort toggle; the cell keeps its highlight while the menu is open.
+  const columnHeader = (key: string, label: string, editable: boolean) => (
+    <div class="flex w-full items-center transition-colors has-[[aria-expanded=true]]:bg-neutral-100 has-[input]:bg-neutral-100">
+      <Show
+        when={renamingColumn() === key}
+        fallback={
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-2.5 pl-3 text-left transition-colors hover:text-neutral-950"
+            onClick={() => cycleSort(key)}
+          >
+            <span class="truncate">{label}</span>
+            <Show when={sort()?.key === key}>
+              <Icon
+                name="arrow-left"
+                class={twMerge(
+                  "h-3.5 w-3.5 shrink-0 text-primary-600",
+                  sort()?.order === "asc" ? "rotate-90" : "-rotate-90",
+                )}
+              />
+            </Show>
+          </button>
         }
       >
-        {order === "asc" ? "Sort ascending" : "Sort descending"}
-      </span>
-    </ContextMenuItem>
-  );
-
-  // The whole cell opens the column menu; its icon only shows on hover so the
-  // header row stays quiet.
-  const columnHeader = (
-    key: string,
-    label: string,
-    onDelete?: (anchor: Element) => void,
-  ) => (
-    <ContextMenu
-      class="block w-full"
-      placements="bottom-start"
-      ariaLabel={`${label} column`}
-      trigger={
-        <button
-          type="button"
-          slot="trigger"
-          class="group/header flex w-full cursor-pointer items-center gap-1.5 px-3 py-2.5 text-left transition-colors hover:text-neutral-950"
-        >
-          <span class="truncate">{label}</span>
-          <Show when={sort()?.key === key}>
-            <Icon
-              name="arrow-left"
-              class={twMerge(
-                "h-3.5 w-3.5 shrink-0 text-primary-600",
-                sort()?.order === "asc" ? "rotate-90" : "-rotate-90",
-              )}
-            />
-          </Show>
-          <Icon
-            name="context-menu-more"
-            class="ml-auto h-4 w-4 shrink-0 text-neutral-400 opacity-0 transition-opacity group-hover/header:opacity-100"
-          />
-        </button>
-      }
-    >
-      {sortItem(key, "asc")}
-      {sortItem(key, "desc")}
-      <Show when={sort()?.key === key}>
-        <ContextMenuItem
-          onClick={(event) => {
-            closeMenu(event);
-            commitSort(null);
+        <input
+          ref={(el) =>
+            requestAnimationFrame(() => {
+              el.focus();
+              el.select();
+            })
+          }
+          value={label}
+          aria-label="Column name"
+          class="min-w-0 flex-1 bg-transparent py-2.5 pl-3 font-semibold text-neutral-950 outline-none"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void commitRename(key, event.currentTarget.value);
+            if (event.key === "Escape") setRenamingColumn(null);
           }}
-        >
-          <Icon name="cancel" class="h-4 w-4 flex-none" />
-          <span class="text-neutral-900">Clear sort</span>
-        </ContextMenuItem>
+          onBlur={(event) => void commitRename(key, event.currentTarget.value)}
+        />
       </Show>
-      <Show when={onDelete}>
-        {(remove) => (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={(event) => {
-                const anchor = (event.currentTarget as Element).closest("th");
-                closeMenu(event);
-                if (!anchor) throw new Error("Column menu is not inside a header cell");
-                remove()(anchor);
-              }}
+      <Show when={editable} fallback={<span class="pr-3" />}>
+        <ContextMenu
+          placements="bottom-end"
+          ariaLabel={`${label} column`}
+          trigger={
+            <button
+              type="button"
+              slot="trigger"
+              aria-label={`${label} column actions`}
+              class="mr-1.5 ml-1 flex cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 aria-expanded:bg-neutral-200 aria-expanded:text-neutral-700"
             >
-              <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
-              <span class="text-red-600">Delete column</span>
-            </ContextMenuItem>
-          </>
-        )}
+              <Icon name="context-menu-more" class="h-4 w-4" />
+            </button>
+          }
+        >
+          <ContextMenuItem
+            onClick={(event) => {
+              closeMenu(event);
+              setRenamingColumn(key);
+            }}
+          >
+            <Icon name="edit-entry" class="h-4 w-4 flex-none" />
+            <span class="text-neutral-900">Rename</span>
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={(event) => {
+              const anchor = (event.currentTarget as Element).closest("th");
+              closeMenu(event);
+              if (!anchor) throw new Error("Column menu is not inside a header cell");
+              openDeleteColumn(key, anchor);
+            }}
+          >
+            <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
+            <span class="text-red-600">Delete column</span>
+          </ContextMenuItem>
+        </ContextMenu>
       </Show>
-    </ContextMenu>
+    </div>
   );
   const { currentSpace } = useSpace();
   const { error: toastError } = useToast();
@@ -189,6 +188,7 @@ export function DatabaseView(props: Props) {
     addColumn,
     addColumns,
     deleteColumn,
+    renameColumn,
   } = useDatabaseRows(() => props.databaseDocumentId, sort);
 
   createEffect(() => setSchemaStr(props.schemaJson));
@@ -247,6 +247,24 @@ export function DatabaseView(props: Props) {
     if (e.key === "Escape") addColumnTriggerRef?.hide?.();
   }
 
+  const [renamingColumn, setRenamingColumn] = createSignal<string | null>(null);
+
+  // Enter and Escape clear the signal first, so the blur that follows is a no-op.
+  async function commitRename(from: string, value: string) {
+    if (renamingColumn() !== from) return;
+    setRenamingColumn(null);
+    const to = value.trim();
+    if (!to || to === from) return;
+    try {
+      await renameColumn(from, to);
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Failed to rename column");
+      return;
+    }
+    const current = sort();
+    if (current?.key === from) commitSort({ key: to, order: current.order });
+  }
+
   const [deletingColumn, setDeletingColumn] = createSignal<string | null>(null);
   const [columnPopoverStyle, setColumnPopoverStyle] = createSignal<JSX.CSSProperties>({});
 
@@ -267,6 +285,7 @@ export function DatabaseView(props: Props) {
   createEffect(() => {
     void props.databaseDocumentId;
     setEditingCell(null);
+    setRenamingColumn(null);
     setDeletingColumn(null);
     setDeletingRow(null);
   });
@@ -489,7 +508,7 @@ export function DatabaseView(props: Props) {
                     style={{ ...stickyHeaderStyle, width: `${NAME_COL_WIDTH}px` }}
                     aria-sort={ariaSort("title")}
                   >
-                    {columnHeader("title", "Name")}
+                    {columnHeader("title", "Name", false)}
                   </th>
 
                   <For each={derivedColumns()}>
@@ -499,9 +518,7 @@ export function DatabaseView(props: Props) {
                         style={{ ...stickyHeaderStyle, width: `${DEFAULT_COL_WIDTH}px` }}
                         aria-sort={ariaSort(col.name)}
                       >
-                        {columnHeader(col.name, col.label, (anchor) =>
-                          openDeleteColumn(col.name, anchor),
-                        )}
+                        {columnHeader(col.name, col.label, true)}
                       </th>
                     )}
                   </For>
