@@ -201,12 +201,22 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
       const value = String((event as CustomEvent).detail ?? "");
       if (this.removeWhenEmpty && value.trim() === "") this.services?.removeShape(id);
     });
+    // The editor keeps keydown inside its shadow root, so Escape is relayed here.
+    editor.addEventListener("editor-keydown", (event) => {
+      const key = (event as CustomEvent<KeyboardEvent>).detail;
+      if (key.key === "Escape" && !editor.isMentionSuggestionOpen()) {
+        this.emit("exit-edit");
+      }
+    });
     // Keep presses inside the editor from reaching the viewport marquee/deselect.
     editor.addEventListener("pointerdown", (event) => event.stopPropagation());
     this.appendChild(editor);
     this.editorEl = editor;
 
-    requestAnimationFrame(() => this.placeCaret());
+    requestAnimationFrame(() => {
+      // Editing can end before the first frame, which has already removed this element.
+      if (this.isConnected) this.placeCaret();
+    });
   }
 
   protected update() {
