@@ -13,9 +13,18 @@ RUN apt-get update \
     && command -v rsvg-convert \
     && rm -rf /var/lib/apt/lists/*
 
-RUN HTMLQ_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") \
-    && curl -L https://github.com/mgdm/htmlq/releases/download/v0.4.0/htmlq-${HTMLQ_ARCH}-linux.tar.gz \
-    | tar xvz -C /usr/local/bin
+# Upstream htmlq 0.4.0 has no Linux ARM64 release artifact; compile that version.
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        apt-get update \
+        && apt-get -y --no-install-recommends install cargo gcc libc6-dev \
+        && CARGO_HOME=/tmp/cargo CARGO_TARGET_DIR=/tmp/target \
+            cargo install htmlq --version 0.4.0 --locked --root /usr/local \
+        && apt-get -y purge --auto-remove cargo gcc libc6-dev \
+        && rm -rf /tmp/cargo /tmp/target /var/lib/apt/lists/*; \
+    else \
+        curl --fail -L https://github.com/mgdm/htmlq/releases/download/v0.4.0/htmlq-x86_64-linux.tar.gz \
+        | tar xvz -C /usr/local/bin; \
+    fi
 
 RUN PANDOC_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") \
     && curl -L https://github.com/jgm/pandoc/releases/download/3.6.4/pandoc-3.6.4-linux-${PANDOC_ARCH}.tar.gz \

@@ -15,6 +15,8 @@ jobs:
           # the Ubuntu 24.04 runtime baseline.
           - runner: ubuntu-24.04
             artifact: vektor-linux-x64
+          - runner: ubuntu-24.04-arm
+            artifact: vektor-linux-arm64
           - runner: macos-latest
             artifact: vektor-darwin-arm64
     runs-on: ${{ matrix.runner }}
@@ -82,6 +84,7 @@ jobs:
         with:
           files: |
             artifacts/vektor-linux-x64
+            artifacts/vektor-linux-arm64
             artifacts/vektor-darwin-arm64
 
   deploy:
