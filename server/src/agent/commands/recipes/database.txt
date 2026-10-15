@@ -12,7 +12,8 @@ document tools — there is no dedicated database tool.
 - Database doc: `type` "database". Column definitions are stored in its
   `_schema` property as a JSON *string*:
     {"columns":[{"name":"status","type":"select","label":"Status"}]}
-  Column `type` is "text" | "number" | "date" | "select"; every value is text.
+  Column `type` is "text" | "number" | "date" | "select" | "document"; every
+  value is text. A "document" cell holds the id of the document it references.
 - Row doc: `type` "record", `parentId` = the database id. Cell values are
   properties keyed by column name. The special `title` property is the row's
   title column; all other properties are ordinary columns.

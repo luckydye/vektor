@@ -12,8 +12,8 @@ import type { Property, TriggerSpec } from "#documents/properties.ts";
 import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { SheetPage } from "./SheetPage.tsx";
 import { SelectMenu, type SelectMenuItem, useSelectMenuKeys } from "./SelectMenu.tsx";
+import { SheetPage } from "./SheetPage.tsx";
 import { TriggerPropertyEditor } from "./TriggerPropertyEditor.tsx";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
@@ -106,7 +106,9 @@ export function PropertyChip(props: Props) {
     const items = valueOptions().filter((item) =>
       item.label?.toLowerCase().includes(searchTerm),
     );
-    if (items.length === 0) {
+    // A user or document reference can only name an existing one.
+    const type = props.property?.type;
+    if (items.length === 0 && type !== "document" && type !== "user") {
       return [
         {
           id: "__new__",

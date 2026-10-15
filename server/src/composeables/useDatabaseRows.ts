@@ -15,7 +15,7 @@ const PAGE_SIZE = 500;
 
 export interface DatabaseColumn {
   name: string;
-  type: "text" | "number" | "date" | "select";
+  type: "text" | "number" | "date" | "select" | "document";
   label: string;
 }
 

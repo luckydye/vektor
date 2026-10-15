@@ -14,14 +14,17 @@ import { useDatabaseFileImport } from "#composeables/useDatabaseFileImport.ts";
 import type { DatabaseColumn, DatabaseSort } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import {
   type DocumentProperties,
   propertyValueToText,
   readDocumentProperty,
 } from "#documents/properties.ts";
+import { documentOption } from "#documents/title.ts";
 import { spacePath } from "#utils/utils.ts";
 import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
@@ -38,6 +41,7 @@ const COLUMN_TYPES: { type: DatabaseColumn["type"]; label: string }[] = [
   { type: "number", label: "Number" },
   { type: "date", label: "Date" },
   { type: "select", label: "Select" },
+  { type: "document", label: "Document" },
 ];
 
 const DEFAULT_COL_WIDTH = 180;
@@ -340,33 +344,76 @@ export function DatabaseView(props: Props) {
     if (current?.key === from) commitSort({ key: to, order: current.order });
   }
 
+  const lang = useLocale();
+  const { documents } = useDocuments();
+  const documentOptions = createMemo(() =>
+    documents().map((document) => documentOption(document, lang)),
+  );
+
   // A row holding several values keeps them; one holding a single value stays single.
-  const selectCell = (rowId: string, properties: DocumentProperties, col: string) => {
-    const value = () => readDocumentProperty(properties, col);
-    const labels = () => {
+  const chipCell = (
+    rowId: string,
+    properties: DocumentProperties,
+    col: DatabaseColumn,
+  ) => {
+    const isDocument = col.type === "document";
+    const value = () => readDocumentProperty(properties, col.name);
+    const values = () => {
       const current = value();
       return Array.isArray(current) ? current : current ? [current] : [];
     };
+    const labels = () =>
+      isDocument
+        ? values().map(
+            (id) => documentOptions().find((option) => option.id === id)?.label ?? id,
+          )
+        : values();
+    const referenced = () =>
+      isDocument && values().length === 1
+        ? documents().find((document) => document.id === values()[0])
+        : undefined;
     return (
-      <PropertyChip
-        variant="quiet"
-        icon="generic-property"
-        label="—"
-        nameLabel={col}
-        valueLabels={labels()}
-        showTooltip={false}
-        allowMultiple={Array.isArray(value())}
-        property={{ id: col, name: col, type: "select", value: value() }}
-        propertyValues={async () =>
-          (await listColumnValues(col)).map((option) => ({
-            id: option,
-            label: option,
-            icon: "generic-property",
-          }))
-        }
-        onUpdate={(updated) => void updateRowProperty(rowId, col, updated.value ?? "")}
-        onDelete={() => void updateRowProperty(rowId, col, "")}
-      />
+      <div class="flex min-w-0 items-center gap-1">
+        <PropertyChip
+          variant="quiet"
+          icon={isDocument ? "document" : "generic-property"}
+          label="—"
+          nameLabel={col.label}
+          valueLabels={labels()}
+          showTooltip={false}
+          allowMultiple={Array.isArray(value())}
+          property={{
+            id: col.name,
+            name: col.name,
+            type: isDocument ? "document" : "select",
+            value: value(),
+          }}
+          propertyValues={async () =>
+            isDocument
+              ? documentOptions()
+              : (await listColumnValues(col.name)).map((option) => ({
+                  id: option,
+                  label: option,
+                  icon: "generic-property",
+                }))
+          }
+          onUpdate={(updated) =>
+            void updateRowProperty(rowId, col.name, updated.value ?? "")
+          }
+          onDelete={() => void updateRowProperty(rowId, col.name, "")}
+        />
+        <Show when={referenced()}>
+          {(document) => (
+            <a
+              href={spacePath(currentSpace()?.slug, `/doc/${document().slug}`)}
+              class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 opacity-0 transition-all hover:bg-neutral-100 hover:text-neutral-700 group-hover:opacity-100"
+              title="Open document"
+            >
+              <Icon class="h-3.5 w-3.5" name="chevron-right-small" />
+            </a>
+          )}
+        </Show>
+      </div>
     );
   };
 
@@ -666,10 +713,11 @@ export function DatabaseView(props: Props) {
                             }
                             class="rounded-lg border border-neutral-200 bg-background px-3 py-1.5 text-size-medium focus:border-primary-400 focus:outline-none"
                           >
-                            <option value="text">Text</option>
-                            <option value="number">Number</option>
-                            <option value="date">Date</option>
-                            <option value="select">Select</option>
+                            <For each={COLUMN_TYPES}>
+                              {(option) => (
+                                <option value={option.type}>{option.label}</option>
+                              )}
+                            </For>
                           </select>
                           <button
                             type="button"
@@ -746,13 +794,13 @@ export function DatabaseView(props: Props) {
                     <For each={derivedColumns()}>
                       {(col) => (
                         <Show
-                          when={col.type !== "select"}
+                          when={col.type !== "select" && col.type !== "document"}
                           fallback={
                             <td
                               class="px-1.5 py-1.5 align-top"
                               style={{ width: `${columnWidth(col.name)}px` }}
                             >
-                              {selectCell(row.id, row.properties, col.name)}
+                              {chipCell(row.id, row.properties, col)}
                             </td>
                           }
                         >

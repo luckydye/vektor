@@ -405,6 +405,7 @@ export type PropertyType =
   | "multi-select"
   | "date"
   | "user"
+  | "document"
   | typeof TRIGGER_PROPERTY_TYPE;
 
 /** A single property on a document, as edited in the property UI. */

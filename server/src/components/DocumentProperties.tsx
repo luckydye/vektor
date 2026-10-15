@@ -2,9 +2,11 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
 import { useMembers } from "#composeables/useMembers.ts";
-import { usePropertyMutations, useProperties } from "#composeables/useProperties.ts";
+import { useProperties, usePropertyMutations } from "#composeables/useProperties.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useWorkflows } from "#composeables/useWorkflows.ts";
 import type { Property, TriggerSpec } from "#documents/properties.ts";
 import {
@@ -16,6 +18,7 @@ import {
   TRIGGER_PROPERTY_TYPE,
 } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
+import { documentOption } from "#documents/title.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Button } from "./Button.tsx";
@@ -24,7 +27,6 @@ import { Icon, type IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
 import type { SelectMenuItem } from "./SelectMenu.tsx";
-import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId?: string;
@@ -53,6 +55,7 @@ const propertyTypes: TranslatableSelectMenuItem[] = [
   { id: "multi-select", label: "Multi Select", icon: "add" },
   { id: "date", label: "Date", icon: "add" },
   { id: "user", label: "User", icon: "people" },
+  { id: "document", label: "Document", icon: "document" },
   { id: TRIGGER_PROPERTY_TYPE, label: "Trigger", icon: "bolt" },
 ];
 
@@ -65,6 +68,10 @@ export function DocumentProperties(props: Props) {
   const { properties: spaceProperties, listValues } = useProperties();
   const { updateProperty, deleteProperty } = usePropertyMutations();
   const { members } = useMembers();
+  const { documents } = useDocuments();
+  const documentOptions = createMemo(() =>
+    documents().map((candidate) => documentOption(candidate, lang)),
+  );
   const { currentSpace } = useSpace();
   // Triggers start workflows, so they are offered only where workflows are on.
   const triggersEnabled = createMemo(() =>
@@ -190,6 +197,10 @@ export function DocumentProperties(props: Props) {
       return value;
     }
 
+    if (property.type === "document" && value) {
+      return documentOptions().find((option) => option.id === value)?.label ?? value;
+    }
+
     if (property.type === "date" && value) {
       const date = new Date(value);
       if (!Number.isNaN(date.getTime())) {
@@ -235,6 +246,7 @@ export function DocumentProperties(props: Props) {
       );
     }
     if (property.type === "user") return "people";
+    if (property.type === "document") return "document";
     if (property.type === "date") return "date";
     if (property.type === TRIGGER_PROPERTY_TYPE) return "bolt";
     return "generic-property";
@@ -334,6 +346,8 @@ export function DocumentProperties(props: Props) {
         });
     }
 
+    if (property.type === "document") return documentOptions();
+
     // A text value only one document holds is free text rather than an option.
     const minDocuments = property.type === "text" ? 2 : 1;
     return (await listValues(property.name, minDocuments)).map((value) => ({
@@ -427,7 +441,7 @@ export function DocumentProperties(props: Props) {
   return (
     <div
       class={twMerge(
-        "pointer-events-none flex gap-3xs -mx-0.5",
+        "pointer-events-none -mx-0.5 flex gap-3xs",
         props.layout === "labeled"
           ? "flex-col items-start"
           : props.layout === "sheet"
@@ -440,7 +454,7 @@ export function DocumentProperties(props: Props) {
       <div
         class={
           props.layout === "toolbar"
-            ? "flex min-w-0 items-center gap-5xs overflow-x-auto empty:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
+            ? "flex min-w-0 items-center gap-5xs overflow-x-auto [scrollbar-width:none] empty:hidden [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
             : "contents"
         }
       >
