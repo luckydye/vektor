@@ -3,7 +3,7 @@
  * DOM, no canvas context.
  */
 
-import { strokePointBounds } from "#canvas/render/freehand.ts";
+import { maxStrokeWidth, strokePointBounds } from "#canvas/render/freehand.ts";
 import type { CanvasStroke } from "#canvas/runtime/extensionApi.ts";
 
 // ---------------------------------------------------------------------------
@@ -741,24 +741,29 @@ export function hitTestCanvasStroke(
   for (let i = strokes.length - 1; i >= 0; i -= 1) {
     const stroke = strokes[i];
     const points = stroke.points;
-    const threshold = stroke.style.width / 2 + 8 / scale;
+    const slop = 8 / scale;
+    const reach = maxStrokeWidth(stroke.style) / 2 + slop;
     const bounds = strokePointBounds(stroke);
     if (
       !bounds ||
-      world.x < bounds.minX - threshold ||
-      world.x > bounds.maxX + threshold ||
-      world.y < bounds.minY - threshold ||
-      world.y > bounds.maxY + threshold
+      world.x < bounds.minX - reach ||
+      world.x > bounds.maxX + reach ||
+      world.y < bounds.minY - reach ||
+      world.y > bounds.maxY + reach
     ) {
       continue;
     }
     if (points.length === 1) {
-      if (Math.hypot(world.x - points[0].x, world.y - points[0].y) <= threshold) {
+      if (
+        Math.hypot(world.x - points[0].x, world.y - points[0].y) <=
+        points[0].width / 2 + slop
+      ) {
         return stroke.id;
       }
       continue;
     }
     for (let j = 1; j < points.length; j += 1) {
+      const threshold = Math.max(points[j - 1].width, points[j].width) / 2 + slop;
       if (distanceToSegment(world, points[j - 1], points[j]) <= threshold) {
         return stroke.id;
       }

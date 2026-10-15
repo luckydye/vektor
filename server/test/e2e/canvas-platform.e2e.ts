@@ -139,7 +139,7 @@ test("the section tool sizes a new frame by dragging", async ({ page }) => {
   const viewport = await box(page, "vektor-canvas .canvas-viewport");
   const start = { x: viewport.x + 60, y: viewport.y + viewport.height - 260 };
 
-  await page.keyboard.press("s");
+  await page.keyboard.press("t");
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   for (let step = 1; step <= 10; step++) {

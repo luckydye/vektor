@@ -7,6 +7,7 @@
 
 import {
   FREEHAND_STYLE,
+  type FreehandPoint,
   type FreehandStroke,
   maxStrokeWidth,
   strokePointBounds,
@@ -31,172 +32,196 @@ interface InkMesh {
   vao: WebGLVertexArrayObject;
   buffer: WebGLBuffer;
   count: number;
-  styleWidth: number;
 }
 
 interface InkSample {
   x: number;
   y: number;
-  width: number;
+  radius: number;
 }
 
-function cubic(a: number, b: number, c: number, d: number, t: number): number {
-  const mt = 1 - t;
-  return mt * mt * mt * a + 3 * mt * mt * t * b + 3 * mt * t * t * c + t * t * t * d;
+// A curve is split until its handles lie within this share of its chord.
+const FLATNESS = 0.01;
+const MAX_CURVE_DEPTH = 6;
+const FAN_STEP = Math.PI / 16;
+
+function mirrored(origin: FreehandPoint, toward: FreehandPoint): FreehandPoint {
+  return {
+    x: origin.x * 2 - toward.x,
+    y: origin.y * 2 - toward.y,
+    width: origin.width * 2 - toward.width,
+  };
 }
 
-function smoothstep(t: number): number {
-  return t * t * (3 - 2 * t);
+function distanceToChord(point: CanvasPoint, start: CanvasPoint, end: CanvasPoint) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSq = dx * dx + dy * dy;
+  const t =
+    lengthSq === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq),
+        );
+  return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
 }
 
-// One sample per world unit of control polygon, capped per segment: dense enough
-// that curves stay smooth at high zoom without re-tessellating per zoom level.
-function strokeSamples(stroke: FreehandStroke): InkSample[] {
-  const { path, style } = stroke;
-  if (!path.start) return [];
-  const samples: InkSample[] = [
-    { x: path.start.x, y: path.start.y, width: path.start.width ?? style.width },
-  ];
-  let fromX = path.start.x;
-  let fromY = path.start.y;
-  let fromWidth = path.start.width ?? style.width;
-  for (const segment of path.segments) {
-    const controlLength =
-      Math.hypot(segment.cp1x - fromX, segment.cp1y - fromY) +
-      Math.hypot(segment.cp2x - segment.cp1x, segment.cp2y - segment.cp1y) +
-      Math.hypot(segment.x - segment.cp2x, segment.y - segment.cp2y);
-    const count = Math.max(3, Math.min(32, Math.ceil(controlLength)));
-    const toWidth = segment.width ?? style.width;
-    for (let i = 1; i <= count; i++) {
-      const t = i / count;
+function flattenCubic(
+  start: CanvasPoint,
+  one: CanvasPoint,
+  two: CanvasPoint,
+  end: CanvasPoint,
+  amounts: [number, number],
+  depth: number,
+  out: number[],
+) {
+  const tolerance = FLATNESS * Math.hypot(end.x - start.x, end.y - start.y);
+  if (
+    depth >= MAX_CURVE_DEPTH ||
+    Math.max(distanceToChord(one, start, end), distanceToChord(two, start, end)) <=
+      tolerance
+  ) {
+    out.push(amounts[1]);
+    return;
+  }
+  const mid = (a: CanvasPoint, b: CanvasPoint) => ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  });
+  const startOne = mid(start, one);
+  const oneTwo = mid(one, two);
+  const twoEnd = mid(two, end);
+  const leftTwo = mid(startOne, oneTwo);
+  const rightOne = mid(oneTwo, twoEnd);
+  const split = mid(leftTwo, rightOne);
+  const middle = (amounts[0] + amounts[1]) / 2;
+  flattenCubic(start, startOne, leftTwo, split, [amounts[0], middle], depth + 1, out);
+  flattenCubic(split, rightOne, twoEnd, end, [middle, amounts[1]], depth + 1, out);
+}
+
+/**
+ * The uniform cubic B-spline through the control points, flattened. Mirrored
+ * phantom points at both ends make the curve start and end on them.
+ */
+function curveSamples(points: readonly FreehandPoint[]): InkSample[] {
+  const control = (index: number) =>
+    index < 0
+      ? mirrored(points[0], points[1])
+      : index >= points.length
+        ? mirrored(points[points.length - 1], points[points.length - 2])
+        : points[index];
+  const knot = (a: FreehandPoint, b: FreehandPoint, c: FreehandPoint) => ({
+    x: (a.x + b.x * 4 + c.x) / 6,
+    y: (a.y + b.y * 4 + c.y) / 6,
+    width: (a.width + b.width * 4 + c.width) / 6,
+  });
+  const first = points[0];
+  const samples: InkSample[] = [{ x: first.x, y: first.y, radius: first.width / 2 }];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const before = control(index - 1);
+    const from = points[index];
+    const to = points[index + 1];
+    const after = control(index + 2);
+    const start = knot(before, from, to);
+    const end = knot(from, to, after);
+    const one = { x: (from.x * 2 + to.x) / 3, y: (from.y * 2 + to.y) / 3 };
+    const two = { x: (from.x + to.x * 2) / 3, y: (from.y + to.y * 2) / 3 };
+    const amounts: number[] = [];
+    flattenCubic(start, one, two, end, [0, 1], 0, amounts);
+    for (const t of amounts) {
+      const mt = 1 - t;
+      const a = mt * mt * mt;
+      const b = 3 * mt * mt * t;
+      const c = 3 * mt * t * t;
+      const d = t * t * t;
       samples.push({
-        x: cubic(fromX, segment.cp1x, segment.cp2x, segment.x, t),
-        y: cubic(fromY, segment.cp1y, segment.cp2y, segment.y, t),
-        width: fromWidth + (toWidth - fromWidth) * smoothstep(t),
+        x: a * start.x + b * one.x + c * two.x + d * end.x,
+        y: a * start.y + b * one.y + c * two.y + d * end.y,
+        radius: (start.width + (end.width - start.width) * t) / 2,
       });
     }
-    fromX = segment.x;
-    fromY = segment.y;
-    fromWidth = toWidth;
   }
-
-  const filtered: InkSample[] = [samples[0]];
-  for (let i = 1; i < samples.length - 1; i++) {
-    const previous = filtered[filtered.length - 1];
-    const sample = samples[i];
-    if (
-      Math.hypot(sample.x - previous.x, sample.y - previous.y) >= 0.1 ||
-      Math.abs(sample.width - previous.width) >= 0.05
-    ) {
-      filtered.push(sample);
-    }
-  }
-  const last = samples[samples.length - 1];
-  const previous = filtered[filtered.length - 1];
-  if (samples.length > 1 && Math.hypot(last.x - previous.x, last.y - previous.y) > 0) {
-    filtered.push(last);
-  }
-  return filtered;
+  return samples;
 }
 
-// Looks past near-coincident neighbours so jitter does not swing the normal.
-function tangentAt(samples: readonly InkSample[], index: number): CanvasPoint | null {
-  const sample = samples[index];
-  let previous = samples[Math.max(0, index - 1)];
-  let next = samples[Math.min(samples.length - 1, index + 1)];
-  for (
-    let i = index - 2;
-    i >= 0 && Math.hypot(sample.x - previous.x, sample.y - previous.y) < 0.2;
-    i--
-  ) {
-    previous = samples[i];
+// A circle inside its neighbour adds nothing to the silhouette and leaves no
+// tangent between the two, so it is dropped.
+function withoutNested(samples: readonly InkSample[]): InkSample[] {
+  const inside = (inner: InkSample, outer: InkSample) =>
+    Math.hypot(inner.x - outer.x, inner.y - outer.y) + inner.radius <= outer.radius;
+  const kept: InkSample[] = [];
+  for (const sample of samples) {
+    const last = kept.at(-1);
+    if (last && inside(sample, last)) continue;
+    while (kept.length > 0 && inside(kept[kept.length - 1], sample)) kept.pop();
+    kept.push(sample);
   }
-  for (
-    let i = index + 2;
-    i < samples.length && Math.hypot(next.x - sample.x, next.y - sample.y) < 0.2;
-    i++
-  ) {
-    next = samples[i];
-  }
-  const dx = next.x - previous.x;
-  const dy = next.y - previous.y;
-  const length = Math.hypot(dx, dy);
-  return length === 0 ? null : { x: dx / length, y: dy / length };
+  return kept;
 }
 
-// Interleaved per vertex: centre (2), normal (2), half width (1).
+function wrapped(angle: number): number {
+  return angle - Math.PI * 2 * Math.round(angle / (Math.PI * 2));
+}
+
+/**
+ * The stroke as a chain of tapered capsules: per span the trapezoid along both
+ * circles' outer tangents, round wedges where spans meet, round caps at the
+ * ends. Interleaved per vertex: centre (2), normal (2), half width (1).
+ */
 function tessellate(stroke: FreehandStroke): Float32Array {
-  const samples = strokeSamples(stroke);
+  const samples = withoutNested(curveSamples(stroke.points));
   const data: number[] = [];
-  const vertex = (s: InkSample, nx: number, ny: number) => {
-    data.push(s.x, s.y, nx, ny, s.width / 2);
+  const vertex = (s: InkSample, angle: number | null) => {
+    if (angle === null) data.push(s.x, s.y, 0, 0, s.radius);
+    else data.push(s.x, s.y, Math.cos(angle), Math.sin(angle), s.radius);
   };
-  // A fan of `steps` triangles sweeping from `from` towards `towards` around `s`.
-  const fan = (
-    s: InkSample,
-    from: CanvasPoint,
-    towards: CanvasPoint,
-    sweep: number,
-    steps: number,
-  ) => {
+  const fan = (s: InkSample, from: number, sweep: number) => {
+    const steps = Math.ceil(Math.abs(sweep) / FAN_STEP);
     for (let i = 0; i < steps; i++) {
-      const a = (sweep * i) / steps;
-      const b = (sweep * (i + 1)) / steps;
-      vertex(s, 0, 0);
-      vertex(
-        s,
-        from.x * Math.cos(a) + towards.x * Math.sin(a),
-        from.y * Math.cos(a) + towards.y * Math.sin(a),
-      );
-      vertex(
-        s,
-        from.x * Math.cos(b) + towards.x * Math.sin(b),
-        from.y * Math.cos(b) + towards.y * Math.sin(b),
-      );
+      vertex(s, null);
+      vertex(s, from + (sweep * i) / steps);
+      vertex(s, from + (sweep * (i + 1)) / steps);
     }
   };
 
-  const rails: { sample: InkSample; normal: CanvasPoint; tangent: CanvasPoint }[] = [];
-  for (let i = 0; i < samples.length; i++) {
-    const tangent = tangentAt(samples, i);
-    if (tangent)
-      rails.push({
-        sample: samples[i],
-        normal: { x: -tangent.y, y: tangent.x },
-        tangent,
-      });
-  }
-
-  if (rails.length === 0) {
-    if (samples.length > 0)
-      fan(samples[0], { x: 1, y: 0 }, { x: 0, y: 1 }, Math.PI * 2, 32);
+  if (samples.length === 1) {
+    fan(samples[0], 0, Math.PI * 2);
     return new Float32Array(data);
   }
 
-  for (let i = 0; i < rails.length - 1; i++) {
-    const a = rails[i];
-    const b = rails[i + 1];
-    vertex(a.sample, a.normal.x, a.normal.y);
-    vertex(a.sample, -a.normal.x, -a.normal.y);
-    vertex(b.sample, b.normal.x, b.normal.y);
-    vertex(a.sample, -a.normal.x, -a.normal.y);
-    vertex(b.sample, -b.normal.x, -b.normal.y);
-    vertex(b.sample, b.normal.x, b.normal.y);
+  // Where a side touches both circles, its normal u satisfies
+  // u·direction = (r0 - r1) / length.
+  const spans = samples.slice(1).map((to, index) => {
+    const from = samples[index];
+    const heading = Math.atan2(to.y - from.y, to.x - from.x);
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    const spread = Math.acos((from.radius - to.radius) / length);
+    return { from, to, left: heading + spread, right: heading - spread, spread };
+  });
+  // Spans are fanned from their centres: a tapered span's end edge misses the
+  // centre, and the wedges around a joint only close the gap at the centre.
+  const triangle = (...corners: [InkSample, number | null][]) => {
+    for (const [sample, angle] of corners) vertex(sample, angle);
+  };
+  for (const [index, span] of spans.entries()) {
+    triangle([span.from, null], [span.from, span.left], [span.to, span.left]);
+    triangle([span.from, null], [span.to, span.left], [span.to, null]);
+    triangle([span.from, null], [span.to, null], [span.to, span.right]);
+    triangle([span.from, null], [span.to, span.right], [span.from, span.right]);
+    const previous = spans[index - 1];
+    if (!previous) continue;
+    fan(span.from, previous.left, wrapped(span.left - previous.left));
+    fan(span.from, previous.right, wrapped(span.right - previous.right));
   }
-  const first = rails[0];
-  const last = rails[rails.length - 1];
-  fan(
-    first.sample,
-    first.normal,
-    { x: -first.tangent.x, y: -first.tangent.y },
-    Math.PI,
-    16,
-  );
-  fan(last.sample, last.normal, last.tangent, Math.PI, 16);
+  const first = spans[0];
+  const last = spans[spans.length - 1];
+  fan(first.from, first.left, Math.PI * 2 - first.spread * 2);
+  fan(last.to, last.right, last.spread * 2);
   return new Float32Array(data);
 }
 
-function createMesh(gpu: CanvasGpu, styleWidth: number): InkMesh {
+function createMesh(gpu: CanvasGpu): InkMesh {
   const { gl } = gpu;
   const vao = gl.createVertexArray();
   const buffer = gl.createBuffer();
@@ -210,7 +235,7 @@ function createMesh(gpu: CanvasGpu, styleWidth: number): InkMesh {
   gl.enableVertexAttribArray(2);
   gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 20, 16);
   gl.bindVertexArray(null);
-  return { vao, buffer, count: 0, styleWidth };
+  return { vao, buffer, count: 0 };
 }
 
 function upload(gpu: CanvasGpu, mesh: InkMesh, stroke: FreehandStroke, usage: number) {
@@ -218,15 +243,15 @@ function upload(gpu: CanvasGpu, mesh: InkMesh, stroke: FreehandStroke, usage: nu
   gpu.gl.bindBuffer(gpu.gl.ARRAY_BUFFER, mesh.buffer);
   gpu.gl.bufferData(gpu.gl.ARRAY_BUFFER, data, usage);
   mesh.count = data.length / 5;
-  mesh.styleWidth = stroke.style.width;
 }
 
+// A stroke's points never change in place, so they key its mesh.
 function meshFor(gpu: CanvasGpu, stroke: FreehandStroke): InkMesh {
-  const cached = gpu.resources.objects.get(stroke.path) as InkMesh | undefined;
-  if (cached?.styleWidth === stroke.style.width) return cached;
-  const mesh = cached ?? createMesh(gpu, stroke.style.width);
+  const cached = gpu.resources.objects.get(stroke.points) as InkMesh | undefined;
+  if (cached) return cached;
+  const mesh = createMesh(gpu);
   upload(gpu, mesh, stroke, gpu.gl.STATIC_DRAW);
-  gpu.resources.objects.set(stroke.path, mesh);
+  gpu.resources.objects.set(stroke.points, mesh);
   return mesh;
 }
 
@@ -235,7 +260,7 @@ function meshFor(gpu: CanvasGpu, stroke: FreehandStroke): InkMesh {
 function activeMesh(gpu: CanvasGpu, stroke: FreehandStroke): InkMesh {
   let mesh = gpu.resources.named.get("activeInk") as InkMesh | undefined;
   if (!mesh) {
-    mesh = createMesh(gpu, stroke.style.width);
+    mesh = createMesh(gpu);
     gpu.resources.named.set("activeInk", mesh);
   }
   upload(gpu, mesh, stroke, gpu.gl.DYNAMIC_DRAW);

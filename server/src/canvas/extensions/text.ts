@@ -57,7 +57,7 @@ export const CanvasText = CanvasElement.create({
       tool: {
         id: this.name,
         label: "Text" as const,
-        shortcut: "T",
+        shortcut: "R",
         icon: iconMarkup("text-tool"),
       },
       editOnCreate: "element" as const,

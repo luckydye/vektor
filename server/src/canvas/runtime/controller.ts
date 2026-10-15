@@ -17,7 +17,7 @@ import {
 } from "#canvas/extensions/shape.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
-import { buildFreehandStroke, FREEHAND_STYLE } from "#canvas/render/freehand.ts";
+import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
 import { pendingImageLoads } from "#canvas/render/images.ts";
 import { drawActiveStroke, drawStrokes, type InkOffset } from "#canvas/render/ink.ts";
@@ -364,7 +364,7 @@ export function createCanvasController(
   // Select is the engine's default, not an extension: it is what "no tool
   // active" means. The rest arrive through the registry.
   const CANVAS_TOOLS: ToolDef[] = [
-    { id: "select", label: "Select", shortcut: "V", icon: iconMarkup("select-tool") },
+    { id: "select", label: "Select", shortcut: "Q", icon: iconMarkup("select-tool") },
     ...extensionManager.toolbarTools(),
   ];
 
@@ -1055,7 +1055,7 @@ export function createCanvasController(
     id: string,
     source: Y.Map<unknown> | CanvasStrokeSnapshot,
   ): CanvasStroke {
-    return toCanvasStroke(id, source, transform().scale);
+    return toCanvasStroke(id, source);
   }
 
   function syncShapesFromY() {
@@ -3271,13 +3271,11 @@ export function createCanvasController(
       if (item.kind === "path") {
         // Ink is drawn in world units and covers each pixel once, so a
         // translucent brush preview does not darken where it overlaps itself.
-        const stroke = buildFreehandStroke(item.points.map(world), {
-          style: {
-            width: pixels(item.width, item.unit) / scale,
-            color: item.color,
-            opacity: 1,
-          },
-        });
+        const width = pixels(item.width, item.unit) / scale;
+        const stroke = {
+          points: item.points.map((point) => ({ ...world(point), width })),
+          style: { ...FREEHAND_STYLE, width, color: item.color },
+        };
         drawActiveStroke(target, stroke, item.color);
       } else if (item.kind === "circle") {
         const center = screen(item.center);
@@ -4309,7 +4307,7 @@ export function createCanvasController(
     // Select is the engine's default rather than a registered tool, so its key is
     // contributed here alongside the ones extensions declare.
     const tools = [
-      { id: "select" as CanvasToolId, shortcut: "V" },
+      { id: "select" as CanvasToolId, shortcut: "Q" },
       ...extensionManager.toolShortcuts(),
     ];
     for (const tool of tools) {

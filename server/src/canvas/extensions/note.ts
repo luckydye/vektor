@@ -91,7 +91,7 @@ export const Note = CanvasElement.create({
       tool: {
         id: this.name,
         label: "Note" as const,
-        shortcut: "N",
+        shortcut: "E",
         icon: iconMarkup("note-tool"),
       },
       editOnCreate: "element" as const,

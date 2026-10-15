@@ -1,7 +1,7 @@
-import type { FreehandPoint } from "#canvas/render/freehand.ts";
 import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
 import type { CanvasSize, CanvasStrokeSnapshot } from "#canvas/runtime/extensionApi.ts";
 import { CanvasTool } from "#canvas/runtime/extensionApi.ts";
+import type { CanvasPoint } from "#canvas/runtime/geometry.ts";
 import { shared } from "#canvas/runtime/state.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import type { TranslationKey } from "#utils/lang.ts";
@@ -28,13 +28,10 @@ export type CanvasShapeLibraryItem = {
   size: CanvasSize;
   // World-space outline polyline for a shape whose bounding box sits at `at`.
   // The polyline should end on its first point so the stroke closes.
-  outline: (at: { x: number; y: number }, size: CanvasSize) => FreehandPoint[];
+  outline: (at: { x: number; y: number }, size: CanvasSize) => CanvasPoint[];
 };
 
-function rectangleOutline(
-  at: { x: number; y: number },
-  size: CanvasSize,
-): FreehandPoint[] {
+function rectangleOutline(at: { x: number; y: number }, size: CanvasSize): CanvasPoint[] {
   const corners = [
     { x: at.x, y: at.y },
     { x: at.x + size.width, y: at.y },
@@ -42,7 +39,7 @@ function rectangleOutline(
     { x: at.x, y: at.y + size.height },
     { x: at.x, y: at.y },
   ];
-  const points: FreehandPoint[] = [];
+  const points: CanvasPoint[] = [];
   for (let i = 1; i < corners.length; i++) {
     const from = corners[i - 1];
     const to = corners[i];
@@ -59,7 +56,7 @@ function rectangleOutline(
   return points;
 }
 
-function ellipseOutline(at: { x: number; y: number }, size: CanvasSize): FreehandPoint[] {
+function ellipseOutline(at: { x: number; y: number }, size: CanvasSize): CanvasPoint[] {
   const rx = size.width / 2;
   const ry = size.height / 2;
   const cx = at.x + rx;
@@ -68,7 +65,7 @@ function ellipseOutline(at: { x: number; y: number }, size: CanvasSize): Freehan
   // sampling density of the straight edges.
   const perimeter = Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
   const segments = Math.max(24, Math.round(perimeter / OUTLINE_STEP));
-  const points: FreehandPoint[] = [];
+  const points: CanvasPoint[] = [];
   for (let i = 0; i <= segments; i++) {
     const angle = (i / segments) * Math.PI * 2;
     points.push({ x: cx + Math.cos(angle) * rx, y: cy + Math.sin(angle) * ry });
@@ -111,7 +108,9 @@ function createShapeStroke(
     id: `stroke-${crypto.randomUUID()}`,
     kind: "shape",
     rotation: 0,
-    points: item.outline({ x: Math.round(at.x), y: Math.round(at.y) }, item.size),
+    points: item
+      .outline({ x: Math.round(at.x), y: Math.round(at.y) }, item.size)
+      .map((point) => ({ ...point, width: SHAPE_STROKE_WIDTH })),
     style: { ...FREEHAND_STYLE, color, width: SHAPE_STROKE_WIDTH },
     updatedAt: Date.now(),
   };
@@ -128,7 +127,7 @@ export function setActiveShapeId(id: string) {
 // on the ink layer, then returns to select.
 export const ShapeTool = CanvasTool.create({
   name: "shape",
-  shortcut: "R",
+  shortcut: "S",
   onPointerDown(at, event, ctx) {
     const item = getShapeLibraryItem(activeShapeId.get()) ?? SHAPE_LIBRARY[0];
     const stroke = createShapeStroke(item, at, ctx.penColor());

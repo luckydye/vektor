@@ -5,27 +5,17 @@
  * draw-specific branch. Everything about how ink *looks* lives in
  * `render/ink.ts`; this owns only the gesture and the pen's UI state.
  */
-import { cloneFreehandPoint } from "#canvas/document/strokes.ts";
 import {
-  createFreehandOptions,
-  createFreehandStrokeBuilder,
+  createFreehandRecorder,
   FREEHAND_STYLE,
-  type FreehandPoint,
-  type FreehandStroke,
-  type FreehandStrokeBuilder,
+  type FreehandSample,
 } from "#canvas/render/freehand.ts";
 import type {
   CanvasPointerGestureSample,
-  CanvasStrokeSnapshot,
   CanvasToolProperty,
 } from "#canvas/runtime/extensionApi.ts";
 import { CanvasTool } from "#canvas/runtime/extensionApi.ts";
 import { iconMarkup } from "#components/Icon.tsx";
-
-type CanvasDrawingSession = {
-  pointerId: number;
-  builder: FreehandStrokeBuilder;
-};
 
 export const PEN_COLORS = [
   "#111827",
@@ -54,78 +44,17 @@ const DRAW_TOOL_PROPERTIES = [
   },
 ] as const satisfies readonly CanvasToolProperty[];
 
-// addVelocityWidths measures velocity in world units/ms, so it would otherwise
-// taper differently depending on zoom. Multiplying the scale by the current
-// world->screen scale makes the taper track on-screen pointer speed instead.
-
-function freehandPointFromPointerEvent(
-  event: PointerEvent,
-  world: { x: number; y: number },
-): FreehandPoint {
-  // Only trust pressure from a stylus. Mice report a constant 0.5 while a button
-  // is held, and touch rarely reports meaningful pressure, so for those inputs
-  // width falls back to velocity-based tapering.
-  const hasStylusPressure = event.pointerType === "pen" && event.pressure > 0;
+// Mice report a constant 0.5 while pressed and touch rarely means it, so only
+// a stylus drives width by pressure; everything else drives it by speed.
+function freehandSample({
+  event,
+  world,
+}: Pick<CanvasPointerGestureSample, "event" | "world">): FreehandSample {
   return {
     x: world.x,
     y: world.y,
-    pressure: hasStylusPressure ? event.pressure : undefined,
+    pressure: event.pointerType === "pen" ? event.pressure : undefined,
     time: event.timeStamp,
-  };
-}
-
-function startCanvasDrawingStroke(
-  event: PointerEvent,
-  world: { x: number; y: number },
-  options: {
-    color: string;
-    size: number;
-    worldToScreenScale: number;
-  },
-): { session: CanvasDrawingSession; stroke: FreehandStroke } | null {
-  if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary)) {
-    return null;
-  }
-
-  const builder = createFreehandStrokeBuilder(
-    createFreehandOptions(
-      { ...FREEHAND_STYLE, color: options.color, width: options.size },
-      options.worldToScreenScale,
-    ),
-  );
-  return {
-    session: {
-      pointerId: event.pointerId,
-      builder,
-    },
-    stroke: builder.startAt(freehandPointFromPointerEvent(event, world)),
-  };
-}
-
-function addCanvasDrawingPoints(
-  session: CanvasDrawingSession,
-  samples: readonly Pick<CanvasPointerGestureSample, "event" | "world">[],
-): FreehandStroke | null {
-  function* points(): Iterable<FreehandPoint> {
-    for (const { event, world } of samples) {
-      if (session.pointerId !== event.pointerId) continue;
-      yield freehandPointFromPointerEvent(event, world);
-    }
-  }
-
-  return session.builder.addPoints(points());
-}
-
-function finishCanvasDrawingStroke(
-  session: CanvasDrawingSession,
-): CanvasStrokeSnapshot | null {
-  const finished = session.builder.finish();
-  if (finished.points.length === 0) return null;
-  return {
-    id: `stroke-${crypto.randomUUID()}`,
-    points: finished.points.map(cloneFreehandPoint),
-    style: { ...finished.style },
-    updatedAt: Date.now(),
   };
 }
 
@@ -135,22 +64,27 @@ function finishCanvasDrawingStroke(
 export const DrawTool = CanvasTool.create({
   name: "draw",
   toolbar: { label: "Draw", icon: iconMarkup("pen-tool") },
-  shortcut: "D",
+  shortcut: "W",
 
   addProperties() {
     return DRAW_TOOL_PROPERTIES;
   },
 
   onPointerDown(at, event, ctx) {
-    const started = startCanvasDrawingStroke(event, at, {
-      // Colour stays shared engine state rather than a tool property: the shape
-      // tool stamps in the same colour, and splitting them would silently change
-      // that.
-      color: ctx.penColor(),
-      size: ctx.property<number>("size"),
-      worldToScreenScale: ctx.viewportScale(),
-    });
-    if (!started) return;
+    if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary)) return;
+    const recorder = createFreehandRecorder(
+      {
+        ...FREEHAND_STYLE,
+        // Colour stays shared engine state rather than a tool property: the shape
+        // tool stamps in the same colour, and splitting them would silently change
+        // that.
+        color: ctx.penColor(),
+        width: ctx.property<number>("size"),
+      },
+      1 / ctx.viewportScale(),
+    );
+    const pointerId = event.pointerId;
+    recorder.add([freehandSample({ event, world: at })]);
 
     let pendingSamples: CanvasPointerGestureSample[] = [];
     let frameId: number | null = null;
@@ -159,8 +93,12 @@ export const DrawTool = CanvasTool.create({
       if (pendingSamples.length === 0) return;
       const samples = pendingSamples;
       pendingSamples = [];
-      const stroke = addCanvasDrawingPoints(started.session, samples);
-      if (render && stroke) ctx.setActiveStroke(stroke);
+      recorder.add(
+        samples
+          .filter((sample) => sample.event.pointerId === pointerId)
+          .map(freehandSample),
+      );
+      if (render) ctx.setActiveStroke(recorder.stroke());
     };
     const cancelPendingFrame = () => {
       if (frameId === null) return;
@@ -178,9 +116,15 @@ export const DrawTool = CanvasTool.create({
       onEnd: () => {
         cancelPendingFrame();
         flushPendingSamples(false);
-        const stroke = finishCanvasDrawingStroke(started.session);
+        const stroke = recorder.finish();
         ctx.setActiveStroke(null);
-        if (stroke) ctx.insertStroke(stroke);
+        if (stroke) {
+          ctx.insertStroke({
+            id: `stroke-${crypto.randomUUID()}`,
+            ...stroke,
+            updatedAt: Date.now(),
+          });
+        }
       },
       onCancel: () => {
         cancelPendingFrame();
@@ -189,6 +133,6 @@ export const DrawTool = CanvasTool.create({
       },
     });
     ctx.clearSelection();
-    ctx.setActiveStroke(started.stroke);
+    ctx.setActiveStroke(recorder.stroke());
   },
 });

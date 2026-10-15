@@ -284,7 +284,7 @@ export const CanvasSection = CanvasElement.create({
       tool: {
         id: this.name,
         label: "Section" as const,
-        shortcut: "S",
+        shortcut: "T",
         icon: iconMarkup("frame-section-tool"),
       },
       editOnCreate: "chrome" as const,

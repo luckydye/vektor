@@ -223,7 +223,7 @@ test("reflects the active tool in the toolbar, by key and by click", async ({ pa
   await openCanvas(page);
   expect(await activeToolLabel(page)).toBe("Select");
 
-  await page.keyboard.press("n");
+  await page.keyboard.press("e");
   await expect
     .poll(() => activeToolLabel(page), { message: "a shortcut must update the toolbar" })
     .toBe("Note");
@@ -259,7 +259,7 @@ test("shows tool properties only while a tool has them", async ({ page }) => {
   const bar = page.locator(".canvas-tool-properties");
   await expect(bar, "the select tool configures nothing").toHaveCount(0);
 
-  await page.keyboard.press("d");
+  await page.keyboard.press("w");
   await expect(bar).toBeVisible();
 
   const swatches = page.locator(".canvas-tool-properties .canvas-color-swatch");
@@ -269,7 +269,7 @@ test("shows tool properties only while a tool has them", async ({ page }) => {
     "picking a colour must mark it active",
   ).toHaveCount(1);
 
-  await page.keyboard.press("v");
+  await page.keyboard.press("q");
   await expect(bar).toHaveCount(0);
 });
 
@@ -297,7 +297,7 @@ test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) 
 
   // A tool needs a drag, not a click: the drag is what gives the new shape its
   // size. A click with the note tool selected inserts nothing.
-  await page.keyboard.press("n");
+  await page.keyboard.press("e");
   const startX = box.x + 300;
   const startY = box.y + box.height - 150;
   await page.mouse.move(startX, startY);
@@ -326,7 +326,7 @@ test("draws ink on the overlay, commits it to the scene, and undoes it", async (
   const box = await viewport(page);
   const sceneBefore = await paintedPixels(page, "canvas-scene");
 
-  await page.keyboard.press("d");
+  await page.keyboard.press("w");
   const startX = box.x + box.width - 300;
   const startY = box.y + box.height - 200;
   await page.mouse.move(startX, startY);

@@ -7,15 +7,15 @@
  */
 import * as Y from "yjs";
 import {
-  buildFreehandStroke,
-  createFreehandOptions,
   FREEHAND_STYLE,
   type FreehandPoint,
   type FreehandStrokeStyle,
 } from "#canvas/render/freehand.ts";
 import type { CanvasStroke, CanvasStrokeSnapshot } from "#canvas/runtime/extensionApi.ts";
 
-function isFreehandPoint(value: unknown): value is FreehandPoint {
+function isStoredPoint(value: unknown): value is Omit<FreehandPoint, "width"> & {
+  width?: number;
+} {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -25,14 +25,7 @@ function isFreehandPoint(value: unknown): value is FreehandPoint {
 }
 
 export function cloneFreehandPoint(point: FreehandPoint): FreehandPoint {
-  return {
-    x: point.x,
-    y: point.y,
-    pressure: point.pressure,
-    time: point.time,
-    velocity: point.velocity,
-    width: point.width,
-  };
+  return { x: point.x, y: point.y, width: point.width };
 }
 
 export function strokeStyleFromUnknown(value: unknown): FreehandStrokeStyle {
@@ -56,28 +49,24 @@ export function createStrokeMap(stroke: CanvasStrokeSnapshot) {
 export function toCanvasStroke(
   id: string,
   source: Y.Map<unknown> | CanvasStrokeSnapshot,
-  worldToScreenScale = 1,
 ): CanvasStroke {
   const read = (key: keyof CanvasStrokeSnapshot) =>
     source instanceof Y.Map ? source.get(key) : source[key];
   const pointsValue = read("points");
-  const points = Array.isArray(pointsValue)
-    ? pointsValue.filter(isFreehandPoint).map(cloneFreehandPoint)
-    : [];
   const style = strokeStyleFromUnknown(read("style"));
+  const points = Array.isArray(pointsValue)
+    ? pointsValue.filter(isStoredPoint).map((point) => ({
+        x: point.x,
+        y: point.y,
+        // @deprecated Stamped shapes used to store points without a width.
+        width: point.width ?? style.width,
+      }))
+    : [];
   const authorId = read("authorId");
-
-  // Persisted points already carry the widths computed while drawing.
-  // Recomputing velocity widths here would depend on the viewer's current zoom
-  // and on the pre-layout 1x1 screen during initial load, so only derive widths
-  // when none were stored.
-  const options = createFreehandOptions(style, worldToScreenScale);
-  if (points.some((point) => point.width !== undefined)) {
-    options.velocityWidth = undefined;
-  }
-  const stroke = buildFreehandStroke(points, options);
   return {
     id,
+    points,
+    style,
     kind: read("kind") === "shape" ? "shape" : undefined,
     rotation:
       typeof read("rotation") === "number" && Number.isFinite(read("rotation"))
@@ -89,6 +78,5 @@ export function toCanvasStroke(
       typeof read("updatedAt") === "number" && Number.isFinite(read("updatedAt"))
         ? Number(read("updatedAt"))
         : Date.now(),
-    ...stroke,
   };
 }
