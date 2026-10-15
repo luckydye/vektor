@@ -211,7 +211,7 @@ export function PropertyChip(props: Props) {
   });
 
   const chipClass = () => ({
-    "text-interactive flex items-center gap-4xs py-7xs pl-5xs pr-4xs rounded-md border transition-colors": true,
+    "text-interactive flex max-w-full items-center gap-4xs py-7xs pl-5xs pr-4xs rounded-md border transition-colors": true,
     "bg-primary-50 hover:bg-primary-100 border-primary-100": props.variant === "special",
     "bg-background hover:bg-primary-10 border-primary-200": props.variant === "default",
     "h-7 border-transparent hover:bg-neutral-100": props.variant === "quiet",
@@ -278,7 +278,7 @@ export function PropertyChip(props: Props) {
                   }
                 >
                   <Icon
-                    class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
+                    class={`shrink-0 [&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
                     name={props.icon}
                   />
                 </Show>
