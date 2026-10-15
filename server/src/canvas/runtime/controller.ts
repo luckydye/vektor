@@ -3087,6 +3087,20 @@ export function createCanvasController(
       beginEdit(session);
       return;
     }
+    const grab = extension.events?.grab;
+    if (press === "grab" && grab && !shape.locked && !event.shiftKey) {
+      event.preventDefault();
+      if (!state.selectedIds.has(shape.id)) selectOnly(shape.id);
+      const handlers = grab(shape, extHost);
+      beginPointerGesture(event, {
+        ...handlers,
+        onMove: (input, ctx) => {
+          handlers.onMove?.(input, ctx);
+          renderScene();
+        },
+      });
+      return;
+    }
     startElementDrag(shape, event);
     if (!event.shiftKey && !shape.locked) {
       const world = screenToWorld(screenPoint(event));

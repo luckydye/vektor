@@ -518,8 +518,11 @@ export interface CanvasElementExtension {
   behavior: {
     transform: CanvasElementTransform;
     zOrder?: number;
-    /** What a press on a region starts; "drag" unless an extension says "edit". */
-    press?: (shape: CanvasShape, region: CanvasHitRegion) => "drag" | "edit";
+    /**
+     * What a press on a region starts; "drag" unless an extension says "edit", or
+     * "grab" to run its `events.grab` gesture in place of moving the shape.
+     */
+    press?: (shape: CanvasShape, region: CanvasHitRegion) => "drag" | "edit" | "grab";
     measurement?: {
       /** Content size from the shape's own layout, or null until it can tell. */
       measure?: (shape: CanvasShape) => CanvasSize | null;
@@ -553,6 +556,8 @@ export interface CanvasElementExtension {
       host: CanvasExtensionHost,
       hit: { region: CanvasHitRegion; local: CanvasPoint; event: PointerEvent },
     ) => void;
+    /** Handlers for the pointer gesture a "grab" press starts; the host repaints after each move. */
+    grab?: (shape: CanvasShape, host: CanvasExtensionHost) => CanvasPointerGestureHandlers;
     /**
      * Starts editing what the element paints around itself, such as a section
      * title: on create with `editOnCreate: "chrome"`, and on double-clicking its

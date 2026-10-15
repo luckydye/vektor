@@ -2,13 +2,33 @@
 // bounds used to frame the camera. All loaders (OBJ, glTF, GLB) normalise into
 // this single shape so the WebGPU renderer only ever sees one thing.
 
+export type Material = {
+  color: [number, number, number, number]; // linear base colour factor
+  image: ImageBitmap | null; // base colour texture, sRGB
+};
+
+// A run of indices drawn with one material.
+export type MeshGroup = { start: number; count: number; material: Material };
+
 export type Mesh = {
   positions: Float32Array; // xyz per vertex, in world space
   normals: Float32Array; // xyz per vertex, unit length
+  uvs: Float32Array; // uv per vertex, zeros when the source has none
   indices: Uint32Array;
+  groups: MeshGroup[];
   min: [number, number, number];
   max: [number, number, number];
 };
+
+export type MeshPart = {
+  positions: Float32Array;
+  normals: Float32Array;
+  uvs?: Float32Array;
+  indices: Uint32Array;
+  material?: Material;
+};
+
+export const DEFAULT_MATERIAL: Material = { color: [0.6, 0.65, 0.72, 1], image: null };
 
 // Derives flat-ish per-vertex normals from face geometry, used when a source
 // file omits them (common for OBJ and some glTF primitives). Accumulates each
@@ -51,7 +71,7 @@ export function computeNormals(
 
 // Combines several primitives (each already in world space) into one mesh with
 // a single index buffer, offsetting indices as buffers are concatenated.
-export function mergeMeshes(parts: Array<Omit<Mesh, "min" | "max">>): Mesh {
+export function mergeMeshes(parts: MeshPart[]): Mesh {
   let vertexCount = 0;
   let indexCount = 0;
   for (const part of parts) {
@@ -61,7 +81,9 @@ export function mergeMeshes(parts: Array<Omit<Mesh, "min" | "max">>): Mesh {
 
   const positions = new Float32Array(vertexCount * 3);
   const normals = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
   const indices = new Uint32Array(indexCount);
+  const groups: MeshGroup[] = [];
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -70,6 +92,12 @@ export function mergeMeshes(parts: Array<Omit<Mesh, "min" | "max">>): Mesh {
   for (const part of parts) {
     positions.set(part.positions, vertexOffset * 3);
     normals.set(part.normals, vertexOffset * 3);
+    if (part.uvs) uvs.set(part.uvs, vertexOffset * 2);
+    groups.push({
+      start: indexOffset,
+      count: part.indices.length,
+      material: part.material ?? DEFAULT_MATERIAL,
+    });
     for (let i = 0; i < part.indices.length; i += 1) {
       indices[indexOffset + i] = part.indices[i] + vertexOffset;
     }
@@ -84,5 +112,5 @@ export function mergeMeshes(parts: Array<Omit<Mesh, "min" | "max">>): Mesh {
     indexOffset += part.indices.length;
   }
 
-  return { positions, normals, indices, min, max };
+  return { positions, normals, uvs, indices, groups, min, max };
 }

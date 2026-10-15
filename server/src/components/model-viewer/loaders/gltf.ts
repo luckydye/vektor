@@ -1,8 +1,8 @@
 // glTF 2.0 / GLB → Mesh. Deliberately small: reads the default scene, walks the
 // node graph accumulating world transforms, and pulls POSITION / NORMAL / index
-// accessors from each mesh primitive into world space. Materials, textures,
-// animation, skinning, sparse accessors and Draco are ignored — this is a
-// geometry preview, not a full renderer.
+// accessors from each mesh primitive into world space. Base colour factors and
+// textures are kept; animation, skinning, sparse accessors, Draco and the rest
+// of PBR are ignored — this is a preview, not a full renderer.
 
 import {
   composeTRS,
@@ -12,7 +12,13 @@ import {
   transformPoint,
   type Vec3,
 } from "#components/model-viewer/math.ts";
-import { computeNormals, type Mesh, mergeMeshes } from "#components/model-viewer/mesh.ts";
+import {
+  computeNormals,
+  type Material,
+  type Mesh,
+  type MeshPart,
+  mergeMeshes,
+} from "#components/model-viewer/mesh.ts";
 
 type GltfJson = {
   scene?: number;
@@ -30,8 +36,17 @@ type GltfJson = {
       attributes: Record<string, number>;
       indices?: number;
       mode?: number;
+      material?: number;
     }>;
   }>;
+  materials?: Array<{
+    pbrMetallicRoughness?: {
+      baseColorFactor?: [number, number, number, number];
+      baseColorTexture?: { index: number };
+    };
+  }>;
+  textures?: Array<{ source?: number }>;
+  images?: Array<{ uri?: string; mimeType?: string; bufferView?: number }>;
   accessors?: Array<{
     bufferView?: number;
     byteOffset?: number;
@@ -116,6 +131,61 @@ async function resolveBuffers(
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to load buffer ${buffer.uri}`);
       return new Uint8Array(await response.arrayBuffer());
+    }),
+  );
+}
+
+async function loadImage(
+  json: GltfJson,
+  buffers: Uint8Array[],
+  baseUrl: string,
+  index: number,
+): Promise<ImageBitmap | null> {
+  const image = json.images?.[index];
+  if (!image) return null;
+  try {
+    let blob: Blob;
+    if (image.bufferView !== undefined) {
+      const view = json.bufferViews?.[image.bufferView];
+      if (!view) return null;
+      const buffer = buffers[view.buffer];
+      const start = buffer.byteOffset + (view.byteOffset ?? 0);
+      blob = new Blob([new Uint8Array(buffer.buffer, start, view.byteLength)], {
+        type: image.mimeType,
+      });
+    } else if (image.uri?.startsWith("data:")) {
+      blob = new Blob([decodeDataUri(image.uri)]);
+    } else if (image.uri) {
+      const response = await fetch(new URL(image.uri, baseUrl).href);
+      if (!response.ok) return null;
+      blob = await response.blob();
+    } else {
+      return null;
+    }
+    return await createImageBitmap(blob, { colorSpaceConversion: "none" });
+  } catch {
+    // A broken texture leaves the surface in its base colour.
+    return null;
+  }
+}
+
+async function loadMaterials(
+  json: GltfJson,
+  buffers: Uint8Array[],
+  baseUrl: string,
+): Promise<Material[]> {
+  const images = new Map<number, Promise<ImageBitmap | null>>();
+  return Promise.all(
+    (json.materials ?? []).map(async (material) => {
+      const pbr = material.pbrMetallicRoughness;
+      const source = json.textures?.[pbr?.baseColorTexture?.index ?? -1]?.source;
+      if (source !== undefined && !images.has(source)) {
+        images.set(source, loadImage(json, buffers, baseUrl, source));
+      }
+      return {
+        color: pbr?.baseColorFactor ?? [1, 1, 1, 1],
+        image: source === undefined ? null : ((await images.get(source)) ?? null),
+      };
     }),
   );
 }
@@ -220,7 +290,8 @@ export async function parseGltf(
   }
 
   const buffers = await resolveBuffers(json, baseUrl, glbBin);
-  const parts: Array<Omit<Mesh, "min" | "max">> = [];
+  const materials = await loadMaterials(json, buffers, baseUrl);
+  const parts: MeshPart[] = [];
   const point: Vec3 = [0, 0, 0];
 
   const visit = (nodeIndex: number, parentMatrix: Mat4) => {
@@ -279,7 +350,13 @@ export async function parseGltf(
           normals = computeNormals(positions, indices);
         }
 
-        parts.push({ positions, normals, indices });
+        const uvs =
+          primitive.attributes.TEXCOORD_0 !== undefined
+            ? readAccessor(json, buffers, primitive.attributes.TEXCOORD_0)
+            : undefined;
+        const material =
+          primitive.material !== undefined ? materials[primitive.material] : undefined;
+        parts.push({ positions, normals, uvs, indices, material });
       }
     }
 
