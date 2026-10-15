@@ -73,8 +73,8 @@ type Reading = FreehandSample & { travelled: number; width: number | undefined }
 
 export interface FreehandRecorder {
   add(samples: Iterable<FreehandSample>): void;
-  /** Everything drawn so far, the unsettled tail included. */
-  stroke(): FreehandStroke;
+  /** Everything drawn so far, the unsettled tail included; null until a width is known. */
+  stroke(): FreehandStroke | null;
   /** The stroke to store, simplified; null when nothing was drawn. */
   finish(): FreehandStroke | null;
 }
@@ -235,7 +235,13 @@ export function createFreehandRecorder(
       for (const sample of samples) addSample(sample);
     },
     stroke() {
-      return { points: smoothed(), style };
+      const points = smoothed();
+      // A mouse press alone has no speed to size it by, so it shows nothing yet.
+      const unsized =
+        readings[0].width === undefined &&
+        readings[0].pressure === undefined &&
+        velocity === undefined;
+      return unsized ? null : { points, style };
     },
     finish() {
       if (readings.length === 0) return null;
