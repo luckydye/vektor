@@ -591,6 +591,8 @@
   "Undo the last change": "마지막 변경 실행 취소",
   "Redo the last undone change": "마지막으로 취소한 변경 다시 실행",
   "Delete selection": "선택 영역 삭제",
+  "Select all": "모두 선택",
+  "Select every element in the section under the pointer, or on the canvas": "포인터 아래 섹션 또는 캔버스의 모든 요소 선택",
   "Delete the selected elements": "선택한 요소 삭제",
   "Lock selection": "선택 영역 잠금",
   "Lock the selected elements": "선택한 요소 잠금",

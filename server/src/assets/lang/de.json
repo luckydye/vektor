@@ -587,6 +587,8 @@
   "Undo the last change": "Letzte Änderung rückgängig machen",
   "Redo the last undone change": "Letzte rückgängig gemachte Änderung wiederholen",
   "Delete selection": "Auswahl löschen",
+  "Select all": "Alles auswählen",
+  "Select every element in the section under the pointer, or on the canvas": "Alle Elemente im Abschnitt unter dem Zeiger oder auf der Leinwand auswählen",
   "Delete the selected elements": "Die ausgewählten Elemente löschen",
   "Lock selection": "Auswahl sperren",
   "Lock the selected elements": "Die ausgewählten Elemente sperren",

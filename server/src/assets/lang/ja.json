@@ -591,6 +591,8 @@
   "Undo the last change": "直前の変更を元に戻す",
   "Redo the last undone change": "元に戻した変更をやり直す",
   "Delete selection": "選択範囲を削除",
+  "Select all": "すべて選択",
+  "Select every element in the section under the pointer, or on the canvas": "ポインター下のセクションまたはキャンバス上のすべての要素を選択",
   "Delete the selected elements": "選択した要素を削除",
   "Lock selection": "選択範囲をロック",
   "Lock the selected elements": "選択した要素をロック",

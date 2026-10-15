@@ -591,6 +591,8 @@
   "Undo the last change": "Deshacer el último cambio",
   "Redo the last undone change": "Rehacer el último cambio deshecho",
   "Delete selection": "Eliminar selección",
+  "Select all": "Seleccionar todo",
+  "Select every element in the section under the pointer, or on the canvas": "Seleccionar todos los elementos de la sección bajo el puntero o del lienzo",
   "Delete the selected elements": "Eliminar los elementos seleccionados",
   "Lock selection": "Bloquear selección",
   "Lock the selected elements": "Bloquear los elementos seleccionados",

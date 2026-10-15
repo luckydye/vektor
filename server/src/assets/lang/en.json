@@ -591,6 +591,8 @@
   "Undo the last change": "Undo the last change",
   "Redo the last undone change": "Redo the last undone change",
   "Delete selection": "Delete selection",
+  "Select all": "Select all",
+  "Select every element in the section under the pointer, or on the canvas": "Select every element in the section under the pointer, or on the canvas",
   "Delete the selected elements": "Delete the selected elements",
   "Lock selection": "Lock selection",
   "Lock the selected elements": "Lock the selected elements",

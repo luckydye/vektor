@@ -2574,6 +2574,39 @@ export function createCanvasController(
     state.hoveredLockedElement = null;
   }
 
+  /**
+   * Selects the contents of the innermost section under the pointer, or
+   * everything when there is none or its contents are already selected.
+   */
+  function selectAll() {
+    const selectable = new Set(
+      [...state.shapes, ...state.strokes]
+        .filter((element) => !element.locked)
+        .map((element) => element.id),
+    );
+    const pointer = localPointer;
+    const area = (shape: CanvasShape) => shape.frame.width * shape.frame.height;
+    const section = pointer
+      ? state.shapes
+          .filter((shape) =>
+            extensionManager
+              .get(shape.type)
+              .behavior.container?.containsPoint(shape, pointer),
+          )
+          .sort((a, b) => area(a) - area(b))[0]
+      : undefined;
+    const contents = section && getContainerContents(section, true);
+    const scoped = contents
+      ? [...contents.shapes, ...contents.strokes]
+          .map((element) => element.id)
+          .filter((id) => selectable.has(id))
+      : [];
+    const alreadySelected =
+      scoped.length === state.selectedIds.size &&
+      scoped.every((id) => state.selectedIds.has(id));
+    setSelection(scoped.length > 0 && !alreadySelected ? new Set(scoped) : selectable);
+  }
+
   function deleteSelection() {
     if (state.selectedIds.size === 0) return;
     ydoc.transact(() => {
@@ -4243,6 +4276,13 @@ export function createCanvasController(
       "mod-shift-z",
       "mod-y",
     ]);
+    registerAction(
+      "canvas:select-all",
+      t("Select all"),
+      t("Select every element in the section under the pointer, or on the canvas"),
+      selectAll,
+      ["mod-a"],
+    );
     registerAction(
       "canvas:delete",
       t("Delete selection"),
