@@ -146,6 +146,7 @@ import {
   createCanvasClipboard,
   documentClipboardToCanvasShapes,
   hasActiveTextSelection,
+  isTextEditingEvent,
   readSystemClipboard,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
@@ -1451,7 +1452,7 @@ export function createCanvasController(
   // Native clipboard events are synchronous and land in the system clipboard, so
   // copies work across documents, canvases, tabs, and spaces.
   function handleCopy(event: ClipboardEvent) {
-    if (hasActiveTextSelection(event.target)) return;
+    if (hasActiveTextSelection(event)) return;
     const payload = selectedCanvasClipboard();
     if (!payload) return;
     const json = serializeCanvasClipboard(payload);
@@ -1465,7 +1466,7 @@ export function createCanvasController(
   }
 
   function handleCut(event: ClipboardEvent) {
-    if (hasActiveTextSelection(event.target)) return;
+    if (hasActiveTextSelection(event)) return;
     const payload = selectedCanvasClipboard();
     if (!payload) return;
     const json = serializeCanvasClipboard(payload);
@@ -1647,8 +1648,7 @@ export function createCanvasController(
   }
 
   function handlePaste(event: ClipboardEvent) {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("textarea, input, select, document-view")) return;
+    if (isTextEditingEvent(event)) return;
     routeExtensionInput("paste", event, event.clipboardData, insertionPointFromEvent());
   }
 

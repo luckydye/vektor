@@ -449,14 +449,26 @@ export async function readSystemClipboard(): Promise<SystemClipboardPayload> {
 }
 
 /**
+ * Whether the event originates in a text control, which owns its own clipboard and keys.
+ * Reads the composed origin, since shadow-root editors retarget events to their host.
+ */
+export function isTextEditingEvent(event: Event): boolean {
+  const origin = event.composedPath()[0];
+  if (!(origin instanceof HTMLElement)) return false;
+  return (
+    origin.isContentEditable ||
+    Boolean(origin.closest("textarea, input, select, document-view"))
+  );
+}
+
+/**
  * Whether the reader is selecting text rather than canvas objects.
  *
- * A copy inside a text field or the document editor belongs to that control,
- * not to the canvas — intercepting it would break ordinary text copying.
+ * A copy inside a text field or editor belongs to that control, not to the canvas —
+ * intercepting it would break ordinary text copying.
  */
-export function hasActiveTextSelection(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null;
-  if (element?.closest("textarea, input, select, document-view")) return true;
+export function hasActiveTextSelection(event: Event): boolean {
+  if (isTextEditingEvent(event)) return true;
   const selection = window.getSelection?.();
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
 }

@@ -1,4 +1,5 @@
 import { type Editor, Extension } from "@tiptap/core";
+import { history, redo, undo } from "@tiptap/pm/history";
 import { Heading } from "#editor/extensions/baseExtensions.ts";
 import {
   isMentionSuggestionOpen,
@@ -255,6 +256,9 @@ if (
           name: "richTextKeyboardShortcuts",
           addKeyboardShortcuts() {
             const shortcuts: Record<string, () => boolean> = {
+              "Mod-z": () => undo(this.editor.state, this.editor.view.dispatch),
+              "Mod-Shift-z": () => redo(this.editor.state, this.editor.view.dispatch),
+              "Mod-y": () => redo(this.editor.state, this.editor.view.dispatch),
               "Mod-Shift-8": () => this.editor.chain().focus().toggleBulletList().run(),
               "Mod-Shift-7": () => this.editor.chain().focus().toggleOrderedList().run(),
             };
@@ -265,6 +269,9 @@ if (
               }
             }
             return shortcuts;
+          },
+          addProseMirrorPlugins() {
+            return [history()];
           },
         });
 
@@ -415,7 +422,12 @@ if (
         if (v === this.lastValue) return;
         this.lastValue = v;
         if (!this.editor) return;
-        this.editor.commands.setContent(renderMessageMarkdown(v), { emitUpdate: false });
+        // External value changes aren't the user's edits, so they stay out of undo.
+        this.editor
+          .chain()
+          .setMeta("addToHistory", false)
+          .setContent(renderMessageMarkdown(v), { emitUpdate: false })
+          .run();
       }
     },
   );
