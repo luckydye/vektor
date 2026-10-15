@@ -271,9 +271,14 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, "document" beside standard documents, or "database" as a selectable database view. */
+  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, "document" beside standard documents, "database" as a selectable database view, or "panel" as a dockable floating panel. */
   placements?: Array<
-    "standalone" | "inline" | "document" | "database" | DeprecatedPageExtensionPlacement
+    | "standalone"
+    | "inline"
+    | "document"
+    | "database"
+    | "panel"
+    | DeprecatedPageExtensionPlacement
   >;
 }
 

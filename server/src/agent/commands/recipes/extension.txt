@@ -44,7 +44,7 @@ Standalone or document-side view:
       "path": "my-ext",
       "title": "My Extension",
       "menuItem": { "title": "My Extension" },
-      "placements": ["standalone", "inline", "document", "database"]
+      "placements": ["standalone", "inline", "document", "database", "panel"]
     }
   ]
 }
@@ -57,6 +57,8 @@ Standalone or document-side view:
   available through the Add Content menu, or `"document"` to render beside
   standard documents on desktop. Add `"database"` to expose it as a database
   view tab; `ctx.documentId` is the current database while that view is mounted.
+  Add `"panel"` to render it in a dockable floating panel (like the AI chat),
+  toggled from the command palette or `ctx.panels.open/close/toggle(path)`.
 - Every entry path declared in the manifest must exist in the ZIP.
 
 ## Frontend entry

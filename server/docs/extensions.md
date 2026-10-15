@@ -61,6 +61,8 @@ the default, `"inline"` makes it available through the Add Content menu, and
 `"document"` renders it beside standard documents on desktop. `"database"` adds
 it to the database's **+ View** picker; after a user adds and selects it,
 `ctx.documentId` is the current database document ID while the view is mounted.
+`"panel"` renders it in a dockable floating panel like the AI chat — see
+[Panels](#panels).
 `"page"` remains accepted as a deprecated alias for `"standalone"`.
 
 For example, a Kanban view that is only available on databases uses one
@@ -128,6 +130,7 @@ The context object passed to `activate` and `deactivate`:
 | `api` | `ApiClient` | Vektor API client |
 | `actions` | `Actions` | Action registration |
 | `views` | `Views` | View registration for custom routes |
+| `panels` | `Panels` | Open, close or toggle `"panel"` routes |
 | `suggestions` | `Suggestions` | Suggestion provider registration |
 | `getActiveEditor()` | `() => Editor \| null` | Returns the active TipTap editor instance |
 | `collaboration` | `{ ydoc: Y.Doc; clientId: number } \| null` | Active Yjs document and peer ID; null outside canvas/editor |
@@ -297,6 +300,29 @@ container:
 
 `height: 100%` degrades to `auto` where no ancestor constrains the height, so the
 same rule is safe in the document column too.
+
+## Panels
+
+A route with the `"panel"` placement renders in a floating panel the user can
+drag, resize and dock to either side; on mobile it opens as a dialog. The
+route's `title` becomes the panel header and a command palette entry that
+toggles it.
+
+```json
+{ "path": "notes", "title": "Notes", "placements": ["panel"] }
+```
+
+Open it from your own code with `ctx.panels.open(path)`, `close(path)` or
+`toggle(path)`; the path must be one of your `"panel"` routes. The panel stays
+mounted across navigation, so read `ctx.documentId` when you need the open
+document.
+
+```ts
+ctx.actions.register("notes.open", {
+  title: "Open notes",
+  run: async () => ctx.panels.open("notes"),
+});
+```
 
 ## API Client
 

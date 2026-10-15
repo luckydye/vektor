@@ -8,6 +8,7 @@ import {
   createCanvasPlugins,
 } from "#canvas/runtime/plugins.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { extensionPresenceRoom, type PresenceMessage } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 
@@ -33,6 +34,11 @@ export function hasExtensionRoutePlacement(
     placements.includes(placement) ||
     (placement === "standalone" && placements.includes("page"))
   );
+}
+
+/** The docked-window id a "panel" route renders under. */
+export function extensionPanelId(extensionId: string, path: string): string {
+  return `extension:${extensionId}:${path}`;
 }
 
 /**
@@ -80,6 +86,12 @@ export type ExtensionContext = {
     /** Register a view renderer for a route path */
     register: (path: string, render: ViewRenderFn) => void;
     unregister: (path: string) => void;
+  };
+  /** Show or hide this extension's routes with the "panel" placement. */
+  panels: {
+    open: (path: string) => void;
+    close: (path: string) => void;
+    toggle: (path: string) => void;
   };
   suggestions: {
     /** Register a suggestion provider with a trigger character */
@@ -459,6 +471,13 @@ export class Extensions {
     }
 
     const instance = this;
+    const panelWindowId = (path: string) => {
+      const route = loaded.info.routes?.find((r) => r.path === path);
+      if (!route || !hasExtensionRoutePlacement(route, "panel")) {
+        throw new Error(`Extension '${extensionId}' has no "panel" route '${path}'`);
+      }
+      return extensionPanelId(extensionId, path);
+    };
     const scoped = (id: string) =>
       id.startsWith(`${extensionId}.`) ? id : `${extensionId}.${id}`;
     const plugins = this.canvasPlugins;
@@ -492,6 +511,11 @@ export class Extensions {
         unregister: (path: string) => {
           loaded.registeredViews.delete(path);
         },
+      },
+      panels: {
+        open: (path) => useDockedWindows().open(panelWindowId(path)),
+        close: (path) => useDockedWindows().close(panelWindowId(path)),
+        toggle: (path) => useDockedWindows().toggle(panelWindowId(path)),
       },
       suggestions: {
         register: (id: string, provider: SuggestionProvider) => {
@@ -756,7 +780,7 @@ export class Extensions {
    * Get all routes with specific placement
    */
   getRoutesWithPlacement(
-    placement: "standalone" | "inline" | "document" | "database" | "page",
+    placement: NonNullable<ExtensionRoute["placements"]>[number],
   ): Array<{ extensionId: string; route: ExtensionRoute }> {
     const routes: Array<{ extensionId: string; route: ExtensionRoute }> = [];
     for (const loaded of this.loaded.values()) {

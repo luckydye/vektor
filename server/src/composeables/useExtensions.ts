@@ -6,7 +6,11 @@ import {
   type ExtensionRoute,
   type ExtensionRouteMenuItem,
 } from "#api/client.ts";
-import { extensions } from "#extensions/manager.ts";
+import {
+  extensionPanelId,
+  extensions,
+  hasExtensionRoutePlacement,
+} from "#extensions/manager.ts";
 import { downloadBlob } from "#utils/download.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
@@ -162,4 +166,28 @@ export function useExtensions() {
     downloadPackage,
     refresh,
   };
+}
+
+/** Routes of enabled extensions with the "panel" placement, stable across refetches. */
+export function useExtensionPanels() {
+  const { extensions: list } = useExtensions();
+  return createMemo(
+    () =>
+      list()
+        .filter((extension) => extension.enabled)
+        .flatMap((extension) =>
+          (extension.routes ?? [])
+            .filter((route) => hasExtensionRoutePlacement(route, "panel"))
+            .map((route) => ({
+              id: extensionPanelId(extension.id, route.path),
+              extensionId: extension.id,
+              route,
+            })),
+        ),
+    [],
+    {
+      equals: (a, b) =>
+        a.length === b.length && a.every((panel, index) => panel.id === b[index].id),
+    },
+  );
 }
