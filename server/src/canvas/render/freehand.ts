@@ -88,7 +88,7 @@ export function createFreehandRecorder(
   gestureScale: number,
 ): FreehandRecorder {
   const readings: Reading[] = [];
-  let velocity = 0;
+  let velocity: number | undefined;
   let velocityFrom = 0;
 
   function measuredVelocity(): number | undefined {
@@ -113,6 +113,8 @@ export function createFreehandRecorder(
 
   function velocityWidth(): number {
     velocity = measuredVelocity() ?? velocity;
+    // Unmeasured is not slow: a press or click shows the size it was set to.
+    if (velocity === undefined) return style.width;
     const hurry = Math.min(velocity / MAX_WIDTH_VELOCITY, 1);
     return style.width * lerp(SLOW_WIDTH_FACTOR, FAST_WIDTH_FACTOR, hurry);
   }
