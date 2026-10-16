@@ -396,15 +396,14 @@ function formatDate(value: string): string {
   }
 }
 
-/** Decodes an `html-block`'s payload, which is URI-encoded when written by us. */
-function htmlBlockContent(el: SpecElement): string | null {
-  const value = el.attr("data-html");
-  if (value === null) return null;
-  if (el.attr("data-html-encoding") !== "uri") return value;
+/** A custom block's props: URI-encoded JSON, null when absent or malformed. */
+function blockProps(el: SpecElement): unknown {
+  const value = el.attr("data-props");
+  if (!value) return null;
   try {
-    return decodeURIComponent(value);
+    return JSON.parse(decodeURIComponent(value));
   } catch {
-    return value;
+    return null;
   }
 }
 
@@ -902,29 +901,27 @@ const NODES: NodeSpec[] = [
     }),
   },
   {
+    // A block whose editing UI comes from a block type: "html" is built in,
+    // extensions register theirs as "<extension id>.<name>". The props are the
+    // type's own data, opaque to the schema.
     kind: "node",
-    name: "htmlBlock",
+    name: "customBlock",
     group: "block",
     atom: true,
-    selectable: false,
+    selectable: true,
     draggable: true,
     attrs: {
-      "data-html": {
-        default: "<p>Enter HTML content here</p>",
-        parse: htmlBlockContent,
+      blockType: dataAttr("data-block", "html"),
+      props: {
+        default: null,
+        parse: blockProps,
+        render: (value) =>
+          value === null ? {} : { "data-props": encodeURIComponent(JSON.stringify(value)) },
       },
     },
     // The catch-all that captures markup the schema has no node for is not a
     // matcher — it needs the element's ancestors. See `HTML_BLOCK_TAGS`.
-    match: [{ tag: "html-block" }],
-    render: (ctx) => ({
-      tag: "html-block",
-      attrs: {
-        ...ctx.html,
-        "data-html": encodeURIComponent(String(ctx.attrs["data-html"] ?? "")),
-        "data-html-encoding": "uri",
-      },
-    }),
+    match: [{ tag: "vektor-block" }],
   },
   {
     kind: "node",
@@ -1012,7 +1009,7 @@ export function textOf(node: DocNode | undefined): string {
 /**
  * Elements with no node of their own. Without an explicit fallback their tag
  * and attributes are dropped and only their text survives, so the complete
- * source is kept verbatim in an `htmlBlock` atom instead. Any custom element
+ * source is kept verbatim in an "html" `customBlock` instead. Any custom element
  * (a tag containing `-`) that no spec claims is treated the same way.
  */
 export const HTML_BLOCK_TAGS = new Set([

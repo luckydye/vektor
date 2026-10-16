@@ -353,7 +353,7 @@ interface SanitizePolicy {
   keepsAttribute(tag: string, attribute: string): boolean;
   /** URLs may only address this document (`#id`) or inline image data. */
   readonly localUrlsOnly?: boolean;
-  /** `<html-block data-html>` payloads are sanitized with the same policy. */
+  /** The HTML of "html" custom blocks is sanitized with the same policy. */
   readonly sanitizesHtmlBlocks?: boolean;
   /**
    * Links keeping an `href` get a `rel` when they carry none — `"all"` for
@@ -753,7 +753,7 @@ const DOCUMENT_DROP_TAGS = new Set([
  * The element vocabulary of a document, which is wider than a preview's: the
  * editor stores task-item checkboxes, tables with colgroups, media, and — for
  * markup the schema has no node of its own for — whatever the author wrote,
- * verbatim, inside an `html-block` payload (see `HTML_BLOCK_TAGS`). Custom
+ * verbatim, inside an "html" custom block (see `HTML_BLOCK_TAGS`). Custom
  * elements are kept by shape (`isCustomElementTag`) rather than by name, since
  * that is the rule the document schema itself uses.
  */
@@ -868,7 +868,7 @@ const DOCUMENT_POLICY: SanitizePolicy = {
   keeps: (tag) => DOCUMENT_TAGS.has(tag) || isCustomElementTag(tag),
   // A deny-list, unlike the preview policy: a document carries the schema's
   // `data-` attributes on its own elements and arbitrary attributes inside an
-  // `html-block` payload, and none of them execute once the shared rules have
+  // "html" block payload, and none of them execute once the shared rules have
   // taken the handlers, the URLs and the resource-loading CSS out. What it does
   // leave a member is layout — `position:fixed` over the app chrome — which is
   // the price of storing inline styles at all, and is not an escalation.
@@ -970,7 +970,7 @@ const SVG_POLICY: SanitizePolicy = {
 // The walker
 // ---------------------------------------------------------------------------
 
-/** How deep `html-block` payloads may nest before the innermost is dropped. */
+/** How deep "html" block payloads may nest before the innermost is dropped. */
 const MAX_HTML_BLOCK_DEPTH = 4;
 
 /**
@@ -1051,10 +1051,11 @@ function sanitizedAttributes(
 }
 
 /**
- * An `html-block` carries a whole HTML fragment in its `data-html` attribute,
- * which the element re-renders into a shadow root — so the payload is sanitized
- * with the same policy and written back in the encoding the schema renders it
- * with (`documents/schema/specs.ts`).
+ * An "html" custom block carries a whole HTML fragment in its props, which the
+ * block re-renders into a shadow root — so the payload is sanitized with the
+ * same policy and written back in the encoding the schema renders it with
+ * (`documents/schema/specs.ts`). Other block types' props are their own data
+ * and stay an ordinary attribute.
  */
 function sanitizeHtmlBlock(
   tag: ITag,
@@ -1062,25 +1063,24 @@ function sanitizeHtmlBlock(
   blockDepth: number,
   depth: number,
 ): string {
-  const attrs = sanitizedAttributes(tag, "html-block", policy, (attribute) =>
-    attribute.startsWith("data-html"),
+  const attrs = sanitizedAttributes(
+    tag,
+    "vektor-block",
+    policy,
+    (attribute) => attribute === "data-props",
   );
 
   const payload = tag.attributes?.find(
-    (attribute) => attributeName(attribute) === "data-html",
+    (attribute) => attributeName(attribute) === "data-props",
   );
-  if (!payload) return `<html-block${attrs}></html-block>`;
+  if (!payload) return `<vektor-block${attrs}></vektor-block>`;
 
-  const encoding = tag.attributes?.find(
-    (attribute) => attributeName(attribute) === "data-html-encoding",
-  );
-  let source = payload.value?.value ?? "";
-  if (encoding?.value?.value === "uri") {
-    try {
-      source = decodeURIComponent(source);
-    } catch {
-      // Keep the raw value: an undecodable payload is still sanitized below.
-    }
+  let source = "";
+  try {
+    const props = JSON.parse(decodeURIComponent(payload.value?.value ?? ""));
+    if (typeof props?.html === "string") source = props.html;
+  } catch {
+    // An unreadable payload leaves an empty block.
   }
 
   const sanitized =
@@ -1090,7 +1090,13 @@ function sanitizeHtmlBlock(
 
   // `encodeURIComponent` leaves nothing a parser could read as markup, so the
   // payload needs no further escaping.
-  return `<html-block${attrs} data-html="${encodeURIComponent(sanitized)}" data-html-encoding="uri"></html-block>`;
+  return `<vektor-block${attrs} data-props="${encodeURIComponent(JSON.stringify({ html: sanitized }))}"></vektor-block>`;
+}
+
+/** Whether an element is an "html" custom block, the type a missing `data-block` stands for. */
+function isHtmlBlock(tag: ITag): boolean {
+  const type = tag.attributes?.find((attribute) => attributeName(attribute) === "data-block");
+  return (type?.value?.value ?? "html") === "html";
 }
 
 function sanitizeNodes(
@@ -1136,7 +1142,7 @@ function sanitizeNode(
   if (!scoped.keeps(name))
     return sanitizeNodes(tag.body ?? [], scoped, blockDepth, depth);
 
-  if (name === "html-block" && scoped.sanitizesHtmlBlocks) {
+  if (name === "vektor-block" && scoped.sanitizesHtmlBlocks && isHtmlBlock(tag)) {
     return sanitizeHtmlBlock(tag, scoped, blockDepth, depth);
   }
 

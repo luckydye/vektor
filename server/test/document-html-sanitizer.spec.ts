@@ -8,15 +8,15 @@ import {
 } from "#utils/html.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 
-/** The payload an `html-block` carries, in the encoding the schema renders. */
+/** An "html" custom block, in the encoding the schema renders. */
 function htmlBlock(payload: string): string {
-  return `<html-block data-html-encoding="uri" data-html="${encodeURIComponent(payload)}"></html-block>`;
+  return `<vektor-block data-block="html" data-props="${encodeURIComponent(JSON.stringify({ html: payload }))}"></vektor-block>`;
 }
 
-/** The `data-html` payload of a sanitized `html-block`, decoded. */
+/** The HTML of a sanitized "html" block, decoded. */
 function htmlBlockPayload(html: string): string {
-  const encoded = /data-html="([^"]*)"/.exec(html)?.[1] ?? "";
-  return decodeURIComponent(encoded);
+  const encoded = /data-props="([^"]*)"/.exec(html)?.[1] ?? "";
+  return JSON.parse(decodeURIComponent(encoded)).html;
 }
 
 describe("sanitizeDocumentHtml", () => {
@@ -164,7 +164,7 @@ describe("sanitizeDocumentHtml", () => {
     );
   });
 
-  it("sanitizes an html-block payload, which is re-rendered as markup", () => {
+  it("sanitizes an html block's payload, which is re-rendered as markup", () => {
     const html = sanitizeDocumentHtml(
       htmlBlock(
         '<img src=x onerror="window.__hbxss++"><script>window.__hbscript=1</script>' +
@@ -180,19 +180,25 @@ describe("sanitizeDocumentHtml", () => {
     expect(payload).toContain(
       '<section class="dashboard" style="color: red"><p>Dashboard</p></section>',
     );
-    expect(html).toContain('data-html-encoding="uri"');
+    expect(html).toContain('data-block="html"');
   });
 
-  it("sanitizes an unencoded html-block payload and stores it encoded", () => {
+  it("treats a block without a type as an html block", () => {
     const html = sanitizeDocumentHtml(
-      '<html-block data-html="<img src=x onerror=alert(1)>"></html-block>',
+      `<vektor-block data-props="${encodeURIComponent(JSON.stringify({ html: "<img src=x onerror=alert(1)>" }))}"></vektor-block>`,
     );
 
     expect(html).not.toContain("onerror");
     expect(htmlBlockPayload(html)).toBe('<img src="x">');
   });
 
-  it("stops recursing into html-blocks nested inside html-blocks", () => {
+  it("keeps an extension block's props as they are", () => {
+    const block = `<vektor-block data-block="acme.quote" data-props="${encodeURIComponent(JSON.stringify({ text: "<img src=x onerror=alert(1)>" }))}"></vektor-block>`;
+
+    expect(sanitizeDocumentHtml(block)).toBe(block);
+  });
+
+  it("stops recursing into html blocks nested inside html blocks", () => {
     let payload = "<p>deep</p>";
     for (let level = 0; level < 8; level++) payload = htmlBlock(payload);
 

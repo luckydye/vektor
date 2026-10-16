@@ -6,6 +6,7 @@ import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { api } from "#api/client.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { extensions } from "#extensions/manager.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 import { browserLang, createTranslator } from "#utils/lang.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
@@ -139,7 +140,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       description: t("Insert raw HTML markup"),
       icon: iconMarkup("html"),
       command: (editor) => {
-        editor.chain().focus().insertHtmlBlock().run();
+        editor.chain().focus().insertCustomBlock().run();
       },
     },
     {
@@ -177,6 +178,21 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
           .chain()
           .focus()
           .insertExtensionView({ extensionId, routePath: route.path })
+          .run();
+      },
+    });
+  }
+
+  for (const type of extensions.blockTypes.list()) {
+    items.push({
+      title: type.title,
+      description: type.description || t("Extension block"),
+      icon: type.icon ? sanitizeSvgMarkup(type.icon) : iconMarkup("extension"),
+      command: (editor) => {
+        editor
+          .chain()
+          .focus()
+          .insertCustomBlock({ blockType: type.id, props: structuredClone(type.defaults) })
           .run();
       },
     });

@@ -77,7 +77,8 @@ export function deactivate(ctx) {
 ```
 
 Frontend entries are loaded for installed extensions in the active space.
-Register actions and suggestions there; render route UI through a view entry.
+Register actions, suggestions and block types (`ctx.blocks.register(name, { title, defaults, render })`)
+there; render route UI through a view entry.
 
 ## View entry
 

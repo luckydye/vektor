@@ -214,7 +214,7 @@ describe("server document path", () => {
           : `${root} statically reaches the editor tree or a frontend library.\n\n` +
               `Document (de)serialization goes through #documents/schema, which ` +
               `is plain data. Browser-only code belongs in a separate client ` +
-              `module (see HtmlBlockNodeView.ts / editSession.ts) or behind a ` +
+              `module (see CustomBlockNodeView.ts / editSession.ts) or behind a ` +
               `dynamic import() inside the browser-only path.\n\n${violations.join("\n\n")}`,
       ).toEqual([]);
     });

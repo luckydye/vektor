@@ -197,8 +197,16 @@ function nodeToMarkdown(node: HtmlNode): string {
     return `\n\n${reconstructNode(tag)}\n\n`;
   }
 
-  // Ignore html-block elements entirely
-  if (name === "html-block") return "";
+  // Custom blocks: an "html" block is its markup, any other type stays a block.
+  if (name === "vektor-block") {
+    if ((getAttr(tag, "data-block") ?? "html") !== "html") return `\n\n${reconstructNode(tag)}\n\n`;
+    try {
+      const props = JSON.parse(decodeURIComponent(getAttr(tag, "data-props") ?? ""));
+      return typeof props?.html === "string" ? `\n\n${props.html}\n\n` : "";
+    } catch {
+      return "";
+    }
+  }
 
   switch (name) {
     // Block elements

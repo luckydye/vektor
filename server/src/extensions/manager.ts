@@ -15,6 +15,7 @@ import { getAvatarColor } from "#utils/avatarColor.ts";
 export type { ExtensionInfo };
 
 import { getActiveEditor } from "#editor/activeEditor.ts";
+import { type BlockType, createBlockTypes } from "#editor/blocks.ts";
 import {
   registerSuggestionProvider,
   type SuggestionItem,
@@ -109,6 +110,14 @@ export type ExtensionContext = {
       unregister: (id: string) => void;
     };
   };
+  /**
+   * Block types for documents: a block with its own editing UI, stored as
+   * `<vektor-block data-block="<extension id>.<name>" data-props="…">`.
+   */
+  blocks: {
+    register: (name: string, type: BlockType) => void;
+    unregister: (name: string) => void;
+  };
   /** Returns the active editor instance, or null if no editor is active */
   getActiveEditor: () => Editor | null;
   /**
@@ -146,6 +155,7 @@ type LoadedExtension = {
   registeredSuggestions: Set<string>;
   registeredInspectors: Set<string>;
   registeredProcessors: Set<string>;
+  registeredBlocks: Set<string>;
   viewCleanup: (() => void) | null;
 };
 
@@ -180,6 +190,8 @@ export class Extensions {
   activeDocumentId: string | null = null;
   /** Shared by every canvas, so registrations outlive canvas navigation. */
   readonly canvasPlugins = createCanvasPlugins();
+  /** Block types of the loaded extensions, read by the `customBlock` node view. */
+  readonly blockTypes = createBlockTypes();
 
   private readonly globalLoaded: LoadedExtension = {
     info: { id: "vektor" } as ExtensionInfo,
@@ -190,6 +202,7 @@ export class Extensions {
     registeredSuggestions: new Set(),
     registeredInspectors: new Set(),
     registeredProcessors: new Set(),
+    registeredBlocks: new Set(),
     viewCleanup: null,
   };
 
@@ -353,6 +366,7 @@ export class Extensions {
       registeredSuggestions: new Set(),
       registeredInspectors: new Set(),
       registeredProcessors: new Set(),
+      registeredBlocks: new Set(),
       viewCleanup: null,
     };
 
@@ -425,6 +439,7 @@ export class Extensions {
 
     for (const id of loaded.registeredInspectors) this.canvasPlugins.unregisterInspector(id);
     for (const id of loaded.registeredProcessors) this.canvasPlugins.unregisterProcessor(id);
+    for (const id of loaded.registeredBlocks) this.blockTypes.unregister(id);
 
     this.loaded.delete(extensionId);
   }
@@ -481,6 +496,7 @@ export class Extensions {
     const scoped = (id: string) =>
       id.startsWith(`${extensionId}.`) ? id : `${extensionId}.${id}`;
     const plugins = this.canvasPlugins;
+    const blockTypes = this.blockTypes;
     return {
       extensionId,
       spaceId: this.spaceId,
@@ -553,6 +569,18 @@ export class Extensions {
             loaded.registeredProcessors.delete(fullId);
             plugins.unregisterProcessor(fullId);
           },
+        },
+      },
+      blocks: {
+        register: (name, type) => {
+          const id = scoped(name);
+          blockTypes.register(id, type);
+          loaded.registeredBlocks.add(id);
+        },
+        unregister: (name) => {
+          const id = scoped(name);
+          loaded.registeredBlocks.delete(id);
+          blockTypes.unregister(id);
         },
       },
       getActiveEditor,

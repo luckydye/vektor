@@ -438,6 +438,43 @@ export function deactivate({ suggestions }: ExtensionContext): void {
 
 Providers are global — they activate in any editor that opens, not just the one active at registration time.
 
+## Blocks
+
+`ctx.blocks` adds block types to documents. A block is one atom in the document with its own editing UI, which your extension renders. Every registered type appears in the Add Content and `/` menus.
+
+```ts
+export function activate({ blocks }: ExtensionContext): void {
+  blocks.register("quote", {
+    title: "Quote",
+    description: "A quote with its author",
+    icon: '<svg viewBox="0 0 16 16">…</svg>',
+    defaults: { text: "", author: "" },
+    render(container, { props, update }) {
+      const input = document.createElement("textarea");
+      input.value = (props as { text: string }).text;
+      input.addEventListener("change", () => update({ ...(props as object), text: input.value }));
+      container.append(input);
+      return {
+        // Called when the props change, e.g. by a collaborator. Keep focus by updating in place.
+        update(next) {
+          props = next;
+          input.value = (next as { text: string }).text;
+        },
+      };
+    },
+  });
+}
+```
+
+A block is stored as `<vektor-block data-block="<extension id>.<name>" data-props="<URI-encoded JSON>"></vektor-block>`, so a site that reads a document's published HTML can render it from its props. Props are any JSON value.
+
+- **`render`** mounts the editing UI into `container` and returns `{ update?, destroy? }`. Without `update`, the block is mounted again whenever its props change.
+- **`view`** (optional) renders the block in read mode. Without it, read mode shows the block's title. Viewers and share links do not load extensions, so they always see the title.
+- **Props are data, not markup.** They are not sanitized, so never assign them to `innerHTML`, and check URLs before using them.
+- **Blocks of a type that is not loaded** — an extension that is uninstalled, or not loaded yet — show a placeholder and keep their props. They mount once the type is registered.
+
+The built-in "HTML Block" is the block type `html`, with the props `{ html }`. Its HTML is sanitized like the rest of the document. Markup the editor has no node for becomes an `html` block.
+
 ## Collaboration
 
 When a canvas or document is open, `ctx.collaboration` provides access to the shared Yjs document:

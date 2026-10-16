@@ -104,7 +104,10 @@ function parseTag(out: DocNode[], tag: HtmlTagNode, ctx: ParseContext): void {
 
   // Nothing in the schema claims this element.
   if (isHtmlBlockTag(name) && !ctx.contained) {
-    out.push({ type: "htmlBlock", attrs: { "data-html": reconstructNode(tag) } });
+    out.push({
+      type: "customBlock",
+      attrs: { blockType: "html", props: { html: reconstructNode(tag) } },
+    });
     return;
   }
   if (IGNORED_TAGS.has(name)) return;

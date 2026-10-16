@@ -2,8 +2,8 @@ import { generateHTML, generateJSON } from "@tiptap/html";
 import { describe, expect, it } from "vitest";
 import { contentExtensions } from "#editor/extensions.ts";
 
-describe("HTML block parsing", () => {
-  it("preserves unsupported block markup in an HTML block", () => {
+describe("custom block parsing", () => {
+  it("preserves unsupported block markup in an html block", () => {
     const json = generateJSON(
       '<section class="dashboard" style="color: red"><p>Dashboard</p></section>',
       contentExtensions(),
@@ -11,10 +11,12 @@ describe("HTML block parsing", () => {
 
     expect(json.content).toEqual([
       {
-        type: "htmlBlock",
+        type: "customBlock",
         attrs: {
-          "data-html":
-            '<section class="dashboard" style="color: red"><p>Dashboard</p></section>',
+          blockType: "html",
+          props: {
+            html: '<section class="dashboard" style="color: red"><p>Dashboard</p></section>',
+          },
         },
       },
     ]);
@@ -29,15 +31,15 @@ describe("HTML block parsing", () => {
     expect(json.content).toHaveLength(1);
     expect(json.content?.[0]?.type).toBe("taskList");
     // The <div><p>buy milk</p></div> wrapper must stay inside the task item as a
-    // paragraph, not be hoisted into a sibling htmlBlock.
-    expect(JSON.stringify(json)).not.toContain("htmlBlock");
+    // paragraph, not be hoisted into a sibling html block.
+    expect(JSON.stringify(json)).not.toContain("customBlock");
     expect(JSON.stringify(json)).toContain("buy milk");
   });
 
   it("does not hoist unknown markup nested inside a list item", () => {
     const json = generateJSON("<ul><li><div>nested</div></li></ul>", contentExtensions());
 
-    expect(JSON.stringify(json)).not.toContain("htmlBlock");
+    expect(JSON.stringify(json)).not.toContain("customBlock");
   });
 
   it("still hoists root-level unknown markup even after nested ones exist", () => {
@@ -47,7 +49,7 @@ describe("HTML block parsing", () => {
     );
 
     const types = json.content?.map((n) => n.type);
-    expect(types).toContain("htmlBlock");
+    expect(types).toContain("customBlock");
     expect(types).toContain("bulletList");
   });
 
@@ -59,21 +61,29 @@ describe("HTML block parsing", () => {
         type: "doc",
         content: [
           {
-            type: "htmlBlock",
-            attrs: { "data-html": source },
+            type: "customBlock",
+            attrs: { blockType: "html", props: { html: source } },
           },
         ],
       },
       contentExtensions(),
     );
 
-    expect(serialized).toContain('data-html-encoding="uri"');
+    expect(serialized).toContain('data-block="html"');
     expect(serialized).not.toContain("<tr>");
     expect(generateJSON(serialized, contentExtensions()).content).toEqual([
       {
-        type: "htmlBlock",
-        attrs: { "data-html": source },
+        type: "customBlock",
+        attrs: { blockType: "html", props: { html: source } },
       },
     ]);
+  });
+
+  it("round-trips an extension block's props", () => {
+    const block = { type: "customBlock", attrs: { blockType: "acme.quote", props: { text: "<b>&", n: 1 } } };
+    const serialized = generateHTML({ type: "doc", content: [block] }, contentExtensions());
+
+    expect(serialized).toContain('data-block="acme.quote"');
+    expect(generateJSON(serialized, contentExtensions()).content).toEqual([block]);
   });
 });

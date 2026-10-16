@@ -158,7 +158,7 @@ export function SpaceApp(props: Props) {
     Promise.all([
       import("#editor/document.ts"),
       import("#editor/elements/figma-embed.ts"),
-      import("#editor/elements/html-block.ts"),
+      import("#editor/elements/vektor-block.ts"),
       import("#editor/elements/ticket-link.ts"),
       import("#editor/elements/user-mention.ts"),
       import("#editor/elements/cake.ts"),

@@ -61,7 +61,7 @@ function createManifest(id: string, name: string): string {
 }
 
 function createViewTs(id: string, name: string): string {
-  return `import type { ExtensionContext } from "../../../extension-api/types.ts";
+  return `import type { ExtensionContext } from "../../../types.ts";
 
 export function activate(ctx: ExtensionContext): void {
   ctx.views.register("${id}", async (container) => {

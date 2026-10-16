@@ -20,3 +20,6 @@ it for app documents or JSON-backed canvas documents.
 Edits merge with concurrent changes from other users — never rewrite the whole
 document with `write_document` unless replacing everything is the goal.
 HTML edits are sanitized; script elements are removed.
+A `<vektor-block data-block="…" data-props="…">` line is a block with its own
+editing UI; its props are URI-encoded JSON. Keep the line intact unless the
+task is to change that block, and then re-encode the props the same way.

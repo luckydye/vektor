@@ -68,7 +68,7 @@ const TAGS = [
   "img",
   "figure",
   "user-mention",
-  "html-block",
+  "vektor-block",
   "date-picker",
   "script",
   "label",
@@ -221,9 +221,10 @@ describe("document normalization", () => {
       type: "doc",
       content: [
         {
-          type: "htmlBlock",
+          type: "customBlock",
           attrs: {
-            "data-html": '<figure class="x"><figcaption>c</figcaption></figure>',
+            blockType: "html",
+            props: { html: '<figure class="x"><figcaption>c</figcaption></figure>' },
           },
         },
       ],

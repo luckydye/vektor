@@ -55,7 +55,9 @@ const CASES: Record<string, string> = {
   "link mark": '<p><a href="https://example.com/x?a=1&amp;b=2">link</a></p>',
   "hard break": "<p>line<br>break</p>",
   "html block":
-    "<html-block data-html=%3Cp%3Eraw%3C%2Fp%3E data-html-encoding=uri></html-block>",
+    '<vektor-block data-block="html" data-props="%7B%22html%22%3A%22%3Cp%3Eraw%3C%2Fp%3E%22%7D"></vektor-block>',
+  "extension block":
+    '<vektor-block data-block="acme.quote" data-props="%7B%22text%22%3A%22a%20%26%20b%22%7D"></vektor-block>',
   "unknown element": "<div class=x>raw</div>",
   "empty paragraphs": "<p></p>\n<p>after empty</p>",
   "attributes with quotes": '<p style="color: red">styled</p>',

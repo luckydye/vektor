@@ -50,7 +50,7 @@ import { DocumentMention } from "./extensions/DocumentMention.ts";
 import { ExtensionView } from "./extensions/ExtensionView.ts";
 import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
 import { FileAttachment } from "./extensions/FileAttachment.ts";
-import { HtmlBlock } from "./extensions/HtmlBlock.ts";
+import { CustomBlock } from "./extensions/CustomBlock.ts";
 import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
@@ -429,13 +429,13 @@ function pinPreventScroll(dom: HTMLElement) {
   dom.focus = (options?: FocusOptions) => focus({ ...options, preventScroll: true });
 }
 
-// `mentions` and `htmlBlock` default to the schema-only nodes so the server can
-// build a schema without importing lit-html; the editor passes the interactive,
-// lit-rendered variants (`MentionSuggestions`, `HtmlBlockNodeView`) instead.
+// `mentions` and `customBlock` default to the schema-only nodes so the server can
+// build a schema without importing lit-html; the editor passes the interactive
+// variants (`MentionSuggestions`, `CustomBlockNodeView`) instead.
 export function documentExtensions(
   context: EditorContext = {},
   mentions: Extensions[number] = Mentions,
-  htmlBlock: Extensions[number] = HtmlBlock,
+  customBlock: Extensions[number] = CustomBlock,
 ): Extensions {
   const { spaceId = "", documentId } = context;
 
@@ -487,7 +487,7 @@ export function documentExtensions(
     TicketLink,
     ColumnLayout,
     ColumnItem,
-    htmlBlock,
+    customBlock,
     DatePicker,
     FigmaEmbed,
     mentions,

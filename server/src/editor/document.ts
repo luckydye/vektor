@@ -24,7 +24,7 @@ import {
   attachmentFilesFromDataTransfer,
   insertFileAttachmentsAt,
 } from "./extensions/FileAttachment.ts";
-import { HtmlBlockNodeView } from "./extensions/HtmlBlockNodeView.ts";
+import { CustomBlockNodeView } from "./extensions/CustomBlockNodeView.ts";
 import {
   imageFilesFromDataTransfer,
   insertImageFilesAt,
@@ -336,7 +336,7 @@ function createEditor(
           spaceId: context.spaceId ?? "",
           documentId: context.documentId,
         }),
-        HtmlBlockNodeView,
+        CustomBlockNodeView,
       ),
 
       TrailingNodePlus.configure({

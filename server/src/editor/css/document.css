@@ -356,12 +356,27 @@ img[width] {
   white-space: nowrap;
 }
 
-/* HTML Block styles */
+/* Custom blocks: the editor's node view and the read-mode element */
 html-block {
   display: block;
   margin-top: 1rem;
   margin-bottom: 1rem;
   white-space: normal;
+}
+
+vektor-block,
+.custom-block {
+  display: block;
+  white-space: normal;
+}
+
+.custom-block__unknown {
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  color: var(--color-neutral-500);
+  font-size: 0.875rem;
+  margin: 1rem 0;
+  padding: 1rem;
 }
 
 code {

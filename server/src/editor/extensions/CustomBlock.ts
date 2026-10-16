@@ -6,8 +6,9 @@ import { nodeFromSpec, specParseRules } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
-    htmlBlock: {
-      insertHtmlBlock: (attributes?: { html?: string }) => ReturnType;
+    customBlock: {
+      /** Inserts a block of a type, "html" when omitted. */
+      insertCustomBlock: (attributes?: { blockType?: string; props?: unknown }) => ReturnType;
     };
   }
 }
@@ -43,22 +44,24 @@ function isNestedInContentNode(element: HTMLElement): boolean {
 }
 
 /**
- * Schema-only HTML block: parsing, attributes and HTML rendering, with no DOM
- * rendering library imported. The interactive editing view lives in
- * `HtmlBlockNodeView.ts` and is injected client-side by `documentExtensions`.
+ * Schema-only custom block: parsing, attributes and HTML rendering, with no DOM
+ * rendering library imported. The node view, which mounts the block type's UI,
+ * lives in `CustomBlockNodeView.ts` and is injected client-side by
+ * `documentExtensions`.
  *
  * The catch-all rule below is the one parse rule that cannot come from the spec
  * table: deciding whether an unknown element is a root-level block needs its
  * ancestors, which a tag matcher cannot see. `parse.ts` runs the same logic on
- * the server, driven by the same two exported tag sets.
+ * the server, driven by the same two exported tag sets. Such markup becomes an
+ * "html" block.
  */
-export const HtmlBlock = Node.create({
-  name: "htmlBlock",
-  ...nodeFromSpec("htmlBlock"),
+export const CustomBlock = Node.create({
+  name: "customBlock",
+  ...nodeFromSpec("customBlock"),
 
   parseHTML(): TagParseRule[] {
     return [
-      ...specParseRules("htmlBlock"),
+      ...specParseRules("customBlock"),
       {
         // Runs after every native and Vektor-specific parser rule, so this
         // captures only elements the document schema does not understand.
@@ -70,7 +73,7 @@ export const HtmlBlock = Node.create({
           // Only hoist root-level unknown HTML into a block. Nested unknown
           // markup belongs to the node being parsed and is left in place.
           if (isNestedInContentNode(element)) return false;
-          return { "data-html": element.outerHTML };
+          return { blockType: "html", props: { html: element.outerHTML } };
         },
       },
     ];
@@ -78,13 +81,14 @@ export const HtmlBlock = Node.create({
 
   addCommands() {
     return {
-      insertHtmlBlock:
-        (attributes?: { html?: string }) =>
+      insertCustomBlock:
+        (attributes?: { blockType?: string; props?: unknown }) =>
         ({ commands }: CommandProps) => {
           return commands.insertContent({
             type: this.name,
             attrs: {
-              "data-html": attributes?.html || "<p>Enter HTML content here</p>",
+              blockType: attributes?.blockType ?? "html",
+              props: attributes?.props ?? { html: "<p>Enter HTML content here</p>" },
             },
           });
         },
