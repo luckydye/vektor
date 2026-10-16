@@ -491,16 +491,21 @@ export function DatabaseView(props: Props) {
   const [isExporting, setIsExporting] = createSignal(false);
 
   // Headers are the labels shown, with "Name" for the title, which is what the
-  // import reads back.
+  // import reads back. A selection is always among the loaded rows; without
+  // one, every row is fetched.
   async function exportCsv() {
     if (isExporting()) return;
     setIsExporting(true);
     try {
       const columns = derivedColumns();
-      const all = await fetchAllRows();
+      const selected = selectedIds();
+      const exported =
+        selected.size > 0
+          ? rows().filter((row) => selected.has(row.id))
+          : await fetchAllRows();
       const csv = formatCsvRows([
         ["Name", ...columns.map((col) => col.label)],
-        ...all.map((row) => [
+        ...exported.map((row) => [
           rowTitle(row.properties),
           ...columns.map((col) => cellValue(row.properties, col.name)),
         ]),
@@ -1072,12 +1077,15 @@ export function DatabaseView(props: Props) {
           <button
             type="button"
             class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-50"
-            title="Export CSV"
+            title={selectedIds().size > 0 ? "Export selected rows as CSV" : "Export CSV"}
             disabled={isExporting() || rows().length === 0}
             onClick={() => void exportCsv()}
           >
             <Icon class="h-3.5 w-3.5" name="csv-file" />
             Export
+            <Show when={selectedIds().size > 0}>
+              <span class="tabular-nums">({selectedIds().size})</span>
+            </Show>
           </button>
         </div>
       </div>
