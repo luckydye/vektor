@@ -86,6 +86,11 @@ export function PropertyChip(props: Props) {
     setPropertyName(property.name);
     setSelectedValue(property.value);
 
+    // Free text is edited in place, so the field opens holding the current value.
+    if (property.type === "text" && typeof property.value === "string") {
+      setSearchInput(property.value);
+    }
+
     if (property.type === "date" && property.value && !Array.isArray(property.value)) {
       setDateValue(property.value);
     }
@@ -96,6 +101,7 @@ export function PropertyChip(props: Props) {
 
     if (property.type !== "date" && !props.trigger) {
       inputElement?.focus();
+      inputElement?.setSelectionRange(searchInput().length, searchInput().length);
 
       props.propertyValues?.(property).then(setValueOptions);
     }
