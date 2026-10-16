@@ -16,6 +16,7 @@ import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
+import { useSelection } from "#composeables/useSelection.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
@@ -47,6 +48,7 @@ const COLUMN_TYPES: { type: DatabaseColumn["type"]; label: string }[] = [
 const DEFAULT_COL_WIDTH = 180;
 const NAME_COL_WIDTH = 240;
 const ACTION_COL_WIDTH = 48;
+const SELECT_COL_WIDTH = 36;
 
 // Below this a full render costs less than the scroll bookkeeping around it.
 const VIRTUALIZE_FROM_ROWS = 80;
@@ -270,6 +272,17 @@ export function DatabaseView(props: Props) {
 
   createEffect(() => setSchemaStr(props.schemaJson));
 
+  const rowIds = createMemo(() => rows().map((row) => row.id));
+  const { selectedIds, toggleSelect, selectAll, deselectAll } = useSelection(rowIds);
+  const allSelected = () => rows().length > 0 && selectedIds().size === rows().length;
+
+  // A shift-click that extends a range leaves the clicked row selected, which
+  // the native toggle would otherwise have unchecked.
+  function onRowCheckboxClick(rowId: string, event: MouseEvent) {
+    toggleSelect(rowId, event);
+    (event.currentTarget as HTMLInputElement).checked = selectedIds().has(rowId);
+  }
+
   const [editingCell, setEditingCell] = createSignal<{
     rowId: string;
     col: string;
@@ -417,6 +430,17 @@ export function DatabaseView(props: Props) {
     );
   };
 
+  async function deleteSelectedConfirmed() {
+    const ids = [...selectedIds()];
+    const message = ids.length === 1 ? "Delete this row?" : `Delete ${ids.length} rows?`;
+    if (!(await confirmDialog(message, { tone: "danger" }))) return;
+    try {
+      await Promise.all(ids.map((id) => deleteRow(id)));
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Failed to delete rows");
+    }
+  }
+
   async function deleteColumnConfirmed(name: string, label: string) {
     if (!(await confirmDialog(`Delete column "${label}"?`, { tone: "danger" }))) return;
     await deleteColumn(name);
@@ -491,6 +515,7 @@ export function DatabaseView(props: Props) {
 
   const tableWidth = createMemo(
     () =>
+      SELECT_COL_WIDTH +
       columnWidth("title") +
       derivedColumns().reduce((sum, col) => sum + columnWidth(col.name), 0) +
       ACTION_COL_WIDTH,
@@ -591,6 +616,7 @@ export function DatabaseView(props: Props) {
             >
               <thead>
                 <tr class="bg-neutral-50">
+                  <th style={{ width: `${SELECT_COL_WIDTH}px` }} />
                   <th class="px-3 py-2.5" style={{ width: `${NAME_COL_WIDTH}px` }}>
                     <div class="h-2.5 w-16 rounded-full bg-skeleton-strong" />
                   </th>
@@ -608,6 +634,7 @@ export function DatabaseView(props: Props) {
                 <For each={[0.9, 0.6, 0.75]}>
                   {(width) => (
                     <tr>
+                      <td />
                       <td class="px-3 py-2.5">
                         <div
                           class="h-2.5 rounded-full bg-skeleton"
@@ -645,6 +672,24 @@ export function DatabaseView(props: Props) {
           >
             <thead>
               <tr class="bg-neutral-50 text-left">
+                <th
+                  class="bg-neutral-50 p-0 text-center"
+                  style={{ ...stickyHeaderStyle, width: `${SELECT_COL_WIDTH}px` }}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label="Select all rows"
+                    ref={(el) =>
+                      createEffect(() => {
+                        el.indeterminate = selectedIds().size > 0 && !allSelected();
+                      })
+                    }
+                    checked={allSelected()}
+                    disabled={rows().length === 0}
+                    onChange={() => (allSelected() ? deselectAll() : selectAll())}
+                    class="h-3.5 w-3.5 cursor-pointer accent-primary-500 align-middle"
+                  />
+                </th>
                 <th
                   class="relative whitespace-nowrap bg-neutral-50 p-0 font-semibold text-neutral-700 text-size-small hover:z-2!"
                   style={{ ...stickyHeaderStyle, width: `${columnWidth("title")}px` }}
@@ -738,7 +783,7 @@ export function DatabaseView(props: Props) {
               <Show when={spacerBefore() > 0}>
                 <tr>
                   <td
-                    colspan={derivedColumns().length + 2}
+                    colspan={derivedColumns().length + 3}
                     class="border-0! p-0!"
                     style={{ height: `${spacerBefore()}px` }}
                   />
@@ -747,7 +792,21 @@ export function DatabaseView(props: Props) {
 
               <For each={visibleRows()}>
                 {(row) => (
-                  <tr class="group" data-row>
+                  <tr
+                    class="group"
+                    classList={{ "bg-primary-50": selectedIds().has(row.id) }}
+                    data-row
+                  >
+                    <td class="p-0 text-center align-middle">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${rowTitle(row.properties)}`}
+                        checked={selectedIds().has(row.id)}
+                        onClick={(event) => onRowCheckboxClick(row.id, event)}
+                        class="h-3.5 w-3.5 cursor-pointer accent-primary-500 align-middle opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                        classList={{ "opacity-100!": selectedIds().size > 0 }}
+                      />
+                    </td>
                     <td
                       class="px-3 py-2.5 align-top"
                       style={{ width: `${columnWidth("title")}px` }}
@@ -900,7 +959,7 @@ export function DatabaseView(props: Props) {
               <Show when={spacerAfter() > 0}>
                 <tr>
                   <td
-                    colspan={derivedColumns().length + 2}
+                    colspan={derivedColumns().length + 3}
                     class="border-0! p-0!"
                     style={{ height: `${spacerAfter()}px` }}
                   />
@@ -910,7 +969,7 @@ export function DatabaseView(props: Props) {
               <Show when={rows().length === 0 && !isLoading()}>
                 <tr>
                   <td
-                    colspan={derivedColumns().length + 2}
+                    colspan={derivedColumns().length + 3}
                     class="px-4 py-8 text-center text-neutral-400 text-size-small"
                   >
                     No rows yet. Click "New row" or import a CSV to get started.
@@ -923,14 +982,41 @@ export function DatabaseView(props: Props) {
       </div>
 
       <div class="flex shrink-0 items-center justify-between gap-3 border-neutral-100 border-t px-3 py-2">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
-          onClick={() => void addRow()}
+        <Show
+          when={selectedIds().size > 0}
+          fallback={
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
+              onClick={() => void addRow()}
+            >
+              <Icon class="h-3.5 w-3.5" name="add" />
+              New row
+            </button>
+          }
         >
-          <Icon class="h-3.5 w-3.5" name="add" />
-          New row
-        </button>
+          <div class="flex items-center gap-3 text-size-small">
+            <span class="text-neutral-500 tabular-nums">
+              {selectedIds().size} selected
+            </span>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 text-red-600 transition-colors hover:text-red-700"
+              onClick={() => void deleteSelectedConfirmed()}
+            >
+              <Icon class="h-3.5 w-3.5" name="delete-entry" />
+              Delete
+            </button>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 text-neutral-400 transition-colors hover:text-neutral-700"
+              onClick={deselectAll}
+            >
+              <Icon class="h-3.5 w-3.5" name="cancel" />
+              Deselect
+            </button>
+          </div>
+        </Show>
         <div class="flex items-center gap-3">
           <span class="text-neutral-400 text-size-small">{rows().length} rows</span>
           <input

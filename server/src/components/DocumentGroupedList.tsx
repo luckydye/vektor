@@ -1,17 +1,16 @@
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 import {
-  createEffect,
   createMemo,
   createSignal,
   For,
   type JSX,
-  on,
   onMount,
   Show,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
+import { useSelection } from "#composeables/useSelection.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { documentTypeIcon } from "#documents/icons.ts";
@@ -217,49 +216,8 @@ export function DocumentGroupedList(props: Props) {
     return [above, buildGroups(docs.slice(splitAfter), above.at(-1)?.id)];
   });
 
-  const [selectedIds, setSelectedIds] = createSignal(new Set<string>());
   const allIds = createMemo(() => filtered().map((d) => d.id));
-  let lastClickedId: string | null = null;
-
-  // Takes the event structurally: a tile selects from a keydown, a row from a click.
-  function toggleSelect(id: string, event: { shiftKey: boolean }) {
-    const next = new Set(selectedIds());
-
-    if (event.shiftKey && lastClickedId && lastClickedId !== id) {
-      const ids = allIds();
-      const from = ids.indexOf(lastClickedId);
-      const to = ids.indexOf(id);
-      if (from !== -1 && to !== -1) {
-        const [start, end] = from < to ? [from, to] : [to, from];
-        for (let i = start; i <= end; i++) next.add(ids[i]);
-        setSelectedIds(next);
-        return;
-      }
-    }
-
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
-    lastClickedId = id;
-  }
-
-  function deselectAll() {
-    setSelectedIds(new Set<string>());
-  }
-
-  createEffect(
-    on(
-      () => props.items,
-      () => {
-        const availableIds = new Set(allIds());
-        const next = new Set<string>(
-          [...selectedIds()].filter((id) => availableIds.has(id)),
-        );
-        if (next.size !== selectedIds().size) setSelectedIds(next);
-      },
-      { defer: true },
-    ),
-  );
+  const { selectedIds, toggleSelect, deselectAll } = useSelection(allIds);
 
   // Held here rather than in the tile grid: `groups()` hands `For` new objects on
   // every refetch, which re-creates the grid and would drop its own state.
