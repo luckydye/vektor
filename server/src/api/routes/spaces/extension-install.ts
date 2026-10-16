@@ -17,6 +17,7 @@ import {
   updateExtension,
 } from "#db/space/extensions.ts";
 import { downloadRegistryPackage } from "#extensions/registry.ts";
+import { serializeExtension } from "#extensions/serialize.ts";
 import { appLogger } from "#observability/logger.ts";
 
 interface InstallBody {
@@ -112,20 +113,5 @@ export const POST: ApiRouteHandler = (context) =>
       userId: installedBy,
     });
 
-    return createdResponse({
-      id: ext.id,
-      name: ext.manifest.name,
-      version: ext.manifest.version,
-      description: ext.manifest.description,
-      enabled: ext.enabled,
-      source: ext.source,
-      sourceRef: ext.sourceRef,
-      sourcePublisher: ext.sourcePublisher,
-      entries: ext.manifest.entries,
-      routes: ext.manifest.routes,
-      jobs: ext.manifest.jobs,
-      createdAt: ext.createdAt.toISOString(),
-      updatedAt: ext.updatedAt.toISOString(),
-      createdBy: ext.createdBy,
-    });
+    return createdResponse(serializeExtension(ext));
   }, "Failed to install extension");

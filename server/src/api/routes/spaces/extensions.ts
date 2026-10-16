@@ -13,7 +13,6 @@ import {
 import { authorizeExtensionInstall } from "#api/routes/spaces/extensionAuth.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
 import {
   createExtension,
   type ExtensionManifest,
@@ -22,13 +21,15 @@ import {
   listExtensionsWithErrors,
   updateExtension,
 } from "#db/space/extensions.ts";
+import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
+import { serializeExtension } from "#extensions/serialize.ts";
 import { appLogger } from "#observability/logger.ts";
 
 /**
  * List the extensions installed in a space
  *
  * GET /api/v1/spaces/:spaceId/extensions
- * List extension metadata in a space.
+ * List extension metadata in a space. Any space viewer may list; the list is filtered by per-extension access.
  * Jobs may list all extensions in the space; user sessions only see extensions they can access.
  *
  * @tag Extensions
@@ -40,7 +41,7 @@ export const GET: ApiRouteHandler = (context) =>
     const auth = await authenticateJobTokenOrSpaceRole(
       context.var.credentials,
       spaceId,
-      Permission.EDITOR,
+      Permission.VIEWER,
     );
 
     const store = await openSpaceStore(spaceId);
@@ -65,22 +66,7 @@ export const GET: ApiRouteHandler = (context) =>
           ).filter((ext) => ext !== null);
 
     return jsonResponse({
-      extensions: extensions.map((ext) => ({
-        id: ext.id,
-        name: ext.manifest.name,
-        version: ext.manifest.version,
-        description: ext.manifest.description,
-        enabled: ext.enabled,
-        source: ext.source,
-        sourceRef: ext.sourceRef,
-        sourcePublisher: ext.sourcePublisher,
-        entries: ext.manifest.entries,
-        routes: ext.manifest.routes,
-        jobs: ext.manifest.jobs,
-        createdAt: ext.createdAt.toISOString(),
-        updatedAt: ext.updatedAt.toISOString(),
-        createdBy: ext.createdBy,
-      })),
+      extensions: extensions.map(serializeExtension),
       errors: manifestErrors,
     });
   }, "Failed to list extensions");
@@ -170,22 +156,7 @@ export const POST: ApiRouteHandler = (context) =>
         return badRequestResponse("Failed to save extension");
       }
 
-      return createdResponse({
-        id: ext.id,
-        name: ext.manifest.name,
-        version: ext.manifest.version,
-        description: ext.manifest.description,
-        enabled: ext.enabled,
-        source: ext.source,
-        sourceRef: ext.sourceRef,
-        sourcePublisher: ext.sourcePublisher,
-        entries: ext.manifest.entries,
-        routes: ext.manifest.routes,
-        jobs: ext.manifest.jobs,
-        createdAt: ext.createdAt.toISOString(),
-        updatedAt: ext.updatedAt.toISOString(),
-        createdBy: ext.createdBy,
-      });
+      return createdResponse(serializeExtension(ext));
     },
     {
       fallbackMessage: "Failed to upload extension",

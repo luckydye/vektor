@@ -8,7 +8,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { extractFile, getExtensionPackage } from "#db/space/extensions.ts";
+import { extractFile, getExtension, getExtensionPackage } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/csp.ts";
 
@@ -68,6 +68,11 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     const store = await openSpaceStore(spaceId);
+    // A disabled extension is not served: the client unloads it, and its files
+    // should not stay fetchable.
+    if (!(await getExtension(store, extensionId))) {
+      return notFoundResponse("Extension");
+    }
     const packageBuffer = await getExtensionPackage(store, extensionId);
     if (!packageBuffer) {
       return notFoundResponse("Extension");
@@ -98,7 +103,7 @@ export const GET: ApiRouteHandler = (context) =>
     const headers: Record<string, string> = {
       "Content-Type": mimeType,
       "Content-Length": String(fileData.length),
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "private, max-age=3600",
       "X-Content-Type-Options": "nosniff",
     };
     if (csp !== null) {

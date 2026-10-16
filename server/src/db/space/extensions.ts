@@ -223,6 +223,43 @@ export async function getExtensionPackage(
   return rows[0].package;
 }
 
+/**
+ * Everything that must hold before a package is written: the manifest is valid,
+ * names the extension it is stored under, does not shadow the built-in local
+ * extension, and none of its job ids belongs to another installed extension
+ * (jobs are resolved by id alone, so a duplicate would hijack the other's job).
+ */
+async function validateForInstall(
+  s: SpaceStore,
+  extensionId: string,
+  packageBuffer: Buffer,
+): Promise<ExtensionManifest> {
+  const manifest = extractManifest(packageBuffer);
+  if (manifest.id !== extensionId) {
+    throw new Error(
+      `Extension manifest id '${manifest.id}' does not match '${extensionId}'`,
+    );
+  }
+  const local = getLocalExtension();
+  if (local && extensionId === local.id) {
+    throw new Error(`Extension id '${extensionId}' is reserved`);
+  }
+
+  const { extensions } = await listExtensionsWithErrors(s, { includeDisabled: true });
+  for (const job of manifest.jobs ?? []) {
+    const owner = extensions.find(
+      (other) =>
+        other.id !== extensionId && other.manifest.jobs?.some((j) => j.id === job.id),
+    );
+    if (owner) {
+      throw new Error(
+        `Job id '${job.id}' is already provided by extension '${owner.id}'`,
+      );
+    }
+  }
+  return manifest;
+}
+
 export interface CreateExtensionOptions {
   source?: ExtensionSource;
   sourceRef?: string | null;
@@ -237,7 +274,7 @@ export async function createExtension(
   options: CreateExtensionOptions = {},
 ): Promise<Extension> {
   const now = new Date();
-  const manifest = extractManifest(packageBuffer);
+  const manifest = await validateForInstall(s, extensionId, packageBuffer);
   const source = options.source ?? "upload";
   const sourceRef = options.sourceRef ?? null;
   const sourcePublisher = options.sourcePublisher ?? null;
@@ -282,6 +319,9 @@ export async function updateExtension(
 ): Promise<Extension | null> {
   const now = new Date();
 
+  // Validate before the write: a bad package must not replace a working one.
+  const manifest = await validateForInstall(s, extensionId, packageBuffer);
+
   const existingRows = await s.db
     .select({
       id: extension.id,
@@ -322,7 +362,6 @@ export async function updateExtension(
   invalidateManifest(s, extensionId);
   s.emit({ kind: "extensions" });
 
-  const manifest = extractManifest(packageBuffer);
   return {
     id: extensionId,
     manifest,

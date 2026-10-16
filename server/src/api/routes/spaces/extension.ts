@@ -20,6 +20,7 @@ import {
   getExtension,
   setExtensionEnabled,
 } from "#db/space/extensions.ts";
+import { serializeExtension } from "#extensions/serialize.ts";
 
 /**
  * Read one installed extension
@@ -38,7 +39,7 @@ export const GET: ApiRouteHandler = (context) =>
     const auth = await authenticateJobTokenOrSpaceRole(
       context.var.credentials,
       spaceId,
-      Permission.EDITOR,
+      Permission.VIEWER,
     );
 
     if (auth.type === "user") {
@@ -56,22 +57,7 @@ export const GET: ApiRouteHandler = (context) =>
       return notFoundResponse("Extension");
     }
 
-    return jsonResponse({
-      id: ext.id,
-      name: ext.manifest.name,
-      version: ext.manifest.version,
-      description: ext.manifest.description,
-      enabled: ext.enabled,
-      source: ext.source,
-      sourceRef: ext.sourceRef,
-      sourcePublisher: ext.sourcePublisher,
-      entries: ext.manifest.entries,
-      routes: ext.manifest.routes,
-      jobs: ext.manifest.jobs,
-      createdAt: ext.createdAt.toISOString(),
-      updatedAt: ext.updatedAt.toISOString(),
-      createdBy: ext.createdBy,
-    });
+    return jsonResponse(serializeExtension(ext));
   }, "Failed to get extension");
 
 /**
@@ -103,22 +89,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       return notFoundResponse("Extension");
     }
 
-    return jsonResponse({
-      id: ext.id,
-      name: ext.manifest.name,
-      version: ext.manifest.version,
-      description: ext.manifest.description,
-      enabled: ext.enabled,
-      source: ext.source,
-      sourceRef: ext.sourceRef,
-      sourcePublisher: ext.sourcePublisher,
-      entries: ext.manifest.entries,
-      routes: ext.manifest.routes,
-      jobs: ext.manifest.jobs,
-      createdAt: ext.createdAt.toISOString(),
-      updatedAt: ext.updatedAt.toISOString(),
-      createdBy: ext.createdBy,
-    });
+    return jsonResponse(serializeExtension(ext));
   }, "Failed to update extension");
 
 /**

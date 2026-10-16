@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { marketplaceOrigin } from "#config";
+import { EXTENSION_ID_PATTERN } from "#extensions/manifest.ts";
 import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
 import { appLogger } from "#observability/logger.ts";
 import { parseHttpUrl, SsrfError, safeFetch, type ValidatedUrl } from "#utils/ssrf.ts";
@@ -270,8 +271,6 @@ export function absolutizeListing<T extends { icon?: string; screenshots?: strin
 }
 
 /** Ids are path segments; anything else must not reach the registry URL. */
-const EXTENSION_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-
 export async function fetchRegistryExtension(
   extensionId: string,
 ): Promise<RegistryExtensionDetail> {

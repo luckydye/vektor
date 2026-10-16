@@ -1,5 +1,6 @@
 import type { CommandProps } from "@tiptap/core";
 import { Node } from "@tiptap/core";
+import { extensions } from "#extensions/manager.ts";
 import { nodeFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
@@ -43,13 +44,8 @@ export const ExtensionView = Node.create({
       let cleanup: (() => void) | null = null;
 
       if (extensionId && routePath) {
-        // Loaded on demand: the extension manager fetches and evaluates
-        // extension frontend bundles, which is only needed when an extension
-        // node view is actually mounted in the browser.
-        import("#extensions/manager.ts")
-          .then(({ extensions }) =>
-            extensions.renderInlineView(extensionId, routePath, dom),
-          )
+        extensions
+          .renderInlineView(extensionId, routePath, dom)
           .then((fn) => {
             cleanup = fn;
             if (!fn) {

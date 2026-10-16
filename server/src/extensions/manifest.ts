@@ -140,7 +140,7 @@ type ZipFiles = Record<string, Uint8Array>;
 
 function normaliseZipPath(filePath: string): string {
   const normalised = filePath.replace(/^\.?\//, "").trim();
-  if (!normalised || normalised.includes("..")) {
+  if (!normalised || normalised.split(/[\\/]/).includes("..")) {
     throw new Error(`Invalid extension asset path: '${filePath}'`);
   }
   return normalised;
@@ -213,6 +213,9 @@ function resolveMenuIcon(icon: string, files: ZipFiles): string {
 }
 
 const INTEGRATION_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/** Extension ids end up in URLs, scoped ids, presence rooms and canvas slot keys. */
+export const EXTENSION_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
  * Parameters the server derives itself. A manifest that could overwrite `state`
@@ -419,8 +422,16 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
   const manifestText = Buffer.from(manifestFile).toString("utf-8");
   const manifest = JSON.parse(manifestText) as ExtensionManifest;
 
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("Extension manifest must be a JSON object");
+  }
   if (!manifest.id || typeof manifest.id !== "string") {
     throw new Error("Extension manifest missing required 'id' field");
+  }
+  if (!EXTENSION_ID_PATTERN.test(manifest.id)) {
+    throw new Error(
+      "Extension manifest 'id' must be lowercase alphanumeric with hyphens (max 64 characters)",
+    );
   }
   if (!manifest.name || typeof manifest.name !== "string") {
     throw new Error("Extension manifest missing required 'name' field");
@@ -436,6 +447,7 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
     if (!Array.isArray(manifest.routes)) {
       throw new Error("Extension manifest 'routes' must be an array");
     }
+    const routePaths = new Set<string>();
     for (const [index, route] of manifest.routes.entries()) {
       if (!route || typeof route !== "object") {
         throw new Error(`Extension manifest route at index ${index} is invalid`);
@@ -445,6 +457,10 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
           `Extension manifest route at index ${index} is missing required 'path' field`,
         );
       }
+      if (routePaths.has(route.path)) {
+        throw new Error(`Extension manifest declares route '${route.path}' twice`);
+      }
+      routePaths.add(route.path);
       if (route.menuItem?.icon && typeof route.menuItem.icon === "string") {
         route.menuItem.icon = resolveMenuIcon(route.menuItem.icon, files);
         if (!route.menuItem.icon) {
@@ -458,6 +474,7 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
     if (!Array.isArray(manifest.jobs)) {
       throw new Error("Extension manifest 'jobs' must be an array");
     }
+    const jobIds = new Set<string>();
     for (const job of manifest.jobs) {
       if (!job || typeof job !== "object") {
         throw new Error("Extension manifest contains invalid job definition");
@@ -468,6 +485,15 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
       if (!job.entry || typeof job.entry !== "string") {
         throw new Error(
           `Extension manifest job '${job.id}' is missing required 'entry' field`,
+        );
+      }
+      if (jobIds.has(job.id)) {
+        throw new Error(`Extension manifest declares job '${job.id}' twice`);
+      }
+      jobIds.add(job.id);
+      if (!findZipEntry(files, job.entry)) {
+        throw new Error(
+          `Extension manifest job '${job.id}' references entry '${job.entry}' which is not in the package`,
         );
       }
     }

@@ -16,11 +16,12 @@
  */
 
 import { currentAttribution } from "#acl/attribution.ts";
-import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { authenticateJobTokenOrSpaceRole, canAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   errorResponse,
+  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
@@ -76,6 +77,20 @@ export const POST: ApiRouteHandler = (context) =>
       }
 
       if (!extensionId || !entry) return badRequestResponse(`Job "${jobId}" not found`);
+
+      // Running a job is using the extension, so it needs the same access as
+      // its assets do. Job tokens are delegated by a job that already ran.
+      if (
+        auth.type === "user" &&
+        !(await canAccess(
+          spaceId,
+          { type: ResourceType.EXTENSION, id: extensionId },
+          auth.user.id,
+          Permission.VIEWER,
+        ))
+      ) {
+        return forbiddenResponse("You do not have access to this extension");
+      }
 
       // A job token already names the app acting; otherwise the extension itself acts.
       const attribution = currentAttribution() ?? { app: extensionId };

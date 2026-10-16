@@ -240,7 +240,7 @@ export class Extensions {
       globalThis.vektor = Object.defineProperties({ extensions: this }, descriptors);
     }
 
-    this.initPromise = (async () => {
+    const initialising = (async () => {
       const cached = await api.extensions.getCached(spaceId);
       // loadExtensions announces cached manifest routes before it waits for
       // frontend module imports, allowing the sidebar to render from IndexedDB
@@ -253,8 +253,13 @@ export class Extensions {
       await cachedLoads;
       await this.loadExtensions(remoteExtensions, { reconcile: true });
     })();
+    this.initPromise = initialising;
+    // A failed init must not be handed back for this space forever.
+    initialising.catch(() => {
+      if (this.initPromise === initialising) this.initPromise = null;
+    });
 
-    return this.initPromise;
+    return initialising;
   }
 
   /**
@@ -394,6 +399,8 @@ export class Extensions {
       }
     } catch (err) {
       console.error(`Failed to load extension '${info.id}':`, err);
+      // Drop whatever activate registered before it threw; the manifest entry stays.
+      this.releaseRegistrations(loaded);
     }
   }
 
@@ -417,6 +424,14 @@ export class Extensions {
       }
     }
 
+    if (loaded.viewModule?.deactivate) {
+      try {
+        await loaded.viewModule.deactivate(ctx);
+      } catch (err) {
+        console.error(`Error deactivating view module of extension '${extensionId}':`, err);
+      }
+    }
+
     // Cleanup view if active
     if (loaded.viewCleanup) {
       try {
@@ -427,6 +442,13 @@ export class Extensions {
       loaded.viewCleanup = null;
     }
 
+    this.releaseRegistrations(loaded);
+
+    this.loaded.delete(extensionId);
+  }
+
+  /** Unregister everything an extension's code registered and did not clean up itself. */
+  private releaseRegistrations(loaded: LoadedExtension): void {
     // Cleanup any actions that weren't unregistered
     for (const actionId of loaded.registeredActions) {
       Actions.unregister(actionId);
@@ -440,8 +462,12 @@ export class Extensions {
     for (const id of loaded.registeredInspectors) this.canvasPlugins.unregisterInspector(id);
     for (const id of loaded.registeredProcessors) this.canvasPlugins.unregisterProcessor(id);
     for (const id of loaded.registeredBlocks) this.blockTypes.unregister(id);
-
-    this.loaded.delete(extensionId);
+    loaded.registeredViews.clear();
+    loaded.registeredActions.clear();
+    loaded.registeredSuggestions.clear();
+    loaded.registeredInspectors.clear();
+    loaded.registeredProcessors.clear();
+    loaded.registeredBlocks.clear();
   }
 
   /**
@@ -699,8 +725,6 @@ export class Extensions {
       loaded.viewCleanup = null;
     }
 
-    this.currentRoute = routePath;
-
     // Load view module if not loaded yet (separate from frontend module)
     if (!loaded.viewModule && loaded.info.entries.view && this.spaceId) {
       const assetUrl = getExtensionAssetUrl(
@@ -731,6 +755,9 @@ export class Extensions {
     }
 
     try {
+      // `ctx.route` is shared, so it is set at the last moment: a view reads it
+      // synchronously while rendering, after the module loads above.
+      this.currentRoute = routePath;
       const cleanup = await render(container);
       if (typeof cleanup === "function") {
         loaded.viewCleanup = cleanup;
@@ -760,8 +787,6 @@ export class Extensions {
       console.error(`Extension '${extensionId}' not loaded`);
       return null;
     }
-
-    this.currentRoute = routePath;
 
     // Load view module if not loaded yet
     if (!loaded.viewModule && loaded.info.entries.view && this.spaceId) {
@@ -793,6 +818,7 @@ export class Extensions {
     }
 
     try {
+      this.currentRoute = routePath;
       const cleanup = await renderFn(container);
       return typeof cleanup === "function" ? cleanup : () => {};
     } catch (err) {
