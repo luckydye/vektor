@@ -11,12 +11,11 @@
 - **Native modules:** Rust → `.node` via napi-rs (`server/native/`: image processing, JS runtime, local embeddings)
 - **Tests:** Vitest (`server` + `frontend` projects, happy-dom), Playwright (e2e)
 - **Linter/formatter:** Biome and TypeScript
-- **Package manager:** Bun (monorepo workspaces: `server/`, `hypervisor/`)
+- **Package manager:** Bun (monorepo workspace: `server/`)
 
 ## Repo Layout
 
 - `server/` — the app (Astro frontend + Hono API), compiled into the single `vektor` binary
-- `hypervisor/` — QEMU host CLI
 - `app/` — native desktop app (Rust)
 - `api/` — API client package
 - `extensions/` — first-party extensions
@@ -34,7 +33,7 @@
 
 ## Type checking
 
-`task check` (tsc + biome for `server/` and `hypervisor/`)
+`task check` (tsc + biome for `server/`)
 
 ## Running Tests
 
