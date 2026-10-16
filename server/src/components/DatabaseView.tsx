@@ -26,7 +26,9 @@ import {
   readDocumentProperty,
 } from "#documents/properties.ts";
 import { documentOption } from "#documents/title.ts";
+import { downloadBlob } from "#utils/download.ts";
 import { spacePath } from "#utils/utils.ts";
+import { formatCsvRows, safeFileName } from "#utils/xlsx.ts";
 import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
@@ -35,6 +37,8 @@ import { PropertyChip } from "./PropertyChip.tsx";
 interface Props {
   databaseDocumentId: string;
   schemaJson?: string;
+  /** Names the exported file. */
+  title?: string;
 }
 
 const COLUMN_TYPES: { type: DatabaseColumn["type"]; label: string }[] = [
@@ -260,6 +264,7 @@ export function DatabaseView(props: Props) {
     setSchemaStr,
     addRow,
     refreshRows,
+    fetchAllRows,
     updateRowProperty,
     deleteRow,
     addColumn,
@@ -481,6 +486,34 @@ export function DatabaseView(props: Props) {
     input.value = "";
     if (!file) return;
     await importFile(file);
+  }
+
+  const [isExporting, setIsExporting] = createSignal(false);
+
+  // Headers are the labels shown, with "Name" for the title, which is what the
+  // import reads back.
+  async function exportCsv() {
+    if (isExporting()) return;
+    setIsExporting(true);
+    try {
+      const columns = derivedColumns();
+      const all = await fetchAllRows();
+      const csv = formatCsvRows([
+        ["Name", ...columns.map((col) => col.label)],
+        ...all.map((row) => [
+          rowTitle(row.properties),
+          ...columns.map((col) => cellValue(row.properties, col.name)),
+        ]),
+      ]);
+      downloadBlob(
+        new Blob([csv], { type: "text/csv;charset=utf-8" }),
+        safeFileName(props.title ?? "", "csv"),
+      );
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Failed to export CSV");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const [hasMounted, setHasMounted] = createSignal(false);
@@ -1035,6 +1068,16 @@ export function DatabaseView(props: Props) {
           >
             <Icon class="h-3.5 w-3.5" name="csv-file" />
             Import
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700 disabled:pointer-events-none disabled:opacity-50"
+            title="Export CSV"
+            disabled={isExporting() || rows().length === 0}
+            onClick={() => void exportCsv()}
+          >
+            <Icon class="h-3.5 w-3.5" name="csv-file" />
+            Export
           </button>
         </div>
       </div>

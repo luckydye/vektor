@@ -186,6 +186,26 @@ export function useDatabaseRows(
     },
   });
 
+  /** Every row in the current sort order, not just the pages loaded so far. */
+  async function fetchAllRows() {
+    const id = spaceId();
+    if (!id) throw new Error("No space ID");
+    const all = [];
+    let cursor: string | undefined;
+    do {
+      const page = await api.documents.get(id, {
+        parentId: databaseDocumentId(),
+        limit: PAGE_SIZE,
+        cursor,
+        sort: sort()?.key,
+        order: sort()?.order,
+      });
+      all.push(...page.documents);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    return all;
+  }
+
   function refreshRows() {
     queryClient.invalidateQueries({ queryKey: databaseKey() });
   }
@@ -282,6 +302,7 @@ export function useDatabaseRows(
     setSchemaStr,
     addRow,
     refreshRows,
+    fetchAllRows,
     updateRowProperty,
     deleteRow,
     addColumn,

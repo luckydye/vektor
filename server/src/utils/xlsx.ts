@@ -73,12 +73,17 @@ function attributes(tagBody: string): Record<string, string> {
 }
 
 export function excelFileName(fileName: string): string {
+  return safeFileName(fileName, "xlsx");
+}
+
+/** Replaces the extension of `fileName`, and any characters a filesystem rejects. */
+export function safeFileName(fileName: string, extension: string): string {
   const baseName = fileName
     .replace(/\.[^.]+$/, "")
     // biome-ignore lint/suspicious/noControlCharactersInRegex: strips filesystem-invalid control chars
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
     .trim();
-  return `${baseName || "data"}.xlsx`;
+  return `${baseName || "data"}.${extension}`;
 }
 
 export function sanitizeSheetName(name: string): string {
@@ -133,6 +138,17 @@ export function parseCsvRows(csv: string): string[][] {
   }
 
   return rows;
+}
+
+/** The inverse of {@link parseCsvRows}, quoting only the cells that need it. */
+export function formatCsvRows(rows: string[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => (/[",\r\n]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell))
+        .join(","),
+    )
+    .join("\r\n");
 }
 
 /** `0 -> A`, `26 -> AA`. */

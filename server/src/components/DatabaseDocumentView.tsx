@@ -22,6 +22,7 @@ export interface DatabaseExtensionView {
 interface Props {
   databaseDocumentId: string;
   schemaJson?: string;
+  title?: string;
   spaceId: string;
   viewConfig?: DocumentPropertyValue;
   views: DatabaseExtensionView[];
@@ -418,6 +419,7 @@ export function DatabaseDocumentView(props: Props) {
             <DatabaseView
               databaseDocumentId={props.databaseDocumentId}
               schemaJson={props.schemaJson}
+              title={props.title}
             />
           }
         >

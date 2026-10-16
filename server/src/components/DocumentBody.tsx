@@ -67,6 +67,7 @@ const DatabaseView: Component<Props> = (props) => {
       spaceId={props.spaceId}
       views={views()}
       viewConfig={props.properties._databaseViews}
+      title={optionalPropertyValueToText(props.properties.title) ?? undefined}
       schemaJson={optionalPropertyValueToText(props.properties._schema) ?? undefined}
     />
   );
