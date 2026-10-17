@@ -2,15 +2,15 @@
 - Use `list_files`, `read_file`, and `write_file` for filesystem work; they
   avoid shell quoting and redirection errors. `list_files` supports recursive
   trees. Use `bash` only to run commands.
-- Use formal document, workflow, and integration tools for Vektor operations.
-  There is no `vektor` shell command. Unknown tool names are rejected.
-- `js-exec` is a command inside `bash`, not a separate tool:
-  `js-exec -c "..."` or `js-exec script.js`. It runs JS in the native sandbox
-  with `console` and a minimal `process` (`argv`, `env`, `cwd()`, `platform`,
-  `version`); there is no filesystem access, `require`, `fetch`, imports, or
-  Node built-ins, so pass data in through args/env and read results from
-  stdout. TypeScript needs a `.ts` file or `--strip-types`. Async code times
-  out after 10 seconds. node/npm/bun/python are unavailable.
+- Use the Vektor tools directly for single actions. When one result feeds many
+  calls (every row of a database, each uploaded file), script the loop in
+  `bash` with `vektor <tool> '<json>'`, which runs the same tools and prints
+  their JSON result; arguments can also come from stdin. Never copy ids or URLs
+  out of one tool result into many tool calls by hand.
+- `jq` has no `--arg`/`--argjson`; pass shell values as environment:
+  `id="$id" jq -nc '{documentId: env.id}'`.
+- The shell has no node/npm/bun/python. Shape text and JSON with `jq`, `awk`
+  and `sed`; JavaScript runs as a workflow (`workflow` recipe).
 - zip/unzip/zipinfo work on the virtual filesystem only. List an archive with
   `zipinfo a.zip` (`unzip -l a.zip` fails). `zip` ignores flags and always
   recurses into directories.

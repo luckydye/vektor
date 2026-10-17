@@ -393,7 +393,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "run_workflow",
       description:
-        "Start a run of a workflow document. Returns {runId} immediately; poll get_workflow_run for its status.",
+        "Run a workflow document and wait up to 50 seconds for it to settle. Returns {runId, status, error, logs, resultArtifact}; while status is still pending or running, call get_workflow_run to keep waiting.",
       inputSchema: {
         type: "object",
         properties: {
@@ -412,18 +412,8 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "get_workflow_run",
-      description: "Get status and result artifact reference for a workflow run.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          runId: { type: "string", description: "Workflow run ID" },
-        },
-        required: ["runId"],
-      },
-    },
-    {
-      name: "get_workflow_log",
-      description: "Get the script log and terminal error from a workflow run.",
+      description:
+        "Wait up to 50 seconds for a workflow run to settle, then return {runId, status, error, logs, resultArtifact}.",
       inputSchema: {
         type: "object",
         properties: {
@@ -717,7 +707,7 @@ export async function installExtension(
 
 /** The fields a listing needs: full records are ~800 characters each and crowd out the page. */
 /**
- * A listing is pointers: properties only when asked for by name. `request` also
+ * A listing is pointers: the title, and other properties only when asked for by name. `request` also
  * drops what the caller already knows: the parent it asked for, and the
  * snippet, which without a query is only the start of the raw body.
  */
@@ -725,20 +715,18 @@ function summarizeDocument(
   doc: Record<string, unknown>,
   request: { parentId?: string; hasQuery: boolean; properties?: string[] },
 ) {
-  const { title, ...properties } = doc.properties as Record<string, unknown>;
-  const wanted = new Set(request.properties?.map((key) => key.toLowerCase()));
+  const wanted = new Set(["title", ...(request.properties ?? [])].map((key) => key.toLowerCase()));
   return {
     id: doc.id,
-    title: title ?? doc.slug,
     type: doc.type ?? "document",
     parentId: request.parentId ? undefined : (doc.parentId ?? undefined),
     updatedAt: doc.updatedAt,
-    properties:
-      wanted.size > 0
-        ? Object.fromEntries(
-            Object.entries(properties).filter(([key]) => wanted.has(key.toLowerCase())),
-          )
-        : undefined,
+    // `title` stays a property, the shape the REST API, read_document and workflow scripts use.
+    properties: Object.fromEntries(
+      Object.entries(doc.properties as Record<string, unknown>).filter(([key]) =>
+        wanted.has(key.toLowerCase()),
+      ),
+    ),
     snippet: request.hasQuery ? doc.snippet || undefined : undefined,
     fileUrl: doc.fileUrl,
   };
@@ -810,6 +798,32 @@ function expectStringArray(
     throw new Error(`${key} must be an array of non-empty strings`);
   }
   return value;
+}
+
+/** A run once it settles or the server's 50 second wait is up, with its log so far. */
+async function awaitWorkflowRun(config: VektorMcpConfig, runId: string) {
+  const run = (await apiRequest(
+    config,
+    `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}?wait=50`,
+  )) as {
+    runId: string;
+    createdAt: string;
+    status: string;
+    error: string | null;
+    resultArtifact: unknown;
+  };
+  const logs = await readWorkflowRunLogLines(
+    (path) => apiRequest(config, path),
+    config.spaceId,
+    run,
+  );
+  return {
+    runId,
+    status: run.status,
+    error: run.error,
+    logs,
+    resultArtifact: run.resultArtifact,
+  };
 }
 
 export async function callTool(
@@ -1000,39 +1014,22 @@ export async function callTool(
       const body: Record<string, unknown> = { documentId };
       if (inputs) body.inputs = inputs;
       if (sourceExtensionId) body.sourceExtensionId = sourceExtensionId;
-      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/workflows/runs`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Origin: new URL(config.apiUrl).origin,
+      const { runId } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/runs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      });
+      )) as { runId: string };
+      return await awaitWorkflowRun(config, runId);
     }
     case "get_workflow_run": {
-      const runId = expectString(args, "runId");
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
-      );
-    }
-    case "get_workflow_log": {
-      const runId = expectString(args, "runId");
-      const run = (await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
-      )) as {
-        runId: string;
-        createdAt: string;
-        status: string;
-        error: string | null;
-      };
-      const logs = await readWorkflowRunLogLines(
-        (path) => apiRequest(config, path),
-        config.spaceId,
-        run,
-      );
-      return { status: run.status, error: run.error, logs };
+      return await awaitWorkflowRun(config, expectString(args, "runId"));
     }
     case "list_workflow_runs": {
       const documentId = expectString(args, "documentId", { optional: true });

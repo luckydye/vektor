@@ -357,7 +357,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
             ? asBuffer(init.body)
             : String(init.body);
 
-      onLog(`${method} ${url.href}`);
       // Validated and pinned on every hop: a bare `fetch` here let a public 302
       // walk the server into loopback or the metadata endpoint.
       const response = await safeFetch(
@@ -394,7 +393,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
 
       const init = asRecord(rawInit);
       const method = String(init.method ?? "GET").toUpperCase();
-      onLog(`${method} ${path}`);
 
       const response = await fetch(`${origin}${path}`, {
         method,
@@ -582,7 +580,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       const cwd = options.cwd ? await scratch.resolve(options.cwd) : await scratch.dir();
       for (const arg of args) await scratch.assertArgAllowed(cwd, arg);
 
-      onLog(`exec ${command} ${args.join(" ")}`);
       return await new Promise((resolve, reject) => {
         const child = execFile(
           command,

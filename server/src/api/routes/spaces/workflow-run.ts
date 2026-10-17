@@ -16,6 +16,7 @@ import {
   cancelRun,
   ensureSpaceRecovered,
   getRunForRead,
+  waitForRunSettled,
 } from "#jobs/runStore.ts";
 import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
 
@@ -30,6 +31,7 @@ import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
  *
  * @tag Workflows
  * @jobToken
+ * @query wait Seconds (at most 50) to hold the response until the run has settled.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -42,20 +44,29 @@ export const GET: ApiRouteHandler = (context) =>
       Permission.VIEWER,
     );
 
+    const waitSeconds = Number(new URL(context.req.url).searchParams.get("wait") ?? 0);
+    if (!Number.isFinite(waitSeconds) || waitSeconds < 0 || waitSeconds > 50) {
+      return errorResponse("wait must be between 0 and 50 seconds", 400);
+    }
+
     const store = await openSpaceStore(spaceId);
     await ensureSpaceRecovered(store);
-    const run = await getRunForRead(store, runId);
-    if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
+    const found = await getRunForRead(store, runId);
+    if (!found || found.spaceId !== spaceId) return notFoundResponse("Run");
     const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
     if (aclUserId) {
       const readable = await filterReadableResources(
         spaceId,
         ResourceType.DOCUMENT,
-        [run.documentId],
+        [found.documentId],
         { userId: aclUserId, userGroups: await getUserGroups(aclUserId) },
       );
-      if (!readable.has(run.documentId)) return notFoundResponse("Run");
+      if (!readable.has(found.documentId)) return notFoundResponse("Run");
     }
+    // Read again after waiting: a settled run is no longer active and reads from its document.
+    await waitForRunSettled(runId, waitSeconds * 1000);
+    const run = waitSeconds > 0 ? await getRunForRead(store, runId) : found;
+    if (!run) return notFoundResponse("Run");
     return jsonResponse({
       runId,
       documentId: run.documentId,

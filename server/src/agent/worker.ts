@@ -20,7 +20,7 @@ import type { IntegrationAgentSurface } from "./integrations.ts";
 
 /**
  * Agent worker: runs agent turns off the main event loop — the model loop, the
- * emulated shell with its js-exec, and the shell snapshots — and holds the
+ * emulated shell, and the shell snapshots — and holds the
  * sessions' shells between turns. What needs the space databases or the job
  * scheduler it asks the main thread for, through `AgentHost`.
  */

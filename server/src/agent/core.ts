@@ -14,15 +14,15 @@ import {
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import { estimateModelInput, estimateTokens } from "#db/space/aiUsage.ts";
-import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
 import { integrationCommand } from "./commands/integration.ts";
-import { jsExecCommand } from "./commands/jsExec.ts";
 import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: "text" };
 import { getRecipe, queryRecipes } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
+import { sandboxFetch } from "./commands/sandboxFetch.ts";
 import { uploadCommand } from "./commands/upload.ts";
+import { vektorCommand } from "./commands/vektor.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import { webSearch, webSearchTool } from "./webSearch.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
@@ -128,14 +128,27 @@ function buildCoreAgentSystemPrompt(
   return `${systemPromptRaw}${integrationLines}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
 }
 
+const turnContextHeader = "Context for this message, from Vektor:\n";
+const unchangedDocumentNote = "\n## Current document\n- Unchanged; see the earlier context.";
+
 /** Sent after the user's message: the facts of this turn the session's system prompt cannot hold. */
 function buildTurnContext(
+  history: ChatMessage[],
   timeZone: string,
   documentId?: string,
   documentType?: string | null,
   documentReadonly?: boolean,
 ): string {
-  return `Context for this message, from Vektor:\n${describeNow(timeZone)}${documentEditingSection(documentId, documentType, documentReadonly)}`;
+  const section = documentEditingSection(documentId, documentType, documentReadonly);
+  // The last context that states its document in full; the playbook is only repeated when it changed.
+  const lastStated = history.findLast(
+    (m) =>
+      m.role === "user" &&
+      m.content?.startsWith(turnContextHeader) &&
+      !m.content.endsWith(unchangedDocumentNote),
+  );
+  const repeated = section !== "" && lastStated?.content?.endsWith(section);
+  return `${turnContextHeader}${describeNow(timeZone)}${repeated ? unchangedDocumentNote : section}`;
 }
 
 /** Maps a document type to the recipe that best explains how to edit it. */
@@ -175,7 +188,7 @@ function documentEditingSection(
       : documentType === "database" || documentType === "record"
         ? `- Its data lives in properties: change columns (the database's \`_schema\`) and cells (a row's properties) with \`update_document_properties\`, never with \`edit_document\`.`
         : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
-  sed, perl, python, js-exec, or by piping through grep/awk — those corrupt unicode (emoji,
+  sed, perl, python, or by piping through grep/awk — those corrupt unicode (emoji,
   umlauts) and bypass collaborative editing. There is no temp-file step.`;
 
   return `
@@ -390,6 +403,7 @@ async function fetchDocumentContext(
 
 /** The system prompt and tools a turn starts from, before any message. */
 async function prepareAgentTurn(options: {
+  messages: ChatMessage[];
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -451,7 +465,7 @@ async function prepareAgentTurn(options: {
         name: "bash",
         description:
           "Run a command in a sandboxed bash with an in-memory filesystem and network access. " +
-          "Besides the usual utilities it has upload, curl, js-exec, zip/unzip/zipinfo, html-to-markdown, extension, and the connected integrations' commands. " +
+          "Besides the usual utilities it has vektor (every Vektor tool, for scripted loops), upload, curl, jq, zip/unzip/zipinfo, html-to-markdown, extension, and the connected integrations' commands. " +
           "Output past about 6000 characters is cut in the middle.",
         parameters: {
           type: "object",
@@ -569,6 +583,7 @@ async function prepareAgentTurn(options: {
     userProfile,
   );
   const turnContext = buildTurnContext(
+    options.messages,
     options.timeZone ?? "UTC",
     documentId,
     documentType,
@@ -860,7 +875,7 @@ export function createAgentShell(
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    network: { dangerouslyAllowFullInternetAccess: true },
+    fetch: sandboxFetch,
     customCommands: [
       zipCommand,
       zipinfoCommand,
@@ -868,6 +883,7 @@ export function createAgentShell(
       htmlToCsvCommand,
       htmlTableToCsvCommand,
       uploadCommand(mcpConfigRef),
+      vektorCommand(mcpConfigRef),
       ...(bootstrap?.integrationCommands ?? []).map((command) => {
         if (!bootstrap?.host) {
           throw new Error("Integration commands need a host to run their jobs");
@@ -879,8 +895,6 @@ export function createAgentShell(
         });
       }),
       extensionCommand(mcpConfigRef),
-      curlCommand,
-      jsExecCommand,
       ...runtimeStubCommands,
     ],
   });

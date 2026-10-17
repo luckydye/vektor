@@ -6,8 +6,8 @@ keywords: search, find, list, read, lookup
 1. Use `get_current_document` for "this document" or "the page".
 2. Use `search_documents` for full-text search; pass the query in `q`.
 3. Use `list_documents` for browsing metadata. Useful filters include `type`,
-   `parentId`, and comma-separated `categorySlugs`. Listings return id, title
-   and type; name the properties you need in `properties`.
+   `parentId`, and comma-separated `categorySlugs`. Listings return id, type
+   and `properties.title`; name the other properties you need in `properties`.
 4. Structured data (tasks, contacts, events, …) lives in databases, as rows of
    type "record". Find them with `list_documents` type "database", then query
    one database's rows with `search_documents` and `parentId`, filtering by

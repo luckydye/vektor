@@ -24,7 +24,7 @@ document tools — there is no dedicated database tool.
 2. Read columns: `read_document` on the database id returns `columns`, the
    declared `_schema` columns or, when it declares none, the keys its rows use.
 3. List rows directly with `list_documents`, naming the columns you need
-   (rows carry no properties otherwise):
+   (rows carry only `properties.title` otherwise):
    {"parentId":"<database-id>","properties":["status","priority"],"limit":500}.
 4. Query rows by a date column with `search_documents`, never by putting dates
    in `q`. Take the column from `columns`; `from` is inclusive, `before`
@@ -53,6 +53,14 @@ document tools — there is no dedicated database tool.
     {"documentId":"<rowId>","properties":{"status":"active","priority":"3"}}
 - Edit a cell: `update_document_properties` on the row with only the changed
   columns. Set a value to null to clear a cell.
+- Change many rows: loop in `bash`, reading rows and writing cells with
+  `vektor`:
+    vektor list_documents '{"parentId":"<dbId>","limit":500}' |
+      jq -r '.documents[] | [.id, .properties.title] | @tsv' |
+      while IFS=$'\t' read -r id title; do
+        id="$id" jq -nc '{documentId:env.id,properties:{status:"done"}}' |
+          vektor update_document_properties
+      done
 - Rename a row: set the row's `title` property.
 - Delete a row: `delete_document` on the row id (archives it by default).
 - Remove a column: rewrite `_schema` without that column; optionally clear each

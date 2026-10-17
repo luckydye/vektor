@@ -178,7 +178,7 @@ describe("agent model loop", () => {
               type: "function",
               function: {
                 name: "bash",
-                arguments: JSON.stringify({ command: "js-exec -c 'console.log(2 + 2)'" }),
+                arguments: JSON.stringify({ command: "echo $((2 + 2))" }),
               },
             },
           ],
@@ -186,7 +186,7 @@ describe("agent model loop", () => {
         finishReason: "tool_calls",
       },
       {
-        message: { role: "assistant", content: "JavaScript returned 4." },
+        message: { role: "assistant", content: "The shell returned 4." },
         finishReason: "stop",
       },
     ];
@@ -200,7 +200,7 @@ describe("agent model loop", () => {
     } as unknown as Bash;
 
     const result = await runAgentPrompt({
-      messages: [{ role: "user", content: "Run JavaScript" }],
+      messages: [{ role: "user", content: "Add two and two" }],
       apiUrl: "http://unused.invalid",
       spaceId: "space",
       jobToken: "token",
@@ -217,9 +217,9 @@ describe("agent model loop", () => {
       onEvent: (event) => events.push(event.type),
     });
 
-    expect(commands).toEqual(["js-exec -c 'console.log(2 + 2)'"]);
+    expect(commands).toEqual(["echo $((2 + 2))"]);
     expect(events).toEqual(["status", "tool_call", "tool_result", "text"]);
-    expect(result.content).toBe("JavaScript returned 4.");
+    expect(result.content).toBe("The shell returned 4.");
   });
 
   it("fails visibly after repeated empty completions", async () => {
@@ -229,7 +229,7 @@ describe("agent model loop", () => {
 
     await expect(
       runAgentPrompt({
-        messages: [{ role: "user", content: "Run JavaScript" }],
+        messages: [{ role: "user", content: "Add two and two" }],
         apiUrl: "http://unused.invalid",
         spaceId: "space",
         jobToken: "token",

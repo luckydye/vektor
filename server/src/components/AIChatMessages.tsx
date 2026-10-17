@@ -122,9 +122,10 @@ function summarizeDocumentLikeResult(value: unknown): string | null {
     return null;
   }
   const record = value as Record<string, unknown>;
+  const properties = record.properties as Record<string, unknown> | undefined;
   const title =
-    typeof record.title === "string"
-      ? record.title
+    typeof properties?.title === "string"
+      ? properties.title
       : typeof record.slug === "string"
         ? record.slug
         : null;

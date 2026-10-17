@@ -71,7 +71,7 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
 /** Files that take a URL straight from a caller, so nothing but safeFetch will do. */
 const MUST_USE_SAFE_FETCH = [
   "src/api/routes/proxy-media.ts",
-  "src/agent/commands/curl.ts",
+  "src/agent/commands/sandboxFetch.ts",
   // The operator-supplied provider baseUrl, which reaches wherever it points (#71).
   "src/api/provider/ollama.ts",
   "src/api/routes/url-metadata.ts",

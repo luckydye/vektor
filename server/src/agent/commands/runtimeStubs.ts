@@ -3,8 +3,8 @@ import { defineCommand } from "just-bash";
 /**
  * Stubs for runtimes the model reaches for out of habit (node, python, …)
  * that are NOT installed in the sandbox. Instead of a cryptic
- * "command not found", they redirect to the one available scripting runtime,
- * `js-exec` (the native JavaScript sandbox), so the agent recovers in a single step.
+ * "command not found", they redirect to shell pipelines and workflows, so the
+ * agent recovers in a single step.
  */
 function unavailableRuntime(name: string, hint: string) {
   return defineCommand(name, async () => ({
@@ -14,19 +14,17 @@ function unavailableRuntime(name: string, hint: string) {
   }));
 }
 
-const JS_HINT =
-  'Run JavaScript/TypeScript with `js-exec` instead: `js-exec -c "<code>"` or `js-exec script.js` (Boa sandbox; no require/fetch/node built-ins).';
-const PY_HINT =
-  "Python is unavailable. For scripting use `js-exec` (JavaScript/TypeScript in a Boa sandbox), or a shell pipeline.";
+const HINT =
+  "Shape text and JSON with jq, awk or sed; run JavaScript as a workflow (see the `workflow` recipe).";
 
 export const runtimeStubCommands = [
-  unavailableRuntime("node", JS_HINT),
-  unavailableRuntime("nodejs", JS_HINT),
-  unavailableRuntime("npm", JS_HINT),
-  unavailableRuntime("npx", JS_HINT),
-  unavailableRuntime("bun", JS_HINT),
-  unavailableRuntime("deno", JS_HINT),
-  unavailableRuntime("ts-node", JS_HINT),
-  unavailableRuntime("python", PY_HINT),
-  unavailableRuntime("python3", PY_HINT),
+  unavailableRuntime("node", HINT),
+  unavailableRuntime("nodejs", HINT),
+  unavailableRuntime("npm", HINT),
+  unavailableRuntime("npx", HINT),
+  unavailableRuntime("bun", HINT),
+  unavailableRuntime("deno", HINT),
+  unavailableRuntime("ts-node", HINT),
+  unavailableRuntime("python", HINT),
+  unavailableRuntime("python3", HINT),
 ];

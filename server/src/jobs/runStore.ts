@@ -44,6 +44,23 @@ export type RunState = {
  */
 export const activeRuns = new Map<string, RunState>();
 
+/** Dispatches an event named after the run id once it leaves `activeRuns`, logs written. */
+const settledRuns = new EventTarget();
+
+/** Resolves once the run is no longer active, or after `timeoutMs`. */
+export function waitForRunSettled(runId: string, timeoutMs: number): Promise<void> {
+  if (!activeRuns.has(runId)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      settledRuns.removeEventListener(runId, done);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    settledRuns.addEventListener(runId, done);
+  });
+}
+
 export const RUN_STORE_RECOVERY_ERROR =
   "Workflow process restarted before this run completed";
 
@@ -609,6 +626,7 @@ export async function finalizeRun(runId: string): Promise<void> {
   emitRunChanged(runId, run);
   await writeChains.get(runId);
   activeRuns.delete(runId);
+  settledRuns.dispatchEvent(new Event(runId));
 }
 
 export async function cancelRun(runId: string): Promise<void> {
@@ -633,6 +651,7 @@ export async function cancelRun(runId: string): Promise<void> {
   flushRunLogs(runId, run);
   await writeChains.get(runId);
   activeRuns.delete(runId);
+  settledRuns.dispatchEvent(new Event(runId));
 }
 
 export async function getRunForRead(

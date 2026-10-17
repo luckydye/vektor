@@ -228,7 +228,7 @@ function tryParseJson(s: string): unknown {
 }
 
 function getToolKind(toolName: string): string {
-  if (toolName === "bash" || toolName === "js-exec") return "execute";
+  if (toolName === "bash") return "execute";
   if (
     toolName.startsWith("get_") ||
     toolName.startsWith("read_") ||
