@@ -186,15 +186,13 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
-            <PinnedDocuments />
-          </div>
+          <PinnedDocuments />
 
           <div class="@max-xs:hidden px-5xs pb-s">
             {/* The hint gives the lone Done button something to belong to, and says
                 what the mode is for — nothing else on screen does. */}
-            <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
-              <Show when={documentTree()?.isEditMode}>
+            <Show when={documentTree()?.isEditMode}>
+              <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
                 <span class="truncate text-neutral-500 text-size-extra-small">
                   {t("Drag to reorder")}
                 </span>
@@ -205,8 +203,8 @@ export function Navigation() {
                   ariaLabel={t("Done rearranging")}
                   onClick={() => documentTree()?.toggleEditMode()}
                 />
-              </Show>
-            </div>
+              </div>
+            </Show>
 
             <DocumentTree ref={setDocumentTree} />
           </div>

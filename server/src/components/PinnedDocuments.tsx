@@ -1,4 +1,4 @@
-import { createMemo, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
@@ -15,11 +15,19 @@ import { MenuLink } from "./MenuLink.tsx";
 /** Reserved `data-category-id` for the pinned-documents drop target — never a real category id. */
 export const PINNED_CATEGORY_ID = "__pinned__";
 
+type Placement = "before" | "after";
+
+function pinnedOrder(doc: DocumentWithProperties): number {
+  const raw = doc.properties?.pinnedOrder;
+  const order = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isFinite(order) ? order : Number.POSITIVE_INFINITY;
+}
+
 /**
  * Pinned documents, listed above the categories as nav rows rather than tree
  * rows: they line up with Activity/Settings by construction and collapse to
- * icon-plus-tooltip with the rest of the nav. A dashed drop target appears
- * here while any document is being dragged.
+ * icon-plus-tooltip with the rest of the nav. Dragging a document onto the
+ * list pins it; the list outlines itself while a drag is under way.
  */
 export function PinnedDocuments() {
   const t = useTranslation();
@@ -29,13 +37,49 @@ export function PinnedDocuments() {
   const { pinnedDocuments } = usePinnedDocuments();
   const { draggedDocument } = useDocumentDrag();
 
+  // With nothing pinned there is no list to drop on, so a slim row stands in for
+  // it. It appears just after the drag starts: Chrome cancels a drag whose
+  // source moves during `dragstart`.
+  const [showEmptyTarget, setShowEmptyTarget] = createSignal(false);
+  createEffect(() => {
+    if (!draggedDocument() || pinnedDocuments().length > 0) {
+      setShowEmptyTarget(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowEmptyTarget(true), 50);
+    onCleanup(() => clearTimeout(timer));
+  });
+
   const collator = new Intl.Collator(lang, { numeric: true, sensitivity: "base" });
 
   const documents = createMemo(() =>
-    [...pinnedDocuments()].sort((left, right) =>
-      collator.compare(documentTitle(left, lang), documentTitle(right, lang)),
+    [...pinnedDocuments()].sort(
+      (left, right) =>
+        pinnedOrder(left) - pinnedOrder(right) ||
+        collator.compare(documentTitle(left, lang), documentTitle(right, lang)),
     ),
   );
+
+  /** Writes `orderedIds` as the new order, pinning any document not yet pinned. */
+  async function savePinnedOrder(orderedIds: string[]) {
+    const space = currentSpace();
+    if (!space) return;
+
+    const current = new Map(documents().map((doc, index) => [doc.id, index]));
+    await Promise.all(
+      orderedIds.flatMap((id, index) => {
+        if (current.get(id) === index && pinnedOrder(documents()[index]) === index) {
+          return [];
+        }
+        return api.document.patch(space.id, id, {
+          properties: {
+            ...(current.has(id) ? {} : { pinned: { value: true } }),
+            pinnedOrder: { value: index },
+          },
+        });
+      }),
+    );
+  }
 
   async function handleDocumentCategoryChange(event: Event) {
     const { documentId, newCategoryId } = (event as CustomEvent).detail;
@@ -44,19 +88,38 @@ export function PinnedDocuments() {
     const space = currentSpace();
     if (!space) return;
 
-    await api.document.patch(space.id, documentId, {
-      properties: { pinned: { value: true } },
-    });
+    await savePinnedOrder([
+      ...documents()
+        .map((doc) => doc.id)
+        .filter((id) => id !== documentId),
+      documentId,
+    ]);
+  }
+
+  async function handleDocumentReorder(event: Event) {
+    const { documentId, targetDocumentId, placement } = (event as CustomEvent)
+      .detail as { documentId: string; targetDocumentId: string; placement: Placement };
+    if (documentId === targetDocumentId) return;
+
+    const ids = documents()
+      .map((doc) => doc.id)
+      .filter((id) => id !== documentId);
+    const targetIndex = ids.indexOf(targetDocumentId);
+    if (targetIndex === -1) return;
+    ids.splice(placement === "before" ? targetIndex : targetIndex + 1, 0, documentId);
+    await savePinnedOrder(ids);
   }
 
   onMount(() => {
     window.addEventListener("document-category-change", handleDocumentCategoryChange);
-    onCleanup(() =>
+    window.addEventListener("document-reorder", handleDocumentReorder);
+    onCleanup(() => {
       window.removeEventListener(
         "document-category-change",
         handleDocumentCategoryChange,
-      ),
-    );
+      );
+      window.removeEventListener("document-reorder", handleDocumentReorder);
+    });
   });
 
   return (
@@ -64,7 +127,11 @@ export function PinnedDocuments() {
     <category-target
       attr:data-category-id={PINNED_CATEGORY_ID}
       attr:data-space-id={currentSpace()?.id}
-      class="flex flex-col gap-0.5 rounded-md [&[data-drag-over]]:bg-neutral-100"
+      class="flex flex-none flex-col gap-0.5 rounded-md px-3xs not-has-[page-target]:-mt-3xs [&[data-drag-over]]:outline-primary-500"
+      classList={{
+        "outline-2 -outline-offset-2 outline-neutral-400 outline-dashed":
+          !!draggedDocument() && (pinnedDocuments().length > 0 || showEmptyTarget()),
+      }}
     >
       <For each={documents()}>
         {(doc: DocumentWithProperties) => {
@@ -75,7 +142,8 @@ export function PinnedDocuments() {
               attr:data-document-type={doc.type ?? undefined}
               attr:data-space-id={currentSpace()?.id}
               attr:data-document-url={url()}
-              class="block [&[data-dragging]]:opacity-50"
+              attr:data-reorderable=""
+              class="block [&[data-dragging]]:opacity-50 [&[data-drop-placement=after]]:shadow-[0_1px_0_0_var(--color-neutral-400)] [&[data-drop-placement=before]]:shadow-[0_-1px_0_0_var(--color-neutral-400)]"
             >
               <MenuLink
                 icon={documentTypeIcon(doc.type)}
@@ -87,19 +155,12 @@ export function PinnedDocuments() {
           );
         }}
       </For>
-
-      {/* The slot is always in the layout, empty until a drag starts. Showing
-          the box only while dragging would push every category down 32px the
-          moment you pick a document up, moving the drop target out from under
-          the cursor. */}
-      <div class="min-h-[32px]">
-        <Show when={!!draggedDocument()}>
-          <div class="flex min-h-[32px] items-center gap-1.5 @max-xs:justify-start rounded-md border border-neutral-300 border-dashed px-3xs text-neutral-500 text-size-normal">
-            <Icon class="h-3.5 w-3.5 flex-none" name="pin-to-home" />
-            <span class="@max-xs:hidden">{t("Pin document")}</span>
-          </div>
-        </Show>
-      </div>
+      <Show when={showEmptyTarget()}>
+        <div class="flex min-h-[32px] items-center gap-1.5 @max-xs:justify-start rounded-md px-3xs text-neutral-500 text-size-normal">
+          <Icon class="h-3.5 w-3.5 flex-none" name="pin-to-home" />
+          <span class="@max-xs:hidden">{t("Pin document")}</span>
+        </div>
+      </Show>
     </category-target>
   );
 }

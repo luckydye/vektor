@@ -26,8 +26,12 @@ export interface CursorPagedListOptions<T> {
     cursor?: string;
   }) => Promise<{ items: T[]; nextCursor: string | null }>;
 
-  /** @default 20 */
-  pageSize?: number;
+  /**
+   * Items per page. May be reactive; a change returns to page one, as cursors
+   * are only valid for the size they were issued with.
+   * @default 20
+   */
+  pageSize?: MaybeAccessor<number>;
 
   /**
    * Controls whether the query runs. Useful when the composable depends on a
@@ -73,7 +77,9 @@ export interface CursorPagedListResult<T> {
 export function useCursorPagedList<T>(
   options: CursorPagedListOptions<T>,
 ): CursorPagedListResult<T> {
-  const { fetcher, pageSize = 20, enabled, queryKey } = options;
+  const { fetcher, enabled, queryKey } = options;
+  const pageSize = () =>
+    typeof options.pageSize === "function" ? options.pageSize() : (options.pageSize ?? 20);
   const baseKey = () =>
     typeof queryKey === "function" ? (queryKey as Accessor<QueryKey>)() : queryKey;
 
@@ -85,11 +91,11 @@ export function useCursorPagedList<T>(
 
   // Pagination params go in the cache key so each page is cached independently
   // and a page change triggers its own fetch.
-  const fullQueryKey = () => [...baseKey(), { limit: pageSize, cursor: currentCursor() }];
+  const fullQueryKey = () => [...baseKey(), { limit: pageSize(), cursor: currentCursor() }];
 
   const query = useQuery<{ items: T[]; nextCursor: string | null }>({
     queryKey: fullQueryKey,
-    queryFn: () => fetcher({ limit: pageSize, cursor: currentCursor() }),
+    queryFn: () => fetcher({ limit: pageSize(), cursor: currentCursor() }),
     enabled: () =>
       enabled !== undefined
         ? typeof enabled === "function"
@@ -113,7 +119,7 @@ export function useCursorPagedList<T>(
 
   createRenderEffect(
     on(
-      baseKeyHash,
+      [baseKeyHash, pageSize],
       () => {
         setCursors([undefined]);
         setPageIndex(0);

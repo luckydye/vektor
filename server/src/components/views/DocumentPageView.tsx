@@ -216,7 +216,11 @@ export function DocumentPageView(props: Props) {
   const isRecord = createMemo(() => documentType() === "record");
   const isRegularDocument = createMemo(() => documentType() === "document");
   const hasToolbarProperties = createMemo(
-    () => isDatabase() || isCanvas() || documentType() === repositoryDocumentType,
+    () =>
+      isDatabase() ||
+      isCanvas() ||
+      isWorkflow() ||
+      documentType() === repositoryDocumentType,
   );
   // Mirrors the chips DocumentProperties renders beside the category; without
   // any, the toolbar pill holds only the add button and needs no toggle.

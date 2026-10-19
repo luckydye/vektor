@@ -35,6 +35,9 @@ let activeDrag: { documentId: string; documentType: string | null } | null = nul
  * - data-document-id: Required. The unique ID of the document
  * - data-document-type: Optional. The document's type, used to decide which
  *   documents this one may parent (see `allowedChildDocumentTypes`)
+ * - data-reorderable: Optional. Dropping a document here fires
+ *   `document-reorder` (placed before or after this one, by pointer position)
+ *   instead of making it a child
  * - data-dragging: Automatically added when this element is being dragged
  * - data-drag-over: Automatically added when another element is dragged over this one
  *
@@ -45,6 +48,10 @@ let activeDrag: { documentId: string; documentType: string | null } | null = nul
  *   detail: { documentId: string }
  * - document-parent-change: Fired when a document is dropped onto this element
  *   detail: { documentId: string, newParentId: string }
+ *
+ * - document-reorder: Fired instead of document-parent-change when this element
+ *   is `data-reorderable`
+ *   detail: { documentId: string, targetDocumentId: string, placement: "before" | "after" }
  *
  * Example event handling:
  * ```javascript
@@ -172,7 +179,7 @@ customElements.define(
      * final say.
      */
     acceptsActiveDrag() {
-      if (!activeDrag) return true;
+      if (!activeDrag || this.hasAttribute("data-reorderable")) return true;
       return allowsChildDocumentType(
         this.getAttribute("data-document-type"),
         activeDrag.documentType,
@@ -199,7 +206,13 @@ customElements.define(
 
       if (this.dragCounter === 0) {
         this.removeAttribute("data-drag-over");
+        this.removeAttribute("data-drop-placement");
       }
+    }
+
+    placementFor(e: DragEvent): "before" | "after" {
+      const rect = this.getBoundingClientRect();
+      return e.clientY < rect.top + rect.height / 2 ? "before" : "after";
     }
 
     handleDragOver(e: DragEvent) {
@@ -214,6 +227,10 @@ customElements.define(
         return;
       }
 
+      if (this.hasAttribute("data-reorderable")) {
+        this.setAttribute("data-drop-placement", this.placementFor(e));
+      }
+
       e.dataTransfer.dropEffect = "move";
     }
 
@@ -222,6 +239,7 @@ customElements.define(
       e.stopPropagation();
 
       this.removeAttribute("data-drag-over");
+      this.removeAttribute("data-drop-placement");
       this.dragCounter = 0;
 
       const isDraggingSelf = this.hasAttribute("data-dragging");
@@ -243,7 +261,9 @@ customElements.define(
         return;
       }
 
+      const reorderable = this.hasAttribute("data-reorderable");
       if (
+        !reorderable &&
         !allowsChildDocumentType(this.getAttribute("data-document-type"), draggedType)
       ) {
         return;
@@ -265,6 +285,21 @@ customElements.define(
       }
 
       if (draggedDocumentId === targetDocumentId) return;
+
+      if (reorderable) {
+        this.dispatchEvent(
+          new CustomEvent("document-reorder", {
+            bubbles: true,
+            composed: true,
+            detail: {
+              documentId: draggedDocumentId,
+              targetDocumentId,
+              placement: this.placementFor(e),
+            },
+          }),
+        );
+        return;
+      }
 
       this.dispatchEvent(
         new CustomEvent("document-parent-change", {

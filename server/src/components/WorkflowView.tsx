@@ -50,7 +50,11 @@ type ATabsEl = HTMLElement & {
   selectTabByIndex: (index: number, focus?: boolean) => void;
 };
 
-const WORKFLOW_RUNS_PAGE_SIZE = 10;
+// A history row with its gap, and the pager below the list; used to fit as
+// many runs as the sidebar has room for.
+const HISTORY_ROW_HEIGHT = 68;
+const HISTORY_PAGER_HEIGHT = 72;
+const MIN_WORKFLOW_RUNS_PAGE_SIZE = 5;
 
 const HISTORY_TAB_INDEX = 2;
 
@@ -150,6 +154,7 @@ export function WorkflowView(props: Props) {
   let workflowTabsEl: ATabsEl | undefined;
   let workflowContainerEl: HTMLDivElement | undefined;
   let historySidebarEl: HTMLElement | undefined;
+  const [runsPageSize, setRunsPageSize] = createSignal(10);
   let selectedWorkflowTabIndex = 0;
 
   function selectWorkflowTab(index: number, focus = true) {
@@ -209,7 +214,7 @@ export function WorkflowView(props: Props) {
       });
       return { items: page.runs, nextCursor: page.nextCursor ?? null };
     },
-    pageSize: WORKFLOW_RUNS_PAGE_SIZE,
+    pageSize: runsPageSize,
   });
 
   const runList = createMemo(() =>
@@ -299,6 +304,21 @@ export function WorkflowView(props: Props) {
     void selectRun(runId);
     selectWorkflowTab(0);
   }
+
+  onMount(() => {
+    const sidebarEl = historySidebarEl;
+    if (!sidebarEl) return;
+    const sizeObserver = new ResizeObserver(() => {
+      // Hidden below the breakpoint; keep the last size rather than collapse it.
+      if (getComputedStyle(sidebarEl).display === "none") return;
+      const rows = Math.floor(
+        (sidebarEl.clientHeight - HISTORY_PAGER_HEIGHT) / HISTORY_ROW_HEIGHT,
+      );
+      setRunsPageSize(Math.max(MIN_WORKFLOW_RUNS_PAGE_SIZE, rows));
+    });
+    sizeObserver.observe(sidebarEl);
+    onCleanup(() => sizeObserver.disconnect());
+  });
 
   onMount(() => {
     const containerEl = workflowContainerEl;
@@ -586,12 +606,17 @@ export function WorkflowView(props: Props) {
           </aside>
 
           <div class="min-h-0 min-w-0 flex-1 space-y-8 overflow-y-auto px-xs pt-1 pb-12 md:px-s">
-            <div class="flex justify-between gap-4">
-              <h2 class="font-semibold text-neutral-800 text-size-title">
-                {selectedRunTitle() || "Untitled"}
-              </h2>
+            <a-tabs
+              ref={workflowTabsEl as never}
+              on:tab-selected={handleWorkflowTabSelected}
+            >
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <TabsList>
+                  <Tab>Results</Tab>
+                  <Tab>Run Details</Tab>
+                  <Tab class="@4xl/workflow:hidden">History</Tab>
+                </TabsList>
 
-              <div class="flex items-center justify-between gap-12">
                 <div class="flex items-center gap-3">
                   <Show when={selectedRunCreatedAt()}>
                     {(createdAt) => (
@@ -624,17 +649,6 @@ export function WorkflowView(props: Props) {
                   </Show>
                 </div>
               </div>
-            </div>
-
-            <a-tabs
-              ref={workflowTabsEl as never}
-              on:tab-selected={handleWorkflowTabSelected}
-            >
-              <TabsList>
-                <Tab>Results</Tab>
-                <Tab>Run Details</Tab>
-                <Tab class="@4xl/workflow:hidden">History</Tab>
-              </TabsList>
 
               <a-tabs-panel>
                 <div class="space-y-4 pt-4">
