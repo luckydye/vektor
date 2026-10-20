@@ -7,7 +7,7 @@
  * a ref had moved and the log had not, and nothing to close it with.
  */
 
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 
 /** How many log entries a repository keeps. Older ones are dropped. */
 const LOG_ENTRIES = 50;
@@ -65,7 +65,7 @@ export function packPath(documentId: string, name: string, extension: string): s
 }
 
 export async function readState(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
 ): Promise<LoadedState | null> {
@@ -97,7 +97,7 @@ function serialize(state: RepoState): Buffer {
  * simply reads what the winner wrote.
  */
 export async function ensureState(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,
@@ -128,7 +128,7 @@ export async function ensureState(
 
 /** Publish a new state, but only while the stored one is still `etag`. */
 export async function commitState(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   state: RepoState,
   etag: string,

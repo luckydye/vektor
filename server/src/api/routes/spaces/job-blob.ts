@@ -11,7 +11,12 @@
 
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { notFoundResponse, requireParam, requireUser, withApiErrorHandling } from "#api/http.ts";
+import {
+  notFoundResponse,
+  requireParam,
+  requireUser,
+  withApiErrorHandling,
+} from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { readBlob } from "#jobs/outputBlobs.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
@@ -28,13 +33,14 @@ export const GET: ApiRouteHandler = (context) =>
     const blobId = requireParam(context.var.params, "blobId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const blob = await readBlob(spaceId, blobId);
+    const blob = await readBlob(context.var.platform, spaceId, blobId);
     if (!blob) return notFoundResponse("Blob");
 
     return new Response(new Uint8Array(blob.bytes), {

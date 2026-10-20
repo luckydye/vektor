@@ -13,13 +13,13 @@
 import { and, eq } from "drizzle-orm";
 import { publishAuthorizationChange } from "#acl/events.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
-import type { auth } from "#auth";
+import { type Auth, getAuth } from "#auth";
 import { config, isNoAuthMode } from "#config";
-import type { Database } from "#db/client/connection.ts";
-import { getAuthDb } from "#db/client/db.ts";
+import { type Database, getAuthDb } from "#db/client/connection.ts";
 import { one } from "#db/client/query.ts";
 import { account, user } from "#db/schema/auth.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 const GROUPS_CLAIM = "wiki_groups";
 
@@ -27,7 +27,7 @@ const GROUPS_CLAIM = "wiki_groups";
 const USERINFO_TIMEOUT_MS = 5_000;
 
 export interface IdpSyncDeps {
-  auth: Pick<typeof auth, "api">;
+  auth: Pick<Auth, "api">;
   authDb: Database;
   appConfig: ReturnType<typeof config>;
 }
@@ -160,24 +160,16 @@ export function createIdpGroupSync({ auth, authDb, appConfig }: IdpSyncDeps) {
   };
 }
 
-let defaultSync: Promise<ReturnType<typeof createIdpGroupSync> | null> | undefined;
+export type IdpGroupSync = ReturnType<typeof createIdpGroupSync>;
 
-/**
- * `#auth` is imported dynamically because it is the far side of a cycle — it
- * builds itself from the same database module the ACL store reaches through, and
- * a static edge leaves `auth.ts` running its body against a half-initialized
- * `#db/client/db.ts`.
- */
-function sync(): Promise<ReturnType<typeof createIdpGroupSync> | null> {
-  defaultSync ??= (async () => {
-    const authDb = getAuthDb();
-    if (!authDb) return null;
-    const { auth } = await import("#auth");
-    return createIdpGroupSync({ auth, authDb, appConfig: config() });
-  })();
-  return defaultSync;
-}
-
-export async function ensureFreshGroups(userId: string): Promise<void> {
-  await (await sync())?.ensureFresh(userId);
+export async function ensureFreshGroups(
+  platform: Platform,
+  userId: string,
+): Promise<void> {
+  platform.state.idpSync ??= createIdpGroupSync({
+    auth: getAuth(platform),
+    authDb: getAuthDb(platform),
+    appConfig: config(),
+  });
+  await platform.state.idpSync.ensureFresh(userId);
 }

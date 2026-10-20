@@ -8,6 +8,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import type { Platform } from "#platform/platform.ts";
 import { rebuildSearchIndex } from "#search/indexing.ts";
 
 /**
@@ -22,13 +23,14 @@ export const POST: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
 
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
         Permission.OWNER,
       );
 
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       await rebuildSearchIndex(store);
 
       return successResponse("Search embeddings rebuilt successfully");

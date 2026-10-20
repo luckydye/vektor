@@ -4,7 +4,7 @@
  * secret. It answers @mentions and DMs with an agent working across those spaces.
  */
 
-import { appPrincipal, type Attribution } from "#acl/apps.ts";
+import { type Attribution, appPrincipal } from "#acl/apps.ts";
 import { runAgentInWorker } from "#agent/agent.ts";
 import type { AgentSpace } from "#agent/tools.ts";
 import type { AIProvider, ChatImage, ChatMessage } from "#api/provider/types.ts";
@@ -18,6 +18,7 @@ import { getSpace } from "#db/space/spaces.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 const EXTENSION_ID = "discord";
 // In every space, the bot acts as this principal with that space's grants.
@@ -47,7 +48,12 @@ const KEY_ARGUMENTS = [
   "command",
 ];
 const MAX_FOOTER_LENGTH = 400;
-const IMAGE_MEDIA_TYPES = new Set<string>(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const IMAGE_MEDIA_TYPES = new Set<string>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 // Discord's attachment links expire after a day; older images are left out rather than refetched.
 const MAX_IMAGE_AGE_MS = 12 * 60 * 60 * 1000;
@@ -152,11 +158,12 @@ export function toolFooter(messages: ChatMessage[], spaces: AgentSpace[]): strin
  * where they linked Discord and picked a model; null runs on the instance's.
  */
 async function linkedAIProvider(
+  platform: Platform,
   spaces: Array<{ id: string; linkedUserId: string | null }>,
 ): Promise<AIProvider | null> {
   for (const space of spaces) {
     if (!space.linkedUserId) continue;
-    const provider = await resolveUserAIProvider(space.id, space.linkedUserId);
+    const provider = await resolveUserAIProvider(platform, space.id, space.linkedUserId);
     if (provider.provider === "integration") return provider;
   }
   return null;
@@ -176,7 +183,11 @@ function discordContext(spaces: AgentSpace[]): string {
  * Connects a bot token and keeps it connected; returns the function that stops it.
  * `spaces` is read per message, so spaces joining or leaving take effect at once.
  */
-export function connectDiscordBot(botToken: string, spaces: () => string[]): () => void {
+export function connectDiscordBot(
+  platform: Platform,
+  botToken: string,
+  spaces: () => string[],
+): () => void {
   let stopped = false;
   let socket: WebSocket | null = null;
   let botId = "";
@@ -220,7 +231,10 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
   }
 
   /** `message` as the agent reads it, with its images. */
-  async function userMessage(message: DiscordMessage, line: string): Promise<ChatMessage> {
+  async function userMessage(
+    message: DiscordMessage,
+    line: string,
+  ): Promise<ChatMessage> {
     const images = await messageImages(message);
     return { role: "user", content: line, ...(images.length > 0 ? { images } : {}) };
   }
@@ -284,7 +298,8 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
       .slice(-HISTORY_LIMIT);
     const history = await Promise.all(
       earlier.map((entry): ChatMessage | null | Promise<ChatMessage> => {
-        if (entry.author.id === botId) return { role: "assistant", content: entry.content };
+        if (entry.author.id === botId)
+          return { role: "assistant", content: entry.content };
         const line = authorLine(entry);
         return line ? userMessage(entry, line) : null;
       }),
@@ -302,10 +317,10 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
     const timestamp = Date.now().toString();
     return await Promise.all(
       spaces().map(async (spaceId) => {
-        const space = await getSpace(spaceId);
+        const space = await getSpace(platform, spaceId);
         if (!space) throw new Error(`Space ${spaceId} not found`);
         const linked = await getOAuthIntegrationByExternalAccount(
-          await openSpaceStore(spaceId),
+          await openSpaceStore(platform, spaceId),
           EXTENSION_ID,
           message.author.id,
         );
@@ -357,8 +372,8 @@ export function connectDiscordBot(botToken: string, spaces: () => string[]): () 
         return;
       }
       // Pays with the author's own model connection where they linked Discord.
-      const provider = await linkedAIProvider(spaceList);
-      const result = await runAgentInWorker({
+      const provider = await linkedAIProvider(platform, spaceList);
+      const result = await runAgentInWorker(platform, {
         chatId: `discord-${message.channel_id}`,
         messages: [
           ...history,
@@ -534,14 +549,14 @@ function spacesUsing(botToken: string): string[] {
 }
 
 /** Starts and stops connections so each bot token in use has exactly one. */
-async function reconcileDiscordBots(): Promise<void> {
+async function reconcileDiscordBots(platform: Platform): Promise<void> {
   if (reconciling) return;
   reconciling = true;
   try {
     const wanted = new Map<string, number>();
-    for (const spaceId of await listActiveSpaceIds()) {
+    for (const spaceId of await listActiveSpaceIds(platform)) {
       try {
-        const store = await openSpaceStore(spaceId);
+        const store = await openSpaceStore(platform, spaceId);
         if (!(await getExtension(store, EXTENSION_ID))) continue;
         const secret = await getSpaceSecretMetadata(store, SECRET_NAME);
         if (secret) wanted.set(spaceId, secret.updatedAt.getTime());
@@ -556,7 +571,7 @@ async function reconcileDiscordBots(): Promise<void> {
     for (const [spaceId, secretUpdatedAt] of wanted) {
       if (spaceTokens.has(spaceId)) continue;
       const botToken = await getSpaceSecretValue(
-        await openSpaceStore(spaceId),
+        await openSpaceStore(platform, spaceId),
         SECRET_NAME,
       );
       if (botToken) spaceTokens.set(spaceId, { secretUpdatedAt, botToken });
@@ -574,7 +589,7 @@ async function reconcileDiscordBots(): Promise<void> {
       if (connections.has(botToken)) continue;
       connections.set(
         botToken,
-        connectDiscordBot(botToken, () => spacesUsing(botToken)),
+        connectDiscordBot(platform, botToken, () => spacesUsing(botToken)),
       );
     }
   } finally {
@@ -582,10 +597,10 @@ async function reconcileDiscordBots(): Promise<void> {
   }
 }
 
-export function startDiscordBots(): void {
+export function startDiscordBots(platform: Platform): void {
   if (reconcileTimer) return;
   const reconcile = () =>
-    void reconcileDiscordBots().catch((error) =>
+    void reconcileDiscordBots(platform).catch((error) =>
       appLogger.error("Discord bot reconcile failed", { error }),
     );
   reconcileTimer = setInterval(reconcile, RECONCILE_INTERVAL_MS);

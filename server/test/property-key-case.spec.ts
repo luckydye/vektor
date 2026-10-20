@@ -16,6 +16,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 describe("canonicalPropertyKey", () => {
   it("folds case and surrounding space", () => {
@@ -157,7 +158,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   serverProcess?.kill();
-  if (spaceId) await deleteSpace(spaceId);
+  if (spaceId) await deleteSpace(platform, spaceId);
 });
 
 async function createDocument(properties: Record<string, unknown>): Promise<string> {
@@ -253,7 +254,7 @@ describe("a document holds one property per key, whatever the case", () => {
 
   it("collapses a pair an older release stored, on the next write", async () => {
     const documentId = await createDocument({ title: "Legacy pair", date: "old" });
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(platform, spaceId);
     await store.db.insert(property).values({
       id: `property-legacy-${Date.now()}`,
       documentId,

@@ -14,15 +14,24 @@ import { getDocument } from "#db/space/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/space/revisions.ts";
 import { isSerializedDocumentType } from "#documents/types.ts";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
+import type { Platform } from "#platform/platform.ts";
 import { escapeHtml, prettyPrintHtml } from "#utils/html.ts";
 
-async function getRevision(rev: number, spaceId: string, id: string) {
-  const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
+async function getRevision(platform: Platform, rev: number, spaceId: string, id: string) {
+  const metadata = await getRevisionMetadata(
+    await openSpaceStore(platform, spaceId),
+    id,
+    rev,
+  );
   if (!metadata) {
     throw notFoundResponse("Revision");
   }
 
-  const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
+  const content = await getRevisionContent(
+    await openSpaceStore(platform, spaceId),
+    id,
+    rev,
+  );
   if (content === null) {
     throw notFoundResponse("Revision");
   }
@@ -58,6 +67,7 @@ export const GET: ApiRouteHandler = (context) =>
         : parseQueryInt(searchParams, "base", { min: 1 });
 
     const { aclUserId } = await authenticateDocumentAccess(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       id,
@@ -65,10 +75,10 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     // Both sides are content, so both are held to the `?rev=N` rule.
-    await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
+    await verifyRevisionAccess(context.var.platform, spaceId, id, aclUserId, [rev]);
 
-    const revisionContent = await getRevision(rev, spaceId, id);
-    const store = await openSpaceStore(spaceId);
+    const revisionContent = await getRevision(context.var.platform, rev, spaceId, id);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const document = await getDocument(store, id);
     if (!document) {
       throw notFoundResponse("Document");
@@ -77,7 +87,9 @@ export const GET: ApiRouteHandler = (context) =>
     if (!compareBaseRev) {
       throw badRequestResponse("Document has no comparable base revision");
     }
-    await verifyRevisionAccess(spaceId, id, aclUserId, [compareBaseRev]);
+    await verifyRevisionAccess(context.var.platform, spaceId, id, aclUserId, [
+      compareBaseRev,
+    ]);
 
     const baseContent = await getRevisionContent(store, id, compareBaseRev);
     if (baseContent === null) {

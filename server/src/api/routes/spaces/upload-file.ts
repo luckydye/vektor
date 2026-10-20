@@ -12,10 +12,10 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileIndexEntry } from "#db/space/files.ts";
 import { mimeTypeForExtension } from "#files/fileTypes.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
 /**
@@ -41,10 +41,11 @@ export const GET: ApiRouteHandler = (context) =>
       // a resource grant and an archive all reach the file through its document
       // and not through a space role. A file that belongs to none — a workflow
       // artifact, say — keeps the space check.
-      const indexed = await getFileIndexEntry(spaceId, path);
+      const indexed = await getFileIndexEntry(context.var.platform, spaceId, path);
       const documentId = indexed?.documentId ?? null;
       if (documentId) {
         await authenticateDocumentAccess(
+          context.var.platform,
           context.var.credentials,
           spaceId,
           documentId,
@@ -53,6 +54,7 @@ export const GET: ApiRouteHandler = (context) =>
         );
       } else {
         await authenticateSpaceAccess(
+          context.var.platform,
           context.var.credentials,
           spaceId,
           Permission.VIEWER,
@@ -66,7 +68,7 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const mimeType = mimeTypeForExtension(extension);
-      const storage = getFileStorage();
+      const storage = context.var.platform.blobStore;
 
       // If transform params are present, serve via the transform+cache path.
       // This bypasses redirectUrl so the server can read, transform, and cache
@@ -76,7 +78,13 @@ export const GET: ApiRouteHandler = (context) =>
         extension,
       );
       if (transformParams) {
-        return serveTransformed(spaceId, path, transformParams, storage);
+        return serveTransformed(
+          context.var.platform,
+          spaceId,
+          path,
+          transformParams,
+          storage,
+        );
       }
 
       // Object storage adapters can redirect to their own CDN URL
@@ -202,8 +210,11 @@ export const DELETE: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      const documentId = (await getFileIndexEntry(spaceId, path))?.documentId ?? null;
+      const documentId =
+        (await getFileIndexEntry(context.var.platform, spaceId, path))?.documentId ??
+        null;
       await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.EDITOR,
@@ -211,8 +222,8 @@ export const DELETE: ApiRouteHandler = (context) =>
       );
 
       // Remove from storage (idempotent) and drop the ephemeral index row
-      await getFileStorage().delete(spaceId, path);
-      const { db } = await openSpaceStore(spaceId);
+      await context.var.platform.blobStore.delete(spaceId, path);
+      const { db } = await openSpaceStore(context.var.platform, spaceId);
       await db.delete(fileTable).where(eq(fileTable.path, path));
 
       return new Response(null, { status: 204 });

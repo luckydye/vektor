@@ -19,6 +19,7 @@ import {
   waitForRunSettled,
 } from "#jobs/runStore.ts";
 import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one workflow run
@@ -39,6 +40,7 @@ export const GET: ApiRouteHandler = (context) =>
     const runId = requireParam(context.var.params, "runId");
 
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.VIEWER,
@@ -49,17 +51,21 @@ export const GET: ApiRouteHandler = (context) =>
       return errorResponse("wait must be between 0 and 50 seconds", 400);
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     await ensureSpaceRecovered(store);
     const found = await getRunForRead(store, runId);
     if (!found || found.spaceId !== spaceId) return notFoundResponse("Run");
     const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
     if (aclUserId) {
       const readable = await filterReadableResources(
+        store.platform,
         spaceId,
         ResourceType.DOCUMENT,
         [found.documentId],
-        { userId: aclUserId, userGroups: await getUserGroups(aclUserId) },
+        {
+          userId: aclUserId,
+          userGroups: await getUserGroups(context.var.platform, aclUserId),
+        },
       );
       if (!readable.has(found.documentId)) return notFoundResponse("Run");
     }
@@ -80,29 +86,30 @@ export const GET: ApiRouteHandler = (context) =>
       resultArtifact: run.resultArtifactPath
         ? {
             key: run.resultArtifactPath,
-            url: workflowArtifactUrl(spaceId, run.resultArtifactPath),
+            url: workflowArtifactUrl(store.platform, spaceId, run.resultArtifactPath),
           }
         : null,
     });
   }, "Failed to get run");
 
-function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
+function cancelWorkflowRun(platform: Platform, context: Parameters<ApiRouteHandler>[0]) {
   return withApiErrorHandling(
     async () => {
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
       const runId = requireParam(context.var.params, "runId");
       await verifyAccess(
+        platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
         Permission.EDITOR,
       );
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(platform, spaceId);
       await ensureSpaceRecovered(store);
       const run = await getRunForRead(store, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
-      await cancelRun(runId);
+      await cancelRun(platform, runId);
       return jsonResponse({ ok: true });
     },
     {
@@ -119,7 +126,8 @@ function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
  * @jobToken
  * @body
  */
-export const POST: ApiRouteHandler = (context) => cancelWorkflowRun(context);
+export const POST: ApiRouteHandler = (context) =>
+  cancelWorkflowRun(context.var.platform, context);
 
 /**
  * Cancel or delete a workflow run
@@ -127,4 +135,5 @@ export const POST: ApiRouteHandler = (context) => cancelWorkflowRun(context);
  * @tag Workflows
  * @jobToken
  */
-export const DELETE: ApiRouteHandler = (context) => cancelWorkflowRun(context);
+export const DELETE: ApiRouteHandler = (context) =>
+  cancelWorkflowRun(context.var.platform, context);

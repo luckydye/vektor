@@ -21,6 +21,7 @@ import {
   sanitizeSecretName,
   upsertSpaceSecret,
 } from "#db/space/spaceSecrets.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one secret's metadata
@@ -34,6 +35,7 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.OWNER,
@@ -44,7 +46,7 @@ export const GET: ApiRouteHandler = (context) =>
       throw forbiddenResponse("Job is not associated with a user");
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const value = await getSpaceSecretValueForUser(store, name, userId);
     if (value === null) {
       if (await hasSpaceSecret(store, name)) {
@@ -70,6 +72,7 @@ export const PUT: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -98,7 +101,7 @@ export const PUT: ApiRouteHandler = (context) =>
         ? null
         : String(body.description).trim();
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const secret = await upsertSpaceSecret(
       store,
       normalized,
@@ -123,13 +126,14 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.OWNER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const deleted = await deleteSpaceSecret(store, name);
     if (!deleted) {
       throw notFoundResponse("Secret");
@@ -151,13 +155,14 @@ export const HEAD: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.OWNER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const secret = await getSpaceSecretMetadata(store, name);
     if (!secret) {
       throw notFoundResponse("Secret");

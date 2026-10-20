@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import type { IdpGroupSync } from "#acl/idpSync.ts";
+import type { Auth } from "#auth";
 import { config, isInMemoryDb } from "#config";
 import {
   getAssignedSpaceDatabase,
@@ -6,6 +7,7 @@ import {
   spaceDatabaseCredentials,
 } from "#db/auth/spaceIndex.ts";
 import { federationOf, syncPeerClients } from "#peerFederation";
+import type { Platform } from "#platform/platform.ts";
 import {
   closeDatabase,
   createDatabase,
@@ -16,90 +18,90 @@ import {
 } from "./connection.ts";
 import { initSpaceDbSchema, prepareAuthDb } from "./init.ts";
 
-declare global {
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_space_db_cache: Map<string, Database> | undefined;
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_space_db_last_used: Map<string, number> | undefined;
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_space_db_preparation: Map<string, Promise<void>> | undefined;
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_space_db_opening: Map<string, Promise<Database>> | undefined;
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_space_db_kind: Map<string, "file" | "remote"> | undefined;
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_migrated_space_dbs: Set<string> | undefined;
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_database_initialization: Promise<void> | undefined;
+/** The connections a process keeps open, on its platform so every module instance shares them. */
+export interface PlatformState {
+  authDb: Database | null;
+  auth: Auth | null;
+  idpSync: IdpGroupSync | null;
+  initialization: Promise<void> | null;
+  spaceDbs: Map<string, Database>;
+  /** When each cached connection was last handed out, for eviction. */
+  spaceDbLastUsed: Map<string, number>;
+  spaceDbPreparation: Map<string, Promise<void>>;
+  /**
+   * In-flight opens keyed by space ID. The first caller for an uncached space
+   * creates the connection and runs schema preparation; concurrent callers await
+   * this same promise instead of opening (and leaking) a second connection.
+   */
+  spaceDbOpening: Map<string, Promise<Database>>;
+  /** What each cached connection costs to keep open; see {@link ConnectionKind}. */
+  spaceDbKind: Map<string, ConnectionKind>;
+  /**
+   * Databases this process has already migrated to the current schema.
+   *
+   * Reopening an evicted connection would otherwise re-read the migration version
+   * over the wire, which for a hosted space is the entire cost the eviction was
+   * meant to save. The version cannot go backwards, so what this process brought
+   * up to date stays that way.
+   *
+   * Keyed by space *and* location, because that pair is what a wipe invalidates
+   * and a location alone is not: a purged hosted database is emptied and returned
+   * to the pool under the same URL, and another process — a second replica, or the
+   * server the `purge` CLI ran beside — would otherwise still hold it as migrated
+   * and open the empty database with the check skipped. The next space to claim it
+   * has a fresh id, so it cannot hit that entry; attaching a different database to
+   * an existing space changes the location, so it cannot either.
+   */
+  migratedSpaceDbs: Set<string>;
 }
 
-const spaceDbCache = globalThis.__vektor_space_db_cache ?? new Map<string, Database>();
-globalThis.__vektor_space_db_cache = spaceDbCache;
-
-// When each cached connection was last handed out, for eviction. Beside the
-// cache rather than in it: the SSR bundle and the API are two module instances
-// sharing these globals, and only one of them has to know about this map.
-const spaceDbLastUsed =
-  globalThis.__vektor_space_db_last_used ?? new Map<string, number>();
-globalThis.__vektor_space_db_last_used = spaceDbLastUsed;
-
-const spaceDbPreparation =
-  globalThis.__vektor_space_db_preparation ?? new Map<string, Promise<void>>();
-globalThis.__vektor_space_db_preparation = spaceDbPreparation;
-// In-flight opens keyed by space ID. The first caller for an uncached space
-// creates the connection and runs schema preparation; concurrent callers await
-// this same promise instead of opening (and leaking) a second connection.
-const spaceDbOpening =
-  globalThis.__vektor_space_db_opening ?? new Map<string, Promise<Database>>();
-globalThis.__vektor_space_db_opening = spaceDbOpening;
-
-/** What each cached connection costs to keep open; see {@link ConnectionKind}. */
-const spaceDbKind =
-  globalThis.__vektor_space_db_kind ?? new Map<string, ConnectionKind>();
-globalThis.__vektor_space_db_kind = spaceDbKind;
-
-/**
- * Databases this process has already migrated to the current schema.
- *
- * Reopening an evicted connection would otherwise re-read the migration version
- * over the wire, which for a hosted space is the entire cost the eviction was
- * meant to save. The version cannot go backwards, so what this process brought
- * up to date stays that way.
- *
- * Keyed by space *and* location, because that pair is what a wipe invalidates
- * and a location alone is not: a purged hosted database is emptied and returned
- * to the pool under the same URL, and another process — a second replica, or the
- * server the `purge` CLI ran beside — would otherwise still hold it as migrated
- * and open the empty database with the check skipped. The next space to claim it
- * has a fresh id, so it cannot hit that entry; attaching a different database to
- * an existing space changes the location, so it cannot either.
- */
-const migratedSpaceDbs = globalThis.__vektor_migrated_space_dbs ?? new Set<string>();
-globalThis.__vektor_migrated_space_dbs = migratedSpaceDbs;
+export function createPlatformState(): PlatformState {
+  return {
+    authDb: null,
+    auth: null,
+    idpSync: null,
+    initialization: null,
+    spaceDbs: new Map(),
+    spaceDbLastUsed: new Map(),
+    spaceDbPreparation: new Map(),
+    spaceDbOpening: new Map(),
+    spaceDbKind: new Map(),
+    migratedSpaceDbs: new Set(),
+  };
+}
 
 function migratedKey(spaceId: string, location: string): string {
   return `${spaceId}\u0000${location}`;
 }
 
-export function initializeDatabases(): Promise<void> {
-  if (!globalThis.__vektor_database_initialization) {
-    globalThis.__vektor_database_initialization = (async () => {
-      await prepareAuthDb(getAuthDb());
-      await syncPeerClients(getAuthDb(), federationOf(config()));
-      await reconcileLocalSpaceIndex();
-    })();
-  }
-  return globalThis.__vektor_database_initialization;
+export function initializeDatabases(platform: Platform): Promise<void> {
+  platform.state.initialization ??= (async () => {
+    await prepareAuthDb(getAuthDb(platform));
+    await syncPeerClients(getAuthDb(platform), federationOf(config()));
+    await reconcileLocalSpaceIndex(platform);
+  })();
+  return platform.state.initialization;
 }
 
 export { getAuthDb };
 
-async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<Database> {
-  await initializeDatabases();
+async function openSpaceDb(
+  platform: Platform,
+  spaceId: string,
+  createLocalFile: boolean,
+): Promise<Database> {
+  await initializeDatabases(platform);
+  const {
+    spaceDbs: spaceDbCache,
+    spaceDbPreparation,
+    spaceDbOpening,
+    spaceDbKind,
+    migratedSpaceDbs,
+  } = platform.state;
 
   const cached = spaceDbCache.get(spaceId);
   if (cached) {
-    touch(spaceId, cached);
+    touch(platform, spaceId, cached);
     const preparation = spaceDbPreparation.get(spaceId);
     if (preparation) await preparation;
     return cached;
@@ -113,24 +115,29 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
   if (inFlight) return inFlight;
 
   const opening = (async (): Promise<Database> => {
-    const databaseRecord = await getAssignedSpaceDatabase(spaceId);
+    const databaseRecord = await getAssignedSpaceDatabase(platform, spaceId);
     if (!databaseRecord) {
       throw new Error(`Space database not found: ${spaceId}`);
     }
 
     const location = resolveSpaceLocation(databaseRecord.location);
-    if (location.filePath && !createLocalFile && !existsSync(location.filePath)) {
+    if (
+      location.filePath &&
+      !createLocalFile &&
+      !platform.spaceDatabase.exists(location.filePath)
+    ) {
       throw new Error(`Space database file not found: ${spaceId}`);
     }
 
     const spaceDb = createDatabase(
+      platform,
       location.url,
       spaceDatabaseCredentials(databaseRecord),
     );
     spaceDbKind.set(spaceId, location.filePath ? "file" : "remote");
     // Cache before applying schema so concurrent first requests share both the
     // connection and its preparation promise.
-    touch(spaceId, spaceDb);
+    touch(platform, spaceId, spaceDb);
 
     // Pragmas are connection state and always run; the migration check is per
     // database, so a reopen of one this process already migrated skips it.
@@ -149,13 +156,13 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
         spaceDbCache.delete(spaceId);
         spaceDbPreparation.delete(spaceId);
         spaceDbKind.delete(spaceId);
-        closeDatabase(spaceDb);
+        closeDatabase(platform, spaceDb);
         throw error;
       },
     );
     spaceDbPreparation.set(spaceId, preparation);
     await preparation;
-    evictIdleSpaceDbs();
+    evictIdleSpaceDbs(platform);
 
     return spaceDb;
   })();
@@ -169,28 +176,35 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
 }
 
 /** @internal Raw connection entry point for the SpaceStore factory. */
-export async function openSpaceDbForStore(spaceId: string): Promise<Database> {
-  return openSpaceDb(spaceId, false);
+export async function openSpaceDbForStore(
+  platform: Platform,
+  spaceId: string,
+): Promise<Database> {
+  return openSpaceDb(platform, spaceId, false);
 }
 
-export async function createAllocatedSpaceDb(spaceId: string): Promise<Database> {
-  return openSpaceDb(spaceId, true);
+export async function createAllocatedSpaceDb(
+  platform: Platform,
+  spaceId: string,
+): Promise<Database> {
+  return openSpaceDb(platform, spaceId, true);
 }
 
-export function closeSpaceDb(spaceId: string): void {
-  const database = spaceDbCache.get(spaceId);
-  if (database) closeDatabase(database);
-  spaceDbCache.delete(spaceId);
-  spaceDbLastUsed.delete(spaceId);
-  spaceDbPreparation.delete(spaceId);
-  spaceDbKind.delete(spaceId);
+export function closeSpaceDb(platform: Platform, spaceId: string): void {
+  const state = platform.state;
+  const database = state.spaceDbs.get(spaceId);
+  if (database) closeDatabase(platform, database);
+  state.spaceDbs.delete(spaceId);
+  state.spaceDbLastUsed.delete(spaceId);
+  state.spaceDbPreparation.delete(spaceId);
+  state.spaceDbKind.delete(spaceId);
 }
 
 /** Re-insert, so the cache order stays the least-recently-used order. */
-function touch(spaceId: string, database: Database): void {
-  spaceDbCache.delete(spaceId);
-  spaceDbCache.set(spaceId, database);
-  spaceDbLastUsed.set(spaceId, Date.now());
+function touch(platform: Platform, spaceId: string, database: Database): void {
+  platform.state.spaceDbs.delete(spaceId);
+  platform.state.spaceDbs.set(spaceId, database);
+  platform.state.spaceDbLastUsed.set(spaceId, Date.now());
 }
 
 /**
@@ -238,7 +252,8 @@ function maxOpenSpaceDbs(kind: ConnectionKind): number {
  * is a descriptor budget, while the same number of stateless HTTP clients is
  * nothing to reclaim.
  */
-function evictIdleSpaceDbs(): void {
+function evictIdleSpaceDbs(platform: Platform): void {
+  const { spaceDbs: spaceDbCache, spaceDbKind, spaceDbLastUsed } = platform.state;
   // An in-memory connection *is* the space's data — dev and test only, and
   // closing it would drop the space rather than free anything.
   if (isInMemoryDb()) return;
@@ -260,10 +275,8 @@ function evictIdleSpaceDbs(): void {
     let openCount = kindSpaces.length;
     for (const spaceId of kindSpaces) {
       if (openCount <= limit) break;
-      // An unrecorded last use is the other module instance's connection, which
-      // is unread here rather than long idle.
       if ((spaceDbLastUsed.get(spaceId) ?? Date.now()) > idleSince) continue;
-      closeSpaceDb(spaceId);
+      closeSpaceDb(platform, spaceId);
       openCount--;
     }
   }

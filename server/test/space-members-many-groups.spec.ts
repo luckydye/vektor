@@ -10,6 +10,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 const PORT = 7534;
 const BASE_URL = testBaseUrl(PORT);
@@ -25,7 +26,7 @@ interface Member {
 }
 
 async function assignUserToGroup(userId: string, groups: string[]): Promise<void> {
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   if (!authDb) throw new Error("Auth database not available");
   await authDb
     .update(userTable)

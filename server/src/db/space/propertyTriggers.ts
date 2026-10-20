@@ -4,10 +4,7 @@ import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
-import {
-  document,
-  property,
-} from "#db/schema/space.ts";
+import { document, property } from "#db/schema/space.ts";
 import {
   canonicalPropertyKey,
   type DocumentPropertyPatchOperation,
@@ -17,6 +14,7 @@ import {
   TRIGGER_PROPERTY_TYPE,
   type TriggerSpec,
 } from "#documents/properties.ts";
+import type { Platform } from "#platform/platform.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { getSpace } from "./spaces.ts";
 import { syncPropertyWorkflowSchedules } from "./workflowSchedules.ts";
@@ -31,8 +29,11 @@ function writerOf(key: string, userId: string | undefined): string {
 }
 
 /** Triggers start workflows, so they exist only where workflows are enabled. */
-export async function assertTriggersEnabled(spaceId: string): Promise<void> {
-  if (!isWorkflowCreationEnabled((await getSpace(spaceId))?.preferences)) {
+export async function assertTriggersEnabled(
+  platform: Platform,
+  spaceId: string,
+): Promise<void> {
+  if (!isWorkflowCreationEnabled((await getSpace(platform, spaceId))?.preferences)) {
     throw new PermissionDeniedError("Workflows are disabled for this space");
   }
 }
@@ -77,7 +78,7 @@ export async function authorizeTriggerWrites(
       (operation.type === undefined &&
         existingTriggerKeys.has(canonicalPropertyKey(operation.key)));
     if (!writesTrigger) continue;
-    await assertTriggersEnabled(s.spaceId);
+    await assertTriggersEnabled(s.platform, s.spaceId);
     if (operation.value === "") continue;
 
     const writer = writerOf(operation.key, userId);
@@ -94,6 +95,7 @@ export async function authorizeTriggerWrites(
       );
     }
     await verifyAccess(
+      s.platform,
       s.spaceId,
       { type: ResourceType.DOCUMENT, id: workflow },
       writer,
@@ -103,10 +105,7 @@ export async function authorizeTriggerWrites(
 }
 
 /** When a trigger is due, including any offset from the date it follows. */
-function resolveSchedule(
-  spec: TriggerSpec,
-  values: Map<string, string>,
-): Date | null {
+function resolveSchedule(spec: TriggerSpec, values: Map<string, string>): Date | null {
   if ("at" in spec) return new Date(spec.at);
   const date = values.get(canonicalPropertyKey(spec.from));
   if (!date) return null;

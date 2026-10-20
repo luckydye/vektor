@@ -25,6 +25,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { createAccessToken } from "#db/space/accessTokens.ts";
 import { getSpace, getUserSpaceRole } from "#db/space/spaces.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /** Bounded so a role revoked later cannot leave standing access forever. */
 const CLI_TOKEN_TTL_DAYS = 30;
@@ -60,28 +61,31 @@ export const POST: ApiRouteHandler = (context) =>
 
     const { userId, spaceId } = entry;
 
-    const space = await getSpace(spaceId);
+    const space = await getSpace(context.var.platform, spaceId);
     if (!space) {
       throw badRequestResponse("Selected space is no longer available");
     }
 
     // A resource-scoped grantee holds no space-wide role, so they get nothing —
     // the approval step refuses those spaces already, this is the second line.
-    const permission = await getUserSpaceRole(space, userId);
+    const permission = await getUserSpaceRole(context.var.platform, space, userId);
     if (!isPermission(permission)) {
       throw forbiddenResponse("You do not hold a role on this space");
     }
 
     const expiresAt = new Date(Date.now() + CLI_TOKEN_TTL_DAYS * DAY_MS);
 
-    const result = await createAccessToken(await openSpaceStore(spaceId), {
-      name: `CLI (${new Date().toISOString().slice(0, 10)})`,
-      resourceType: ResourceType.SPACE,
-      resourceId: spaceId,
-      permission,
-      createdBy: userId,
-      expiresAt,
-    });
+    const result = await createAccessToken(
+      await openSpaceStore(context.var.platform, spaceId),
+      {
+        name: `CLI (${new Date().toISOString().slice(0, 10)})`,
+        resourceType: ResourceType.SPACE,
+        resourceId: spaceId,
+        permission,
+        createdBy: userId,
+        expiresAt,
+      },
+    );
 
     return Response.json({
       token: result.token,

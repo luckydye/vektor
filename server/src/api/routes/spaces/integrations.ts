@@ -14,6 +14,7 @@ import {
   buildIntegrationView,
   listOAuthProviderDefinitions,
 } from "#integrations/oauthProviders.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List the integrations configured for a space
@@ -25,15 +26,16 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const existing = await listOAuthIntegrationsForUser(store, user.id);
-    const definitions = await listOAuthProviderDefinitions(spaceId);
+    const definitions = await listOAuthProviderDefinitions(context.var.platform, spaceId);
 
     const connections = definitions.map((definition) =>
       buildIntegrationView(

@@ -4,11 +4,14 @@ import {
   resolveActiveSpaceSlug,
 } from "#utils/activeSpace.server.ts";
 
+const { platform } = Astro.locals;
+
 if (!Astro.locals.session) {
   return Astro.redirect("/login");
 }
 
 const activeSpaceSlug = await resolveActiveSpaceSlug(
+  platform,
   Astro.locals.user?.id,
   Astro.cookies.get(LAST_VISITED_SPACE_KEY)?.value,
 );

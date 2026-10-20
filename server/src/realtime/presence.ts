@@ -1,10 +1,11 @@
-import type { WebSocket } from "ws";
+import type { Platform } from "#platform/platform.ts";
 import {
   type PresenceEnvelope,
   type PresenceJoinPayload,
   type PresenceLeavePayload,
   type PresenceUpdatePayload,
   type RealtimeErrorPayload,
+  type RealtimeSocket,
   WsMsgType,
   wsDecodeJson,
   wsEncode,
@@ -13,7 +14,7 @@ import { getRoom, retireYRoom, type YRoom, yRooms } from "./yjsRooms.ts";
 
 function broadcastPresence(
   room: YRoom,
-  sender: WebSocket,
+  sender: RealtimeSocket,
   type: WsMsgType,
   payload: object,
 ): void {
@@ -38,8 +39,9 @@ export class PresenceConnection {
   private readonly joinedRooms = new Map<string, Set<string>>();
 
   constructor(
+    readonly platform: Platform,
     private readonly spaceId: string,
-    private readonly websocket: WebSocket,
+    private readonly websocket: RealtimeSocket,
     private readonly hooks: PresenceConnectionHooks,
   ) {}
 
@@ -104,7 +106,7 @@ export class PresenceConnection {
       room.clients.delete(this.websocket);
     }
     if (room.clients.size === 0 && room.presences.size === 0) {
-      retireYRoom(roomKey);
+      retireYRoom(this.platform, roomKey);
     }
   }
 
@@ -193,7 +195,7 @@ export class PresenceConnection {
     });
 
     if (room.clients.size === 0 && room.presences.size === 0) {
-      retireYRoom(roomKey);
+      retireYRoom(this.platform, roomKey);
     }
   }
 }

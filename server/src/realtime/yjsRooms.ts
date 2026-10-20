@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentContent, updateDocument } from "#db/space/documents.ts";
@@ -24,10 +23,12 @@ import {
 import { documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced, tracedSync } from "#observability/trace.ts";
+import type { Platform } from "#platform/platform.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
+  type RealtimeSocket,
   WsMsgType,
   wsEncode,
   wsEncodeYjsUpdate,
@@ -39,7 +40,7 @@ export interface YRoom {
   doc?: Y.Doc;
   /** In-flight `loadYDoc` for a room that has no doc yet; see `ensureRoomDoc`. */
   loading?: Promise<Y.Doc>;
-  clients: Set<WebSocket>;
+  clients: Set<RealtimeSocket>;
   presences: Map<string, PresenceEnvelope>;
   writeBlocked?: boolean;
   /** Timestamp (ms) of the last persist attempt, used to throttle serialize frequency. */
@@ -78,10 +79,17 @@ function splitRoomKey(key: string): { spaceId: string; documentId: string } | nu
   };
 }
 
-export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
-  const meta = await getDocument(await openSpaceStore(spaceId), documentId);
+export async function loadYDoc(
+  platform: Platform,
+  spaceId: string,
+  documentId: string,
+): Promise<Y.Doc> {
+  const meta = await getDocument(await openSpaceStore(platform, spaceId), documentId);
   if (!meta) return new Y.Doc();
-  const content = await getDocumentContent(await openSpaceStore(spaceId), documentId);
+  const content = await getDocumentContent(
+    await openSpaceStore(platform, spaceId),
+    documentId,
+  );
   if (!content) return new Y.Doc();
   // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
   // event loop and spikes memory; the pool falls back to in-process on failure.
@@ -96,11 +104,15 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
  * tick, and each would otherwise pay the full off-thread deserialize and then
  * overwrite the doc the other had already handed out and applied updates to.
  */
-export async function ensureRoomDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
+export async function ensureRoomDoc(
+  platform: Platform,
+  spaceId: string,
+  documentId: string,
+): Promise<Y.Doc> {
   const room = getRoom(spaceId, documentId);
   if (room.doc) return room.doc;
 
-  room.loading ??= loadYDoc(spaceId, documentId).finally(() => {
+  room.loading ??= loadYDoc(platform, spaceId, documentId).finally(() => {
     room.loading = undefined;
   });
   const doc = await room.loading;
@@ -310,7 +322,7 @@ const COLLABORATION_REVISION_INTERVAL_MS = 3 * 60 * 60 * 1000;
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
 const MIN_PERSIST_INTERVAL_MS = 5000;
 
-export async function persistYRoomDraft(key: string): Promise<void> {
+export async function persistYRoomDraft(platform: Platform, key: string): Promise<void> {
   const timer = persistTimers.get(key);
   if (timer) {
     clearTimeout(timer);
@@ -330,7 +342,10 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   // pulled the whole content column, tens of MB, on every debounce tick).
   // Persist only ever schedules after a real Yjs update and is throttled, so we
   // just write; no dedup read/hash needed.
-  const meta = await getDocument(await openSpaceStore(ids.spaceId), ids.documentId);
+  const meta = await getDocument(
+    await openSpaceStore(platform, ids.spaceId),
+    ids.documentId,
+  );
   if (!meta) return;
 
   if (documentIsReadonly(meta)) {
@@ -348,7 +363,7 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   );
   const content = format === "html" ? sanitizeDocumentHtml(serialized) : serialized;
 
-  const store = await openSpaceStore(ids.spaceId);
+  const store = await openSpaceStore(platform, ids.spaceId);
   // Unconditional: the room owns this content. It still moves `change_seq`, so a
   // document with an open editor invalidates held tags every debounce.
   await traced("persist.write", () =>
@@ -360,7 +375,7 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   if (format !== "html" || !room.lastEditorId) return;
 
   const latestRevisionCreatedAt = await getLatestRevisionCreatedAt(
-    await openSpaceStore(ids.spaceId),
+    await openSpaceStore(platform, ids.spaceId),
     ids.documentId,
   );
   const revisionIsDue =
@@ -369,7 +384,7 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   if (!revisionIsDue) return;
 
   await createRevision(
-    await openSpaceStore(ids.spaceId),
+    await openSpaceStore(platform, ids.spaceId),
     ids.documentId,
     content,
     room.lastEditorId,
@@ -381,12 +396,12 @@ export async function persistYRoomDraft(key: string): Promise<void> {
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
-export function persistYRoomDraftBestEffort(key: string): void {
-  void settledPersist(key);
+export function persistYRoomDraftBestEffort(platform: Platform, key: string): void {
+  void settledPersist(platform, key);
 }
 
-function settledPersist(key: string): Promise<void> {
-  return persistYRoomDraft(key).catch((error) => {
+function settledPersist(platform: Platform, key: string): Promise<void> {
+  return persistYRoomDraft(platform, key).catch((error) => {
     appLogger.warn("Failed to persist realtime room draft", { error, roomKey: key });
   });
 }
@@ -439,11 +454,13 @@ export function sweepIdleYRooms(now = Date.now()): number {
   return dropped;
 }
 
-const roomSweep = setInterval(() => sweepIdleYRooms(), ROOM_SWEEP_INTERVAL_MS);
-roomSweep.unref?.();
+/** Sweep idle rooms on a background timer; returns what stops it. */
+export function startYRoomSweep(platform: Platform): () => void {
+  return platform.spaceHost.every(ROOM_SWEEP_INTERVAL_MS, () => sweepIdleYRooms());
+}
 
-export function retireYRoom(key: string): void {
-  void settledPersist(key).then(() => {
+export function retireYRoom(platform: Platform, key: string): void {
+  void settledPersist(platform, key).then(() => {
     const room = yRooms.get(key);
     if (!room || !roomIsIdle(room)) return;
     room.idleSince = Date.now();
@@ -451,7 +468,11 @@ export function retireYRoom(key: string): void {
   });
 }
 
-export function scheduleYRoomDraftPersist(key: string, editorId?: string): void {
+export function scheduleYRoomDraftPersist(
+  platform: Platform,
+  key: string,
+  editorId?: string,
+): void {
   const existing = persistTimers.get(key);
   if (existing) clearTimeout(existing);
 
@@ -468,7 +489,7 @@ export function scheduleYRoomDraftPersist(key: string, editorId?: string): void 
 
   const timer = setTimeout(() => {
     persistTimers.delete(key);
-    persistYRoomDraftBestEffort(key);
+    persistYRoomDraftBestEffort(platform, key);
   }, delay);
   timer.unref?.();
   persistTimers.set(key, timer);
@@ -483,7 +504,7 @@ const AGENT_PRESENCE_USER: PresenceUser = {
 const AGENT_PRESENCE_TTL_MS = 10_000;
 const agentPresenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function clearAgentPresence(key: string, documentId: string): void {
+function clearAgentPresence(platform: Platform, key: string, documentId: string): void {
   agentPresenceTimers.delete(key);
   const room = yRooms.get(key);
   if (!room?.presences.has(AGENT_CLIENT_ID)) return;
@@ -499,7 +520,7 @@ function clearAgentPresence(key: string, documentId: string): void {
   );
 
   if (room.clients.size === 0 && room.presences.size === 0) {
-    retireYRoom(key);
+    retireYRoom(platform, key);
   }
 }
 
@@ -509,6 +530,7 @@ function clearAgentPresence(key: string, documentId: string): void {
  * canvas edit paths. Best-effort: failures are swallowed.
  */
 function setAgentPresence(
+  platform: Platform,
   key: string,
   documentId: string,
   room: YRoom,
@@ -529,7 +551,7 @@ function setAgentPresence(
     const existingTimer = agentPresenceTimers.get(key);
     if (existingTimer) clearTimeout(existingTimer);
     const timer = setTimeout(
-      () => clearAgentPresence(key, documentId),
+      () => clearAgentPresence(platform, key, documentId),
       AGENT_PRESENCE_TTL_MS,
     );
     timer.unref?.();
@@ -545,6 +567,7 @@ function setAgentPresence(
  * changed range directly and so avoids serializing the whole doc to diff it.
  */
 function broadcastAgentPresenceRange(
+  platform: Platform,
   key: string,
   documentId: string,
   room: YRoom,
@@ -560,7 +583,7 @@ function broadcastAgentPresenceRange(
         Y.createRelativePositionFromTypeIndex(fragment, clamp(index)),
       );
 
-    setAgentPresence(key, documentId, room, {
+    setAgentPresence(platform, key, documentId, room, {
       kind: "editor",
       focused: true,
       selection: { anchor: toJson(anchorIndex), head: toJson(headIndex) },
@@ -578,6 +601,7 @@ type CanvasShapePosition = { id: string; x: number; y: number };
  * mirroring the canvas client's own presence shape.
  */
 function broadcastCanvasAgentPresence(
+  platform: Platform,
   key: string,
   documentId: string,
   room: YRoom,
@@ -586,7 +610,7 @@ function broadcastCanvasAgentPresence(
   if (changed.length === 0) return;
   const last = changed.at(-1);
   if (!last) return;
-  setAgentPresence(key, documentId, room, {
+  setAgentPresence(platform, key, documentId, room, {
     kind: "canvas",
     pointer: { x: last.x, y: last.y },
     view: { x: last.x, y: last.y, scale: 1 },
@@ -661,6 +685,7 @@ function asBlockSpliceInsert(
  * elsewhere in the document keeps their concurrent changes.
  */
 function spliceBlocks(
+  platform: Platform,
   spaceId: string,
   documentId: string,
   room: YRoom,
@@ -684,6 +709,7 @@ function spliceBlocks(
   }
 
   broadcastAgentPresenceRange(
+    platform,
     roomKey(spaceId, documentId),
     documentId,
     room,
@@ -700,6 +726,7 @@ function spliceBlocks(
  * blocks, so the caller can fall back to the full path.
  */
 function applyBlockSpliceInsert(
+  platform: Platform,
   spaceId: string,
   documentId: string,
   room: YRoom,
@@ -712,7 +739,17 @@ function applyBlockSpliceInsert(
 
   const insertIndex =
     splice.position === "end" ? doc.getXmlFragment("default").length : 0;
-  spliceBlocks(spaceId, documentId, room, doc, insertIndex, 0, blocks, onUpdate);
+  spliceBlocks(
+    platform,
+    spaceId,
+    documentId,
+    room,
+    doc,
+    insertIndex,
+    0,
+    blocks,
+    onUpdate,
+  );
   return true;
 }
 
@@ -753,12 +790,13 @@ function changedBlockRange(
 }
 
 export async function transformDocumentContent(
+  platform: Platform,
   spaceId: string,
   documentId: string,
   transform: (content: string) => string,
   operations?: EditOperation[],
 ): Promise<{ content: string; live: boolean } | null> {
-  const dbDoc = await getDocument(await openSpaceStore(spaceId), documentId);
+  const dbDoc = await getDocument(await openSpaceStore(platform, spaceId), documentId);
   if (!dbDoc) {
     return null;
   }
@@ -772,7 +810,8 @@ export async function transformDocumentContent(
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
     const persisted =
-      (await getDocumentContent(await openSpaceStore(spaceId), documentId)) ?? "";
+      (await getDocumentContent(await openSpaceStore(platform, spaceId), documentId)) ??
+      "";
     // Append/prepend splice at the very end/start, so they don't need the
     // content re-flowed to one-block-per-line — skip the normalize pass, which
     // is O(doc) and is what OOMs the process on large append-only logs edited
@@ -828,6 +867,7 @@ export async function transformDocumentContent(
 
     const shapesAfter = mapSnapshotFromDoc(doc).shapes;
     broadcastCanvasAgentPresence(
+      platform,
       roomKey(spaceId, documentId),
       documentId,
       room,
@@ -865,7 +905,15 @@ export async function transformDocumentContent(
   const splice = asBlockSpliceInsert(operations);
   if (
     splice &&
-    applyBlockSpliceInsert(spaceId, documentId, room, doc, splice, captureUpdate)
+    applyBlockSpliceInsert(
+      platform,
+      spaceId,
+      documentId,
+      room,
+      doc,
+      splice,
+      captureUpdate,
+    )
   ) {
     for (const update of updates) {
       broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
@@ -895,7 +943,17 @@ export async function transformDocumentContent(
   );
 
   if (remove > 0 || blocks.length > 0) {
-    spliceBlocks(spaceId, documentId, room, doc, from, remove, blocks, captureUpdate);
+    spliceBlocks(
+      platform,
+      spaceId,
+      documentId,
+      room,
+      doc,
+      from,
+      remove,
+      blocks,
+      captureUpdate,
+    );
   }
 
   for (const update of updates) {

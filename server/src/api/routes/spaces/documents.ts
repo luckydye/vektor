@@ -45,6 +45,7 @@ import {
   TRIGGER_PROPERTY_TYPE,
 } from "#documents/properties.ts";
 import { isSerializedDocumentType, repositoryDocumentType } from "#documents/types.ts";
+import type { Platform } from "#platform/platform.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
 import {
   isRepositoryCreationEnabled,
@@ -108,6 +109,7 @@ export const GET: ApiRouteHandler = (context) =>
     // The archive is the exception: reading an archived document takes
     // `editor`, so listing them does too, and a resource grant is not enough.
     const access = await authenticateSpaceAccess(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       archived ? Permission.EDITOR : Permission.VIEWER,
@@ -147,7 +149,7 @@ export const GET: ApiRouteHandler = (context) =>
           .filter(Boolean)
       : [];
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
 
     if (archived) {
       const { documents, nextCursor } = await listArchivedDocuments(store, viewer, {
@@ -248,6 +250,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.EDITOR,
@@ -328,7 +331,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     if (type === "workflow" || type === repositoryDocumentType) {
-      const space = await getSpace(spaceId);
+      const space = await getSpace(context.var.platform, spaceId);
       if (type === "workflow" && !isWorkflowCreationEnabled(space?.preferences)) {
         throw forbiddenResponse("Workflow creation is disabled for this space");
       }
@@ -350,7 +353,7 @@ export const POST: ApiRouteHandler = (context) =>
         : null;
 
     // createDocument now handles slug uniqueness internally
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     // Ahead of the create's transaction: the ACL lookup reads outside it.
     const triggers = Object.entries(properties ?? {}).filter(
       ([, init]) =>

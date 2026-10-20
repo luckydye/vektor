@@ -21,6 +21,7 @@ import {
   buildIntegrationView,
   getOAuthProviderDefinition,
 } from "#integrations/oauthProviders.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one integration's connection state
@@ -35,18 +36,23 @@ export const GET: ApiRouteHandler = (context) =>
     const providerParam = requireParam(context.var.params, "provider");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const definition = await getOAuthProviderDefinition(spaceId, providerParam);
+    const definition = await getOAuthProviderDefinition(
+      context.var.platform,
+      spaceId,
+      providerParam,
+    );
     if (!definition) {
       throw badRequestResponse("Unsupported integration provider");
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const connection = await getOAuthIntegrationForUser(store, user.id, providerParam);
 
     return jsonResponse({ connection: buildIntegrationView(definition, connection) });
@@ -69,6 +75,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     const providerParam = requireParam(context.var.params, "provider");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -81,12 +88,16 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse("aiModel must be a model id or null");
     }
 
-    const definition = await getOAuthProviderDefinition(spaceId, providerParam);
+    const definition = await getOAuthProviderDefinition(
+      context.var.platform,
+      spaceId,
+      providerParam,
+    );
     if (!definition?.integration.ai) {
       throw badRequestResponse(`${providerParam} does not provide AI models`);
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const connection = await getOAuthIntegrationForUser(store, user.id, providerParam);
     if (!connection) {
       throw badRequestResponse(`${providerParam} is not connected for this user`);
@@ -110,6 +121,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const providerParam = requireParam(context.var.params, "provider");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -118,7 +130,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     // Disconnecting stays available after the extension is uninstalled, so the
     // stored credential can always be revoked.
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     await deleteOAuthIntegrationForUser(store, user.id, providerParam);
     return successResponse();
   }, "Failed to disconnect integration");

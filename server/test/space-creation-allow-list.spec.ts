@@ -3,6 +3,7 @@ import { canCreateSpace } from "#acl/identity.ts";
 import { spaceCreationGroups } from "#acl/instanceGroups.ts";
 import { LOCAL_USER_ID } from "#config";
 import { initializeDatabases } from "#db/client/db.ts";
+import { platform } from "./helpers/platform.ts";
 
 function setAllowList(value: string | undefined) {
   if (value === undefined) {
@@ -14,7 +15,7 @@ function setAllowList(value: string | undefined) {
 
 // Every decision below resolves an identity, which reads the auth database the
 // whole run shares; whichever spec runs first has to create it.
-beforeAll(() => initializeDatabases());
+beforeAll(() => initializeDatabases(platform));
 
 afterEach(() => {
   setAllowList(undefined);
@@ -60,17 +61,17 @@ describe("spaceCreationGroups", () => {
 describe("canCreateSpace", () => {
   it("allows anyone while no allow list is configured", async () => {
     setAllowList(undefined);
-    await expect(canCreateSpace("user-1")).resolves.toBe(true);
+    await expect(canCreateSpace(platform, "user-1")).resolves.toBe(true);
   });
 
   it("denies everyone when the allow list names no usable group", async () => {
     setAllowList("public");
-    await expect(canCreateSpace("user-1")).resolves.toBe(false);
+    await expect(canCreateSpace(platform, "user-1")).resolves.toBe(false);
   });
 
   it("keeps the local user creating in no-auth mode", async () => {
     process.env.VEKTOR_NO_AUTH = "1";
     setAllowList("space-admins");
-    await expect(canCreateSpace(LOCAL_USER_ID)).resolves.toBe(true);
+    await expect(canCreateSpace(platform, LOCAL_USER_ID)).resolves.toBe(true);
   });
 });

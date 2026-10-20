@@ -9,7 +9,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { config } from "#config";
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { git } from "./run.ts";
 import { ensureState, type LoadedState, packPath } from "./state.ts";
@@ -72,7 +72,7 @@ export async function localPackNames(dir: string): Promise<string[]> {
 }
 
 async function downloadPack(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   dir: string,
@@ -114,7 +114,7 @@ async function writeRefs(dir: string, loaded: LoadedState): Promise<void> {
  * rather than by trusting local disk.
  */
 export async function ensureCache(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,

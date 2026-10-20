@@ -21,5 +21,7 @@ declare namespace App {
     user: import("better-auth").User | null;
     session: import("better-auth").Session | null;
     publicEnv: PublicEnv;
+    /** Handed in by the server with every request; see `src/server.ts`. */
+    platform: import("#platform/platform.ts").Platform;
   }
 }

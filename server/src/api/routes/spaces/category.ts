@@ -22,21 +22,29 @@ import {
   getCategory,
   updateCategory,
 } from "#db/space/categories.ts";
+import type { Platform } from "#platform/platform.ts";
 import { isHexColor } from "#utils/color.ts";
 
 async function verifyCategoryRead(
+  platform: Platform,
   context: Parameters<ApiRouteHandler>[0],
   spaceId: string,
   id: string,
 ) {
   if (context.req.raw.headers.get("X-Job-Token")) {
-    await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
+    await authenticateSpaceAccess(
+      platform,
+      context.var.credentials,
+      spaceId,
+      Permission.VIEWER,
+    );
     return;
   }
 
-  const auth = await tryAuthenticateRequest(context.var.credentials, spaceId);
+  const auth = await tryAuthenticateRequest(platform, context.var.credentials, spaceId);
   if (auth?.type === "user") {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.CATEGORY, id: id },
       auth.user.id,
@@ -46,6 +54,7 @@ async function verifyCategoryRead(
   }
   if (auth?.type === "token") {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.CATEGORY, id: id },
       auth.token.tokenId,
@@ -55,6 +64,7 @@ async function verifyCategoryRead(
   }
 
   await verifyAccess(
+    platform,
     spaceId,
     { type: ResourceType.CATEGORY, id: id },
     null,
@@ -74,9 +84,9 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "id");
-    await verifyCategoryRead(context, spaceId, id);
+    await verifyCategoryRead(context.var.platform, context, spaceId, id);
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const categoryData = await getCategory(store, id);
     if (!categoryData) {
       throw notFoundResponse("Category");
@@ -99,6 +109,7 @@ export const PUT: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
       const id = requireParam(context.var.params, "id");
       await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.EDITOR,
@@ -125,7 +136,7 @@ export const PUT: ApiRouteHandler = (context) =>
         throw badRequestResponse("color must be a hex color, e.g. #4ecdc4");
       }
 
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const categoryData = await updateCategory(store, id, {
         name,
         slug,
@@ -161,6 +172,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "id");
     await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.EDITOR,
@@ -170,7 +182,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       },
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     await deleteCategory(store, id);
     return successResponse();
   }, "Failed to delete category");

@@ -18,6 +18,7 @@ import {
   resolveIntegrationAccessToken,
 } from "#integrations/oauthProviders.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
+import type { Platform } from "#platform/platform.ts";
 
 type IntegrationProxyRequest = {
   method?: string;
@@ -37,6 +38,7 @@ async function resolveUserId(context: ApiContext, spaceId: string): Promise<stri
       throw unauthorizedResponse();
     }
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       parsed.userId,
@@ -47,6 +49,7 @@ async function resolveUserId(context: ApiContext, spaceId: string): Promise<stri
 
   const user = requireUser(context);
   await verifyAccess(
+    context.var.platform,
     spaceId,
     { type: ResourceType.SPACE, id: spaceId },
     user.id,
@@ -177,7 +180,11 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("body must be a string");
     }
 
-    const providerConfig = await getOAuthProviderConfiguration(spaceId, providerParam);
+    const providerConfig = await getOAuthProviderConfiguration(
+      context.var.platform,
+      spaceId,
+      providerParam,
+    );
     if (!providerConfig) {
       throw badRequestResponse("Unsupported integration provider");
     }
@@ -187,7 +194,7 @@ export const POST: ApiRouteHandler = (context) =>
       );
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const credential = await getOAuthIntegrationCredentialForUser(
       store,
       userId,
@@ -201,6 +208,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const accessToken = await resolveIntegrationAccessToken(
+      context.var.platform,
       spaceId,
       credential,
       providerConfig.config,

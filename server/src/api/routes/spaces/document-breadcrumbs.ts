@@ -4,6 +4,7 @@ import { jsonResponse, requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocumentBreadcrumbs } from "#db/space/documents.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * The document's ancestors, root first
@@ -19,6 +20,7 @@ export const GET: ApiRouteHandler = (context) =>
     // any grant inside it reaches them. Routed through the document guard all the
     // same, to inherit the rules a document's own state carries.
     await authenticateDocumentAccess(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       id,
@@ -26,7 +28,7 @@ export const GET: ApiRouteHandler = (context) =>
       { anyGrantInSpace: true },
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const breadcrumbs = await getDocumentBreadcrumbs(store, id);
     return jsonResponse({ breadcrumbs });
   }, "Failed to get document breadcrumbs");

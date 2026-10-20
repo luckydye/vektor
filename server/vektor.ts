@@ -159,12 +159,9 @@ Env vars (override the stored config):
 }
 
 async function verifyNativeAddons(): Promise<void> {
-  const [{ getNativeEmbedding }, { getNativeImage }, { getNativeExec }] =
-    await Promise.all([
-      import("./src/search/embeddingRuntime.ts"),
-      import("./src/files/native.ts"),
-      import("./src/exec/native.ts"),
-    ]);
+  const { getNativeEmbedding, getNativeImage, getNativeExec } = await import(
+    "./src/platform/bun/native.ts"
+  );
 
   await getNativeEmbedding();
   const nativeImage = await getNativeImage();
@@ -219,7 +216,11 @@ async function main(): Promise<void> {
     if ("no-auth" in flags) process.env.VEKTOR_NO_AUTH = "1";
     if ("email-auth" in flags) process.env.VEKTOR_EMAIL_AUTH = "1";
     if ("in-memory" in flags) process.env.VEKTOR_IN_MEMORY_DB = "1";
-    await import("./src/server.ts");
+    const [{ startServer }, { createBunPlatform }] = await Promise.all([
+      import("./src/server.ts"),
+      import("./src/platform/bun/index.ts"),
+    ]);
+    await startServer(createBunPlatform());
     return;
   }
 
@@ -434,25 +435,29 @@ async function main(): Promise<void> {
   }
 
   if (command === "space") {
+    // These open databases in-process, so they run on a platform of their own.
+    const { createBunPlatform } = await import("./src/platform/bun/index.ts");
+    const platform = createBunPlatform();
+
     const [subcommand, ...subArgs] = rest;
     const { positional, flags } = parseFlags(subArgs);
     const value = positional[0];
 
     if (subcommand === "register") {
       if (!value) throw new Error("space register requires a <libsql-url>");
-      await commandSpaceRegister(value, flags.token);
+      await commandSpaceRegister(platform, value, flags.token);
       return;
     }
 
     if (subcommand === "attach") {
       if (!value) throw new Error("space attach requires a <libsql-url>");
-      await commandSpaceAttach(value, flags.token);
+      await commandSpaceAttach(platform, value, flags.token);
       return;
     }
 
     if (subcommand === "enable") {
       if (!value) throw new Error("space enable requires a <database-id>");
-      await commandSpaceEnable(value);
+      await commandSpaceEnable(platform, value);
       return;
     }
 
@@ -461,22 +466,22 @@ async function main(): Promise<void> {
       if (!value || !token) {
         throw new Error("space token requires a <database-id> and an <auth-token>");
       }
-      await commandSpaceToken(value, token);
+      await commandSpaceToken(platform, value, token);
       return;
     }
 
     if (subcommand === "migrate") {
-      await commandSpaceMigrate(value);
+      await commandSpaceMigrate(platform, value);
       return;
     }
 
     if (subcommand === "purge") {
-      await commandSpacePurge(value);
+      await commandSpacePurge(platform, value);
       return;
     }
 
     if (subcommand === "ls" || subcommand === "list") {
-      await commandSpaceList();
+      await commandSpaceList(platform);
       return;
     }
 

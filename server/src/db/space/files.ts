@@ -13,6 +13,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { uploadKeyFromUrl } from "#files/uploads.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /** Ceiling on the ids per `IN (...)`, keeping the statement under SQLite's limit. */
 const ID_CHUNK = 500;
@@ -37,12 +38,13 @@ export interface FileIndexEntry {
  * store: there may not be a database to open.
  */
 export async function getFileIndexEntry(
+  platform: Platform,
   spaceId: string,
   path: string,
 ): Promise<FileIndexEntry | null> {
-  if (!(await getSpace(spaceId))) return null;
+  if (!(await getSpace(platform, spaceId))) return null;
 
-  const { db } = await openSpaceStore(spaceId);
+  const { db } = await openSpaceStore(platform, spaceId);
   const row = await one(
     db
       .select({
@@ -67,10 +69,11 @@ export async function getFileIndexEntry(
  * "a row that records nothing".
  */
 export async function getFileIndexEntries(
+  platform: Platform,
   spaceId: string,
   paths: string[],
 ): Promise<Map<string, FileIndexEntry>> {
-  const { db } = await openSpaceStore(spaceId);
+  const { db } = await openSpaceStore(platform, spaceId);
   const byPath = new Map<string, FileIndexEntry>();
   for (let i = 0; i < paths.length; i += ID_CHUNK) {
     const rows = await many(
@@ -100,6 +103,7 @@ export async function getFileIndexEntries(
  * it is attached to. A `null` viewer is a trusted system caller.
  */
 export async function filterAccessibleFiles<T extends { documentId: string | null }>(
+  platform: Platform,
   spaceId: string,
   files: T[],
   viewer: AclViewer | null,
@@ -114,6 +118,7 @@ export async function filterAccessibleFiles<T extends { documentId: string | nul
     ),
   ];
   const readableParentIds = await filterReadableResources(
+    platform,
     spaceId,
     ResourceType.DOCUMENT,
     parentIds,
@@ -142,14 +147,15 @@ export async function filterAccessibleFiles<T extends { documentId: string | nul
  * {@link getFileIndexEntry}: callers reach this before any database is open.
  */
 export async function getUploadImageDimensions(
+  platform: Platform,
   spaceId: string,
   url: string | string[] | undefined,
 ): Promise<{ width: number; height: number } | null> {
   const key = uploadKeyFromUrl(spaceId, Array.isArray(url) ? url[0] : url);
   if (!key) return null;
-  if (!(await getSpace(spaceId))) return null;
+  if (!(await getSpace(platform, spaceId))) return null;
 
-  const { db } = await openSpaceStore(spaceId);
+  const { db } = await openSpaceStore(platform, spaceId);
   const row = await one(
     db
       .select({ width: fileTable.width, height: fileTable.height })
@@ -163,10 +169,11 @@ export async function getUploadImageDimensions(
 
 /** Width/height ratio of an uploaded image, or null when it is not known. */
 export async function getUploadImageAspectRatio(
+  platform: Platform,
   spaceId: string,
   url: string | string[] | undefined,
 ): Promise<number | null> {
-  const dimensions = await getUploadImageDimensions(spaceId, url);
+  const dimensions = await getUploadImageDimensions(platform, spaceId, url);
   if (!dimensions || dimensions.height <= 0) return null;
   return dimensions.width / dimensions.height;
 }

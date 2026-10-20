@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import { countSpaceMembers, resolveGranteeName } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
@@ -39,8 +38,8 @@ import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { getUserPreferences } from "#db/space/userPreferences.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
@@ -113,19 +112,24 @@ function isSlugUniqueViolation(error: unknown): boolean {
  * and update cannot drift apart again — creation used to sanitize silently while
  * update stored whatever it was handed.
  */
-async function resolveSpaceSlug(input: string, spaceId?: string): Promise<string> {
+async function resolveSpaceSlug(
+  platform: Platform,
+  input: string,
+  spaceId?: string,
+): Promise<string> {
   const rejection = spaceSlugRejection(input);
   if (rejection) throw new InvalidSpaceSlugError(rejection);
 
   const slug = canonicalSpaceSlug(input);
-  await initializeDatabases();
-  const owner = await getIndexedSpaceBySlug(slug);
+  await initializeDatabases(platform);
+  const owner = await getIndexedSpaceBySlug(platform, slug);
   if (owner && owner.spaceId !== spaceId) throw new SpaceSlugTakenError(slug);
 
   return slug;
 }
 
 export async function createSpace(
+  platform: Platform,
   createdBy: string,
   name: string,
   slug: string,
@@ -134,9 +138,9 @@ export async function createSpace(
   const id = createId("space");
   const now = new Date();
 
-  slug = await resolveSpaceSlug(slug);
+  slug = await resolveSpaceSlug(platform, slug);
 
-  const allocation = await allocateSpaceDatabase(id);
+  const allocation = await allocateSpaceDatabase(platform, id);
   let store: SpaceStore;
   const defaultPreferences = {
     brandColor: "#1e293b",
@@ -146,8 +150,8 @@ export async function createSpace(
   };
 
   try {
-    await createAllocatedSpaceDb(id);
-    store = await openSpaceStore(id);
+    await createAllocatedSpaceDb(platform, id);
+    store = await openSpaceStore(platform, id);
     await store.tx(async (tx) => {
       await tx.db.insert(spaceMetadata).values({
         id,
@@ -170,18 +174,19 @@ export async function createSpace(
     });
 
     await upsertSpaceIndex(
+      platform,
       { id, name, slug, createdBy, createdAt: now, updatedAt: now },
       allocation.id,
       id,
     );
   } catch (error) {
-    closeSpaceDb(id);
-    await disableSpaceDatabase(allocation.id, id);
+    closeSpaceDb(platform, id);
+    await disableSpaceDatabase(platform, allocation.id, id);
     throw isSlugUniqueViolation(error) ? new SpaceSlugTakenError(slug) : error;
   }
 
   // Reuse the allocated space's store for the initial owner grant.
-  const targetName = await resolveGranteeName(createdBy);
+  const targetName = await resolveGranteeName(platform, createdBy);
   await store.tx((tx) =>
     grantPermission(
       tx,
@@ -204,11 +209,11 @@ export async function createSpace(
   };
 }
 
-export async function getSpace(id: string): Promise<Space | null> {
-  await initializeDatabases();
-  if (!(await getIndexedSpace(id))) return null;
+export async function getSpace(platform: Platform, id: string): Promise<Space | null> {
+  await initializeDatabases(platform);
+  if (!(await getIndexedSpace(platform, id))) return null;
 
-  const { db: spaceDb } = await openSpaceStore(id);
+  const { db: spaceDb } = await openSpaceStore(platform, id);
 
   const result = await one(
     spaceDb.select().from(spaceMetadata).where(eq(spaceMetadata.id, id)),
@@ -246,7 +251,7 @@ export async function getSpace(id: string): Promise<Space | null> {
 
   const preferences: Record<string, string> = Object.fromEntries(preferenceEntries);
 
-  const memberCount = await countSpaceMembers(id);
+  const memberCount = await countSpaceMembers(platform, id);
 
   return {
     id: result.id,
@@ -260,16 +265,21 @@ export async function getSpace(id: string): Promise<Space | null> {
   };
 }
 
-export async function getSpaceBySlug(slug: string): Promise<Space | null> {
-  await initializeDatabases();
-  const indexed = (await getIndexedSpaceBySlug(slug)) ?? (await getIndexedSpace(slug));
-  return indexed ? getSpace(indexed.spaceId) : null;
+export async function getSpaceBySlug(
+  platform: Platform,
+  slug: string,
+): Promise<Space | null> {
+  await initializeDatabases(platform);
+  const indexed =
+    (await getIndexedSpaceBySlug(platform, slug)) ??
+    (await getIndexedSpace(platform, slug));
+  return indexed ? getSpace(platform, indexed.spaceId) : null;
 }
 
-export async function listAllSpaces(): Promise<Space[]> {
-  await initializeDatabases();
+export async function listAllSpaces(platform: Platform): Promise<Space[]> {
+  await initializeDatabases(platform);
   const spaces = await Promise.all(
-    (await listIndexedSpaces()).map(({ spaceId }) => getSpace(spaceId)),
+    (await listIndexedSpaces(platform)).map(({ spaceId }) => getSpace(platform, spaceId)),
   );
   return spaces.filter((space): space is Space => space !== null);
 }
@@ -289,26 +299,34 @@ export async function listAllSpaces(): Promise<Space[]> {
  * `userRole`: the client caches spaces by id, so a response that omits it
  * overwrites what the last one established.
  */
-async function withUserPreferences(spaces: Space[], userId: string): Promise<Space[]> {
+async function withUserPreferences(
+  platform: Platform,
+  spaces: Space[],
+  userId: string,
+): Promise<Space[]> {
   return await Promise.all(
     spaces.map(async (space) => ({
       ...space,
-      userPreferences: await getUserPreferences(await openSpaceStore(space.id), userId),
+      userPreferences: await getUserPreferences(
+        await openSpaceStore(platform, space.id),
+        userId,
+      ),
     })),
   );
 }
 
 export async function getUserSpaceRole(
+  platform: Platform,
   space: Space,
   userId: string,
 ): Promise<Permission | undefined> {
   // Instance admins included, so a space they administer without belonging to
   // still hands the client the role the guards will decide the request at.
-  const identity = await resolveIdentity(userId);
+  const identity = await resolveIdentity(platform, userId);
   if (identity.isInstanceAdmin) return Permission.OWNER;
 
   try {
-    return highestPermission(await spaceGrants(space, userId, identity.groups));
+    return highestPermission(await spaceGrants(platform, space, userId, identity.groups));
   } catch {
     return undefined;
   }
@@ -316,11 +334,13 @@ export async function getUserSpaceRole(
 
 /** The user's own and group-inherited role grants on the space itself. */
 async function spaceGrants(
+  platform: Platform,
   space: Space,
   userId: string,
   userGroups: string[],
 ): Promise<string[]> {
   const permissions = await listUserPermissions(
+    platform,
     space.id,
     userId,
     userGroups,
@@ -338,26 +358,32 @@ async function spaceGrants(
  * one they belong to.
  */
 async function spaceMembership(
+  platform: Platform,
   space: Space,
   userId: string,
 ): Promise<{ role?: Permission; reachable: boolean }> {
   try {
-    const { groups } = await resolveIdentity(userId);
-    const role = highestPermission(await spaceGrants(space, userId, groups));
+    const { groups } = await resolveIdentity(platform, userId);
+    const role = highestPermission(await spaceGrants(platform, space, userId, groups));
     if (role) return { role, reachable: true };
-    return { reachable: await hasAnyResourceScopedAccess(space.id, userId, groups) };
+    return {
+      reachable: await hasAnyResourceScopedAccess(platform, space.id, userId, groups),
+    };
   } catch {
     return { reachable: false };
   }
 }
 
-export async function listUserSpaces(userId: string): Promise<Space[]> {
-  const allSpaces = await listAllSpaces();
-  const admin = await isInstanceAdmin(userId);
+export async function listUserSpaces(
+  platform: Platform,
+  userId: string,
+): Promise<Space[]> {
+  const allSpaces = await listAllSpaces(platform);
+  const admin = await isInstanceAdmin(platform, userId);
   const userSpaces: Space[] = [];
 
   for (const space of allSpaces) {
-    const membership = await spaceMembership(space, userId);
+    const membership = await spaceMembership(platform, space, userId);
 
     if (admin) {
       // The whole instance, at the role the guards will decide their requests
@@ -377,16 +403,17 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
     }
   }
 
-  return await withUserPreferences(userSpaces, userId);
+  return await withUserPreferences(platform, userSpaces, userId);
 }
 
-export async function listPublicSpaces(): Promise<Space[]> {
-  const allSpaces = await listAllSpaces();
+export async function listPublicSpaces(platform: Platform): Promise<Space[]> {
+  const allSpaces = await listAllSpaces(platform);
   const publicSpaces: Space[] = [];
 
   for (const space of allSpaces) {
     try {
       const canView = await canAccess(
+        platform,
         space.id,
         { type: ResourceType.SPACE, id: space.id },
         null,
@@ -408,7 +435,7 @@ export async function updateSpace(
   preferences?: Record<string, string>,
 ): Promise<Space | null> {
   const { spaceId: id } = store;
-  const existing = await getSpace(id);
+  const existing = await getSpace(store.platform, id);
   if (!existing) {
     return null;
   }
@@ -416,7 +443,7 @@ export async function updateSpace(
   // Only when it changes, so a space that predates these rules can still be
   // renamed.
   if (slug !== existing.slug) {
-    slug = await resolveSpaceSlug(slug, id);
+    slug = await resolveSpaceSlug(store.platform, slug, id);
   }
 
   const now = new Date();
@@ -458,7 +485,11 @@ export async function updateSpace(
     }
 
     try {
-      await updateIndexedSpaceMetadata(id, { name, slug, updatedAt: now });
+      await updateIndexedSpaceMetadata(store.platform, id, {
+        name,
+        slug,
+        updatedAt: now,
+      });
     } catch (indexError) {
       throw isSlugUniqueViolation(indexError)
         ? new SpaceSlugTakenError(slug)
@@ -508,35 +539,29 @@ export class SpacePurgeFailedError extends Error {
  * passed, or immediately when `purge` is set.
  */
 export async function deleteSpace(
+  platform: Platform,
   id: string,
   options: { purge?: boolean } = {},
 ): Promise<boolean> {
-  await initializeDatabases();
-  const databaseRecord = await getAssignedSpaceDatabase(id);
+  await initializeDatabases(platform);
+  const databaseRecord = await getAssignedSpaceDatabase(platform, id);
   if (!databaseRecord) return false;
 
-  closeSpaceDb(id);
+  closeSpaceDb(platform, id);
 
   let databaseExisted = true;
   const spacePath = resolveSpaceLocation(databaseRecord.location).filePath;
   if (!isInMemoryDb() && spacePath) {
-    databaseExisted = existsSync(spacePath);
-    if (databaseExisted) {
-      const archivePath = archivedSpaceDatabasePath(id);
-      mkdirSync(dirname(archivePath), { recursive: true });
-      renameSync(spacePath, archivePath);
-      // The journal files belong to the database that just moved; left behind
-      // they are a stale WAL against whatever takes that name next.
-      for (const suffix of ["-wal", "-shm"]) {
-        rmSync(`${spacePath}${suffix}`, { force: true });
-      }
-    }
+    databaseExisted = platform.spaceDatabase.archive(
+      spacePath,
+      archivedSpaceDatabasePath(id),
+    );
   }
 
-  await markSpaceDeleted(id);
+  await markSpaceDeleted(platform, id);
   if (options.purge || retentionMs() === 0) {
     try {
-      await purgeSpace(id);
+      await purgeSpace(platform, id);
     } catch (error) {
       // Logged here because the cause is what an operator needs and a caller
       // only sees which half failed.
@@ -556,24 +581,21 @@ export async function deleteSpace(
  * and its identity in the index. Idempotent, and the hard-delete path a data
  * subject request needs — after it there is nothing left to hand anyone.
  */
-export async function purgeSpace(spaceId: string): Promise<void> {
-  await initializeDatabases();
-  const record = await getSpaceDatabaseRecord(spaceId);
+export async function purgeSpace(platform: Platform, spaceId: string): Promise<void> {
+  await initializeDatabases(platform);
+  const record = await getSpaceDatabaseRecord(platform, spaceId);
   // A live space has to be deleted first: this reclaims its storage, and the
   // status is the only thing standing between an operator's typo and the data.
   if (record && record.status !== "deleted") {
     throw new Error(`Space ${spaceId} is ${record.status}, not deleted; delete it first`);
   }
-  closeSpaceDb(spaceId);
+  closeSpaceDb(platform, spaceId);
 
   // Every prefix, not just the uploads layout: a space also stores git
   // repositories and extension bundles under its own id.
-  await getFileStorage().deleteAll(spaceId);
+  await platform.blobStore.deleteAll(spaceId);
 
-  const archivePath = archivedSpaceDatabasePath(spaceId);
-  for (const suffix of ["", "-wal", "-shm"]) {
-    rmSync(`${archivePath}${suffix}`, { force: true });
-  }
+  platform.spaceDatabase.remove(archivedSpaceDatabasePath(spaceId));
 
   if (!record) return;
 
@@ -581,14 +603,14 @@ export async function purgeSpace(spaceId: string): Promise<void> {
   if (location.filePath) {
     // A local database is its file: the archive above was it, and the record
     // has nothing left to point at.
-    rmSync(location.filePath, { force: true });
-    await forgetSpaceDatabase(record.id);
+    platform.spaceDatabase.remove(location.filePath);
+    await forgetSpaceDatabase(platform, record.id);
   } else if (location.url.startsWith("file::memory:")) {
     // The connection was the database, and closing it dropped it.
-    await forgetSpaceDatabase(record.id);
+    await forgetSpaceDatabase(platform, record.id);
   } else {
-    await wipeSpaceDatabase(record);
-    await recycleSpaceDatabase(record.id);
+    await wipeSpaceDatabase(platform, record);
+    await recycleSpaceDatabase(platform, record.id);
   }
 
   appLogger.info("Purged a deleted space", { spaceId, record: record.id });
@@ -599,16 +621,19 @@ export async function purgeSpace(spaceId: string): Promise<void> {
  * ids reclaimed. One failure is logged and skipped rather than left to abort
  * the sweep: a database that cannot be reached now is retried on the next one.
  */
-export async function purgeExpiredSpaces(now: Date = new Date()): Promise<string[]> {
-  await initializeDatabases();
+export async function purgeExpiredSpaces(
+  platform: Platform,
+  now: Date = new Date(),
+): Promise<string[]> {
+  await initializeDatabases(platform);
   const retention = retentionMs();
   const purged: string[] = [];
 
-  for (const record of await listDeletedSpaceDatabases()) {
+  for (const record of await listDeletedSpaceDatabases(platform)) {
     if (!record.spaceId) continue;
     if (deletionTime(record).getTime() + retention > now.getTime()) continue;
     try {
-      await purgeSpace(record.spaceId);
+      await purgeSpace(platform, record.spaceId);
       purged.push(record.spaceId);
     } catch (error) {
       appLogger.error("Failed to purge a deleted space", {

@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 import { repoPrefix } from "./state.ts";
 
 const LFS_TYPE = "application/vnd.git-lfs+json";
@@ -60,7 +60,7 @@ export function parseLfsBatch(body: unknown): LfsBatchRequest | null {
  * The caller's credentials ride along, so the transfer is authorized like the batch.
  */
 export async function answerLfsBatch(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   request: LfsBatchRequest,
@@ -76,7 +76,8 @@ export async function answerLfsBatch(
         if (stored?.size === size) return { oid, size };
         return { oid, size, actions: { upload: action } };
       }
-      if (!stored) return { oid, size, error: { code: 404, message: "Object not found" } };
+      if (!stored)
+        return { oid, size, error: { code: 404, message: "Object not found" } };
       return { oid, size: stored.size, actions: { download: action } };
     }),
   );
@@ -85,7 +86,7 @@ export async function answerLfsBatch(
 
 /** Store an uploaded object, refusing bytes that do not hash to `oid`. */
 export async function putLfsObject(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   oid: string,
@@ -117,7 +118,7 @@ export async function putLfsObject(
 }
 
 export async function getLfsObject(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   oid: string,

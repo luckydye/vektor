@@ -14,6 +14,7 @@ import { getAuthDb } from "#db/client/db.ts";
 import { many } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import type { Platform } from "#platform/platform.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 /**
@@ -28,6 +29,7 @@ export const GET: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
 
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
@@ -37,15 +39,19 @@ export const GET: ApiRouteHandler = (context) =>
       // Member email addresses are PII: only expose them to editors/owners
       // (who need them e.g. for mentions); plain viewers get id/name/image.
       const canSeeEmails = await canAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
         Permission.EDITOR,
       );
 
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const permissions = await listPermissions(store, ResourceType.SPACE, spaceId);
-      const { directUserIds, groupMembers } = await getSpaceMembersWithGroups(spaceId);
+      const { directUserIds, groupMembers } = await getSpaceMembersWithGroups(
+        context.var.platform,
+        spaceId,
+      );
 
       // Users who only hold a document/tree/category grant (no space-wide
       // role) still need to resolve to a name/avatar wherever this endpoint
@@ -53,14 +59,17 @@ export const GET: ApiRouteHandler = (context) =>
       // mentions, the members table itself. A group grant on a category is one
       // such grant for everyone in the group, so it is expanded like the
       // space-level ones.
-      const resourceScoped = await getResourceScopedGrantees(spaceId);
+      const resourceScoped = await getResourceScopedGrantees(
+        context.var.platform,
+        spaceId,
+      );
       const resourceScopedUserIds = new Set([
         ...resourceScoped.userIds,
-        ...(await getGroupMemberIds([...resourceScoped.groupIds])),
+        ...(await getGroupMemberIds(store.platform, [...resourceScoped.groupIds])),
       ]);
 
       // Fetch user data for all members
-      const authDb = getAuthDb();
+      const authDb = getAuthDb(context.var.platform);
       const allUserIds = [
         ...new Set([...directUserIds, ...groupMembers.keys(), ...resourceScopedUserIds]),
       ];

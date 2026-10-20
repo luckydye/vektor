@@ -12,12 +12,12 @@ import {
   writeDocumentIndex,
 } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   buildDocumentSearchText,
   embedText,
   serializeEmbedding,
 } from "#search/embedding.ts";
-import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 
 const contentIndexedDocumentTypes = new Set(["document", "record"]);
 
@@ -62,8 +62,8 @@ export async function updateDocumentEmbedding(
 
   await writeDocumentIndex(s, documentId, {
     searchText,
-    searchEmbedding: serializeEmbedding(await embedText(searchText)),
-    searchEmbeddingModel: getEmbeddingModel(),
+    searchEmbedding: serializeEmbedding(await embedText(s.platform, searchText)),
+    searchEmbeddingModel: s.platform.embedder.model,
     searchUpdatedAt: new Date(),
   });
 }
@@ -91,7 +91,7 @@ export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
  */
 export async function refreshStaleDocumentIndexes(s: SpaceStore): Promise<void> {
   try {
-    const staleIds = await readStaleIndexDocumentIds(s, getEmbeddingModel());
+    const staleIds = await readStaleIndexDocumentIds(s, s.platform.embedder.model);
     for (const documentId of staleIds) {
       await updateDocumentEmbedding(s, documentId);
     }

@@ -20,7 +20,7 @@ export const ALL: ApiRouteHandler = async (context) => {
   const caldavUser = await requireBasicAuthUserAndAccess(context, { userId });
   if (caldavUser instanceof Response) return caldavUser;
 
-  const spaces = await listUserSpaces(caldavUser.id);
+  const spaces = await listUserSpaces(context.var.platform, caldavUser.id);
 
   // A caller authenticated with an access token is confined to that token's
   // space, so the calendar home must not advertise the user's other spaces —

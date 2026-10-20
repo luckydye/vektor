@@ -39,9 +39,10 @@ export async function authorizeExtensionInstall(
       );
     }
     const canManage = await hasFeature(
+      context.var.platform,
       spaceId,
       Feature.MANAGE_EXTENSIONS,
-      await resolveIdentity(parsed.userId),
+      await resolveIdentity(context.var.platform, parsed.userId),
     );
     if (!canManage) {
       throw forbiddenResponse(
@@ -51,18 +52,32 @@ export async function authorizeExtensionInstall(
     return parsed.userId;
   }
 
-  const auth = await authenticateRequest(context.var.credentials, spaceId);
+  const auth = await authenticateRequest(
+    context.var.platform,
+    context.var.credentials,
+    spaceId,
+  );
   if (auth.type === "user") {
     // The `owner` role holds `manage_extensions` by default (DEFAULT_FEATURES in
     // #acl/permissions.ts, which the client-side gate reads too), so a granted
     // co-owner may install, not only the original space creator.
-    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, auth.user.id);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.MANAGE_EXTENSIONS,
+      auth.user.id,
+    );
     return auth.user.id;
   }
 
   // Tokens need the same space-wide capability — a plain viewer/editor token
   // will not do. It is space-scoped (no resource id), so it covers installing an
   // extension the space has never seen. This is the path the CLI takes.
-  await verifyTokenFeature(auth.token, spaceId, Feature.MANAGE_EXTENSIONS);
+  await verifyTokenFeature(
+    context.var.platform,
+    auth.token,
+    spaceId,
+    Feature.MANAGE_EXTENSIONS,
+  );
   return auth.token.token.createdBy;
 }

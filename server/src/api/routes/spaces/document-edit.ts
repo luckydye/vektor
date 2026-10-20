@@ -15,6 +15,7 @@ import { getDocument, updateDocument } from "#db/space/documents.ts";
 import { createRevision } from "#db/space/revisions.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
 import { documentIsReadonly } from "#documents/types.ts";
+import type { Platform } from "#platform/platform.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";
 
 /**
@@ -34,13 +35,14 @@ export const POST: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "documentId");
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
     }
 
     const auth = await authenticateJobTokenOrSpaceRole(
+      store.platform,
       context.var.credentials,
       spaceId,
       Permission.EDITOR,
@@ -53,6 +55,7 @@ export const POST: ApiRouteHandler = (context) =>
     // hold editor on the document itself, not just on the space.
     if (auth.type === "user") {
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: id },
         auth.user.id,
@@ -70,6 +73,7 @@ export const POST: ApiRouteHandler = (context) =>
     try {
       const operations = parseEditOperations(body.operations);
       result = await transformDocumentContent(
+        context.var.platform,
         spaceId,
         id,
         (content) => applyEditOperations(content, operations),

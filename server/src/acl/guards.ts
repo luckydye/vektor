@@ -17,7 +17,7 @@
  */
 
 import {
-  AclFailure,
+  type AclFailure,
   AuthenticationRequiredError,
   CredentialRejectedError,
   InvalidAclRequestError,
@@ -62,6 +62,7 @@ import {
   verifyShareLinkProof,
 } from "#db/space/shareLinks.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
+import type { Platform } from "#platform/platform.ts";
 
 export { isAccessDenied } from "#acl/errors.ts";
 
@@ -99,9 +100,9 @@ export interface AclTarget {
  * Whether the space exists, from the index rather than by reading the space:
  * a guard needs the fact, not the metadata and preferences behind it.
  */
-async function spaceExists(spaceId: string): Promise<boolean> {
-  await initializeDatabases();
-  return (await getIndexedSpace(spaceId)) !== null;
+async function spaceExists(platform: Platform, spaceId: string): Promise<boolean> {
+  await initializeDatabases(platform);
+  return (await getIndexedSpace(platform, spaceId)) !== null;
 }
 
 /**
@@ -109,8 +110,8 @@ async function spaceExists(spaceId: string): Promise<boolean> {
  * anything that opens its database — absence is a decision, not a read error.
  * Exported for a route that reads the space before it can pick its guard.
  */
-export async function requireSpace(spaceId: string): Promise<void> {
-  if (!(await spaceExists(spaceId))) {
+export async function requireSpace(platform: Platform, spaceId: string): Promise<void> {
+  if (!(await spaceExists(platform, spaceId))) {
     throw new ResourceUnavailableError("Space");
   }
 }
@@ -127,12 +128,13 @@ export type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
  *   archived document raises above the one that was asked for.
  */
 export async function decideAccess(
+  platform: Platform,
   spaceId: string,
   target: AclTarget,
   identity: ResolvedIdentity,
   requiredRole: Permission,
 ): Promise<{ decision: AccessDecision; requiredRole: Permission }> {
-  if (!(await spaceExists(spaceId))) {
+  if (!(await spaceExists(platform, spaceId))) {
     return { decision: "no-space", requiredRole };
   }
 
@@ -140,7 +142,12 @@ export async function decideAccess(
   // whose absence is worth telling apart from a refusal.
   let effectiveRole = requiredRole;
   if (target.type === ResourceType.DOCUMENT) {
-    const document = await requiredRoleForDocument(spaceId, target.id, requiredRole);
+    const document = await requiredRoleForDocument(
+      platform,
+      spaceId,
+      target.id,
+      requiredRole,
+    );
     if (!document.exists) {
       return { decision: "no-document", requiredRole };
     }
@@ -150,6 +157,7 @@ export async function decideAccess(
   const principal = principalOf(identity);
   const groups = identity.groups;
   let granted = await hasPermission(
+    platform,
     spaceId,
     target.type,
     target.id,
@@ -162,7 +170,7 @@ export async function decideAccess(
   // refused like anyone else, not short-circuited by its anonymity. Never
   // applied to a bar the target's own state raised: presence is not that rank.
   if (!granted && target.anyGrantInSpace && effectiveRole === requiredRole) {
-    granted = await hasAnyResourceScopedAccess(spaceId, principal, groups);
+    granted = await hasAnyResourceScopedAccess(platform, spaceId, principal, groups);
   }
   // An instance admin holds every role in every space, so the check sits here
   // rather than in the routes that care: it has to hold for a delete as much as
@@ -182,6 +190,7 @@ export async function decideAccess(
  * from an absent one; authenticated denial uses {@link PermissionDeniedError}.
  */
 async function denialFailure(
+  platform: Platform,
   spaceId: string,
   decided: { decision: AccessDecision; requiredRole: Permission },
   target: AclTarget,
@@ -204,7 +213,9 @@ async function denialFailure(
   }
   // A credential hears which role it lacked, since whoever integrated it owns
   // both ends of the call. Only asked on the refusal path, so the query is free.
-  if (await hasCredentialGrant(await openSpaceStore(spaceId), identity.userId)) {
+  if (
+    await hasCredentialGrant(await openSpaceStore(platform, spaceId), identity.userId)
+  ) {
     return new PermissionDeniedError(
       `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
     );
@@ -218,15 +229,16 @@ async function denialFailure(
  * operation passes through, whatever resource it is protecting.
  */
 export async function verifyAccess(
+  platform: Platform,
   spaceId: string,
   target: AclTarget,
   who: AccessIdentity,
   requiredRole: Permission,
 ): Promise<void> {
-  const identity = await toIdentity(who);
-  const decided = await decideAccess(spaceId, target, identity, requiredRole);
+  const identity = await toIdentity(platform, who);
+  const decided = await decideAccess(platform, spaceId, target, identity, requiredRole);
   if (decided.decision === "ok") return;
-  throw await denialFailure(spaceId, decided, target, identity);
+  throw await denialFailure(platform, spaceId, decided, target, identity);
 }
 
 /**
@@ -234,14 +246,22 @@ export async function verifyAccess(
  * rather than gating a request.
  */
 export async function canAccess(
+  platform: Platform,
   spaceId: string,
   target: AclTarget,
   who: AccessIdentity,
   requiredRole: Permission,
 ): Promise<boolean> {
   return (
-    (await decideAccess(spaceId, target, await toIdentity(who), requiredRole))
-      .decision === "ok"
+    (
+      await decideAccess(
+        platform,
+        spaceId,
+        target,
+        await toIdentity(platform, who),
+        requiredRole,
+      )
+    ).decision === "ok"
   );
 }
 
@@ -259,6 +279,7 @@ export async function canAccess(
  *   credential is neither over- nor under-privileged.
  */
 export async function authenticateJobTokenOrSpaceRole(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
   requiredRole: Permission,
@@ -278,17 +299,18 @@ export async function authenticateJobTokenOrSpaceRole(
     // A token carrying a user id only grants that user's real access. Only
     // user-less system tokens keep the historical "fully trusted" behaviour.
     if (parsed.userId) {
-      await verifyAccess(spaceId, target, parsed.userId, requiredRole);
+      await verifyAccess(platform, spaceId, target, parsed.userId, requiredRole);
     }
     return { type: "job", userId: parsed.userId };
   }
 
-  const tokenResult = await authenticateWithToken(credentials, spaceId);
+  const tokenResult = await authenticateWithToken(platform, credentials, spaceId);
   if (tokenResult) {
     // Access tokens are NOT trusted job tokens: their authority is whatever the
     // ACL grants that token's id. Enforce the required role before proceeding,
     // otherwise any valid (even viewer-scoped) token passes write gates.
     await verifyAccess(
+      platform,
       spaceId,
       { type: target.type, id: target.id },
       tokenResult.tokenId,
@@ -299,7 +321,7 @@ export async function authenticateJobTokenOrSpaceRole(
 
   const user = credentials.user;
   if (!user) throw new AuthenticationRequiredError();
-  await verifyAccess(spaceId, target, user.id, requiredRole);
+  await verifyAccess(platform, spaceId, target, user.id, requiredRole);
   return { type: "user", user };
 }
 
@@ -316,6 +338,7 @@ export async function authenticateJobTokenOrSpaceRole(
  *   a trusted system caller, `""` is public.
  */
 export async function authenticateDocumentAccess(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
   documentId: string,
@@ -325,7 +348,7 @@ export async function authenticateDocumentAccess(
   // Ahead of the credential, not delegated to the guards below: authenticating
   // an access token opens the space store first, and a space that does not
   // exist must be a decision rather than the error opening its database.
-  await requireSpace(spaceId);
+  await requireSpace(platform, spaceId);
 
   const { shareLinks, ...targetOptions } = options;
   const target: AclTarget = {
@@ -342,21 +365,21 @@ export async function authenticateDocumentAccess(
     if (!parsed) throw new CredentialRejectedError();
     // Only user-less system tokens read without a per-document check.
     if (parsed.userId) {
-      await verifyAccess(spaceId, target, parsed.userId, requiredRole);
+      await verifyAccess(platform, spaceId, target, parsed.userId, requiredRole);
     }
     return { aclUserId: parsed.userId };
   }
 
-  const auth = await tryAuthenticateRequest(credentials, spaceId);
+  const auth = await tryAuthenticateRequest(platform, credentials, spaceId);
   if (auth?.type === "token") {
-    await verifyAccess(spaceId, target, auth.token.tokenId, requiredRole);
+    await verifyAccess(platform, spaceId, target, auth.token.tokenId, requiredRole);
     return { aclUserId: auth.token.tokenId };
   }
   // Asked as a boolean, not as a gate: a session that is refused may still be
   // carrying a link that admits it, and only the checks below know that.
   if (
     auth?.type === "user" &&
-    (await canAccess(spaceId, target, auth.user.id, requiredRole))
+    (await canAccess(platform, spaceId, target, auth.user.id, requiredRole))
   ) {
     return { aclUserId: auth.user.id };
   }
@@ -367,8 +390,8 @@ export async function authenticateDocumentAccess(
   // signed in to the instance is not a reason to see less of a shared page than
   // a stranger does. Every link carried is tried, not just the newest.
   if (shareLinks) {
-    for (const principal of await shareLinkPrincipals(credentials, spaceId)) {
-      if (await canAccess(spaceId, target, principal, requiredRole)) {
+    for (const principal of await shareLinkPrincipals(platform, credentials, spaceId)) {
+      if (await canAccess(platform, spaceId, target, principal, requiredRole)) {
         return { aclUserId: principal };
       }
     }
@@ -377,11 +400,11 @@ export async function authenticateDocumentAccess(
   // A refused session is told no as itself, rather than falling through to the
   // anonymous check and being told to authenticate.
   if (auth?.type === "user") {
-    await verifyAccess(spaceId, target, auth.user.id, requiredRole);
+    await verifyAccess(platform, spaceId, target, auth.user.id, requiredRole);
   }
 
   // Unauthenticated — the document check handles the `public` group.
-  await verifyAccess(spaceId, target, null, requiredRole);
+  await verifyAccess(platform, spaceId, target, null, requiredRole);
   return { aclUserId: "" };
 }
 
@@ -463,6 +486,7 @@ function scopeType(options: SpaceAccessOptions | undefined): ResourceType {
  *   allowlist a resource-scoped grantee is confined to.
  */
 async function spaceRoleOrResourceScope(
+  platform: Platform,
   spaceId: string,
   identity: ResolvedIdentity,
   requiredRole: Permission,
@@ -470,6 +494,7 @@ async function spaceRoleOrResourceScope(
 ): Promise<string[] | null> {
   try {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       identity,
@@ -485,6 +510,7 @@ async function spaceRoleOrResourceScope(
     }
 
     const scopedIds = await listAccessibleResources(
+      platform,
       spaceId,
       identity,
       scopeType(options),
@@ -511,6 +537,7 @@ async function spaceRoleOrResourceScope(
  * needs to filter rows per document, via {@link spaceAccessToViewer}.
  */
 export async function authenticateSpaceAccess(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
   requiredRole: Permission,
@@ -528,8 +555,9 @@ export async function authenticateSpaceAccess(
       // A job token is the user's own access, resource grants included: work
       // they can start from the browser must not be refused because it went
       // through an agent or a workflow.
-      const identity = await resolveIdentity(userId);
+      const identity = await resolveIdentity(platform, userId);
       const resourceScope = await spaceRoleOrResourceScope(
+        platform,
         spaceId,
         identity,
         requiredRole,
@@ -548,10 +576,11 @@ export async function authenticateSpaceAccess(
   }
 
   // 2. Session or access token
-  const auth = await tryAuthenticateRequest(credentials, spaceId);
+  const auth = await tryAuthenticateRequest(platform, credentials, spaceId);
   if (auth?.type === "user") {
-    const identity = await resolveIdentity(auth.user.id);
+    const identity = await resolveIdentity(platform, auth.user.id);
     const resourceScope = await spaceRoleOrResourceScope(
+      platform,
       spaceId,
       identity,
       requiredRole,
@@ -567,8 +596,9 @@ export async function authenticateSpaceAccess(
     };
   }
   if (auth?.type === "token") {
-    const identity = await resolveIdentity(auth.token.tokenId);
+    const identity = await resolveIdentity(platform, auth.token.tokenId);
     const resourceScope = await spaceRoleOrResourceScope(
+      platform,
       spaceId,
       identity,
       requiredRole,
@@ -584,8 +614,9 @@ export async function authenticateSpaceAccess(
   }
 
   // 3. Unauthenticated — admitted by the `public` group.
-  const anonymous = await resolveIdentity(null);
+  const anonymous = await resolveIdentity(platform, null);
   const { decision } = await decideAccess(
+    platform,
     spaceId,
     { type: ResourceType.SPACE, id: spaceId },
     anonymous,
@@ -599,6 +630,7 @@ export async function authenticateSpaceAccess(
   if (decision !== "ok") {
     const resourceScope = options?.allowResourceGrants
       ? await listAccessibleResources(
+          platform,
           spaceId,
           anonymous,
           scopeType(options),
@@ -633,11 +665,15 @@ export async function authenticateSpaceAccess(
  * call it — it has already established that the space is there.
  */
 async function requiredRoleForDocument(
+  platform: Platform,
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
 ): Promise<{ exists: boolean; requiredRole: Permission }> {
-  const state = await getDocumentAuthState(await openSpaceStore(spaceId), documentId);
+  const state = await getDocumentAuthState(
+    await openSpaceStore(platform, spaceId),
+    documentId,
+  );
   if (!state?.archived) {
     return { exists: state != null, requiredRole };
   }
@@ -657,12 +693,19 @@ async function requiredRoleForDocument(
  *   role, for a feature exercised on one document. See {@link hasFeature}.
  */
 export async function verifyFeatureAccess(
+  platform: Platform,
   spaceId: string,
   feature: Feature,
   who: AccessIdentity,
   documentId?: string,
 ): Promise<void> {
-  const hasAccess = await hasFeature(spaceId, feature, await toIdentity(who), documentId);
+  const hasAccess = await hasFeature(
+    platform,
+    spaceId,
+    feature,
+    await toIdentity(platform, who),
+    documentId,
+  );
   if (!hasAccess) {
     throw new PermissionDeniedError(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
@@ -698,6 +741,7 @@ export interface RevisionAccess {
  *   listing of the whole history, which gets no snapshot exemption.
  */
 export async function verifyRevisionAccess(
+  platform: Platform,
   spaceId: string,
   documentId: string,
   userId: string | null,
@@ -710,7 +754,10 @@ export async function verifyRevisionAccess(
 
   let publishedRev: number | null = null;
   if (requested.length > 0) {
-    const document = await getDocument(await openSpaceStore(spaceId), documentId);
+    const document = await getDocument(
+      await openSpaceStore(platform, spaceId),
+      documentId,
+    );
     if (!document) {
       throw new ResourceUnavailableError("Document");
     }
@@ -718,9 +765,10 @@ export async function verifyRevisionAccess(
   }
 
   const history = await hasFeature(
+    platform,
     spaceId,
     Feature.VIEW_HISTORY,
-    await resolveIdentity(userId),
+    await resolveIdentity(platform, userId),
     documentId,
   );
 
@@ -732,9 +780,7 @@ export async function verifyRevisionAccess(
   }
 
   if (!history) {
-    throw new PermissionDeniedError(
-      "You don't have access to the view history feature",
-    );
+    throw new PermissionDeniedError("You don't have access to the view history feature");
   }
 
   return { metadata: true };
@@ -805,7 +851,7 @@ export function extractAccessToken(credentials: CallerCredentials): string | nul
  * ```ts
  * const tokenAuth = await authenticateWithToken(credentials, spaceId);
  * if (tokenAuth) {
- *   const canEdit = await canAccess(
+ *   const canEdit = await canAccess(platform,
  *     spaceId,
  *     { type: ResourceType.DOCUMENT, id: documentId },
  *     tokenAuth.tokenId,
@@ -815,6 +861,7 @@ export function extractAccessToken(credentials: CallerCredentials): string | nul
  * ```
  */
 export async function authenticateWithToken(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
 ): Promise<ValidateTokenResult | null> {
@@ -827,7 +874,10 @@ export async function authenticateWithToken(
     throw new CredentialRejectedError();
   }
 
-  const result = await validateAccessToken(await openSpaceStore(spaceId), token);
+  const result = await validateAccessToken(
+    await openSpaceStore(platform, spaceId),
+    token,
+  );
   if (!result) {
     throw new CredentialRejectedError();
   }
@@ -844,9 +894,7 @@ interface CarriedShareLink {
   proof: string | null;
 }
 
-function shareLinksFromCookie(
-  cookie: string | null | undefined,
-): CarriedShareLink[] {
+function shareLinksFromCookie(cookie: string | null | undefined): CarriedShareLink[] {
   const value = cookie
     ?.split(";")
     .map((part) => part.trim())
@@ -884,13 +932,14 @@ export function withShareLink(cookie: string | null | undefined, link: CarriedSh
 
 /** Revalidate every carried link and password proof so revocation applies immediately. */
 async function shareLinkPrincipals(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
 ): Promise<string[]> {
   const carried = shareLinksFromCookie(credentials.cookie);
   if (carried.length === 0) return [];
 
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(platform, spaceId);
   const principals: string[] = [];
   for (const { id, proof } of carried) {
     const link = await validateShareLink(store, id);
@@ -909,20 +958,27 @@ interface ShareLinkAccess {
 
 /** Unknown, revoked and expired links fail identically. */
 export async function authenticateShareLink(
+  platform: Platform,
   spaceSlug: string,
   linkId: string,
   password: string | null,
 ): Promise<ShareLinkAccess> {
-  const found = await findShareLink(spaceSlug, linkId);
+  const found = await findShareLink(platform, spaceSlug, linkId);
   if (!found) throw new ResourceUnavailableError("Share link");
 
   if (found.link.secret) {
-    if (password === null || !(await Bun.password.verify(password, found.link.secret))) {
+    if (
+      password === null ||
+      !(await platform.passwordHasher.verify(password, found.link.secret))
+    ) {
       throw new ShareLinkPasswordRequiredError(found.link.name);
     }
   }
 
-  await markShareLinkUsed(await openSpaceStore(found.spaceId), found.link.userId);
+  await markShareLinkUsed(
+    await openSpaceStore(platform, found.spaceId),
+    found.link.userId,
+  );
 
   return {
     spaceId: found.spaceId,
@@ -939,14 +995,16 @@ export async function authenticateShareLink(
  * role's defaults include the feature.
  */
 export async function verifyTokenFeature(
+  platform: Platform,
   tokenResult: ValidateTokenResult,
   spaceId: string,
   feature: Feature,
 ): Promise<void> {
   const hasIt = await hasFeature(
+    platform,
     spaceId,
     feature,
-    await resolveIdentity(tokenResult.tokenId),
+    await resolveIdentity(platform, tokenResult.tokenId),
   );
   if (!hasIt) {
     throw new PermissionDeniedError(
@@ -960,6 +1018,7 @@ export async function verifyTokenFeature(
  * Returns { type: "user", user } or { type: "token", token }
  */
 export async function authenticateRequest(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
 ): Promise<
@@ -973,7 +1032,7 @@ export async function authenticateRequest(
   }
 
   // Try access token
-  const tokenResult = await authenticateWithToken(credentials, spaceId);
+  const tokenResult = await authenticateWithToken(platform, credentials, spaceId);
   if (tokenResult) {
     return { type: "token", token: tokenResult };
   }
@@ -988,6 +1047,7 @@ export async function authenticateRequest(
  * verify public access before proceeding.
  */
 export async function tryAuthenticateRequest(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
 ): Promise<
@@ -1000,7 +1060,7 @@ export async function tryAuthenticateRequest(
     return { type: "user", user };
   }
 
-  const tokenResult = await authenticateWithToken(credentials, spaceId);
+  const tokenResult = await authenticateWithToken(platform, credentials, spaceId);
   if (tokenResult) {
     return { type: "token", token: tokenResult };
   }

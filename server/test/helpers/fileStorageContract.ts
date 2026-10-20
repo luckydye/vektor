@@ -1,5 +1,5 @@
 /**
- * The behaviour every {@link FileStorageAdapter} owes its callers, run against
+ * The behaviour every {@link BlobStore} owes its callers, run against
  * each implementation.
  *
  * Serving, text extraction and image probing all go through this interface
@@ -9,7 +9,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 
 export async function collectStream(
   stream: ReadableStream<Uint8Array> | null,
@@ -26,7 +26,7 @@ export async function collectStream(
 }
 
 export interface FileStorageContext {
-  storage: FileStorageAdapter;
+  storage: BlobStore;
   /** The space under test. */
   space: string;
   /** A second space, to have something worth escaping towards. */

@@ -53,8 +53,12 @@ import {
 } from "#db/schema/space.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml } from "#documents/schema/render.ts";
+import { createBunPlatform } from "#platform/bun/index.ts";
 import { buildDocumentSearchText } from "#search/embedding.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
+
+// Opens databases in-process, so it runs on a platform of its own.
+const platform = createBunPlatform();
 
 // ---------------------------------------------------------------------------
 // Options
@@ -301,7 +305,7 @@ console.log(
 // Space database
 // ---------------------------------------------------------------------------
 
-const db = createDatabase(getLocalSpaceDatabaseUrl(space.id));
+const db = createDatabase(platform, getLocalSpaceDatabaseUrl(space.id));
 let created = 0;
 let revisionCount = 0;
 let rawBytes = 0;
@@ -446,7 +450,7 @@ try {
   }
   console.log(`acl        ${aclRows.length}`);
 } finally {
-  closeDatabase(db);
+  closeDatabase(platform, db);
   staging.close();
 }
 

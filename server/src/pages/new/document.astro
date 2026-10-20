@@ -4,6 +4,8 @@ import {
   resolveActiveSpaceSlug,
 } from "#utils/activeSpace.server.ts";
 
+const { platform } = Astro.locals;
+
 // Landing spot for the tabbed-mode new-tab button. Manifest members hold a
 // fixed URL and cannot name the active space, so this resolves the space the
 // same way a bare "/" does and hands off to that space's composer. Two segments
@@ -14,6 +16,7 @@ if (!Astro.locals.session) {
 }
 
 const activeSpaceSlug = await resolveActiveSpaceSlug(
+  platform,
   Astro.locals.user?.id,
   Astro.cookies.get(LAST_VISITED_SPACE_KEY)?.value,
 );

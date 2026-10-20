@@ -12,6 +12,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 const PORT = 7485;
 const BASE_URL = testBaseUrl(PORT);
@@ -44,7 +45,7 @@ function maskVolatile(body: string, slug: string): string {
 }
 
 async function assignUserToGroup(userId: string, groups: string[]): Promise<void> {
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   if (!authDb) {
     throw new Error("Auth database not available");
   }
@@ -154,7 +155,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   serverProcess?.kill();
-  if (testSpaceId) await deleteSpace(testSpaceId);
+  if (testSpaceId) await deleteSpace(platform, testSpaceId);
 });
 
 describe("Frontend ACL Tests - Document Page Access", () => {
@@ -594,7 +595,7 @@ describe("Frontend ACL Tests - Archived Document In A Public Space", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (publicSpaceId) await deleteSpace(publicSpaceId);
+    if (publicSpaceId) await deleteSpace(platform, publicSpaceId);
   });
 
   it("answers an archived url exactly as an unresolvable one, anonymously", async () => {
@@ -788,7 +789,7 @@ describe("Frontend ACL Tests - Group-Based Access", () => {
 
   it("should allow user added by groupId as editor to access space frontend", async () => {
     // Verify the user has the correct groups
-    const authDb = getAuthDb();
+    const authDb = getAuthDb(platform);
     const verifyUser = await authDb
       ?.select()
       .from(userTable)
@@ -968,7 +969,7 @@ describe("Frontend ACL Tests - Private Space Existence", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (privateSpaceId) await deleteSpace(privateSpaceId);
+    if (privateSpaceId) await deleteSpace(platform, privateSpaceId);
   });
 
   it("answers a refused space url exactly as an unresolvable one, anonymously", async () => {

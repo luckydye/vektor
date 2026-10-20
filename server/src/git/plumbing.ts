@@ -6,7 +6,7 @@
  * hand you is worse than no browser at all.
  */
 
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 import { ensureCache } from "./cache.ts";
 import { git, gitBytes } from "./run.ts";
 
@@ -61,7 +61,7 @@ export function isSafePath(path: string): boolean {
  * browse of a cold repository pays the same hydration a clone would.
  */
 async function repoDir(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,
@@ -71,7 +71,7 @@ async function repoDir(
 }
 
 export async function log(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,
@@ -113,7 +113,7 @@ export async function log(
  * repository answers without materializing a cache at all.
  */
 export async function overview(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,
@@ -136,7 +136,7 @@ export async function overview(
 }
 
 export async function tree(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,
@@ -185,7 +185,7 @@ export interface Blob {
 const MAX_BLOB_BYTES = 1024 * 1024;
 
 export async function blob(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,
@@ -218,7 +218,7 @@ export async function blob(
  * needs.
  */
 export async function raw(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   defaultBranch: string,

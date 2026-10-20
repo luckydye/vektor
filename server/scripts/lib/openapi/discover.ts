@@ -6,40 +6,42 @@ import type { RouteDoc } from "./types.ts";
 
 // `fileURLToPath(new URL(...))`, not Bun's `import.meta.dir`: this module is
 // also imported through Vite (vitest), which does not define it.
-const ROUTES_FILE = fileURLToPath(new URL("../../../src/api/routes.ts", import.meta.url));
-const API_DIR = dirname(ROUTES_FILE);
+const ROUTES_FILES = [
+  fileURLToPath(new URL("../../../src/api/routes.ts", import.meta.url)),
+  fileURLToPath(new URL("../../../src/api/gitRoutes.ts", import.meta.url)),
+];
 
 const IMPORT_PATTERN = /import \* as (\w+) from "(\.\/routes\/[^"]+)";/g;
 const ENTRY_PATTERN = /pattern:\s*"([^"]+)"[\s\S]*?module:\s*(\w+)/g;
 
 /**
  * Map every registered route pattern to the source file that answers it, read
- * straight out of `routes.ts`'s own imports and its `apiRoutes` entries. Kept
- * separate from actually importing `routes.ts` — that module's own imports
- * pull in the whole server, which a doc build has no business doing.
+ * straight out of each registry's own imports and route entries. Kept
+ * separate from actually importing the registries — their imports pull in the
+ * whole server, which a doc build has no business doing.
  */
 async function patternFilePaths(): Promise<Map<string, string>> {
-  const source = await readFile(ROUTES_FILE, "utf8");
-
-  const localNameToPath = new Map<string, string>();
-  for (const [, localName, importPath] of source.matchAll(IMPORT_PATTERN)) {
-    localNameToPath.set(localName, join(API_DIR, importPath));
-  }
-
   const patternToPath = new Map<string, string>();
-  for (const [, pattern, localName] of source.matchAll(ENTRY_PATTERN)) {
-    const path = localNameToPath.get(localName);
-    if (path) patternToPath.set(pattern, path);
+  for (const routesFile of ROUTES_FILES) {
+    const source = await readFile(routesFile, "utf8");
+
+    const localNameToPath = new Map<string, string>();
+    for (const [, localName, importPath] of source.matchAll(IMPORT_PATTERN)) {
+      localNameToPath.set(localName, join(dirname(routesFile), importPath));
+    }
+
+    for (const [, pattern, localName] of source.matchAll(ENTRY_PATTERN)) {
+      const path = localNameToPath.get(localName);
+      if (path) patternToPath.set(pattern, path);
+    }
   }
   return patternToPath;
 }
 
 /**
  * Every `RouteDoc` this build can find, read live from each route file's own
- * handler comments. Called by `scripts/generate-openapi.ts` — once ahead of
- * time for a compiled instance (`task compile`), or once per dev-server start
- * (`server.ts` shells out to that script) — so no doc-comment-parsing code
- * has to live in the runtime image.
+ * handler comments. Called by `scripts/generate-openapi.ts`, which never runs
+ * inside a compiled binary, so no doc-comment parsing lives in the runtime image.
  */
 export async function loadRouteDocs(): Promise<Record<string, RouteDoc>> {
   const patternToPath = await patternFilePaths();

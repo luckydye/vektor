@@ -24,6 +24,7 @@ import {
 import { startWorkflowRun } from "#jobs/workflowRuns.ts";
 import { readRunResumeState, type WorkflowStepCache } from "#jobs/workflowStepCache.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List workflow runs
@@ -43,16 +44,19 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.VIEWER,
     );
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     // A run is keyed to a document; its status/title must only be visible to a
     // caller who can read that document. User-less system tokens (userId null)
     // see everything.
     const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
-    const viewerGroups = aclUserId ? await getUserGroups(aclUserId) : undefined;
+    const viewerGroups = aclUserId
+      ? await getUserGroups(context.var.platform, aclUserId)
+      : undefined;
     /**
      * Readable ids out of a whole set at once. `filterReadableResources`
      * rebuilds the space's ACL picture per call — the document tree included —
@@ -61,6 +65,7 @@ export const GET: ApiRouteHandler = (context) =>
     const readableDocuments = async (docIds: string[]): Promise<Set<string>> => {
       if (!aclUserId) return new Set(docIds);
       return await filterReadableResources(
+        store.platform,
         spaceId,
         ResourceType.DOCUMENT,
         [...new Set(docIds)],
@@ -146,12 +151,13 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const auth = await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.EDITOR,
       );
       const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
 
       const body = await parseJsonBody<{
         documentId?: string;
@@ -178,7 +184,11 @@ export const POST: ApiRouteHandler = (context) =>
         // properties: the stored properties are summarized for display (secrets
         // redacted, long values truncated), so resuming from them would run the
         // workflow with corrupted inputs and miss every cached step.
-        const resumeState = await readRunResumeState(spaceId, resumeFromRunId);
+        const resumeState = await readRunResumeState(
+          store.platform,
+          spaceId,
+          resumeFromRunId,
+        );
         if (!resumeState) {
           return badRequestResponse(
             "This run has no resume state; start a new run instead",

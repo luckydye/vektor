@@ -10,9 +10,9 @@
 import type { SpaceStore } from "#db/client/store.ts";
 import { getDocumentBySlug } from "#db/space/documents.ts";
 import { repositoryDocumentType } from "#documents/types.ts";
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
-import { invalidateCache } from "./cache.ts";
+import type { Platform } from "#platform/platform.ts";
 import { repoPrefix } from "./state.ts";
 
 export interface RepositoryDocument {
@@ -50,11 +50,12 @@ export async function resolveRepository(
  * Delete every object a repository owns.
  *
  * Called when its document is deleted. Through the storage adapter rather than
- * by removing the cache directory: the cache is a copy, and dropping only that
+ * by dropping the host's local copy: that is a cache, and dropping only it
  * would leave the objects in the bucket with nothing failing to say so.
  */
 export async function deleteRepositoryObjects(
-  storage: FileStorageAdapter,
+  platform: Platform,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
 ): Promise<number> {
@@ -70,7 +71,7 @@ export async function deleteRepositoryObjects(
     cursor = page.cursor;
   } while (cursor);
 
-  await invalidateCache(spaceId, documentId);
+  await platform.git?.forget(spaceId, documentId);
   if (removed > 0) {
     appLogger.info("Deleted repository objects", { spaceId, documentId, removed });
   }

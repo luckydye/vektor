@@ -36,6 +36,7 @@ export const GET: ApiRouteHandler = caldavRoute(async (context) => {
 
   const docId = eventId.replace(/\.ics$/, "");
   const denied = await authorizeCalDAVDocument(
+    context.var.platform,
     caldavUser,
     spaceId,
     docId,
@@ -43,7 +44,10 @@ export const GET: ApiRouteHandler = caldavRoute(async (context) => {
   );
   if (denied) return denied;
 
-  const doc = await getDocument(await openSpaceStore(spaceId), docId);
+  const doc = await getDocument(
+    await openSpaceStore(context.var.platform, spaceId),
+    docId,
+  );
   if (!doc) return new Response("Not Found", { status: 404 });
 
   const ical = documentToICal(doc);
@@ -76,13 +80,14 @@ export const PUT: ApiRouteHandler = caldavRoute(async (context) => {
   if (!event) return new Response("Bad Request", { status: 400 });
 
   const docId = eventId.replace(/\.ics$/, "");
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(context.var.platform, spaceId);
   const existing = await getDocument(store, docId);
 
   if (existing) {
     // Only an update needs the per-document check: a create has no document to
     // be restricted yet, and the space-level EDITOR gate above covers it.
     const documentDenied = await authorizeCalDAVDocument(
+      context.var.platform,
       caldavUser,
       spaceId,
       docId,

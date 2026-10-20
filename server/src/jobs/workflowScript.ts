@@ -1,5 +1,6 @@
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension, getExtensionPackage } from "#db/space/extensions.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   appendRunLog,
   drainRunLogs,
@@ -33,6 +34,7 @@ import {
  * ones are recorded so a retry can resume past completed steps.
  */
 export async function executeWorkflowScript(
+  platform: Platform,
   spaceId: string,
   runId: string,
   code: string,
@@ -51,7 +53,7 @@ export async function executeWorkflowScript(
   if (!run) throw new Error(`Run not found: ${runId}`);
   const attribution = { app: run.sourceExtensionId ?? "workflow" };
 
-  setRunStatus(runId, "running");
+  setRunStatus(platform, runId, "running");
   const controller = new AbortController();
   setRunAbort(runId, () => controller.abort());
 
@@ -67,7 +69,7 @@ export async function executeWorkflowScript(
   // parent VM. Forward that activity to the parent so its inactivity deadline
   // reflects progress anywhere in the workflow tree.
   const appendWorkflowLog = (message: string, level?: "info" | "error"): void => {
-    appendRunLog(runId, message, level);
+    appendRunLog(platform, runId, message, level);
     touchWorkflowVm?.();
   };
 
@@ -81,7 +83,7 @@ export async function executeWorkflowScript(
         `resume: ${dropped} step result(s) exceeded the cache budget and will re-run on retry`,
       );
     }
-    await writeRunResumeState(spaceId, runId, {
+    await writeRunResumeState(platform, spaceId, runId, {
       inputs: runtimeInputs,
       steps: stepCache.snapshot(),
     });
@@ -120,7 +122,10 @@ export async function executeWorkflowScript(
       return cached;
     }
 
-    const extension = await getExtension(await openSpaceStore(spaceId), extensionId);
+    const extension = await getExtension(
+      await openSpaceStore(platform, spaceId),
+      extensionId,
+    );
     if (!extension) throw new Error(`Extension not found: ${extensionId}`);
 
     const jobDef = extension.manifest.jobs?.find((j) => j.id === workflowJobId);
@@ -132,7 +137,7 @@ export async function executeWorkflowScript(
     }
 
     const zipBuffer = await getExtensionPackage(
-      await openSpaceStore(spaceId),
+      await openSpaceStore(platform, spaceId),
       extensionId,
     );
     if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
@@ -140,6 +145,7 @@ export async function executeWorkflowScript(
     if (controller.signal.aborted) throw new Error("Workflow cancelled");
 
     const outputs = await runJob(
+      platform,
       zipBuffer,
       jobDef.entry,
       jobInputs,
@@ -168,6 +174,7 @@ export async function executeWorkflowScript(
 
   try {
     const output = await getJobRuntime().execute(code, {
+      platform,
       spaceId,
       jobId: `workflow:${runId}`,
       initiatedByUserId: run.initiatedByUserId,
@@ -181,18 +188,18 @@ export async function executeWorkflowScript(
       extraCapabilities: { runJob: runWorkflowJob as never },
     });
 
-    await writeRunResult(runId, output);
+    await writeRunResult(platform, runId, output);
     await persistResumeState();
-    await finalizeRun(runId);
+    await finalizeRun(platform, runId);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     appendWorkflowLog(error, "error");
-    await drainRunLogs(runId);
-    setRunError(runId, error);
-    setRunStatus(runId, "failed");
+    await drainRunLogs(platform, runId);
+    setRunError(platform, runId, error);
+    setRunStatus(platform, runId, "failed");
     // Persist whatever completed so a retry can resume past these steps. This
     // also covers cancellation, which reaches us as an abort error.
     await persistResumeState();
-    await finalizeRun(runId);
+    await finalizeRun(platform, runId);
   }
 }

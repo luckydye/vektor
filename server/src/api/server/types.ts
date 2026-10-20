@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Context } from "hono";
 import type { CallerCredentials } from "#acl/guards.ts";
+import type { Platform } from "#platform/platform.ts";
 
 export type ApiBindings = {
   Bindings: {
@@ -11,6 +12,8 @@ export type ApiBindings = {
     /** What a guard may authenticate this request with; see `hydrateRequestContext`. */
     credentials: CallerCredentials;
     params: Record<string, string | undefined>;
+    /** The target this server runs on, set once by the app factory. */
+    platform: Platform;
     publicEnv: App.Locals["publicEnv"];
     requestHeaders: Headers;
     session: App.Locals["session"];

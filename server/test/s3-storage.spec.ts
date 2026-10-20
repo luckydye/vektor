@@ -16,13 +16,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createS3FileStorage } from "#files/s3Storage.ts";
-import type { FileStorageAdapter } from "#files/storage.ts";
+import { createS3BlobStore } from "#platform/bun/s3BlobStore.ts";
+import type { BlobStore } from "#files/storage.ts";
 import { describeFileStorageContract } from "./helpers/fileStorageContract.ts";
 
 const endpoint = process.env.VEKTOR_TEST_S3_ENDPOINT;
 
-let storage: FileStorageAdapter;
+let storage: BlobStore;
 let stagingDir: string;
 // Every run gets its own prefix: the bucket outlives the suite, and a listing
 // assertion that saw a previous run's objects would fail for the wrong reason.
@@ -32,7 +32,7 @@ const SPACE = "space_1";
 describe.skipIf(!endpoint)("s3 adapter", () => {
   beforeAll(() => {
     stagingDir = mkdtempSync(join(tmpdir(), "vektor-s3-staging-"));
-    storage = createS3FileStorage({
+    storage = createS3BlobStore({
       bucket: process.env.VEKTOR_TEST_S3_BUCKET ?? "vektor-test",
       endpoint,
       region: process.env.VEKTOR_TEST_S3_REGION ?? "us-east-1",

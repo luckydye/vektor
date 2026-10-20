@@ -5,48 +5,23 @@
  * or a rendered page hands over a `Uint8Array`, and that array is what lands on
  * disk — base64 inside a JSON envelope cost a third of the file for nothing.
  * Entries are compressed unless the bytes are already a compressed format, and
- * the whole cache is held under a byte budget by evicting least-recently-read
- * entries, so a job that caches more than it should degrades instead of filling
- * the disk.
+ * the platform's store holds the whole cache under a byte budget by evicting
+ * least-recently-read entries, so a job that caches more than it should
+ * degrades instead of filling the disk.
  */
 
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  stat,
-  utimes,
-  writeFile,
-} from "node:fs/promises";
-import { join, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { config } from "#config";
-import { appLogger } from "#observability/logger.ts";
+import type { JobCacheStore } from "#platform/platform.ts";
 
 /** Base64 envelope marking binary data across the VM boundary. */
 const BYTES_KEY = "__bytes";
-
-/** Default disk budget across every job's entries. */
-const DEFAULT_MAX_BYTES = 512 * 1024 * 1024;
-
-/**
- * How much may be written before the budget is checked again. Pruning stats
- * every entry, so it runs once per batch of writes rather than per entry.
- */
-const PRUNE_AFTER_BYTES = 32 * 1024 * 1024;
 
 /** Compression that saves less than this is not worth the CPU on every read. */
 const MIN_COMPRESSION_RATIO = 0.95;
 
 /** Below this, the header dominates and compression cannot pay for itself. */
 const MIN_COMPRESSIBLE_BYTES = 1024;
-
-/** The header is one short JSON line; this bounds what a prune has to read. */
-const MAX_HEADER_BYTES = 256;
 
 /**
  * Leading bytes of formats that are already compressed: gzip, zlib, PNG, JPEG,
@@ -85,100 +60,9 @@ function looksCompressed(payload: Buffer): boolean {
   );
 }
 
-/** Resolved per call rather than at import, so `DATA_DIR` is read after config. */
-function cacheRoot(): string {
-  return join(resolve(config().DATA_DIR?.trim() || "data"), "job-cache");
-}
-
-function maxBytes(): number {
-  const configured = Number(config().JOB_CACHE_MAX_BYTES);
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MAX_BYTES;
-}
-
-/**
- * Written bytes since the last prune, process-wide: the budget covers the whole
- * cache directory, and every run writes into the same one.
- */
-let unaccountedBytes = 0;
-let pruning: Promise<void> | null = null;
-
-async function listEntries(): Promise<string[]> {
-  const root = cacheRoot();
-  const scopes = await readdir(root, { withFileTypes: true }).catch(() => []);
-  const files: string[] = [];
-  for (const scope of scopes) {
-    if (!scope.isDirectory()) continue;
-    const scopeDir = join(root, scope.name);
-    const names = await readdir(scopeDir).catch(() => [] as string[]);
-    for (const name of names) files.push(join(scopeDir, name));
-  }
-  return files;
-}
-
-/**
- * Drop expired entries, then the least recently read ones until the cache fits
- * its budget. Read time is the file's mtime, which {@link JobCache.get} touches
- * on a hit — atime is unreliable on the filesystems this runs on.
- */
-async function prune(): Promise<void> {
-  const budget = maxBytes();
-  const now = Date.now();
-  const entries: Array<{ path: string; size: number; usedAt: number }> = [];
-  let total = 0;
-
-  for (const path of await listEntries()) {
-    const info = await stat(path).catch(() => null);
-    if (!info) continue;
-    const expiresAt = await readExpiry(path);
-    if (expiresAt !== null && expiresAt <= now) {
-      await rm(path, { force: true }).catch(() => {});
-      continue;
-    }
-    entries.push({ path, size: info.size, usedAt: info.mtimeMs });
-    total += info.size;
-  }
-
-  if (total <= budget) return;
-
-  entries.sort((a, b) => a.usedAt - b.usedAt);
-  let evicted = 0;
-  for (const entry of entries) {
-    if (total <= budget) break;
-    await rm(entry.path, { force: true }).catch(() => {});
-    total -= entry.size;
-    evicted += 1;
-  }
-  appLogger.info("[jobCache] evicted least-recently-used entries", {
-    evicted,
-    remainingBytes: total,
-    budget,
-  });
-}
-
-function schedulePrune(writtenBytes: number): void {
-  unaccountedBytes += writtenBytes;
-  if (unaccountedBytes < PRUNE_AFTER_BYTES || pruning) return;
-  unaccountedBytes = 0;
-  pruning = prune()
-    .catch((error) => {
-      appLogger.warn("[jobCache] prune failed", { error: String(error) });
-    })
-    .finally(() => {
-      pruning = null;
-    });
-}
-
-/** Reads only the header line, so pruning never pulls whole blobs into memory. */
-async function readExpiry(path: string): Promise<number | null> {
-  const handle = await open(path, "r").catch(() => null);
-  if (!handle) return null;
-  try {
-    const head = Buffer.alloc(MAX_HEADER_BYTES);
-    const { bytesRead } = await handle.read(head, 0, MAX_HEADER_BYTES, 0);
-    return parseHeader(head.subarray(0, bytesRead))?.header.expiresAt ?? null;
-  } finally {
-    await handle.close().catch(() => {});
-  }
+/** When the entry whose file starts with `head` expires, or null for never. */
+export function entryExpiry(head: Buffer): number | null {
+  return parseHeader(head)?.header.expiresAt ?? null;
 }
 
 function parseHeader(file: Buffer): { header: EntryHeader; payload: Buffer } | null {
@@ -194,14 +78,19 @@ function parseHeader(file: Buffer): { header: EntryHeader; payload: Buffer } | n
   }
 }
 
-/** Cache scoped to one job id, persisted under `DATA_DIR/job-cache`. */
+/** Cache scoped to one job id, persisted in a platform's job cache store. */
 export class JobCache {
-  constructor(private readonly jobId: string) {}
+  readonly scope: string;
 
-  private path(key: string): string {
-    const scope = createHash("sha256").update(this.jobId).digest("hex").slice(0, 16);
-    const name = createHash("sha256").update(String(key)).digest("hex");
-    return join(cacheRoot(), scope, name);
+  constructor(
+    readonly store: JobCacheStore,
+    jobId: string,
+  ) {
+    this.scope = createHash("sha256").update(jobId).digest("hex").slice(0, 16);
+  }
+
+  name(key: string): string {
+    return createHash("sha256").update(String(key)).digest("hex");
   }
 
   /**
@@ -211,8 +100,7 @@ export class JobCache {
   async read(
     key: string,
   ): Promise<{ payload: Buffer; kind: EntryHeader["kind"] } | null> {
-    const path = this.path(key);
-    const file = await readFile(path).catch(() => null);
+    const file = await this.store.read(this.scope, this.name(key));
     if (!file) return null;
 
     const parsed = parseHeader(file);
@@ -235,9 +123,6 @@ export class JobCache {
       return null;
     }
 
-    // Eviction orders by mtime, so a hit has to move the entry to the front.
-    const now = new Date();
-    await utimes(path, now, now).catch(() => {});
     return { payload, kind: header.kind };
   }
 
@@ -267,15 +152,7 @@ export class JobCache {
       payload,
     ]);
 
-    const path = this.path(key);
-    await mkdir(join(path, ".."), { recursive: true });
-    // Written beside the entry and renamed, so a crashed run cannot leave a
-    // half-written file that reads as a hit.
-    const staging = `${path}.${process.pid}.tmp`;
-    await writeFile(staging, file);
-    await rename(staging, path);
-
-    schedulePrune(file.byteLength);
+    await this.store.write(this.scope, this.name(key), file);
   }
 
   /** Bytes as the host holds them; the guest path goes through {@link get}. */
@@ -330,6 +207,6 @@ export class JobCache {
   }
 
   async delete(key: string): Promise<void> {
-    await rm(this.path(key), { force: true }).catch(() => {});
+    await this.store.delete(this.scope, this.name(key));
   }
 }

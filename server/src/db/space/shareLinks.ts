@@ -9,6 +9,7 @@ import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AclEntry } from "#db/schema/space.ts";
 import { acl } from "#db/schema/space.ts";
+import type { Platform } from "#platform/platform.ts";
 
 interface CreateShareLinkOptions {
   name: string;
@@ -58,7 +59,7 @@ export async function createShareLink(
   s: SpaceStore,
   options: CreateShareLinkOptions,
 ): Promise<{ id: string; path: string }> {
-  const space = await getIndexedSpace(s.spaceId);
+  const space = await getIndexedSpace(s.platform, s.spaceId);
   if (!space) throw new Error(`Active space not found: ${s.spaceId}`);
 
   const id = createId("shareLink");
@@ -73,7 +74,9 @@ export async function createShareLink(
     createdAt: now,
     updatedAt: now,
     name: options.name,
-    secret: options.password ? await Bun.password.hash(options.password) : null,
+    secret: options.password
+      ? await s.platform.passwordHasher.hash(options.password)
+      : null,
     kind: AclKind.LINK,
     expiresAt: options.expiresAt,
     lastUsedAt: null,
@@ -108,15 +111,19 @@ export async function validateShareLink(
 
 /** Resolve only the space named by the URL; invented ids must not scan all spaces. */
 export async function findShareLink(
+  platform: Platform,
   spaceSlug: string,
   linkId: string,
 ): Promise<{ link: ValidatedShareLink; spaceId: string } | null> {
-  await initializeDatabases();
+  await initializeDatabases(platform);
 
-  const space = await getIndexedSpaceBySlug(spaceSlug);
+  const space = await getIndexedSpaceBySlug(platform, spaceSlug);
   if (!space) return null;
 
-  const result = await validateShareLink(await openSpaceStore(space.spaceId), linkId);
+  const result = await validateShareLink(
+    await openSpaceStore(platform, space.spaceId),
+    linkId,
+  );
   return result ? { link: result, spaceId: space.spaceId } : null;
 }
 

@@ -14,6 +14,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getDocumentsByIds } from "#db/space/documents.ts";
 import { createShareLink, listShareLinks } from "#db/space/shareLinks.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import type { Platform } from "#platform/platform.ts";
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 const MAX_SHARE_LINK_EXPIRY_DAYS = 365;
@@ -54,6 +55,7 @@ export const GET: ApiRouteHandler = (context) =>
     const documentId = new URL(context.req.url).searchParams.get("documentId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -61,6 +63,7 @@ export const GET: ApiRouteHandler = (context) =>
     );
     if (documentId) {
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: documentId },
         user.id,
@@ -68,7 +71,7 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const links = await listShareLinks(
       store,
       documentId
@@ -116,6 +119,7 @@ export const POST: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -128,6 +132,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     // `document_tree` stores a grant but is not itself an authorizable resource.
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: resource.resourceId },
       user.id,
@@ -144,13 +149,16 @@ export const POST: ApiRouteHandler = (context) =>
       );
     }
 
-    const link = await createShareLink(await openSpaceStore(spaceId), {
-      ...resource,
-      name: name.trim(),
-      expiresAt: addPositiveDays(new Date(), expiresInDays),
-      password: optionalPassword(password),
-      createdBy: user.id,
-    });
+    const link = await createShareLink(
+      await openSpaceStore(context.var.platform, spaceId),
+      {
+        ...resource,
+        name: name.trim(),
+        expiresAt: addPositiveDays(new Date(), expiresInDays),
+        password: optionalPassword(password),
+        createdBy: user.id,
+      },
+    );
 
     return createdResponse({ id: link.id, path: link.path });
   }, "Failed to create share link");

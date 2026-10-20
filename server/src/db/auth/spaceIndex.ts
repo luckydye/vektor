@@ -1,4 +1,3 @@
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { isInMemoryDb } from "#config";
@@ -21,6 +20,7 @@ import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
 export type ActiveSpaceIndexRecord = SpaceIndexRecord & {
@@ -148,10 +148,15 @@ export function spaceDatabaseCredentials(
 }
 
 async function inspectSpaceDatabase(
+  platform: Platform,
   location: string,
   credentials: DatabaseCredentials,
 ): Promise<IndexedSpaceMetadata | null> {
-  const database = createDatabase(resolveSpaceLocation(location).url, credentials);
+  const database = createDatabase(
+    platform,
+    resolveSpaceLocation(location).url,
+    credentials,
+  );
   try {
     const schemaObjects = await many<{ name: string }>(
       database,
@@ -177,7 +182,7 @@ async function inspectSpaceDatabase(
     }
     return metadata;
   } finally {
-    closeDatabase(database);
+    closeDatabase(platform, database);
   }
 }
 
@@ -200,19 +205,22 @@ function registrationAuthToken(
 }
 
 export async function registerAvailableSpaceDatabase(
+  platform: Platform,
   databaseUrl: string,
   authToken?: string,
 ): Promise<SpaceIndexRecord> {
   const sanitizedUrl = sanitizeRemoteSpaceDatabaseUrl(databaseUrl);
   const token = registrationAuthToken(databaseUrl, authToken);
-  const metadata = await inspectSpaceDatabase(sanitizedUrl, { authToken: token });
+  const metadata = await inspectSpaceDatabase(platform, sanitizedUrl, {
+    authToken: token,
+  });
   if (metadata) {
     throw new Error(
       "The database already contains a space; use `vektor space attach <url>` instead",
     );
   }
 
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   const existing = await one(
     authDb.select().from(spaceIndex).where(eq(spaceIndex.location, sanitizedUrl)),
   );
@@ -252,23 +260,24 @@ export async function registerAvailableSpaceDatabase(
 }
 
 export async function attachExistingSpaceDatabase(
+  platform: Platform,
   databaseUrl: string,
   authToken?: string,
 ): Promise<ActiveSpaceIndexRecord> {
   const sanitizedUrl = sanitizeRemoteSpaceDatabaseUrl(databaseUrl);
   const token = registrationAuthToken(databaseUrl, authToken);
-  const database = createDatabase(sanitizedUrl, { authToken: token });
+  const database = createDatabase(platform, sanitizedUrl, { authToken: token });
   let metadata: IndexedSpaceMetadata | undefined;
   try {
     metadata = await one(database.select().from(spaceMetadata));
   } finally {
-    closeDatabase(database);
+    closeDatabase(platform, database);
   }
   if (!metadata) {
     throw new Error("The database does not contain space metadata");
   }
 
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   const [byUrl, bySpace] = await Promise.all([
     one(authDb.select().from(spaceIndex).where(eq(spaceIndex.location, sanitizedUrl))),
     one(authDb.select().from(spaceIndex).where(eq(spaceIndex.spaceId, metadata.id))),
@@ -304,16 +313,21 @@ export async function attachExistingSpaceDatabase(
     });
   }
 
-  await upsertSpaceIndex(metadata, recordId, metadata.id);
-  return (await getIndexedSpace(metadata.id))!;
+  await upsertSpaceIndex(platform, metadata, recordId, metadata.id);
+  return (await getIndexedSpace(platform, metadata.id))!;
 }
 
-export async function listSpaceDatabaseRecords(): Promise<SpaceIndexRecord[]> {
-  return many(getAuthDb().select().from(spaceIndex));
+export async function listSpaceDatabaseRecords(
+  platform: Platform,
+): Promise<SpaceIndexRecord[]> {
+  return many(getAuthDb(platform).select().from(spaceIndex));
 }
 
-export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexRecord> {
-  const authDb = getAuthDb();
+export async function enableSpaceDatabase(
+  platform: Platform,
+  recordId: string,
+): Promise<SpaceIndexRecord> {
+  const authDb = getAuthDb(platform);
   const existing = await one(
     authDb.select().from(spaceIndex).where(eq(spaceIndex.id, recordId)),
   );
@@ -325,6 +339,7 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
   }
 
   const metadata = await inspectSpaceDatabase(
+    platform,
     existing.location,
     spaceDatabaseCredentials(existing),
   );
@@ -431,8 +446,11 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
   return enabled;
 }
 
-export async function allocateSpaceDatabase(spaceId: string): Promise<SpaceIndexRecord> {
-  const authDb = getAuthDb();
+export async function allocateSpaceDatabase(
+  platform: Platform,
+  spaceId: string,
+): Promise<SpaceIndexRecord> {
+  const authDb = getAuthDb(platform);
   const now = new Date();
 
   if (isInMemoryDb() || isLocalDatabaseMode()) {
@@ -486,10 +504,11 @@ export async function allocateSpaceDatabase(spaceId: string): Promise<SpaceIndex
  * rather than at the next space open.
  */
 export async function setSpaceDatabaseAuthToken(
+  platform: Platform,
   recordId: string,
   authToken: string,
 ): Promise<SpaceIndexRecord> {
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   const existing = await one(
     authDb.select().from(spaceIndex).where(eq(spaceIndex.id, recordId)),
   );
@@ -500,7 +519,7 @@ export async function setSpaceDatabaseAuthToken(
     throw new Error("Local space databases do not authenticate with a token");
   }
 
-  const database = createDatabase(location.url, { authToken });
+  const database = createDatabase(platform, location.url, { authToken });
   try {
     await many(database, sql.raw("SELECT 1"));
   } catch (error) {
@@ -510,7 +529,7 @@ export async function setSpaceDatabaseAuthToken(
       }`,
     );
   } finally {
-    closeDatabase(database);
+    closeDatabase(platform, database);
   }
 
   const updated = await one(
@@ -525,10 +544,11 @@ export async function setSpaceDatabaseAuthToken(
 }
 
 export async function disableSpaceDatabase(
+  platform: Platform,
   recordId: string,
   expectedSpaceId: string,
 ): Promise<void> {
-  await getAuthDb()
+  await getAuthDb(platform)
     .update(spaceIndex)
     .set({ status: "disabled", updatedAt: new Date() })
     .where(
@@ -541,11 +561,12 @@ export async function disableSpaceDatabase(
 }
 
 export async function getAssignedSpaceDatabase(
+  platform: Platform,
   spaceId: string,
 ): Promise<SpaceIndexRecord | null> {
   return (
     (await one(
-      getAuthDb()
+      getAuthDb(platform)
         .select()
         .from(spaceIndex)
         .where(
@@ -559,6 +580,7 @@ export async function getAssignedSpaceDatabase(
 }
 
 export async function upsertSpaceIndex(
+  platform: Platform,
   metadata: IndexedSpaceMetadata,
   recordId: string,
   expectedSpaceId: string,
@@ -570,7 +592,7 @@ export async function upsertSpaceIndex(
   }
 
   const updated = await one(
-    getAuthDb()
+    getAuthDb(platform)
       .update(spaceIndex)
       .set({
         spaceId: metadata.id,
@@ -600,11 +622,12 @@ export async function upsertSpaceIndex(
 }
 
 export async function updateIndexedSpaceMetadata(
+  platform: Platform,
   spaceId: string,
   values: { name: string; slug: string; updatedAt: Date },
 ): Promise<void> {
   const updated = await one(
-    getAuthDb()
+    getAuthDb(platform)
       .update(spaceIndex)
       .set(values)
       .where(and(eq(spaceIndex.spaceId, spaceId), eq(spaceIndex.status, "active")))
@@ -616,10 +639,11 @@ export async function updateIndexedSpaceMetadata(
 }
 
 export async function getIndexedSpace(
+  platform: Platform,
   spaceId: string,
 ): Promise<ActiveSpaceIndexRecord | null> {
   const record = await one(
-    getAuthDb()
+    getAuthDb(platform)
       .select()
       .from(spaceIndex)
       .where(and(eq(spaceIndex.spaceId, spaceId), eq(spaceIndex.status, "active"))),
@@ -628,10 +652,11 @@ export async function getIndexedSpace(
 }
 
 export async function getIndexedSpaceBySlug(
+  platform: Platform,
   slug: string,
 ): Promise<ActiveSpaceIndexRecord | null> {
   const record = await one(
-    getAuthDb()
+    getAuthDb(platform)
       .select()
       .from(spaceIndex)
       .where(and(eq(spaceIndex.slug, slug), eq(spaceIndex.status, "active"))),
@@ -639,9 +664,11 @@ export async function getIndexedSpaceBySlug(
   return asActiveSpace(record);
 }
 
-export async function listIndexedSpaces(): Promise<ActiveSpaceIndexRecord[]> {
+export async function listIndexedSpaces(
+  platform: Platform,
+): Promise<ActiveSpaceIndexRecord[]> {
   const records = await many(
-    getAuthDb().select().from(spaceIndex).where(eq(spaceIndex.status, "active")),
+    getAuthDb(platform).select().from(spaceIndex).where(eq(spaceIndex.status, "active")),
   );
   return records
     .map((record) => asActiveSpace(record))
@@ -654,9 +681,12 @@ export async function listIndexedSpaces(): Promise<ActiveSpaceIndexRecord[]> {
  * and this gates creation on a path that must not open every space to answer.
  * A deleted space frees its slot; a disabled one still occupies its storage.
  */
-export async function countSpacesCreatedBy(userId: string): Promise<number> {
+export async function countSpacesCreatedBy(
+  platform: Platform,
+  userId: string,
+): Promise<number> {
   const counted = await one(
-    getAuthDb()
+    getAuthDb(platform)
       .select({ spaces: sql<number>`count(*)` })
       .from(spaceIndex)
       .where(
@@ -669,13 +699,16 @@ export async function countSpacesCreatedBy(userId: string): Promise<number> {
   return counted?.spaces ?? 0;
 }
 
-export async function listActiveSpaceIds(): Promise<string[]> {
-  return (await listIndexedSpaces()).map(({ spaceId }) => spaceId);
+export async function listActiveSpaceIds(platform: Platform): Promise<string[]> {
+  return (await listIndexedSpaces(platform)).map(({ spaceId }) => spaceId);
 }
 
-export async function markSpaceDeleted(spaceId: string): Promise<void> {
+export async function markSpaceDeleted(
+  platform: Platform,
+  spaceId: string,
+): Promise<void> {
   const now = new Date();
-  await getAuthDb()
+  await getAuthDb(platform)
     .update(spaceIndex)
     .set({ status: "deleted", deletedAt: now, updatedAt: now })
     .where(eq(spaceIndex.spaceId, spaceId));
@@ -685,9 +718,11 @@ export async function markSpaceDeleted(spaceId: string): Promise<void> {
  * Every deleted space still holding its data, oldest deletion first, so a purge
  * reclaims in the order the retention window expires.
  */
-export async function listDeletedSpaceDatabases(): Promise<SpaceIndexRecord[]> {
+export async function listDeletedSpaceDatabases(
+  platform: Platform,
+): Promise<SpaceIndexRecord[]> {
   const records = await many(
-    getAuthDb().select().from(spaceIndex).where(eq(spaceIndex.status, "deleted")),
+    getAuthDb(platform).select().from(spaceIndex).where(eq(spaceIndex.status, "deleted")),
   );
   return records.sort((a, b) => deletionTime(a).getTime() - deletionTime(b).getTime());
 }
@@ -709,9 +744,16 @@ export function deletionTime(record: SpaceIndexRecord): Date {
  * purge empties it instead and {@link recycleSpaceDatabase} returns it to the
  * pool for the next space.
  */
-export async function wipeSpaceDatabase(record: SpaceIndexRecord): Promise<void> {
+export async function wipeSpaceDatabase(
+  platform: Platform,
+  record: SpaceIndexRecord,
+): Promise<void> {
   const location = resolveSpaceLocation(record.location);
-  const database = createDatabase(location.url, spaceDatabaseCredentials(record));
+  const database = createDatabase(
+    platform,
+    location.url,
+    spaceDatabaseCredentials(record),
+  );
   try {
     // Dropping in an arbitrary order otherwise trips a reference from a table
     // that has not been dropped yet.
@@ -743,7 +785,7 @@ export async function wipeSpaceDatabase(record: SpaceIndexRecord): Promise<void>
       }),
     );
   } finally {
-    closeDatabase(database);
+    closeDatabase(platform, database);
   }
 }
 
@@ -751,9 +793,12 @@ export async function wipeSpaceDatabase(record: SpaceIndexRecord): Promise<void>
  * Return a purged database to the pool, forgetting which space held it. The
  * token stays: it authenticates the database, not the space.
  */
-export async function recycleSpaceDatabase(recordId: string): Promise<void> {
+export async function recycleSpaceDatabase(
+  platform: Platform,
+  recordId: string,
+): Promise<void> {
   const now = new Date();
-  await getAuthDb()
+  await getAuthDb(platform)
     .update(spaceIndex)
     .set({
       status: "available",
@@ -773,26 +818,34 @@ export async function recycleSpaceDatabase(recordId: string): Promise<void> {
  * file. A recycled hosted database keeps its row; there is nothing left here to
  * hand the next space.
  */
-export async function forgetSpaceDatabase(recordId: string): Promise<void> {
-  await getAuthDb().delete(spaceIndex).where(eq(spaceIndex.id, recordId));
+export async function forgetSpaceDatabase(
+  platform: Platform,
+  recordId: string,
+): Promise<void> {
+  await getAuthDb(platform).delete(spaceIndex).where(eq(spaceIndex.id, recordId));
 }
 
 /** The index row for a space whatever its status, for deletion bookkeeping. */
 export async function getSpaceDatabaseRecord(
+  platform: Platform,
   spaceId: string,
 ): Promise<SpaceIndexRecord | null> {
   return (
     (await one(
-      getAuthDb().select().from(spaceIndex).where(eq(spaceIndex.spaceId, spaceId)),
+      getAuthDb(platform)
+        .select()
+        .from(spaceIndex)
+        .where(eq(spaceIndex.spaceId, spaceId)),
     )) ?? null
   );
 }
 
 async function indexLocalSpace(
+  platform: Platform,
   location: string,
   metadata: IndexedSpaceMetadata,
 ): Promise<void> {
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   const existing = await one(
     authDb
       .select()
@@ -867,31 +920,31 @@ export async function resolveLocalSpaceSlugCollision(
   return { ...metadata, slug, updatedAt };
 }
 
-export async function reconcileLocalSpaceIndex(): Promise<void> {
+export async function reconcileLocalSpaceIndex(platform: Platform): Promise<void> {
   if (!isLocalDatabaseMode() || isInMemoryDb()) return;
 
   const spacesDirectory = getLocalSpacesDirectory();
-  if (!existsSync(spacesDirectory)) mkdirSync(spacesDirectory, { recursive: true });
-
-  const discoveredFiles = readdirSync(spacesDirectory)
-    .filter((name) => name.endsWith(".db"))
-    .map((name) => path.join(spacesDirectory, name));
+  const discoveredFiles = platform.spaceDatabase.listFiles(spacesDirectory);
   const discoveredPaths = new Set(discoveredFiles.map((file) => path.resolve(file)));
 
   for (const databasePath of discoveredFiles) {
     const location = getLocalSpaceDatabaseUrl(path.basename(databasePath, ".db"));
-    const database = createDatabase(resolveSpaceLocation(location).url);
+    const database = createDatabase(platform, resolveSpaceLocation(location).url);
     let metadata: IndexedSpaceMetadata | undefined;
     try {
       metadata = await one(database.select().from(spaceMetadata));
       if (metadata) {
-        metadata = await resolveLocalSpaceSlugCollision(getAuthDb(), database, metadata);
+        metadata = await resolveLocalSpaceSlugCollision(
+          getAuthDb(platform),
+          database,
+          metadata,
+        );
       }
     } catch {
       // Ignore files that are not initialized space databases. They remain on
       // disk for an operator to inspect and are never added to the live index.
     } finally {
-      closeDatabase(database);
+      closeDatabase(platform, database);
     }
     if (!metadata) continue;
     const space = metadata;
@@ -899,7 +952,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     // `initializeDatabases` caches its promise, so a throw here would reject
     // every later database call for the life of the process. Two space files
     // claiming one slug is how that happens: the index refuses the second.
-    await indexLocalSpace(location, space).catch((error: unknown) =>
+    await indexLocalSpace(platform, location, space).catch((error: unknown) =>
       appLogger.error("Failed to index a local space", {
         spaceId: space.id,
         location: withoutDatabaseCredentials(location),
@@ -909,7 +962,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
   }
 
   const indexedDatabases = await many(
-    getAuthDb()
+    getAuthDb(platform)
       .select()
       .from(spaceIndex)
       .where(inArray(spaceIndex.status, ["claimed", "active"])),
@@ -919,7 +972,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     const filePath = resolveSpaceLocation(indexed.location).filePath;
     if (!filePath?.startsWith(`${spacesDirectory}${path.sep}`)) continue;
     if (!discoveredPaths.has(path.resolve(filePath))) {
-      await markSpaceDeleted(indexed.spaceId);
+      await markSpaceDeleted(platform, indexed.spaceId);
     }
   }
 }

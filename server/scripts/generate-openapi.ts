@@ -1,25 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Freezes the OpenAPI document — the route registry plus each handler's own
+ * Freezes the OpenAPI document — the route registries plus each handler's own
  * doc comments — into `generated/openapi.ts`, embedded in the compiled binary
- * the same way `build.ts` embeds the client assets. Run by `task compile`,
- * before `bun build --compile`, while the route files this reads still exist
- * as plain source on disk.
- *
- * `server.ts` shells out to this same script once at every dev-server start
- * (before accepting requests), so `/api/v1/openapi.json` always matches what
- * is on disk — without any doc-comment-parsing code living in the runtime
- * image itself.
+ * the same way `build.ts` embeds the client assets. Run by `task compile` while
+ * the route files still exist as plain source, and in-process by `server.ts`
+ * whenever it starts from source.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { gitRoutes } from "#api/gitRoutes.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { loadRouteDocs } from "./lib/openapi/discover.ts";
 import { buildOpenApiDocument } from "./lib/openapi/document.ts";
 
 export async function generateOpenApiModule(): Promise<void> {
   const routeDocs = await loadRouteDocs();
-  const document = buildOpenApiDocument(apiRoutes, routeDocs);
+  const document = buildOpenApiDocument([...apiRoutes, ...gitRoutes], routeDocs);
 
   const outputFile = join(import.meta.dir, "../generated/openapi.ts");
   const content = [

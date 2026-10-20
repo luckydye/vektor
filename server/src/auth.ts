@@ -5,10 +5,11 @@ import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { NO_GROUPS, sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import { config, isHttpsSite } from "./config.ts";
 import type { Database } from "./db/client/connection.ts";
-import { getAuthDb } from "./db/client/db.ts";
+import { getAuthDb } from "./db/client/connection.ts";
 import * as schema from "./db/schema/auth.ts";
 import { desktopAuth } from "./desktopAuth.ts";
 import { federationOf, federationPlugins, peerOAuthConfigs } from "./peerFederation.ts";
+import type { Platform } from "./platform/platform.ts";
 
 type AppConfig = ReturnType<typeof config>;
 
@@ -179,13 +180,14 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
   });
 }
 
-const appConfig = config();
-const authDb = getAuthDb();
+export type Auth = ReturnType<typeof createAuth>;
 
-if (!authDb) {
-  throw new Error("Failed to get authDb");
+export function authTrustedOrigins(): string[] {
+  return trustedOriginsFor(config());
 }
 
-export const authTrustedOrigins = trustedOriginsFor(appConfig);
-
-export const auth = createAuth(appConfig, authDb);
+/** The platform's auth instance, built from its auth database on first use. */
+export function getAuth(platform: Platform): Auth {
+  platform.state.auth ??= createAuth(config(), getAuthDb(platform));
+  return platform.state.auth;
+}

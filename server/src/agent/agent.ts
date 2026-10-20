@@ -1,14 +1,16 @@
 import type { AgentSpace } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   type AgentEvent,
+  type AgentHost,
   type AgentResult,
   AgentTurnError,
   type AgentTurnSetup,
   type SettleAITokens,
 } from "./core.ts";
-import { mainThreadAgentHost } from "./host.ts";
+import { createAgentHost } from "./host.ts";
 import { getIntegrationAgentSurface } from "./integrations.ts";
 import type {
   AgentHostCall,
@@ -35,15 +37,18 @@ type PendingTurn = {
   provider?: AIProvider;
 };
 
-let worker: Worker | null = null;
+/** One worker per platform, answered by a host on that platform. */
+const workers = new WeakMap<Platform, Worker>();
 let nextTurnId = 1;
 let nextReservationId = 1;
 const turns = new Map<number, PendingTurn>();
 /** Token reservations a worker made and has yet to settle. */
 const reservations = new Map<number, SettleAITokens>();
 
-function getWorker(): Worker {
-  if (worker) return worker;
+function getWorker(platform: Platform): Worker {
+  const existing = workers.get(platform);
+  if (existing) return existing;
+  const host = createAgentHost(platform);
   // In the compiled binary every module's import.meta.url is the binary's own
   // (`$bunfs/root/vektor`), and build.ts embeds the worker entrypoint under its
   // path from the build root.
@@ -52,13 +57,13 @@ function getWorker(): Worker {
     : new URL("./worker.ts", import.meta.url);
   const spawned = new Worker(workerUrl, { type: "module" });
   spawned.addEventListener("message", (event: MessageEvent<AgentWorkerResponse>) =>
-    handleWorkerMessage(spawned, event.data),
+    handleWorkerMessage(host, spawned, event.data),
   );
   // The sessions' shells die with the worker; each session's next turn
   // restores its shell from the snapshot saved with the session.
   const fail = (reason: string) => {
-    if (worker !== spawned) return;
-    worker = null;
+    if (workers.get(platform) !== spawned) return;
+    workers.delete(platform);
     spawned.terminate();
     reservations.clear();
     for (const [turnId, turn] of turns) {
@@ -74,19 +79,22 @@ function getWorker(): Worker {
   spawned.addEventListener("close", () => fail("Agent worker exited"));
   // An idle worker must not keep a CLI or test process alive.
   spawned.unref();
-  worker = spawned;
+  workers.set(platform, spawned);
   return spawned;
 }
 
-export function stopAgentWorker(): void {
-  const stopping = worker;
-  worker = null;
-  stopping?.terminate();
+export function stopAgentWorker(platform: Platform): void {
+  workers.get(platform)?.terminate();
+  workers.delete(platform);
 }
 
-function handleWorkerMessage(source: Worker, message: AgentWorkerResponse): void {
+function handleWorkerMessage(
+  host: AgentHost,
+  source: Worker,
+  message: AgentWorkerResponse,
+): void {
   if (message.type === "hostCall") {
-    void answerHostCall(source, message);
+    void answerHostCall(host, source, message);
     return;
   }
 
@@ -115,10 +123,11 @@ function handleWorkerMessage(source: Worker, message: AgentWorkerResponse): void
 }
 
 async function answerHostCall(
+  host: AgentHost,
   source: Worker,
   message: { callId: number } & AgentHostCall,
 ): Promise<void> {
-  const request: AgentWorkerRequest = await callHost(message).then(
+  const request: AgentWorkerRequest = await callHost(host, message).then(
     (value) => ({ type: "hostResult", callId: message.callId, ok: true, value }),
     (error: unknown) => ({
       type: "hostResult",
@@ -130,10 +139,10 @@ async function answerHostCall(
   source.postMessage(request);
 }
 
-async function callHost(call: AgentHostCall): Promise<unknown> {
+async function callHost(host: AgentHost, call: AgentHostCall): Promise<unknown> {
   switch (call.method) {
     case "reserveAITokens": {
-      const settle = await mainThreadAgentHost.reserveAITokens(...call.args);
+      const settle = await host.reserveAITokens(...call.args);
       const reservationId = nextReservationId++;
       reservations.set(reservationId, settle);
       return reservationId;
@@ -147,7 +156,7 @@ async function callHost(call: AgentHostCall): Promise<unknown> {
       return null;
     }
     case "runIntegrationCommand":
-      return mainThreadAgentHost.runIntegrationCommand(...call.args);
+      return host.runIntegrationCommand(...call.args);
     case "integrationAccessToken": {
       const provider = turns.get(call.args[0])?.provider;
       if (provider?.provider !== "integration") {
@@ -166,35 +175,39 @@ function toWorkerProvider(provider?: AIProvider): AgentWorkerProvider | undefine
 }
 
 /** Runs one agent turn in the agent worker. */
-export async function runAgentInWorker(options: {
-  chatId: string;
-  messages: ChatMessage[];
-  apiUrl: string;
-  spaceId: string;
-  documentId?: string;
-  connectedProviders: string[];
-  userProfile?: string;
-  timeZone?: string;
-  systemPrompt?: string;
-  userId?: string | null;
-  provider?: AIProvider;
-  jobToken: string;
-  /** Every space the turn works in, `spaceId` included, when there are several. */
-  spaces?: AgentSpace[];
-  shellSnapshot?: string | null;
-  signal?: AbortSignal;
-  onEvent?: (event: AgentEvent) => void | Promise<void>;
-  onSetup?: (setup: AgentTurnSetup) => void;
-}): Promise<AgentResult> {
+export async function runAgentInWorker(
+  platform: Platform,
+  options: {
+    chatId: string;
+    messages: ChatMessage[];
+    apiUrl: string;
+    spaceId: string;
+    documentId?: string;
+    connectedProviders: string[];
+    userProfile?: string;
+    timeZone?: string;
+    systemPrompt?: string;
+    userId?: string | null;
+    provider?: AIProvider;
+    jobToken: string;
+    /** Every space the turn works in, `spaceId` included, when there are several. */
+    spaces?: AgentSpace[];
+    shellSnapshot?: string | null;
+    signal?: AbortSignal;
+    onEvent?: (event: AgentEvent) => void | Promise<void>;
+    onSetup?: (setup: AgentTurnSetup) => void;
+  },
+): Promise<AgentResult> {
   const { signal, onEvent, onSetup, provider, ...request } = options;
   const integrationSurface = await getIntegrationAgentSurface(
+    platform,
     options.spaceId,
     options.connectedProviders,
   );
   signal?.throwIfAborted();
 
   const turnId = nextTurnId++;
-  const target = getWorker();
+  const target = getWorker(platform);
   const abort = () => target.postMessage({ type: "abort", turnId });
   signal?.addEventListener("abort", abort, { once: true });
   try {

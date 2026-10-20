@@ -15,6 +15,7 @@ import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
 import { maxWeeklyAITokens } from "#db/space/aiConfig.ts";
 import { getAIUsage } from "#db/space/aiUsage.ts";
+import type { Platform } from "#platform/platform.ts";
 
 const KEY = "aiWeeklyTokenLimit";
 
@@ -26,12 +27,15 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.OWNER,
     );
-    return jsonResponse(await getAIUsage(await openSpaceStore(spaceId)));
+    return jsonResponse(
+      await getAIUsage(await openSpaceStore(context.var.platform, spaceId)),
+    );
   }, "Failed to read AI usage");
 
 /** Set a space budget up to the operator's maximum.
@@ -42,6 +46,7 @@ export const PUT: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -59,7 +64,7 @@ export const PUT: ApiRouteHandler = (context) =>
         `limit must be a positive integer at most ${maxWeeklyAITokens()}`,
       );
     }
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const now = new Date();
     await store.tx(async (tx) => {
       const [existing] = await tx.db

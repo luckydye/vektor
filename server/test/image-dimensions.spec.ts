@@ -15,8 +15,9 @@
 import { describe, expect, it } from "vitest";
 import { getUploadImageAspectRatio, getUploadImageDimensions } from "#db/space/files.ts";
 import { readImageDimensions } from "#files/imageDimensions.ts";
-import { getNativeImage } from "#files/native.ts";
+import { getNativeImage } from "#platform/bun/native.ts";
 import { uploadKeyFromUrl } from "#files/uploads.ts";
+import { platform } from "./helpers/platform.ts";
 
 const native = await getNativeImage();
 if (!native) {
@@ -133,9 +134,9 @@ describe("uploadKeyFromUrl", () => {
 describe("upload image dimensions", () => {
   it("returns null for a URL that names no upload", async () => {
     expect(
-      await getUploadImageAspectRatio("space_1", "https://example.com/photo.jpg"),
+      await getUploadImageAspectRatio(platform, "space_1", "https://example.com/photo.jpg"),
     ).toBeNull();
-    expect(await getUploadImageAspectRatio("space_1", undefined)).toBeNull();
-    expect(await getUploadImageDimensions("space_1", "/not/an/upload/url")).toBeNull();
+    expect(await getUploadImageAspectRatio(platform, "space_1", undefined)).toBeNull();
+    expect(await getUploadImageDimensions(platform, "space_1", "/not/an/upload/url")).toBeNull();
   });
 });

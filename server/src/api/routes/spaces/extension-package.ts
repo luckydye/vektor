@@ -9,6 +9,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtensionPackage } from "#db/space/extensions.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Download the installed extension package
@@ -26,9 +27,14 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
 
-    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.MANAGE_EXTENSIONS,
+      user.id,
+    );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const pkg = await getExtensionPackage(store, extensionId);
     if (!pkg) {
       return notFoundResponse("Extension");

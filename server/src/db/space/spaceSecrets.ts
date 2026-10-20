@@ -181,6 +181,7 @@ export async function userCanReadSpaceSecret(
   }
 
   return canAccess(
+    s.platform,
     s.spaceId,
     { type: ResourceType.SPACE, id: s.spaceId },
     userId,

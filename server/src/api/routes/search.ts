@@ -37,7 +37,7 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       return jsonResponse({
-        results: await searchOtherSpaces(user.id, query, {
+        results: await searchOtherSpaces(context.var.platform, user.id, query, {
           excludeSpaceId: searchParams.get("excludeSpaceId") ?? undefined,
           filters,
         }),

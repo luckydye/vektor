@@ -14,6 +14,7 @@ import { getSpaceBySlug } from "#db/space/spaces.ts";
 import { createVektorDocumentAddress } from "#documents/address.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { assertPublicUrl, SsrfError, safeFetch } from "#utils/ssrf.ts";
 
@@ -493,13 +494,13 @@ export const GET: ApiRouteHandler = (context) =>
           return jsonResponse(cached);
         }
 
-        const space = await getSpaceBySlug(internalPath.spaceSlug);
+        const space = await getSpaceBySlug(context.var.platform, internalPath.spaceSlug);
         if (!space) {
           throw badRequestResponse("Space not found");
         }
 
         const doc = await getDocumentBySlug(
-          await openSpaceStore(space.id),
+          await openSpaceStore(context.var.platform, space.id),
           internalPath.documentSlug,
         );
         if (!doc) {
@@ -509,6 +510,7 @@ export const GET: ApiRouteHandler = (context) =>
         const userId = context.var.user?.id || null;
         try {
           await verifyAccess(
+            context.var.platform,
             space.id,
             { type: ResourceType.DOCUMENT, id: doc.id },
             userId,

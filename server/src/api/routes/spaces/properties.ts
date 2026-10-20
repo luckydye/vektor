@@ -4,6 +4,7 @@ import { jsonResponse, requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { listSpaceProperties } from "#db/space/properties.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List the document property keys used in a space, with their types
@@ -14,9 +15,14 @@ import { listSpaceProperties } from "#db/space/properties.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
+    await authenticateSpaceAccess(
+      context.var.platform,
+      context.var.credentials,
+      spaceId,
+      Permission.VIEWER,
+    );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const parentId = new URL(context.req.url).searchParams.get("parentId") ?? undefined;
     const properties = await listSpaceProperties(store, { parentId });
 

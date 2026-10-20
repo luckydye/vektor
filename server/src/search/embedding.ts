@@ -6,7 +6,7 @@
 
 import type { DocumentProperties } from "#documents/properties.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import { embedTexts, getEmbeddingModel } from "#search/embeddingRuntime.ts";
+import type { Platform } from "#platform/platform.ts";
 import { normalizeText, stripMarkup } from "#search/text.ts";
 
 export function buildDocumentSearchText(
@@ -23,10 +23,10 @@ export function buildDocumentSearchText(
   return [title, title, propertyText, content, fileText].filter(Boolean).join("\n\n");
 }
 
-export async function embedText(text: string): Promise<number[]> {
-  const [embedding] = await embedTexts([text]);
+export async function embedText(platform: Platform, text: string): Promise<number[]> {
+  const [embedding] = await platform.embedder.embed([text]);
   if (!embedding) {
-    throw new Error("Native embedding runtime returned no vector");
+    throw new Error("The embedder returned no vector");
   }
   return embedding;
 }
@@ -36,9 +36,12 @@ export async function embedText(text: string): Promise<number[]> {
  * embedding runtime is unavailable — search then falls back to keyword matching
  * rather than failing.
  */
-export async function embedSearchQuery(query: string): Promise<number[] | null> {
+export async function embedSearchQuery(
+  platform: Platform,
+  query: string,
+): Promise<number[] | null> {
   try {
-    return await embedText(query.trim());
+    return await embedText(platform, query.trim());
   } catch {
     return null;
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getNativeExec } from "#exec/native.ts";
+import { getNativeExec } from "#platform/bun/native.ts";
 import { PRELUDE } from "#jobs/runtime/prelude.ts";
 
 describe("native JavaScript runtime", () => {

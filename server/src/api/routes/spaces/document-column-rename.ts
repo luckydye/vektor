@@ -21,6 +21,7 @@ import {
   InvalidDocumentPropertyPatchError,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Rename a database column, on every row and in the database's `_schema`
@@ -35,13 +36,14 @@ export const POST: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
       const id = requireParam(context.var.params, "documentId");
       const { aclUserId } = await authenticateDocumentAccess(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         id,
         Permission.EDITOR,
       );
 
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const database = await getDocument(store, id);
       if (database?.type !== "database") throw notFoundResponse("Database");
 

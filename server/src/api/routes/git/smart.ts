@@ -13,10 +13,8 @@ import { type BasicAuthUser, verifyBasicAuth } from "#api/basicAuth.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getSpaceBySlug } from "#db/space/spaces.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { ensureCache, invalidateCache, withRepoLock } from "#git/cache.ts";
 import { runHttpBackend } from "#git/httpBackend.ts";
-import { publishPush, readRefs } from "#git/publish.ts";
 import {
   answerLfsBatch,
   getLfsObject,
@@ -25,8 +23,10 @@ import {
   parseLfsBatch,
   putLfsObject,
 } from "#git/lfs.ts";
+import { publishPush, readRefs } from "#git/publish.ts";
 import { type RepositoryDocument, resolveRepository } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * The conventional suffix on a clone URL. Optional here — the `git` segment in
@@ -66,7 +66,10 @@ function isWrite(path: string, query: string): boolean {
 async function authenticate(context: ApiContext): Promise<BasicAuthUser | null> {
   const user = context.var.user;
   if (user) return { id: user.id, email: user.email, name: user.name };
-  return verifyBasicAuth(context.req.raw.headers.get("Authorization"));
+  return verifyBasicAuth(
+    context.var.platform,
+    context.req.raw.headers.get("Authorization"),
+  );
 }
 
 /**
@@ -77,6 +80,7 @@ async function authenticate(context: ApiContext): Promise<BasicAuthUser | null> 
  * the user's full reach everywhere they belong.
  */
 async function mayReach(
+  platform: Platform,
   caller: BasicAuthUser,
   spaceId: string,
   documentId: string,
@@ -87,13 +91,14 @@ async function mayReach(
   const target = { type: ResourceType.DOCUMENT, id: documentId };
   if (caller.token) {
     if (caller.token.spaceId !== spaceId) return false;
-    return canAccess(spaceId, target, caller.token.result.tokenId, required);
+    return canAccess(platform, spaceId, target, caller.token.result.tokenId, required);
   }
-  return canAccess(spaceId, target, caller.id, required);
+  return canAccess(platform, spaceId, target, caller.id, required);
 }
 
 /** Null when `caller` may read the repository, or also push to it for a `write`. */
 async function authorize(
+  platform: Platform,
   caller: BasicAuthUser,
   spaceId: string,
   repository: RepositoryDocument,
@@ -102,7 +107,7 @@ async function authorize(
   const required = write ? Permission.EDITOR : Permission.VIEWER;
   let allowed = false;
   try {
-    allowed = await mayReach(caller, spaceId, repository.id, required);
+    allowed = await mayReach(platform, caller, spaceId, repository.id, required);
   } catch (error) {
     if (!(error instanceof AclFailure)) throw error;
   }
@@ -110,7 +115,7 @@ async function authorize(
   // different answers: the second already knows it exists.
   if (!allowed) {
     if (!write) return notFound();
-    return (await mayReach(caller, spaceId, repository.id, Permission.VIEWER))
+    return (await mayReach(platform, caller, spaceId, repository.id, Permission.VIEWER))
       ? new Response("Write access required\n", { status: 403 })
       : notFound();
   }
@@ -135,12 +140,18 @@ async function handleLfs(
   path: string,
 ): Promise<Response> {
   const method = context.req.method;
-  const storage = getFileStorage();
+  const storage = context.var.platform.blobStore;
 
   if (path === "objects/batch" && method === "POST") {
     const request = parseLfsBatch(await context.req.raw.json().catch(() => null));
     if (!request) return lfsResponse(422, { message: "Unsupported batch request" });
-    const refused = await authorize(caller, spaceId, repository, request.operation === "upload");
+    const refused = await authorize(
+      context.var.platform,
+      caller,
+      spaceId,
+      repository,
+      request.operation === "upload",
+    );
     if (refused) return refused;
     const batchUrl = new URL(context.req.raw.url);
     return answerLfsBatch(
@@ -156,12 +167,24 @@ async function handleLfs(
   const oid = path.startsWith("objects/") ? path.slice("objects/".length) : "";
   const body = context.req.raw.body;
   if (isLfsOid(oid) && method === "PUT" && body) {
-    const refused = await authorize(caller, spaceId, repository, true);
+    const refused = await authorize(
+      context.var.platform,
+      caller,
+      spaceId,
+      repository,
+      true,
+    );
     if (refused) return refused;
     return putLfsObject(storage, spaceId, repository.id, oid, body);
   }
   if (isLfsOid(oid) && method === "GET") {
-    const refused = await authorize(caller, spaceId, repository, false);
+    const refused = await authorize(
+      context.var.platform,
+      caller,
+      spaceId,
+      repository,
+      false,
+    );
     if (refused) return refused;
     return getLfsObject(storage, spaceId, repository.id, oid);
   }
@@ -196,10 +219,13 @@ export const ALL: ApiRouteHandler = async (context) => {
     ? repoParam.slice(0, -GIT_SUFFIX.length)
     : repoParam;
 
-  const space = await getSpaceBySlug(spaceSlug);
+  const space = await getSpaceBySlug(context.var.platform, spaceSlug);
   if (!space) return notFound();
 
-  const repository = await resolveRepository(await openSpaceStore(space.id), slug);
+  const repository = await resolveRepository(
+    await openSpaceStore(context.var.platform, space.id),
+    slug,
+  );
   if (!repository) return notFound();
 
   const caller = await authenticate(context);
@@ -211,10 +237,16 @@ export const ALL: ApiRouteHandler = async (context) => {
 
   const query = new URL(context.req.raw.url).search.slice(1);
   const write = isWrite(path, query);
-  const refused = await authorize(caller, space.id, repository, write);
+  const refused = await authorize(
+    context.var.platform,
+    caller,
+    space.id,
+    repository,
+    write,
+  );
   if (refused) return refused;
 
-  const storage = getFileStorage();
+  const storage = context.var.platform.blobStore;
 
   if (!write) {
     const cache = await ensureCache(

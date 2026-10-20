@@ -43,7 +43,9 @@ export function DesktopAppPreferences(props: Props) {
     <>
       <section>
         <div class="mb-3">
-          <h2 class="font-semibold text-foreground text-size-medium">{t("Desktop App")}</h2>
+          <h2 class="font-semibold text-foreground text-size-medium">
+            {t("Desktop App")}
+          </h2>
           <p class="mt-1 text-neutral-500 text-size-small">
             {t("Settings for the Vektor app on this device.")}
           </p>
@@ -124,7 +126,9 @@ export function DesktopAppPreferences(props: Props) {
                   <Button
                     size="small"
                     variant="outline"
-                    disabled={mount.status === "mounting" || mount.status === "unmounting"}
+                    disabled={
+                      mount.status === "mounting" || mount.status === "unmounting"
+                    }
                     text={mount.status === "mounted" ? t("Unmount") : t("Remove")}
                     onClick={() => props.onUnmount(mount.spaceId)}
                   />
@@ -136,7 +140,9 @@ export function DesktopAppPreferences(props: Props) {
           <Show
             when={selected()}
             fallback={
-              <p class="p-3 text-neutral-500 text-size-small">{t("No spaces to mount.")}</p>
+              <p class="p-3 text-neutral-500 text-size-small">
+                {t("No spaces to mount.")}
+              </p>
             }
           >
             {(space) => (
@@ -151,7 +157,11 @@ export function DesktopAppPreferences(props: Props) {
                     {(option) => <option value={option.id}>{label(option)}</option>}
                   </For>
                 </select>
-                <SwitchToggle label={t("Editable")} value={writable()} onInput={setWritable} />
+                <SwitchToggle
+                  label={t("Editable")}
+                  value={writable()}
+                  onInput={setWritable}
+                />
                 <Button
                   size="small"
                   text={t("Mount")}

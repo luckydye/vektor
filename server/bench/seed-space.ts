@@ -44,6 +44,7 @@ import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SpaceDb } from "#db/client/store.ts";
+import type { Platform } from "#platform/platform.ts";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -347,7 +348,10 @@ function formatDuration(ms: number): string {
  * they are first imported, so they must not be imported until the CLI has
  * chdir'd and set `VEKTOR_*`. Hence the dynamic imports.
  */
-export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
+export async function seedSpace(
+  platform: Platform,
+  options: SeedOptions,
+): Promise<SeedResult> {
   const { promisify } = await import("node:util");
   const { brotliCompress, constants: zlibConstants } = await import("node:zlib");
   const { createHash } = await import("node:crypto");
@@ -383,8 +387,8 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   const now = new Date();
   const HISTORY_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
-  await initializeDatabases();
-  const authDb = getAuthDb();
+  await initializeDatabases(platform);
+  const authDb = getAuthDb(platform);
 
   // --- members -------------------------------------------------------------
   // Ids and emails are namespaced by slug so seeding a second space into the
@@ -428,9 +432,9 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   console.log(`Members: ${members.length} (owner: ${ownerId})`);
 
   // --- space ---------------------------------------------------------------
-  const created = await createSpace(ownerId, options.name, options.slug);
+  const created = await createSpace(platform, ownerId, options.name, options.slug);
   const spaceId = created.id;
-  const { db } = await openSpaceStore(spaceId);
+  const { db } = await openSpaceStore(platform, spaceId);
   console.log(`Space:   ${spaceId} (/${created.slug})`);
 
   // --- categories ----------------------------------------------------------
@@ -859,7 +863,10 @@ async function main(): Promise<void> {
       ` (${options.inMemory ? "in-memory" : dataDir}${options.noAuth ? ", no-auth" : ""})`,
   );
 
-  const result = await seedSpace(options);
+  // Created after the chdir above, like everything that resolves the data directory.
+  const { createBunPlatform } = await import("#platform/bun/index.ts");
+  const platform = createBunPlatform();
+  const result = await seedSpace(platform, options);
 
   console.log(
     `\nDone in ${formatDuration(result.elapsedMs)}: ${result.documents} documents,` +
@@ -902,10 +909,10 @@ async function main(): Promise<void> {
     process.env.VEKTOR_API_ONLY = "1";
   }
 
-  // src/server.ts starts listening on import and reads --port from process.argv.
-  // The path is built rather than written literally because the process has
-  // chdir'd into the data directory, and a relative parent import is banned.
-  await import(path.join(appDir, "src", "server.ts"));
+  // Served on the seeded platform, which an in-memory database lives on. The path
+  // is built because the process has chdir'd, and a relative parent import is banned.
+  const { startServer } = await import(path.join(appDir, "src", "server.ts"));
+  await startServer(platform);
 }
 
 if (import.meta.main) {

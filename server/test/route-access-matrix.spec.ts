@@ -30,7 +30,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { apiRoutes } from "#api/routes.ts";
+import { gitRoutes } from "#api/gitRoutes.ts";
+import { apiRoutes as sharedRoutes } from "#api/routes.ts";
 import {
   createSessionApiRequest,
   createTestUser,
@@ -39,6 +40,9 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+
+// Every route the Bun target serves, git included.
+const apiRoutes = [...sharedRoutes, ...gitRoutes];
 
 const PORT = 7492;
 const BASE_URL = testBaseUrl(PORT);

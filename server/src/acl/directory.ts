@@ -16,6 +16,7 @@ import { many, one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { acl } from "#db/schema/space.ts";
+import type { Platform } from "#platform/platform.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 /**
@@ -49,8 +50,11 @@ interface GroupMemberRow {
  * here. Nothing is found for the synthetic `public` group, which no stored claim
  * carries.
  */
-async function usersInGroups(groupIds: readonly string[]): Promise<GroupMemberRow[]> {
-  const authDb = getAuthDb();
+async function usersInGroups(
+  platform: Platform,
+  groupIds: readonly string[],
+): Promise<GroupMemberRow[]> {
+  const authDb = getAuthDb(platform);
   if (!authDb || groupIds.length === 0) return [];
 
   // Group names are sanitized to GROUP_NAME_PATTERN (no `"`), so the JSON-quoted
@@ -93,9 +97,10 @@ async function usersInGroups(groupIds: readonly string[]): Promise<GroupMemberRo
 
 /** Ids of everyone who reaches a resource through one of `groupIds`. */
 export async function getGroupMemberIds(
+  platform: Platform,
   groupIds: readonly string[],
 ): Promise<Set<string>> {
-  const rows = await usersInGroups(groupIds);
+  const rows = await usersInGroups(platform, groupIds);
   return new Set(rows.map((row) => row.id));
 }
 
@@ -107,9 +112,14 @@ export async function getGroupMemberIds(
  * directory. The synthetic `public` group is excluded — everyone is in it, so it
  * would leak the instance — and a user with no real groups sees nobody.
  */
-export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[]> {
-  const groups = (await getUserGroups(userId)).filter((g) => g !== PUBLIC_GROUP);
-  const peers = await usersInGroups(groups);
+export async function getUsersInSharedGroups(
+  platform: Platform,
+  userId: string,
+): Promise<GroupPeer[]> {
+  const groups = (await getUserGroups(platform, userId)).filter(
+    (g) => g !== PUBLIC_GROUP,
+  );
+  const peers = await usersInGroups(platform, groups);
 
   return peers
     .filter((row) => row.id !== userId)
@@ -125,9 +135,12 @@ export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[
  * Display name of a grantee, captured when the permission change is logged so
  * the audit entry stays readable after the account is renamed or removed.
  */
-export async function resolveGranteeName(userId?: string): Promise<string | undefined> {
+export async function resolveGranteeName(
+  platform: Platform,
+  userId?: string,
+): Promise<string | undefined> {
   if (!userId) return undefined;
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   if (!authDb) return undefined;
   try {
     const record = await one(
@@ -142,8 +155,11 @@ export async function resolveGranteeName(userId?: string): Promise<string | unde
   }
 }
 
-export async function countSpaceMembers(spaceId: string): Promise<number> {
-  const memberIds = await getSpaceMemberIds(spaceId);
+export async function countSpaceMembers(
+  platform: Platform,
+  spaceId: string,
+): Promise<number> {
+  const memberIds = await getSpaceMemberIds(platform, spaceId);
   return memberIds.size;
 }
 
@@ -154,8 +170,11 @@ export async function countSpaceMembers(spaceId: string): Promise<number> {
  * @param spaceId - The space ID
  * @returns Set of user IDs with access to the space
  */
-export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
-  const { db } = await openSpaceStore(spaceId);
+export async function getSpaceMemberIds(
+  platform: Platform,
+  spaceId: string,
+): Promise<Set<string>> {
+  const { db } = await openSpaceStore(platform, spaceId);
 
   const results = await many(
     db
@@ -178,7 +197,7 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
     }
   }
 
-  for (const memberId of await getGroupMemberIds(groupsToCheck)) {
+  for (const memberId of await getGroupMemberIds(platform, groupsToCheck)) {
     memberIds.add(memberId);
   }
 
@@ -192,12 +211,15 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
  * @param spaceId - The space ID
  * @returns Object containing direct user IDs, group members map, and groups to check
  */
-export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
+export async function getSpaceMembersWithGroups(
+  platform: Platform,
+  spaceId: string,
+): Promise<{
   directUserIds: Set<string>;
   groupMembers: Map<string, string[]>; // userId -> groupIds
   groupsToCheck: string[];
 }> {
-  const { db } = await openSpaceStore(spaceId);
+  const { db } = await openSpaceStore(platform, spaceId);
 
   const results = await many(
     db
@@ -220,7 +242,7 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
 
   const groupMembers = new Map<string, string[]>();
 
-  for (const member of await usersInGroups(groupsToCheck)) {
+  for (const member of await usersInGroups(platform, groupsToCheck)) {
     if (!directUserIds.has(member.id)) {
       groupMembers.set(member.id, member.groups);
     }

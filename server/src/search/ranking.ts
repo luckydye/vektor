@@ -4,8 +4,8 @@
  * embeddings the caller has already read.
  */
 
+import type { Platform } from "#platform/platform.ts";
 import { parseEmbedding } from "#search/embedding.ts";
-import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import { normalizeText, stripMarkup } from "#search/text.ts";
 import { escapeHtml } from "#utils/html.ts";
 
@@ -206,12 +206,13 @@ function yieldToEventLoop(): Promise<void> {
  * runtime is unavailable, leaving keyword matching on its own.
  */
 export async function rankSearchCandidates<T extends SearchCandidate>(
+  platform: Platform,
   query: string,
   queryEmbedding: number[] | null,
   candidates: T[],
   options: RankingOptions = {},
 ): Promise<RankedCandidate<T>[]> {
-  const embeddingModel = getEmbeddingModel();
+  const embeddingModel = platform.embedder.model;
 
   const scored: {
     candidate: T;

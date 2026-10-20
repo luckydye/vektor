@@ -25,12 +25,13 @@ export const GET: ApiRouteHandler = (context) =>
     // Editor on the document is what it takes to change sharing, so it is also
     // what it takes to see who the document is shared with.
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
       Permission.EDITOR,
     );
 
-    const access = await listDocumentAccess(spaceId, documentId);
+    const access = await listDocumentAccess(context.var.platform, spaceId, documentId);
     return jsonResponse({ access });
   }, "Failed to list document access");

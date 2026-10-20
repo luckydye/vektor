@@ -171,7 +171,7 @@ export async function listExtensionsWithErrors(
     extensions.push(toExtension(row, result.manifest));
   }
 
-  const local = getLocalExtension();
+  const local = getLocalExtension(s.platform);
   if (local) extensions.push(local);
 
   return { extensions, errors };
@@ -182,7 +182,7 @@ export async function getExtension(
   extensionId: string,
   options: ExtensionQueryOptions = {},
 ): Promise<Extension | null> {
-  const local = getLocalExtension();
+  const local = getLocalExtension(s.platform);
   if (local && extensionId === local.id) return local;
   const conditions = [eq(extension.id, extensionId)];
   if (!options.includeDisabled) {
@@ -209,8 +209,8 @@ export async function getExtensionPackage(
   s: SpaceStore,
   extensionId: string,
 ): Promise<Buffer | null> {
-  const local = getLocalExtension();
-  if (local && extensionId === local.id) return getLocalExtensionPackage();
+  const local = getLocalExtension(s.platform);
+  if (local && extensionId === local.id) return getLocalExtensionPackage(s.platform);
   const rows = await s.db
     .select({ package: extension.package })
     .from(extension)
@@ -240,7 +240,7 @@ async function validateForInstall(
       `Extension manifest id '${manifest.id}' does not match '${extensionId}'`,
     );
   }
-  const local = getLocalExtension();
+  const local = getLocalExtension(s.platform);
   if (local && extensionId === local.id) {
     throw new Error(`Extension id '${extensionId}' is reserved`);
   }
@@ -380,7 +380,7 @@ export async function setExtensionEnabled(
   extensionId: string,
   enabled: boolean,
 ): Promise<Extension | null> {
-  const local = getLocalExtension();
+  const local = getLocalExtension(s.platform);
   if (local && extensionId === local.id) return null;
   const now = new Date();
   const rows = await s.db

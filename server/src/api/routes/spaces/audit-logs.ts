@@ -17,6 +17,7 @@ import {
   parseAuditDetails,
 } from "#db/space/auditLogs.ts";
 import { getDocument } from "#db/space/documents.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List the space's audit log
@@ -32,15 +33,16 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Ahead of opening the store, which a space that does not exist would
     // answer with a read error rather than a verdict.
-    await requireSpace(spaceId);
+    await requireSpace(context.var.platform, spaceId);
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const document = documentId ? await getDocument(store, documentId) : null;
 
     // An audit trail outlives the document it describes, so a deleted one is
     // gated on the space role — which is what its own grants resolved to.
     if (documentId && document) {
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: documentId },
         user.id,
@@ -48,6 +50,7 @@ export const GET: ApiRouteHandler = (context) =>
       );
     } else {
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
@@ -56,7 +59,7 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     // Verify user has audit log viewing feature access
-    await verifyFeatureAccess(spaceId, Feature.VIEW_AUDIT, user.id);
+    await verifyFeatureAccess(store.platform, spaceId, Feature.VIEW_AUDIT, user.id);
 
     const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,

@@ -3,6 +3,7 @@ import { reserveAITokens } from "#db/space/aiUsage.ts";
 import { getUserProfile, setUserProfile } from "#db/space/userProfiles.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { callModel } from "./core.ts";
 
 /** How long after the last completed turn before the profile is regenerated. */
@@ -21,18 +22,21 @@ function pendingKey(spaceId: string, userId: string): string {
  *
  * @param sessionMessages - The full display messages array from the just-completed session.
  */
-export function scheduleProfileUpdate(options: {
-  spaceId: string;
-  userId: string;
-  sessionMessages: unknown[];
-}): void {
+export function scheduleProfileUpdate(
+  platform: Platform,
+  options: {
+    spaceId: string;
+    userId: string;
+    sessionMessages: unknown[];
+  },
+): void {
   const key = pendingKey(options.spaceId, options.userId);
   const existing = pendingUpdates.get(key);
   if (existing !== undefined) clearTimeout(existing);
 
   const timer = setTimeout(() => {
     pendingUpdates.delete(key);
-    runProfileUpdate(options).catch((err) => {
+    runProfileUpdate(platform, options).catch((err) => {
       appLogger.warn("User profile update failed", {
         spaceId: options.spaceId,
         userId: options.userId,
@@ -44,13 +48,16 @@ export function scheduleProfileUpdate(options: {
   pendingUpdates.set(key, timer);
 }
 
-async function runProfileUpdate(options: {
-  spaceId: string;
-  userId: string;
-  sessionMessages: unknown[];
-}): Promise<void> {
-  const store = await openSpaceStore(options.spaceId);
-  const provider = await resolveUserAIProvider(options.spaceId, options.userId);
+async function runProfileUpdate(
+  platform: Platform,
+  options: {
+    spaceId: string;
+    userId: string;
+    sessionMessages: unknown[];
+  },
+): Promise<void> {
+  const store = await openSpaceStore(platform, options.spaceId);
+  const provider = await resolveUserAIProvider(platform, options.spaceId, options.userId);
   const currentProfile = await getUserProfile(store, options.userId);
 
   type DisplayMsg = { role: string; content?: string | null };

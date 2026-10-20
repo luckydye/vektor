@@ -6,6 +6,7 @@ import { LOCAL_USER_ID } from "#config";
 import { getAuthDb, initializeDatabases } from "#db/client/db.ts";
 import { createId } from "#db/ids.ts";
 import { spaceIndex, user } from "#db/schema/auth.ts";
+import { platform } from "./helpers/platform.ts";
 
 function setAdmins(value: string | undefined) {
   if (value === undefined) {
@@ -17,7 +18,7 @@ function setAdmins(value: string | undefined) {
 
 // Every decision below resolves an identity, which reads the auth database the
 // whole run shares; whichever spec runs first has to create it.
-beforeAll(() => initializeDatabases());
+beforeAll(() => initializeDatabases(platform));
 
 // Rows this file writes to the auth database, which the whole run shares with
 // the specs that boot a server against it — so they are removed again.
@@ -31,12 +32,12 @@ afterEach(async () => {
   delete process.env.VEKTOR_MAX_SPACES_PER_USER;
 
   if (writtenSpaceRecords.length > 0) {
-    await getAuthDb()
+    await getAuthDb(platform)
       .delete(spaceIndex)
       .where(inArray(spaceIndex.id, writtenSpaceRecords.splice(0)));
   }
   if (writtenUsers.length > 0) {
-    await getAuthDb()
+    await getAuthDb(platform)
       .delete(user)
       .where(inArray(user.id, writtenUsers.splice(0)));
   }
@@ -46,7 +47,7 @@ afterEach(async () => {
 async function createUserInGroups(groups: string[]): Promise<string> {
   const id = createId("user");
   const now = new Date();
-  await getAuthDb()
+  await getAuthDb(platform)
     .insert(user)
     .values({
       id,
@@ -65,7 +66,7 @@ async function recordSpaceCreatedBy(createdBy: string): Promise<void> {
   const spaceId = createId("space");
   const recordId = createId("database");
   const now = new Date();
-  await getAuthDb()
+  await getAuthDb(platform)
     .insert(spaceIndex)
     .values({
       id: recordId,
@@ -114,13 +115,13 @@ describe("adminGroups", () => {
 describe("isInstanceAdmin", () => {
   it("is nobody while no group is configured", async () => {
     setAdmins(undefined);
-    await expect(isInstanceAdmin("user-1")).resolves.toBe(false);
+    await expect(isInstanceAdmin(platform, "user-1")).resolves.toBe(false);
   });
 
   it("refuses an absent or public principal", async () => {
     setAdmins("vektor-admins");
-    await expect(isInstanceAdmin(null)).resolves.toBe(false);
-    await expect(isInstanceAdmin("")).resolves.toBe(false);
+    await expect(isInstanceAdmin(platform, null)).resolves.toBe(false);
+    await expect(isInstanceAdmin(platform, "")).resolves.toBe(false);
   });
 
   // A credential's id belongs to no user, so it carries no groups and cannot
@@ -128,13 +129,13 @@ describe("isInstanceAdmin", () => {
   // skeleton key, with nothing having to recognise the id's shape.
   it("never admits an access token principal", async () => {
     setAdmins("vektor-admins");
-    await expect(isInstanceAdmin(createId("accessToken"))).resolves.toBe(false);
+    await expect(isInstanceAdmin(platform, createId("accessToken"))).resolves.toBe(false);
   });
 
   it("admits the local user in no-auth mode", async () => {
     process.env.VEKTOR_NO_AUTH = "1";
     setAdmins("vektor-admins");
-    await expect(isInstanceAdmin(LOCAL_USER_ID)).resolves.toBe(true);
+    await expect(isInstanceAdmin(platform, LOCAL_USER_ID)).resolves.toBe(true);
   });
 
   // The one identity that is an admin without being named: no-auth has no
@@ -142,26 +143,26 @@ describe("isInstanceAdmin", () => {
   it("admits the local user with no admin group configured", async () => {
     process.env.VEKTOR_NO_AUTH = "1";
     setAdmins(undefined);
-    await expect(isInstanceAdmin(LOCAL_USER_ID)).resolves.toBe(true);
+    await expect(isInstanceAdmin(platform, LOCAL_USER_ID)).resolves.toBe(true);
   });
 
   it("does not admit the local user id while auth is on", async () => {
     setAdmins("vektor-admins");
-    await expect(isInstanceAdmin(LOCAL_USER_ID)).resolves.toBe(false);
+    await expect(isInstanceAdmin(platform, LOCAL_USER_ID)).resolves.toBe(false);
   });
 });
 
 describe("userAdminGroups", () => {
   it("is empty while no group is configured", async () => {
     setAdmins(undefined);
-    await expect(userAdminGroups("user-1")).resolves.toEqual([]);
+    await expect(userAdminGroups(platform, "user-1")).resolves.toEqual([]);
   });
 
   // No auth database in this suite, so the user carries only `public` — which is
   // exactly what a caller outside every configured group looks like.
   it("names only the configured groups the user is in", async () => {
     setAdmins("vektor-admins,platform-team");
-    await expect(userAdminGroups("user-1")).resolves.toEqual([]);
+    await expect(userAdminGroups(platform, "user-1")).resolves.toEqual([]);
   });
 });
 
@@ -171,7 +172,7 @@ describe("canCreateSpace with an admin group", () => {
     process.env.VEKTOR_NO_AUTH = "1";
     process.env.VEKTOR_SPACE_CREATION_GROUPS = "space-admins";
     setAdmins("vektor-admins");
-    await expect(canCreateSpace(LOCAL_USER_ID)).resolves.toBe(true);
+    await expect(canCreateSpace(platform, LOCAL_USER_ID)).resolves.toBe(true);
   });
 
   // The cap bounds what one account can allocate; an admin already owns every
@@ -185,13 +186,13 @@ describe("canCreateSpace with an admin group", () => {
     await recordSpaceCreatedBy(admin);
     await recordSpaceCreatedBy(member);
 
-    await expect(canCreateSpace(admin)).resolves.toBe(true);
-    await expect(canCreateSpace(member)).resolves.toBe(false);
+    await expect(canCreateSpace(platform, admin)).resolves.toBe(true);
+    await expect(canCreateSpace(platform, member)).resolves.toBe(false);
   });
 
   it("still denies a non-admin outside the allow list", async () => {
     process.env.VEKTOR_SPACE_CREATION_GROUPS = "public";
     setAdmins("vektor-admins");
-    await expect(canCreateSpace("user-1")).resolves.toBe(false);
+    await expect(canCreateSpace(platform, "user-1")).resolves.toBe(false);
   });
 });

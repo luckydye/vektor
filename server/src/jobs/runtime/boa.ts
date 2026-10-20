@@ -8,9 +8,8 @@
  * happened, which is exactly the cost this design removes.
  */
 
-import { getNativeExec } from "#exec/native.ts";
 import { persistOutputBlobs } from "#jobs/outputBlobs.ts";
-import type { VmEvent } from "#native/exec/index.d.ts";
+import type { VmEvent } from "#platform/platform.ts";
 import { createCapabilities } from "./capabilities.ts";
 import { PRELUDE } from "./prelude.ts";
 import type { JobRunContext, JobRuntime } from "./types.ts";
@@ -23,7 +22,8 @@ export function createBoaRuntime(): JobRuntime {
       code: string,
       context: JobRunContext,
     ): Promise<Record<string, unknown>> {
-      const { vmCreate, vmDestroy, vmReject, vmResolve, vmTouch } = await getNativeExec();
+      const { platform } = context;
+      const vm = await platform.jobVm.load();
 
       /**
        * Where `output(...)` lands.
@@ -37,7 +37,7 @@ export function createBoaRuntime(): JobRuntime {
        */
       let declaredOutputs: Record<string, unknown> | undefined;
 
-      const capabilities = createCapabilities({
+      const capabilities = createCapabilities(platform, {
         spaceId: context.spaceId,
         jobId: context.jobId,
         initiatedByUserId: context.initiatedByUserId,
@@ -49,6 +49,7 @@ export function createBoaRuntime(): JobRuntime {
           // here if its bytes were rejected rather than after it has finished.
           output: (async (outputs: unknown) => {
             declaredOutputs = await persistOutputBlobs(
+              platform,
               context.spaceId,
               typeof outputs === "object" && outputs !== null && !Array.isArray(outputs)
                 ? (outputs as Record<string, unknown>)
@@ -75,7 +76,7 @@ export function createBoaRuntime(): JobRuntime {
           const onAbort = () => {
             // The VM rejects in-flight calls and lets the script unwind, so the
             // terminal error event still arrives and settles this promise.
-            if (vmId !== null) vmDestroy(vmId);
+            if (vmId !== null) vm.destroy(vmId);
           };
 
           const onEvent = (event: VmEvent) => {
@@ -84,7 +85,7 @@ export function createBoaRuntime(): JobRuntime {
                 context.onLog(event.message ?? "");
                 // A guest log is observable proof of progress, so it renews the
                 // inactivity timeout even if the next host call takes a while.
-                if (vmId !== null) vmTouch(vmId);
+                if (vmId !== null) vm.touch(vmId);
                 return;
 
               case "call": {
@@ -94,7 +95,7 @@ export function createBoaRuntime(): JobRuntime {
                 if (!capability) {
                   // Deny by default: a capability the host did not grant.
                   if (vmId !== null) {
-                    vmReject(vmId, callId, `"${name}" is not available in this job`);
+                    vm.reject(vmId, callId, `"${name}" is not available in this job`);
                   }
                   return;
                 }
@@ -104,11 +105,11 @@ export function createBoaRuntime(): JobRuntime {
                   try {
                     const args = (event.args ?? []) as never[];
                     const value = await capability(...args);
-                    if (vmId !== null) vmResolve(vmId, callId, value ?? null);
+                    if (vmId !== null) vm.resolve(vmId, callId, value ?? null);
                   } catch (error) {
                     const message =
                       error instanceof Error ? error.message : String(error);
-                    if (vmId !== null) vmReject(vmId, callId, message);
+                    if (vmId !== null) vm.reject(vmId, callId, message);
                   }
                 })();
                 return;
@@ -124,7 +125,8 @@ export function createBoaRuntime(): JobRuntime {
                     : {};
                 finish(() =>
                   resolve(
-                    declaredOutputs ?? persistOutputBlobs(context.spaceId, fromReturn),
+                    declaredOutputs ??
+                      persistOutputBlobs(platform, context.spaceId, fromReturn),
                   ),
                 );
                 return;
@@ -137,7 +139,7 @@ export function createBoaRuntime(): JobRuntime {
           };
 
           try {
-            vmId = vmCreate(
+            vmId = vm.create(
               PRELUDE,
               code,
               context.inputs,
@@ -145,7 +147,7 @@ export function createBoaRuntime(): JobRuntime {
               onEvent,
             );
             context.onVmReady?.(() => {
-              if (vmId !== null && !settled) vmTouch(vmId);
+              if (vmId !== null && !settled) vm.touch(vmId);
             });
           } catch (error) {
             finish(() =>

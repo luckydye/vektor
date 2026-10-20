@@ -7,8 +7,8 @@ import path from "node:path";
  * a developer accumulated in `server/data`.
  *
  * One directory for the whole run rather than one per spec: the server project
- * runs `isolate: false`, so every file shares `globalThis.__vektor_auth_db` and
- * only the first connection's path takes effect. Set here rather than in a
+ * runs `isolate: false`, so every file shares the one test platform and only
+ * the first connection's path takes effect. Set here rather than in a
  * setup file because global setup runs before any worker starts, which is the
  * last moment the value can still reach a spec that opens the database on
  * import.

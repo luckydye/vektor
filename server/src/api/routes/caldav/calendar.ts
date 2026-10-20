@@ -29,12 +29,15 @@ export const ALL: ApiRouteHandler = caldavRoute(async (context) => {
   if (method === "REPORT") {
     // Filter by per-document ACL so the calendar feed doesn't expose
     // documents the authenticated user cannot read.
-    const { documents } = await listDocuments(await openSpaceStore(spaceId), {
-      viewer: {
-        userId: caldavUser.id,
-        userGroups: await getUserGroups(caldavUser.id),
+    const { documents } = await listDocuments(
+      await openSpaceStore(context.var.platform, spaceId),
+      {
+        viewer: {
+          userId: caldavUser.id,
+          userGroups: await getUserGroups(context.var.platform, caldavUser.id),
+        },
       },
-    });
+    );
 
     const eventEntries = documents
       .flatMap((doc) => {
@@ -72,12 +75,15 @@ ${eventEntries}
     // Scope the collection tag to the documents this user can actually read,
     // matching the REPORT feed — otherwise the ctag leaks the space-wide
     // document count and desyncs from the filtered event list.
-    const { total } = await listDocuments(await openSpaceStore(spaceId), {
-      viewer: {
-        userId: caldavUser.id,
-        userGroups: await getUserGroups(caldavUser.id),
+    const { total } = await listDocuments(
+      await openSpaceStore(context.var.platform, spaceId),
+      {
+        viewer: {
+          userId: caldavUser.id,
+          userGroups: await getUserGroups(context.var.platform, caldavUser.id),
+        },
       },
-    });
+    );
 
     const body = `<?xml version="1.0" encoding="utf-8" ?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">

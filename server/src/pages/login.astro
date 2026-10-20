@@ -8,7 +8,9 @@ const lang = Astro.preferredLocale || "en";
 const next = Astro.url.searchParams.get("next");
 const nextUrl = next ? new URL(next, Astro.url) : null;
 const callbackURL =
-  nextUrl && nextUrl.origin === Astro.url.origin ? nextUrl.pathname + nextUrl.search : "/";
+  nextUrl && nextUrl.origin === Astro.url.origin
+    ? nextUrl.pathname + nextUrl.search
+    : "/";
 const loginHint = Astro.url.searchParams.get("login_hint") ?? undefined;
 const features = [
   {

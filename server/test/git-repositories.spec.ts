@@ -16,7 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isGitPath } from "#api/server/router.ts";
-import { createLocalFileStorage, type FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
+import { createLocalBlobStore } from "#platform/bun/localBlobStore.ts";
 import { cachePath, ensureCache, withRepoLock } from "#git/cache.ts";
 import { runHttpBackend } from "#git/httpBackend.ts";
 import { publishPush, readRefs, sweepOrphanedPacks } from "#git/publish.ts";
@@ -34,6 +35,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 const SPACE = "space_git";
 // The git layer knows repositories only by their document id; that the id
@@ -43,7 +45,7 @@ const BRANCH = "main";
 
 let root: string;
 let work: string;
-let storage: FileStorageAdapter;
+let storage: BlobStore;
 let server: ReturnType<typeof Bun.serve>;
 let origin: string;
 
@@ -125,7 +127,7 @@ async function commit(dir: string, file: string, body: string): Promise<void> {
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "vektor-git-storage-"));
   work = mkdtempSync(join(tmpdir(), "vektor-git-work-"));
-  storage = createLocalFileStorage(root);
+  storage = createLocalBlobStore(root);
 
   await ensureState(storage, SPACE, DOC, BRANCH);
 
@@ -381,7 +383,7 @@ describe("housekeeping", () => {
     // What deleting the document triggers. Removing only the cache would leave
     // every object in the bucket with nothing failing to say so.
     await ensureState(storage, SPACE, "doc_doomed", BRANCH);
-    const removed = await deleteRepositoryObjects(storage, SPACE, "doc_doomed");
+    const removed = await deleteRepositoryObjects(platform, storage, SPACE, "doc_doomed");
     expect(removed).toBeGreaterThan(0);
 
     const { files } = await storage.list(SPACE, { prefix: "git/doc_doomed/" });

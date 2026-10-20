@@ -10,6 +10,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIChatSession } from "#db/space/aiChatSessions.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read a chat session's full model context as its latest turn sent it: model, tools, system prompt and every message
@@ -23,6 +24,7 @@ export const GET: ApiRouteHandler = (context) =>
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -30,7 +32,7 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     const session = await getAIChatSession(
-      await openSpaceStore(spaceId),
+      await openSpaceStore(context.var.platform, spaceId),
       sessionId,
       user.id,
     );

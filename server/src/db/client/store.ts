@@ -7,6 +7,7 @@
  * the handle rather than by an argument that is easy to transpose.
  */
 
+import type { Platform } from "#platform/platform.ts";
 import { changeToEvents, type SpaceChange } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { type Database, supportsTransactions } from "./connection.ts";
@@ -16,6 +17,8 @@ import { openSpaceDbForStore } from "./db.ts";
 export type SpaceDb = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export interface SpaceStore {
+  /** The platform the store was opened through, for whatever else the space needs. */
+  readonly platform: Platform;
   readonly spaceId: string;
   readonly db: SpaceDb;
   /**
@@ -38,11 +41,13 @@ function publish(spaceId: string, changes: SpaceChange[]): void {
 }
 
 function createStore(
+  platform: Platform,
   spaceId: string,
   db: SpaceDb,
   pending: SpaceChange[] | null,
 ): SpaceStore {
   const store: SpaceStore = {
+    platform,
     spaceId,
     db,
     emit(...changes) {
@@ -61,9 +66,9 @@ function createStore(
       // identical either way: nothing is announced unless `fn` returns.
       const result = supportsTransactions(db)
         ? await (db as Database).transaction((txDb) =>
-            fn(createStore(spaceId, txDb, buffered)),
+            fn(createStore(platform, spaceId, txDb, buffered)),
           )
-        : await fn(createStore(spaceId, db, buffered));
+        : await fn(createStore(platform, spaceId, db, buffered));
       publish(spaceId, buffered);
       return result;
     },
@@ -71,6 +76,14 @@ function createStore(
   return store;
 }
 
-export async function openSpaceStore(spaceId: string): Promise<SpaceStore> {
-  return createStore(spaceId, await openSpaceDbForStore(spaceId), null);
+export async function openSpaceStore(
+  platform: Platform,
+  spaceId: string,
+): Promise<SpaceStore> {
+  return createStore(
+    platform,
+    spaceId,
+    await openSpaceDbForStore(platform, spaceId),
+    null,
+  );
 }

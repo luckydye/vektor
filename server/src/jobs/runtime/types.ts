@@ -8,6 +8,7 @@
  */
 
 import type { Attribution } from "#acl/apps.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /** A single host capability. Arguments arrive as the guest passed them. */
 export type Capability = (...args: never[]) => unknown;
@@ -20,6 +21,8 @@ export type Capability = (...args: never[]) => unknown;
 export type CapabilityTable = Record<string, Capability>;
 
 export interface JobRunContext {
+  /** The target the run's capabilities and VM come from. */
+  platform: Platform;
   spaceId: string;
   /** Logical id used for log prefixes and cache scoping. */
   jobId: string;

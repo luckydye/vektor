@@ -22,7 +22,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     const query = new URL(context.req.url).searchParams.get("q")?.trim().toLowerCase();
 
-    const peers = await getUsersInSharedGroups(caller.id);
+    const peers = await getUsersInSharedGroups(context.var.platform, caller.id);
 
     const filtered = query
       ? peers.filter(

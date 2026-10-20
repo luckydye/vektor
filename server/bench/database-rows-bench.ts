@@ -123,16 +123,18 @@ async function main(): Promise<void> {
   );
   const { patchDocumentProperties } = await import("#db/space/properties.ts");
   const authSchema = await import("#db/schema/auth.ts");
+  const { createBunPlatform } = await import("#platform/bun/index.ts");
 
-  await initializeDatabases();
-  await getAuthDb()
+  const platform = createBunPlatform();
+  await initializeDatabases(platform);
+  await getAuthDb(platform)
     .insert(authSchema.user)
     .values({ ...LOCAL_USER, groups: null })
     .onConflictDoNothing();
 
   const slug = `db-rows-bench-${Date.now()}`;
-  const created = await createSpace(LOCAL_USER_ID, "Database Rows Bench", slug);
-  const store = await openSpaceStore(created.id);
+  const created = await createSpace(platform, LOCAL_USER_ID, "Database Rows Bench", slug);
+  const store = await openSpaceStore(platform, created.id);
   console.log(`Space:   ${created.id} (/${created.slug})`);
 
   const databaseA = await createDocument(store, LOCAL_USER_ID, "database-a", "", {
@@ -252,7 +254,9 @@ async function main(): Promise<void> {
   }
   printStats("PATCH properties", propertyTimes);
 
-  console.log(`\nSpace id: ${created.id}${options.inMemory ? " (in-memory, not persisted)" : ""}`);
+  console.log(
+    `\nSpace id: ${created.id}${options.inMemory ? " (in-memory, not persisted)" : ""}`,
+  );
 }
 
 if (import.meta.main) {

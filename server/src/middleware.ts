@@ -19,7 +19,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     time: requestTime,
   });
 
-  const { user, session } = await resolveRequestIdentity(request.headers);
+  const { user, session } = await resolveRequestIdentity(
+    context.locals.platform,
+    request.headers,
+  );
   context.locals.user = user;
   context.locals.session = session;
   try {

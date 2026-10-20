@@ -1,5 +1,6 @@
 import type { Attribution } from "#acl/apps.ts";
 import { extractFile } from "#db/space/extensions.ts";
+import type { Platform } from "#platform/platform.ts";
 import { getJobRuntime } from "./runtime/index.ts";
 import type { CapabilityTable } from "./runtime/types.ts";
 
@@ -80,6 +81,7 @@ function acquireJobSlot(signal?: AbortSignal): Promise<void> {
 }
 
 export async function runJob(
+  platform: Platform,
   zipBuffer: Buffer,
   entryPath: string,
   inputs: Record<string, unknown>,
@@ -121,6 +123,7 @@ export async function runJob(
 
   try {
     const outputs = await getJobRuntime().execute(fileBuffer.toString("utf8"), {
+      platform,
       spaceId,
       jobId: logicalJobId ?? entryPath,
       initiatedByUserId: initiatedByUserId ?? null,

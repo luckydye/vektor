@@ -12,8 +12,8 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { maxWeeklyAITokens } from "#db/space/aiConfig.ts";
 import { findSpaceForToken } from "#db/space/accessTokens.ts";
+import { maxWeeklyAITokens } from "#db/space/aiConfig.ts";
 import {
   createSpace,
   getSpace,
@@ -24,6 +24,7 @@ import {
   SpaceSlugTakenError,
 } from "#db/space/spaces.ts";
 import { setUserPreferences } from "#db/space/userPreferences.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   splitPreferencesByScope,
   validateSpacePreferences,
@@ -41,18 +42,18 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const rawToken = extractAccessToken(context.var.credentials);
     if (rawToken) {
-      const spaceId = await findSpaceForToken(rawToken);
+      const spaceId = await findSpaceForToken(context.var.platform, rawToken);
       if (!spaceId) return jsonResponse([]);
-      const space = await getSpace(spaceId);
+      const space = await getSpace(context.var.platform, spaceId);
       return jsonResponse(space ? [space] : []);
     }
     const user = context.var.user;
     if (user) {
-      const spaces = await listUserSpaces(user.id);
+      const spaces = await listUserSpaces(context.var.platform, user.id);
       return jsonResponse(spaces);
     }
     // Unauthenticated — return spaces with public viewer access.
-    const spaces = await listPublicSpaces();
+    const spaces = await listPublicSpaces(context.var.platform);
     return jsonResponse(spaces);
   }, "Failed to list spaces");
 
@@ -68,7 +69,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const user = requireUser(context);
-      const rejection = await spaceCreationRejection(user.id);
+      const rejection = await spaceCreationRejection(context.var.platform, user.id);
       if (rejection) throw forbiddenResponse(rejection);
 
       const body = await parseJsonBody(context.req.raw);
@@ -94,17 +95,22 @@ export const POST: ApiRouteHandler = (context) =>
       );
 
       const space = await createSpace(
+        context.var.platform,
         user.id,
         name,
         slug,
         validated.preferences === undefined ? undefined : spacePreferences,
       );
-      await setUserPreferences(await openSpaceStore(space.id), user.id, userPreferences);
+      await setUserPreferences(
+        await openSpaceStore(context.var.platform, space.id),
+        user.id,
+        userPreferences,
+      );
 
       return createdResponse({
         space: {
           ...space,
-          userRole: await getUserSpaceRole(space, user.id),
+          userRole: await getUserSpaceRole(context.var.platform, space, user.id),
           // Set wherever a space is returned, like `userRole`: the client caches
           // spaces by id, so a response that omits it overwrites what is stored.
           userPreferences,

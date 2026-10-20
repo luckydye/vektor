@@ -15,15 +15,14 @@ import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, SHARE_LINK_ROUTE_PATTERN } from "#api/rateLimit.ts";
 import { isHttpsSite } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
-import {
-  getDocument,
-  getDocumentChildren,
-} from "#db/space/documents.ts";
+import { getDocument, getDocumentChildren } from "#db/space/documents.ts";
 import { getRevisionContent } from "#db/space/revisions.ts";
 import { documentTitle } from "#documents/title.ts";
 import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { appLogger } from "#observability/logger.ts";
+
+const { platform } = Astro.locals;
 
 const spaceSlug = Astro.params.spaceSlug ?? "";
 const linkId = Astro.params.linkId ?? "";
@@ -68,10 +67,7 @@ const notFound = withPrivateHeaders(
 const limit = checkRateLimit({
   pattern: SHARE_LINK_ROUTE_PATTERN,
   method: Astro.request.method,
-  ip: resolveClientIp(
-    Astro.clientAddress,
-    Astro.request.headers.get("x-forwarded-for"),
-  ),
+  ip: resolveClientIp(Astro.clientAddress, Astro.request.headers.get("x-forwarded-for")),
 });
 if (limit && !limit.allowed) {
   appLogger.warn("Share link rate limit exceeded", {
@@ -87,6 +83,7 @@ if (limit && !limit.allowed) {
 }
 
 const link = await authenticateShareLink(
+  platform,
   spaceSlug,
   linkId,
   basicAuthPassword(Astro.request.headers.get("Authorization")),
@@ -106,19 +103,17 @@ const link = await authenticateShareLink(
 });
 if (link instanceof Response) return withPrivateHeaders(link);
 
-const store = await openSpaceStore(link.spaceId);
+const store = await openSpaceStore(platform, link.spaceId);
 const documentId = requestedDocumentId || link.resourceId;
 
 // Ambient grants must not widen a document share to the optional child path.
-if (
-  link.resourceType === ResourceType.DOCUMENT &&
-  documentId !== link.resourceId
-) {
+if (link.resourceType === ResourceType.DOCUMENT && documentId !== link.resourceId) {
   return notFound;
 }
 
 try {
   await verifyAccess(
+    platform,
     link.spaceId,
     { type: ResourceType.DOCUMENT, id: documentId },
     link.aclUserId,
@@ -136,11 +131,7 @@ if (publishedRev === null) return notFound;
 
 const htmlRenderedDocumentTypes = new Set(["document", "record"]);
 const rendersAsHtml = htmlRenderedDocumentTypes.has(record.type ?? "document");
-const publishedContent = await getRevisionContent(
-  store,
-  documentId,
-  publishedRev,
-);
+const publishedContent = await getRevisionContent(store, documentId, publishedRev);
 if (publishedContent === null) return notFound;
 
 const readShadowHtml = rendersAsHtml
@@ -215,11 +206,11 @@ const title = documentTitle(record, lang);
   </main>
 
   <script>
-    import "#editor/document.ts";
-    import "#editor/elements/cake.ts";
-    import "#editor/elements/figma-embed.ts";
-    import "#editor/elements/vektor-block.ts";
-    import "#editor/elements/ticket-link.ts";
-    import "#editor/elements/user-mention.ts";
+  import "#editor/document.ts";
+  import "#editor/elements/cake.ts";
+  import "#editor/elements/figma-embed.ts";
+  import "#editor/elements/vektor-block.ts";
+  import "#editor/elements/ticket-link.ts";
+  import "#editor/elements/user-mention.ts";
   </script>
 </BaseLayout>

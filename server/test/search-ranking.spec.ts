@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   MIN_SEMANTIC_SIMILARITY,
   rankSearchCandidates,
@@ -7,6 +7,7 @@ import {
   semanticMatchThreshold,
   semanticRelevance,
 } from "#search/ranking.ts";
+import { platform } from "./helpers/platform.ts";
 
 // The similarity distributions bge actually produces: a tight band when nothing
 // matches, one outlier when something does.
@@ -69,7 +70,7 @@ describe("ranking search candidates", () => {
     title: string,
     content: string,
     similarity: number,
-    searchEmbeddingModel: string = getEmbeddingModel(),
+    searchEmbeddingModel: string = platform.embedder.model,
   ) => ({
     id,
     title,
@@ -82,7 +83,7 @@ describe("ranking search candidates", () => {
     candidates: Parameters<typeof rankSearchCandidates>[2],
     query: string,
   ) =>
-    (await rankSearchCandidates(query, queryEmbedding, candidates)).map(
+    (await rankSearchCandidates(platform, query, queryEmbedding, candidates)).map(
       (result) => (result.candidate as { id: string }).id,
     );
 
@@ -108,7 +109,7 @@ describe("ranking search candidates", () => {
   });
 
   it("keeps lexical matches when the embedding runtime is unavailable", async () => {
-    const ranked = await rankSearchCandidates("tropical", null, fruits);
+    const ranked = await rankSearchCandidates(platform, "tropical", null, fruits);
 
     expect(ranked.map((result) => result.candidate.id)).toEqual(["banana"]);
     expect(ranked[0].snippet).toContain("<mark>tropical</mark>");

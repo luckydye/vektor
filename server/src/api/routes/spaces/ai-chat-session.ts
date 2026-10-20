@@ -10,6 +10,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { deleteAIChatSession, getAIChatSession } from "#db/space/aiChatSessions.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one AI chat session
@@ -23,13 +24,14 @@ export const GET: ApiRouteHandler = (context) =>
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const session = await getAIChatSession(store, sessionId, user.id);
     if (!session) {
       throw notFoundResponse("AI chat session");
@@ -50,13 +52,14 @@ export const DELETE: ApiRouteHandler = (context) =>
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const session = await getAIChatSession(store, sessionId, user.id);
     if (!session) {
       throw notFoundResponse("AI chat session");

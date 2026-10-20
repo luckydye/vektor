@@ -1,5 +1,5 @@
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { auth } from "#auth";
+import { getAuth } from "#auth";
 
 /**
  * better-auth endpoint.
@@ -22,7 +22,7 @@ export const ALL: ApiRouteHandler = async (ctx) => {
   // trusted client IP (carried in requestHeaders) while preserving the original
   // method and streaming body. `new Request(raw, { headers })` drops the body on
   // POSTs under Bun's node-http bridge, which hangs better-auth forever.
-  return auth.handler(
+  return getAuth(ctx.var.platform).handler(
     new Request(raw.url, {
       method: raw.method,
       headers: ctx.var.requestHeaders,

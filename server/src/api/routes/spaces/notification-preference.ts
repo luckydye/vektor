@@ -11,6 +11,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { isEmailMuted, setEmailMuted } from "#db/space/emailNotificationPreferences.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read the caller's notification preference for this space
@@ -26,6 +27,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     if (documentId) {
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: documentId },
         user.id,
@@ -33,6 +35,7 @@ export const GET: ApiRouteHandler = (context) =>
       );
     } else {
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
@@ -40,7 +43,7 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     return jsonResponse({
       muted: await isEmailMuted(store, user.id, documentId),
     });
@@ -62,6 +65,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 
     if (documentId) {
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: documentId },
         user.id,
@@ -69,6 +73,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       );
     } else {
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
@@ -80,7 +85,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse("muted must be a boolean");
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     await setEmailMuted(store, user.id, body.muted, documentId);
     return jsonResponse({ muted: body.muted });
   }, "Failed to update notification preference");

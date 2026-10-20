@@ -11,6 +11,7 @@ import { GROUP_NAME_PATTERN, PUBLIC_GROUP } from "#acl/permissions.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { user } from "#db/schema/auth.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * The groups this id belongs to, or none at all when no user carries it — a
@@ -19,8 +20,11 @@ import { user } from "#db/schema/auth.ts";
  * would claim a person exists, which is what let a non-person be told apart by
  * the shape of its id.
  */
-export async function getUserGroups(userId: string): Promise<string[]> {
-  const authDb = getAuthDb();
+export async function getUserGroups(
+  platform: Platform,
+  userId: string,
+): Promise<string[]> {
+  const authDb = getAuthDb(platform);
   // No auth database at all: nobody has groups, so everyone is just the public.
   if (!authDb) {
     return [PUBLIC_GROUP];
@@ -28,7 +32,7 @@ export async function getUserGroups(userId: string): Promise<string[]> {
 
   // Every authorization decision funnels through here, which is why the claim's
   // staleness is bounded at this point rather than at the request edge.
-  await ensureFreshGroups(userId);
+  await ensureFreshGroups(platform, userId);
 
   const userRecord = await one(authDb.select().from(user).where(eq(user.id, userId)));
   if (!userRecord) return [];

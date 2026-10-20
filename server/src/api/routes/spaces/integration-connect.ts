@@ -21,6 +21,7 @@ import {
   getOAuthProviderConfiguration,
   getOAuthRedirectUri,
 } from "#integrations/oauthProviders.ts";
+import type { Platform } from "#platform/platform.ts";
 import { normalizeRedirectPath, toBase64Url } from "#utils/url.ts";
 
 function createOAuthState(): string {
@@ -50,6 +51,7 @@ export const POST: ApiRouteHandler = (context) =>
     const providerParam = requireParam(context.var.params, "provider");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -61,7 +63,11 @@ export const POST: ApiRouteHandler = (context) =>
       typeof body.redirectTo === "string" ? body.redirectTo : null,
     );
 
-    const configured = await getOAuthProviderConfiguration(spaceId, providerParam);
+    const configured = await getOAuthProviderConfiguration(
+      context.var.platform,
+      spaceId,
+      providerParam,
+    );
     if (!configured) {
       throw badRequestResponse("Unsupported integration provider");
     }
@@ -75,7 +81,7 @@ export const POST: ApiRouteHandler = (context) =>
     const codeChallenge = createPkceCodeChallenge(codeVerifier);
     const redirectUri = getOAuthRedirectUri(spaceId, configured.config);
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const existing = await getOAuthIntegrationForUser(store, user.id, providerParam);
     await createOAuthIntegrationState(
       store,

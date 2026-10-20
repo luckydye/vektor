@@ -10,6 +10,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { listPropertyValues } from "#db/space/properties.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List the distinct values documents hold for one property key
@@ -19,18 +20,30 @@ import { listPropertyValues } from "#db/space/properties.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
+    await authenticateSpaceAccess(
+      context.var.platform,
+      context.var.credentials,
+      spaceId,
+      Permission.VIEWER,
+    );
 
     const searchParams = new URL(context.req.url).searchParams;
     const key = searchParams.get("key");
     if (!key) throw badRequestResponse("key is required");
-    const limit = parseQueryInt(searchParams, "limit", { defaultValue: 50, min: 1, max: 500 });
+    const limit = parseQueryInt(searchParams, "limit", {
+      defaultValue: 50,
+      min: 1,
+      max: 500,
+    });
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const result = await listPropertyValues(store, key, {
       prefix: searchParams.get("prefix") ?? "",
       limit,
-      minDocuments: parseQueryInt(searchParams, "minDocuments", { defaultValue: 1, min: 1 }),
+      minDocuments: parseQueryInt(searchParams, "minDocuments", {
+        defaultValue: 1,
+        min: 1,
+      }),
     });
 
     return jsonResponse(result);

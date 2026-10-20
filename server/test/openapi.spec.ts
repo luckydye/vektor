@@ -8,14 +8,13 @@
  *
  * The generator itself lives under `scripts/`, not `src/`: reading doc
  * comments off route files on disk is build tooling, not something the
- * running server does. `task compile` runs it once ahead of time for a
- * compiled instance; anywhere else — dev, this suite's own spawned servers, a
- * bare `bun ./src/server.ts` — `server.ts` shells out to it once at startup
- * instead. This spec imports the tooling directly to check its output.
+ * running server does. `task compile` runs it ahead of time, and `server.ts`
+ * at startup from source. This spec imports the tooling directly.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { apiRoutes } from "#api/routes.ts";
+import { gitRoutes } from "#api/gitRoutes.ts";
+import { apiRoutes as sharedRoutes } from "#api/routes.ts";
 import {
   buildOpenApiDocument,
   servesMethod,
@@ -36,9 +35,11 @@ const apiRequest = createApiRequest(BASE_URL);
 
 const HTTP_METHODS = ["GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH"] as const;
 
+// Every route the Bun target serves, which is what the document describes.
+const apiRoutes = [...sharedRoutes, ...gitRoutes];
+
 // Read live from each route file's own doc comments — the same thing
-// `server.ts` shells out to `scripts/generate-openapi.ts` for whenever it
-// isn't running from a compiled instance. There is no static table to import.
+// `scripts/generate-openapi.ts` reads. There is no static table to import.
 const routeDocs = await loadRouteDocs();
 const document = buildOpenApiDocument(apiRoutes, routeDocs);
 

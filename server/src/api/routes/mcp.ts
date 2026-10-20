@@ -11,6 +11,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { handleMcpRequest, type JsonRpcRequest, type JsonRpcResponse } from "#cli/mcp.ts";
 import { getLocalOrigin } from "#config";
 import { createJobToken, parseJobToken } from "#jobs/jobToken.ts";
+import type { Platform } from "#platform/platform.ts";
 
 function jsonRpcResponse(body: JsonRpcResponse): Response {
   const text = JSON.stringify(body);
@@ -30,6 +31,7 @@ function jsonRpcResponse(body: JsonRpcResponse): Response {
  * that user's actual grants — never to more than a viewer already had.
  */
 async function resolveMcpAuth(
+  platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
 ): Promise<{ jobToken: string }> {
@@ -44,6 +46,7 @@ async function resolveMcpAuth(
   }
 
   const auth = await authenticateJobTokenOrSpaceRole(
+    platform,
     credentials,
     spaceId,
     Permission.VIEWER,
@@ -81,7 +84,11 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("X-Space-Id header is required");
     }
 
-    const { jobToken } = await resolveMcpAuth(context.var.credentials, spaceId);
+    const { jobToken } = await resolveMcpAuth(
+      context.var.platform,
+      context.var.credentials,
+      spaceId,
+    );
 
     const request = await parseJsonBody<JsonRpcRequest>(context.req.raw);
     if (!request || typeof request !== "object" || Array.isArray(request)) {

@@ -28,11 +28,11 @@ import {
 } from "#db/space/aiChatSessions.ts";
 import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
 import { getUserProfile } from "#db/space/userProfiles.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { isTimeZone } from "#utils/dateFormat.ts";
 
 // JSON-RPC 2.0 types
@@ -86,11 +86,15 @@ function parseImageAttachments(value: unknown): ChatImageAttachment[] | null {
   return attachments;
 }
 
-function parseChatAttachments(value: unknown, spaceId: string): ChatAttachment[] | null {
+function parseChatAttachments(
+  platform: Platform,
+  value: unknown,
+  spaceId: string,
+): ChatAttachment[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
 
-  const storage = getFileStorage();
+  const storage = platform.blobStore;
   const attachments: ChatAttachment[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object") return null;
@@ -126,10 +130,11 @@ function parseChatAttachments(value: unknown, spaceId: string): ChatAttachment[]
 
 /** Loads persisted image references only for the outbound model request. */
 async function hydrateMessageImages(
+  platform: Platform,
   spaceId: string,
   messages: ChatMessage[],
 ): Promise<ChatMessage[]> {
-  const storage = getFileStorage();
+  const storage = platform.blobStore;
   return await Promise.all(
     messages.map(async (message) => {
       if (message.images?.length || !message.imageAttachments?.length) return message;
@@ -326,16 +331,19 @@ function createTurnMessagesFromEvents(
  * Saves the user's message before the agent starts, so the session shows it
  * while the turn runs and lists as awaiting a reply.
  */
-async function saveUserMessage(options: {
-  spaceId: string;
-  sessionId: string;
-  userId: string;
-  userText: string;
-  userAttachments: ChatAttachment[];
-  /** The conversation the turn runs on, user message included. */
-  requestMessages: ChatMessage[];
-}) {
-  const store = await openSpaceStore(options.spaceId);
+async function saveUserMessage(
+  platform: Platform,
+  options: {
+    spaceId: string;
+    sessionId: string;
+    userId: string;
+    userText: string;
+    userAttachments: ChatAttachment[];
+    /** The conversation the turn runs on, user message included. */
+    requestMessages: ChatMessage[];
+  },
+) {
+  const store = await openSpaceStore(platform, options.spaceId);
   const session = await getAIChatSession(store, options.sessionId, options.userId);
   if (!session) throw new Error(`AI chat session ${options.sessionId} not found`);
 
@@ -366,23 +374,26 @@ async function saveUserMessage(options: {
  * prompt the turn sent. The history must end with an assistant message,
  * otherwise the session would list as still awaiting a reply.
  */
-async function persistChatTurn(options: {
-  spaceId: string;
-  sessionId: string;
-  userId: string;
-  requestMessages: ChatMessage[];
-  events: AgentEvent[];
-  /** The turn's own messages, as the model sent and received them. */
-  turnMessages: ChatMessage[];
-  /** Shown when the turn streamed no text of its own. */
-  fallbackContent: string | null;
-  /** Ends both logs after the turn's messages, e.g. the error that stopped it. */
-  closingContent?: string;
-  /** Leads the stored history as its system message, with the model and tools beside it. */
-  setup: AgentTurnSetup | null;
-  shellSnapshot?: string | null;
-}) {
-  const store = await openSpaceStore(options.spaceId);
+async function persistChatTurn(
+  platform: Platform,
+  options: {
+    spaceId: string;
+    sessionId: string;
+    userId: string;
+    requestMessages: ChatMessage[];
+    events: AgentEvent[];
+    /** The turn's own messages, as the model sent and received them. */
+    turnMessages: ChatMessage[];
+    /** Shown when the turn streamed no text of its own. */
+    fallbackContent: string | null;
+    /** Ends both logs after the turn's messages, e.g. the error that stopped it. */
+    closingContent?: string;
+    /** Leads the stored history as its system message, with the model and tools beside it. */
+    setup: AgentTurnSetup | null;
+    shellSnapshot?: string | null;
+  },
+) {
+  const store = await openSpaceStore(platform, options.spaceId);
   const session = await getAIChatSession(store, options.sessionId, options.userId);
   if (!session) throw new Error(`AI chat session ${options.sessionId} not found`);
   const closing = options.closingContent;
@@ -595,30 +606,33 @@ function createStreamingResponse(
  * The agent worker is started without the HTTP request's AbortSignal so that
  * a client disconnect does not kill the agent.
  */
-function startChatTurn(options: {
-  key: string;
-  userId: string;
-  sessionId: string;
-  /** The conversation as the model gets it, with images hydrated. */
-  messages: ChatMessage[];
-  /** The same conversation as persisted: image references, not bytes. */
-  sessionMessages: ChatMessage[];
-  /** The text the user sent, for the display log. */
-  userText: string;
-  /** Attachment display metadata persisted with the current user message. */
-  userAttachments: ChatAttachment[];
-  userProfile?: string;
-  timeZone?: string;
-  /** The session's stored system prompt; unset on its first turn. */
-  systemPrompt?: string;
-  connectedProviders: string[];
-  provider: AIProvider;
-  apiUrl: string;
-  spaceId: string;
-  documentId?: string;
-  jobToken: string;
-  shellSnapshot: string | null;
-}): ActiveChatTurn {
+function startChatTurn(
+  platform: Platform,
+  options: {
+    key: string;
+    userId: string;
+    sessionId: string;
+    /** The conversation as the model gets it, with images hydrated. */
+    messages: ChatMessage[];
+    /** The same conversation as persisted: image references, not bytes. */
+    sessionMessages: ChatMessage[];
+    /** The text the user sent, for the display log. */
+    userText: string;
+    /** Attachment display metadata persisted with the current user message. */
+    userAttachments: ChatAttachment[];
+    userProfile?: string;
+    timeZone?: string;
+    /** The session's stored system prompt; unset on its first turn. */
+    systemPrompt?: string;
+    connectedProviders: string[];
+    provider: AIProvider;
+    apiUrl: string;
+    spaceId: string;
+    documentId?: string;
+    jobToken: string;
+    shellSnapshot: string | null;
+  },
+): ActiveChatTurn {
   if (activeChatTurns.get(options.key)?.done === false) {
     throw errorResponse("A turn is already running in this session", 409);
   }
@@ -644,7 +658,7 @@ function startChatTurn(options: {
   };
 
   turn.promise = (async () => {
-    await saveUserMessage({
+    await saveUserMessage(platform, {
       ...persisted,
       userText: options.userText,
       userAttachments: options.userAttachments,
@@ -652,7 +666,7 @@ function startChatTurn(options: {
 
     let result: Awaited<ReturnType<typeof runAgentInWorker>>;
     try {
-      result = await runAgentInWorker({
+      result = await runAgentInWorker(platform, {
         chatId: options.sessionId,
         messages: options.messages,
         userProfile: options.userProfile,
@@ -680,7 +694,7 @@ function startChatTurn(options: {
           .flatMap((event) => (event.type === "text" ? [event.text] : []))
           .join("");
         const stoppedMessage = partialText.trim() || "Response stopped by user.";
-        await persistChatTurn({
+        await persistChatTurn(platform, {
           ...persisted,
           events: turn.events,
           setup: turn.setup,
@@ -695,7 +709,7 @@ function startChatTurn(options: {
         error,
       });
       turn.error = error instanceof Error ? error.message : "Agent request failed";
-      await persistChatTurn({
+      await persistChatTurn(platform, {
         ...persisted,
         events: turn.events,
         setup: turn.setup,
@@ -706,7 +720,7 @@ function startChatTurn(options: {
       return;
     }
 
-    await persistChatTurn({
+    await persistChatTurn(platform, {
       ...persisted,
       events: turn.events,
       setup: turn.setup,
@@ -717,12 +731,12 @@ function startChatTurn(options: {
     // Schedule a profile update after idle.  Fetch the freshly-persisted
     // session so the updater has the complete display message history.
     const updatedSession = await getAIChatSession(
-      await openSpaceStore(options.spaceId),
+      await openSpaceStore(platform, options.spaceId),
       options.sessionId,
       options.userId,
     );
     if (updatedSession) {
-      scheduleProfileUpdate({
+      scheduleProfileUpdate(platform, {
         spaceId: options.spaceId,
         userId: options.userId,
         sessionMessages: updatedSession.messages as unknown[],
@@ -758,6 +772,7 @@ async function authenticateAgentCaller(
 ): Promise<{ userId: string; jobToken: string; source: AIChatSessionSource }> {
   const { credentials } = context.var;
   const auth = await authenticateJobTokenOrSpaceRole(
+    context.var.platform,
     credentials,
     spaceId,
     Permission.VIEWER,
@@ -807,10 +822,14 @@ export const POST: ApiRouteHandler = (context) =>
         const title = requireStringParam(params, "title").trim();
         if (!title) return badRequestResponse("params.title is required");
         const { userId, source } = await authenticateAgentCaller(context, spaceId);
-        const session = await createAIChatSession(await openSpaceStore(spaceId), userId, {
-          title,
-          source,
-        });
+        const session = await createAIChatSession(
+          await openSpaceStore(context.var.platform, spaceId),
+          userId,
+          {
+            title,
+            source,
+          },
+        );
         return Response.json({
           jsonrpc: "2.0",
           id: requestId,
@@ -843,7 +862,11 @@ export const POST: ApiRouteHandler = (context) =>
             "params.imageAttachments must contain valid image uploads",
           );
         }
-        const chatAttachments = parseChatAttachments(params.attachments, spaceId);
+        const chatAttachments = parseChatAttachments(
+          context.var.platform,
+          params.attachments,
+          spaceId,
+        );
         if (chatAttachments === null) {
           return badRequestResponse(
             "params.attachments must contain valid uploaded files",
@@ -861,7 +884,7 @@ export const POST: ApiRouteHandler = (context) =>
 
         const userText = (prompt[0] as { text: string }).text;
 
-        const store = await openSpaceStore(spaceId);
+        const store = await openSpaceStore(context.var.platform, spaceId);
         const session = await getAIChatSession(store, sessionId, userId);
         if (!session) throw notFoundResponse("AI chat session");
 
@@ -872,7 +895,7 @@ export const POST: ApiRouteHandler = (context) =>
         const [userProfile, oauthIntegrations, provider] = await Promise.all([
           getUserProfile(store, userId).catch(() => null),
           listOAuthIntegrationsForUser(store, userId).catch(() => []),
-          resolveUserAIProvider(spaceId, userId),
+          resolveUserAIProvider(context.var.platform, spaceId, userId),
         ]);
 
         const messages: ChatMessage[] = [
@@ -892,7 +915,11 @@ export const POST: ApiRouteHandler = (context) =>
               },
             ]
           : messages;
-        const modelMessages = await hydrateMessageImages(spaceId, agentMessages);
+        const modelMessages = await hydrateMessageImages(
+          context.var.platform,
+          spaceId,
+          agentMessages,
+        );
         const currentMessageImages = modelMessages.find(
           (message) => message.imageAttachments === imageAttachments,
         )?.images;
@@ -902,7 +929,7 @@ export const POST: ApiRouteHandler = (context) =>
           );
         }
 
-        const turn = startChatTurn({
+        const turn = startChatTurn(context.var.platform, {
           key,
           userId,
           sessionId,
@@ -927,7 +954,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (body.method === "session/load") {
         const session = await getAIChatSession(
-          await openSpaceStore(spaceId),
+          await openSpaceStore(context.var.platform, spaceId),
           sessionId,
           userId,
         );

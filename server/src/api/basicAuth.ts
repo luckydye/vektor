@@ -16,6 +16,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * The access token a Basic-auth client authenticated with.
@@ -57,6 +58,7 @@ export interface BasicAuthUser {
  * to every space they belong to.
  */
 export async function verifyBasicAuth(
+  platform: Platform,
   authHeader: string | null,
 ): Promise<BasicAuthUser | null> {
   if (!authHeader?.startsWith("Basic ")) return null;
@@ -78,7 +80,7 @@ export async function verifyBasicAuth(
     return { id: LOCAL_USER_ID, email: LOCAL_USER.email, name: LOCAL_USER.name };
   }
 
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   const foundUser = await one(authDb.select().from(user).where(eq(user.email, email)));
   if (!foundUser) return null;
 
@@ -86,9 +88,12 @@ export async function verifyBasicAuth(
   // this search establishes *which* space the token belongs to — it can never
   // "find" a space-A token by probing space B. The space it is found in is
   // carried out as the token's scope.
-  const spaces = await listUserSpaces(foundUser.id);
+  const spaces = await listUserSpaces(platform, foundUser.id);
   for (const space of spaces) {
-    const result = await validateAccessToken(await openSpaceStore(space.id), token);
+    const result = await validateAccessToken(
+      await openSpaceStore(platform, space.id),
+      token,
+    );
     if (result && result.token.createdBy === foundUser.id) {
       return {
         id: foundUser.id,

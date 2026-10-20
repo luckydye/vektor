@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   readWorkflowArtifact,
   workflowArtifactKey,
@@ -190,12 +191,19 @@ export function openResumeState(value: unknown): WorkflowResumeState | null {
  * map, which is what happens when a run is cancelled.
  */
 export async function writeRunResumeState(
+  platform: Platform,
   spaceId: string,
   runId: string,
   state: WorkflowResumeState,
 ): Promise<void> {
   try {
-    await writeWorkflowArtifact(spaceId, runId, "resume", sealResumeState(state));
+    await writeWorkflowArtifact(
+      platform,
+      spaceId,
+      runId,
+      "resume",
+      sealResumeState(state),
+    );
   } catch (error) {
     // Losing the resume state costs a full re-run on retry, never correctness.
     appLogger.warn("Failed to persist workflow resume state", { runId, error });
@@ -204,10 +212,12 @@ export async function writeRunResumeState(
 
 /** Load a run's resume state, or null if it has none. */
 export async function readRunResumeState(
+  platform: Platform,
   spaceId: string,
   runId: string,
 ): Promise<WorkflowResumeState | null> {
   const value = await readWorkflowArtifact<unknown>(
+    platform,
     spaceId,
     workflowArtifactKey(runId, "resume"),
   );

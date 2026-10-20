@@ -23,6 +23,7 @@ import {
   getOAuthRedirectUri,
 } from "#integrations/oauthProviders.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { appendQueryParams, normalizeRedirectPath } from "#utils/url.ts";
 
 /**
@@ -39,8 +40,8 @@ function defaultSettingsPath(spaceSlug: string): string {
   return `/${spaceSlug}`;
 }
 
-async function resolveFallbackPath(spaceId: string): Promise<string> {
-  const space = await getSpace(spaceId);
+async function resolveFallbackPath(platform: Platform, spaceId: string): Promise<string> {
+  const space = await getSpace(platform, spaceId);
   if (!space) {
     return "/";
   }
@@ -63,13 +64,14 @@ export const GET: ApiRouteHandler = (context) =>
     // an unauthorized caller must not learn.
     const user = requireUser(context);
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const fallbackPath = await resolveFallbackPath(spaceId);
+    const fallbackPath = await resolveFallbackPath(context.var.platform, spaceId);
 
     const redirectWithResult = (
       params: Record<string, string>,
@@ -101,7 +103,7 @@ export const GET: ApiRouteHandler = (context) =>
           message: "Missing OAuth callback parameters",
         });
       }
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
 
       const statePayload = await consumeOAuthIntegrationState(
         store,
@@ -118,7 +120,11 @@ export const GET: ApiRouteHandler = (context) =>
         });
       }
 
-      const configured = await getOAuthProviderConfiguration(spaceId, providerParam);
+      const configured = await getOAuthProviderConfiguration(
+        context.var.platform,
+        spaceId,
+        providerParam,
+      );
       if (!configured) {
         return badRequestResponse("Unsupported integration provider");
       }

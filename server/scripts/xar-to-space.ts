@@ -24,6 +24,7 @@ import { join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml } from "#documents/schema/render.ts";
+import { createBunPlatform } from "#platform/bun/index.ts";
 import { decodeHtmlEntities, escapeHtml } from "#utils/html.ts";
 import { slugify } from "#utils/slug.ts";
 import {
@@ -96,7 +97,9 @@ function isPageEntry(name: string): boolean {
   // `package.xml` is the manifest, `WebPreferences.xml` holds space rights and
   // objects — neither is a page.
   return (
-    name.endsWith(".xml") && name !== "package.xml" && !name.endsWith("WebPreferences.xml")
+    name.endsWith(".xml") &&
+    name !== "package.xml" &&
+    !name.endsWith("WebPreferences.xml")
   );
 }
 
@@ -489,11 +492,14 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
   // it to mark a date or a state — so a `(% … %)…(%%)` pair carrying one becomes
   // a span. The tags are held separately so the text between them still gets
   // read as wiki syntax. Everything else is framing and goes.
-  text = text.replace(/\(%(.*?)%\)([^\n]*?)\(%%\)/g, (match, params: string, body: string) => {
-    const style = colourStyle(params);
-    if (!style) return match;
-    return `${held.inline(`<span style="${style}">`)}${body}${held.inline("</span>")}`;
-  });
+  text = text.replace(
+    /\(%(.*?)%\)([^\n]*?)\(%%\)/g,
+    (match, params: string, body: string) => {
+      const style = colourStyle(params);
+      if (!style) return match;
+      return `${held.inline(`<span style="${style}">`)}${body}${held.inline("</span>")}`;
+    },
+  );
   text = text.replace(/\(%.*?%\)/gs, "");
   // Group delimiters wrap a block and render as nothing. They are not always on
   // a line of their own — a table cell holding a multi-line group opens with
@@ -927,6 +933,8 @@ function checkConverted(html: string, slug: string, report: Report): void {
   }
 }
 async function main(): Promise<void> {
+  // Opens databases in-process, so it runs on a platform of its own.
+  const platform = createBunPlatform();
   const options = parseOptions(process.argv.slice(2));
   const report = new Report();
   // Writing into an existing database would append a second space's worth of
@@ -1014,7 +1022,7 @@ async function main(): Promise<void> {
   }
 
   const write = { out, name: options.name, owner: options.owner };
-  const result = await writeSpace(plan, bodies, uploads, write, report);
+  const result = await writeSpace(platform, plan, bodies, uploads, write, report);
   printSummary(plan, result, uploads, { ...write, uploadsRoot }, report);
   if (uploadsRoot !== join(resolve("./data/uploads"), plan.spaceId)) {
     console.log(`  mv ${uploadsRoot} data/uploads/${plan.spaceId}`);

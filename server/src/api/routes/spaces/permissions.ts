@@ -34,6 +34,7 @@ import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import type { Platform } from "#platform/platform.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
 // List all permissions (roles and feature overrides)
@@ -55,9 +56,10 @@ export const GET: ApiRouteHandler = (context) =>
       (searchParams.get("resourceType") as ResourceType) || ResourceType.SPACE;
     const resourceId = searchParams.get("resourceId") || spaceId;
     const allResources = searchParams.get("allResources") === "true";
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
 
     await verifyAccess(
+      store.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -96,9 +98,14 @@ export const GET: ApiRouteHandler = (context) =>
 const ROLE_ACTIONS: readonly string[] = ["grant", "revoke"];
 const FEATURE_ACTIONS: readonly string[] = ["grant", "deny", "revoke"];
 
-async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
+async function isSpaceOwner(
+  platform: Platform,
+  spaceId: string,
+  userId: string,
+): Promise<boolean> {
   try {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       userId,
@@ -165,12 +172,14 @@ export const POST: ApiRouteHandler = (context) =>
     const targetResourceType = resourceType ?? ResourceType.SPACE;
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       type === "role" ? Permission.EDITOR : Permission.OWNER,
     );
-    const callerIsOwner = type === "role" && (await isSpaceOwner(spaceId, user.id));
+    const callerIsOwner =
+      type === "role" && (await isSpaceOwner(context.var.platform, spaceId, user.id));
 
     const granteeIdentifierCount = [userId, email, groupId].filter(Boolean).length;
     if (granteeIdentifierCount === 0) {
@@ -185,7 +194,7 @@ export const POST: ApiRouteHandler = (context) =>
     // returns 404 when no account exists for that email. Gated behind the
     // space-role authorization already enforced above.
     if (!userId && !groupId && email) {
-      const authDb = getAuthDb();
+      const authDb = getAuthDb(context.var.platform);
       const match = await one(
         authDb
           .select({ id: userTable.id })
@@ -220,7 +229,7 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("owner can only be granted on the space itself");
       }
 
-      const result = await writeRolePermission({
+      const result = await writeRolePermission(context.var.platform, {
         spaceId,
         resourceType: targetResourceType,
         resourceId: targetResourceId,
@@ -250,16 +259,28 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     if (action === "grant") {
-      const entry = await grantFeature(spaceId, roleOrFeature, grantee, user.id);
+      const entry = await grantFeature(
+        context.var.platform,
+        spaceId,
+        roleOrFeature,
+        grantee,
+        user.id,
+      );
       return jsonResponse({ permission: entry });
     }
 
     if (action === "deny") {
-      const entry = await denyFeature(spaceId, roleOrFeature, grantee, user.id);
+      const entry = await denyFeature(
+        context.var.platform,
+        spaceId,
+        roleOrFeature,
+        grantee,
+        user.id,
+      );
       return jsonResponse({ permission: entry });
     }
 
     // action === "revoke"
-    await revokeFeature(spaceId, roleOrFeature, grantee, user.id);
+    await revokeFeature(context.var.platform, spaceId, roleOrFeature, grantee, user.id);
     return jsonResponse({ success: true });
   }, "Failed to update permissions");

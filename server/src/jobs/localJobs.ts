@@ -1,31 +1,27 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import type {
   Extension,
   ExtensionManifest,
   JobDefinition,
 } from "#db/space/extensions.ts";
+import type { Platform } from "#platform/platform.ts";
 import { kebabToTitle } from "#utils/utils.ts";
 import { createZipBuffer, type ZipEntry } from "#utils/zip.ts";
 
-const JOBS_DIR = join(process.cwd(), "jobs");
 const EXTENSION_ID = "local-jobs";
 
-let cached: { extension: Extension; packageBuffer: Buffer } | null | undefined;
+type LocalPackage = { extension: Extension; packageBuffer: Buffer };
 
-function build(): { extension: Extension; packageBuffer: Buffer } | null {
-  let files: string[];
-  try {
-    files = readdirSync(JOBS_DIR).filter((f) => f.endsWith(".mjs"));
-  } catch {
-    return null;
-  }
+/** Built once per platform: the files are read at first use and not watched. */
+const packages = new WeakMap<Platform, LocalPackage | null>();
 
+function build(platform: Platform): LocalPackage | null {
+  const files = platform.localJobFiles();
   if (files.length === 0) return null;
 
-  const jobs: JobDefinition[] = files.map((file) => {
-    const id = basename(file, ".mjs");
-    return { id, name: kebabToTitle(id), entry: `jobs/${file}` };
+  const jobs: JobDefinition[] = files.map(({ name }) => {
+    const id = basename(name, ".mjs");
+    return { id, name: kebabToTitle(id), entry: `jobs/${name}` };
   });
 
   const manifest: ExtensionManifest = {
@@ -38,10 +34,7 @@ function build(): { extension: Extension; packageBuffer: Buffer } | null {
 
   const zipEntries: ZipEntry[] = [
     { name: "manifest.json", data: Buffer.from(JSON.stringify(manifest)) },
-    ...files.map((file) => ({
-      name: `jobs/${file}`,
-      data: readFileSync(join(JOBS_DIR, file)),
-    })),
+    ...files.map(({ name, data }) => ({ name: `jobs/${name}`, data })),
   ];
 
   const packageBuffer = createZipBuffer(zipEntries);
@@ -63,17 +56,15 @@ function build(): { extension: Extension; packageBuffer: Buffer } | null {
   };
 }
 
-function load(): { extension: Extension; packageBuffer: Buffer } | null {
-  if (cached === undefined) {
-    cached = build();
-  }
-  return cached;
+function load(platform: Platform): LocalPackage | null {
+  if (!packages.has(platform)) packages.set(platform, build(platform));
+  return packages.get(platform) ?? null;
 }
 
-export function getLocalExtension(): Extension | null {
-  return load()?.extension ?? null;
+export function getLocalExtension(platform: Platform): Extension | null {
+  return load(platform)?.extension ?? null;
 }
 
-export function getLocalExtensionPackage(): Buffer | null {
-  return load()?.packageBuffer ?? null;
+export function getLocalExtensionPackage(platform: Platform): Buffer | null {
+  return load(platform)?.packageBuffer ?? null;
 }

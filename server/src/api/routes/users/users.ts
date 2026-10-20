@@ -21,6 +21,7 @@ import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { user } from "#db/schema/auth.ts";
+import type { Platform } from "#platform/platform.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 /**
@@ -113,7 +114,7 @@ function storedGroups(raw: string | null): string[] {
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const caller = requireUser(context);
-    const db = getAuthDb();
+    const db = getAuthDb(context.var.platform);
 
     const params = new URL(context.req.url).searchParams;
     for (const name of params.keys()) {
@@ -175,13 +176,14 @@ export const GET: ApiRouteHandler = (context) =>
     if (spaceId) {
       // Only members of the space may enumerate its members.
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         caller.id,
         Permission.VIEWER,
       );
 
-      const memberIds = [...(await getSpaceMemberIds(spaceId))];
+      const memberIds = [...(await getSpaceMemberIds(context.var.platform, spaceId))];
       // The space creator may not have an explicit ACL row; include the caller.
       if (!memberIds.includes(caller.id)) {
         memberIds.push(caller.id);
@@ -209,7 +211,7 @@ export const GET: ApiRouteHandler = (context) =>
     // `/search`, rather than a refusal. `isInstanceAdmin` filters here, it does
     // not gate: nothing is withheld from a caller who could name it, because
     // there is nothing to name.
-    if (!(await isInstanceAdmin(caller.id))) {
+    if (!(await isInstanceAdmin(context.var.platform, caller.id))) {
       return jsonResponse({ users: [], limit, nextCursor: null });
     }
 

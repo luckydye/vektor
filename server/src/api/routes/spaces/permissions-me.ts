@@ -21,17 +21,19 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.VIEWER,
     );
 
-    const identity = await resolveIdentity(user.id);
+    const identity = await resolveIdentity(context.var.platform, user.id);
     const userGroups = identity.groups;
 
     // Get user's space role
     const spacePermission = await getPermission(
+      context.var.platform,
       spaceId,
       ResourceType.SPACE,
       spaceId,
@@ -43,7 +45,12 @@ export const GET: ApiRouteHandler = (context) =>
     // Check each feature
     const features: Record<string, boolean> = {};
     for (const feature of Object.values(Feature)) {
-      features[feature] = await hasFeature(spaceId, feature, identity);
+      features[feature] = await hasFeature(
+        context.var.platform,
+        spaceId,
+        feature,
+        identity,
+      );
     }
 
     return jsonResponse({

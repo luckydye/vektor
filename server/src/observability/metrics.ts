@@ -13,6 +13,7 @@ import { one } from "#db/client/query.ts";
 import { spaceIndex, user } from "#db/schema/auth.ts";
 import { activeRuns } from "#jobs/runStore.ts";
 import { getJobQueueStats } from "#jobs/scheduler.ts";
+import type { Platform } from "#platform/platform.ts";
 import { getOpStats } from "./trace.ts";
 
 /** Rolling window, in seconds, used to compute the HTTP request rate. */
@@ -121,10 +122,10 @@ function sampleMonitor(): void {
   samplesFilled = Math.min(samplesFilled + 1, MONITOR_SAMPLES);
 }
 
-// Sampled on a background timer. `unref` keeps it from holding the process open
-// (e.g. in tests or during graceful shutdown).
-const monitorTimer = setInterval(sampleMonitor, MONITOR_INTERVAL_MS);
-monitorTimer.unref?.();
+/** Sample the event loop on a background timer; returns what stops it. */
+export function startMetricsMonitor(platform: Platform): () => void {
+  return platform.spaceHost.every(MONITOR_INTERVAL_MS, sampleMonitor);
+}
 
 /** Peak event-loop delay, in seconds, over the rolling window. */
 function rollingEventLoopDelayMaxSeconds(): number {
@@ -161,9 +162,9 @@ function rollingCpuUtilizationRatio(): number {
 // ---------------------------------------------------------------------------
 
 /** Number of active spaces registered in the space index. */
-async function activeSpaceCount(): Promise<number> {
+async function activeSpaceCount(platform: Platform): Promise<number> {
   const row = await one(
-    getAuthDb()
+    getAuthDb(platform)
       .select({ total: sql<number>`count(*)` })
       .from(spaceIndex)
       .where(eq(spaceIndex.status, "active")),
@@ -172,8 +173,10 @@ async function activeSpaceCount(): Promise<number> {
 }
 
 /** Number of registered users. */
-async function userCount(): Promise<number> {
-  const row = await one(getAuthDb().select({ total: sql<number>`count(*)` }).from(user));
+async function userCount(platform: Platform): Promise<number> {
+  const row = await one(
+    getAuthDb(platform).select({ total: sql<number>`count(*)` }).from(user),
+  );
   return row?.total ?? 0;
 }
 
@@ -217,10 +220,13 @@ function opStatsMetrics(): MetricLine[] {
   return lines;
 }
 
-async function collectMetrics(): Promise<MetricLine[]> {
+async function collectMetrics(platform: Platform): Promise<MetricLine[]> {
   const memory = process.memoryUsage();
   const cpu = process.cpuUsage();
-  const [spaces, users] = await Promise.all([activeSpaceCount(), userCount()]);
+  const [spaces, users] = await Promise.all([
+    activeSpaceCount(platform),
+    userCount(platform),
+  ]);
   const jobQueue = getJobQueueStats();
 
   return [
@@ -370,10 +376,10 @@ async function collectMetrics(): Promise<MetricLine[]> {
 export const METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 
 /** Renders the current metrics snapshot in Prometheus exposition format. */
-export async function renderPrometheusMetrics(): Promise<string> {
+export async function renderPrometheusMetrics(platform: Platform): Promise<string> {
   const lines: string[] = [];
   const seenNames = new Set<string>();
-  for (const metric of await collectMetrics()) {
+  for (const metric of await collectMetrics(platform)) {
     if (!seenNames.has(metric.name)) {
       seenNames.add(metric.name);
       lines.push(`# HELP ${metric.name} ${metric.help}`);

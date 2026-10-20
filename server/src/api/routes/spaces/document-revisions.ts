@@ -14,6 +14,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { updateDocument } from "#db/space/documents.ts";
 import { listRevisionMetadata, restoreRevision } from "#db/space/revisions.ts";
+import type { Platform } from "#platform/platform.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { replaceLiveDocumentContent } from "#realtime/yjsRooms.ts";
@@ -32,6 +33,7 @@ export const GET: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
@@ -39,9 +41,9 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     // No revision is named, so no snapshot exemption: VIEW_HISTORY is required.
-    await verifyRevisionAccess(spaceId, documentId, user.id);
+    await verifyRevisionAccess(context.var.platform, spaceId, documentId, user.id);
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const revisions = await listRevisionMetadata(store, documentId);
 
     return jsonResponse({ revisions });
@@ -62,6 +64,7 @@ export const POST: ApiRouteHandler = (context) =>
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
@@ -77,7 +80,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.req.raw);
     const message = typeof body.message === "string" ? body.message : undefined;
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const restored = await restoreRevision(store, documentId, rev, user.id, message);
     if (!restored) {
       throw notFoundResponse("Revision");

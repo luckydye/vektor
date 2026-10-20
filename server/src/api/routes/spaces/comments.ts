@@ -32,6 +32,7 @@ import {
 } from "#db/space/comments.ts";
 import { enqueueCommentCreatedEmails } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 
@@ -53,19 +54,20 @@ export const GET: ApiRouteHandler = (context) =>
     // Whoever may read the document may read its comments — a public reader
     // and a job or access token included.
     await authenticateDocumentAccess(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       documentId,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
 
     // Fetch user data for comment creators. Only id/name/image — the client
     // renders the author name and an id-seeded avatar; email is PII and is
     // never needed here, so it is not selected or returned.
-    const authDb = getAuthDb();
+    const authDb = getAuthDb(context.var.platform);
     const userIds = [...new Set(comments.map((c) => c.createdBy))];
     const users = await many(
       authDb
@@ -115,6 +117,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     // Ensure user has access to document
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
@@ -124,7 +127,13 @@ export const POST: ApiRouteHandler = (context) =>
     // Verify user has commenting feature access. Scoped to the document, or a
     // document/tree/category-scoped editor would be refused on a document they
     // may edit outright.
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.COMMENT,
+      user.id,
+      documentId,
+    );
 
     if (!content || typeof content !== "string") {
       throw badRequestResponse("Content is required");
@@ -142,7 +151,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Reference is required for top-level comments");
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const comment = await createComment(
       store,
       ResourceType.DOCUMENT,
@@ -168,7 +177,7 @@ export const POST: ApiRouteHandler = (context) =>
     });
 
     try {
-      await enqueueCommentCreatedEmails({
+      await enqueueCommentCreatedEmails(context.var.platform, {
         spaceId,
         documentId,
         commentId: comment.id,
@@ -219,12 +228,19 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
       Permission.VIEWER,
     );
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.COMMENT,
+      user.id,
+      documentId,
+    );
 
     if (
       !Array.isArray(commentIds) ||
@@ -237,7 +253,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     // Reject the whole request if any id is outside this document. PATCH is a
     // bulk thread operation, so silently dropping ids would leave a partially
     // archived or split thread.
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
     const commentsById = new Map(comments.map((comment) => [comment.id, comment]));
     const validIds = [...new Set(commentIds)];
@@ -250,6 +266,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     // Editors may maintain whole threads. Commenters may only modify their own
     // comments, matching DELETE's authorship rule.
     const canModerate = await canAccess(
+      store.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
@@ -306,12 +323,19 @@ export const DELETE: ApiRouteHandler = (context) =>
     // has to be read first, but nothing else does — an outsider is turned away
     // before the rest of the shape is validated.
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
       Permission.VIEWER,
     );
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.COMMENT,
+      user.id,
+      documentId,
+    );
 
     if (!commentId || typeof commentId !== "string") {
       throw badRequestResponse("Comment ID is required");
@@ -321,7 +345,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     // the gates above authorized: a bare id lookup would archive a comment on
     // some other document (or another resource type entirely), so the caller
     // could pass any document they may comment on to reach a comment anywhere.
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const comment = await getComment(store, commentId, {
       type: ResourceType.DOCUMENT,
       id: documentId,

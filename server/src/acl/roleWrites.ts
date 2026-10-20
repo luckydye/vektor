@@ -20,6 +20,7 @@ import {
   revokePermission,
 } from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /** Who a role is being written for: exactly one of the two. */
 export interface RoleGrantee {
@@ -160,11 +161,14 @@ async function removesLastOwner(
  * an editor may reshare a document but not touch a grant that outranks their
  * own, and a space must keep an owner. A refusal returns before any write.
  */
-export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteResult> {
-  const store = await openSpaceStore(write.spaceId);
+export async function writeRolePermission(
+  platform: Platform,
+  write: RoleWrite,
+): Promise<RoleWriteResult> {
+  const store = await openSpaceStore(platform, write.spaceId);
   // Ahead of the transaction: a display name for the audit trail decides
   // nothing, and it reads the auth database rather than this space.
-  const targetName = await resolveGranteeName(write.grantee.userId);
+  const targetName = await resolveGranteeName(platform, write.grantee.userId);
 
   return store.tx(async (transaction) => {
     const requiredRole = await requiredRoleForRoleWrite(

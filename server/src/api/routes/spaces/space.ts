@@ -23,6 +23,7 @@ import {
   updateSpace,
 } from "#db/space/spaces.ts";
 import { getUserPreferences, setUserPreferences } from "#db/space/userPreferences.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   requiredPreferenceWriteRole,
   splitPreferencesByScope,
@@ -42,25 +43,30 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     if (context.var.credentials.jobToken) {
       await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.VIEWER,
       );
-      return jsonResponse(await getSpace(spaceId));
+      return jsonResponse(await getSpace(context.var.platform, spaceId));
     }
     const user = requireUser(context);
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
       user.id,
       Permission.VIEWER,
     );
-    const space = await getSpace(spaceId);
+    const space = await getSpace(context.var.platform, spaceId);
     if (!space) return jsonResponse(space);
     return jsonResponse({
       ...space,
-      userRole: await getUserSpaceRole(space, user.id),
-      userPreferences: await getUserPreferences(await openSpaceStore(spaceId), user.id),
+      userRole: await getUserSpaceRole(context.var.platform, space, user.id),
+      userPreferences: await getUserPreferences(
+        await openSpaceStore(context.var.platform, spaceId),
+        user.id,
+      ),
     });
   }, "Failed to get space");
 
@@ -116,6 +122,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       );
 
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
@@ -124,11 +131,11 @@ export const PATCH: ApiRouteHandler = (context) =>
           : requiredPreferenceWriteRole(validated.preferences),
       );
 
-      const space = await getSpace(spaceId);
+      const space = await getSpace(context.var.platform, spaceId);
       if (!space) {
         throw badRequestResponse("Space not found");
       }
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
 
       // A write of nothing but the member's own preferences does not touch the
       // space: `updateSpace` would restamp its `updatedAt` and reindex it, which
@@ -153,7 +160,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 
       return jsonResponse({
         ...updated,
-        userRole: await getUserSpaceRole(updated, user.id),
+        userRole: await getUserSpaceRole(store.platform, updated, user.id),
         // Set on every response carrying a space, for the same reason `userRole`
         // is: the client caches spaces by id, and a response that omits it
         // overwrites what the last one established.
@@ -185,6 +192,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId },
         user.id,
@@ -194,7 +202,9 @@ export const DELETE: ApiRouteHandler = (context) =>
       // asks for, where keeping a recoverable copy for 30 days is the thing being
       // objected to. Owner-only, like the delete it strengthens.
       const purge = new URL(context.req.url).searchParams.get("purge");
-      await deleteSpace(spaceId, { purge: purge === "1" || purge === "true" });
+      await deleteSpace(context.var.platform, spaceId, {
+        purge: purge === "1" || purge === "true",
+      });
       return successResponse();
     },
     {

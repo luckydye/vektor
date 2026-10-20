@@ -10,6 +10,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { extractFile, getExtension, getExtensionPackage } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/csp.ts";
 
 const MIME_TYPES: Record<string, string> = {
@@ -61,13 +62,14 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Check ACL-based access to extension
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.EXTENSION, id: extensionId },
       user.id,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     // A disabled extension is not served: the client unloads it, and its files
     // should not stay fetchable.
     if (!(await getExtension(store, extensionId))) {

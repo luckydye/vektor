@@ -16,11 +16,12 @@ import { one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
 import { account, spaceIndex, user } from "#db/schema/auth.ts";
 import { revision, spaceMetadata, workflowSchedule } from "#db/schema/space.ts";
+import { platform } from "./helpers/platform.ts";
 
 let authDb: ReturnType<typeof createDatabase>;
 
 beforeAll(async () => {
-  authDb = createDatabase("file::memory:");
+  authDb = createDatabase(platform, "file::memory:");
   await prepareAuthDb(authDb);
 });
 
@@ -98,7 +99,7 @@ describe("active space slug uniqueness", () => {
   }
 
   it("refuses a second active space on the same slug", async () => {
-    const database = createDatabase("file::memory:");
+    const database = createDatabase(platform, "file::memory:");
     await prepareAuthDb(database);
 
     await database.insert(spaceIndex).values(activeSpaceRow(1, "engineering"));
@@ -108,8 +109,8 @@ describe("active space slug uniqueness", () => {
   });
 
   it("renames a discovered local space when its slug is already active", async () => {
-    const database = createDatabase("file::memory:");
-    const localSpace = createDatabase("file::memory:");
+    const database = createDatabase(platform, "file::memory:");
+    const localSpace = createDatabase(platform, "file::memory:");
     await prepareAuthDb(database);
     await initSpaceDbSchema(localSpace, { local: false });
 
@@ -137,7 +138,7 @@ describe("active space slug uniqueness", () => {
 
     expect(resolved.slug).toBe("demo-3");
     expect(stored?.slug).toBe("demo-3");
-    closeDatabase(database);
-    closeDatabase(localSpace);
+    closeDatabase(platform, database);
+    closeDatabase(platform, localSpace);
   });
 });

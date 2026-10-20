@@ -12,7 +12,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { getNativeImage } from "#files/native.ts";
+import { getNativeImage } from "#platform/bun/native.ts";
 import { createZipBuffer } from "#utils/zip.ts";
 
 export const SEED = {

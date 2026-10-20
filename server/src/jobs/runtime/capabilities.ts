@@ -9,7 +9,8 @@
  * Two rules shape the surface:
  *
  * - **Deny by default.** A capability the guest asks for that is not in this
- *   table rejects. Adding a capability is a deliberate edit to this file.
+ *   table rejects. Adding a capability is a deliberate edit to this file, or
+ *   to the target's `JobVm` for the scratch directory and `exec`.
  * - **Space operations keep going through the HTTP API.** `readDocument` and
  *   friends call the local origin with a scoped job token, exactly as before, so
  *   authorization stays in the route handlers and is not re-derived here.
@@ -17,19 +18,16 @@
  *   native, because there is no route to protect and no reason to pay for a hop.
  */
 
-import { execFile } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
-import { tmpdir } from "node:os";
-import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import type { Attribution } from "#acl/apps.ts";
 import { config, getLocalOrigin } from "#config";
 import { isSerializedDocumentType } from "#documents/types.ts";
-import { getNativeImage } from "#files/native.ts";
 import { applyTransform } from "#files/transforms.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
+import { enqueueJobNotificationEmail } from "#notifications/enqueue.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   isLoopbackIp,
   isPrivateOrBlockedIp,
@@ -41,27 +39,15 @@ import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
 import { JobCache } from "./jobCache.ts";
-import { enqueueJobNotificationEmail } from "#notifications/enqueue.ts";
 import type { CapabilityTable } from "./types.ts";
 
 /** Base64 envelope marking binary data across the VM boundary. */
 const BYTES_KEY = "__bytes";
 
 /** Largest response body / file / subprocess output accepted from one call. */
-const MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
+export const MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
 /** Ceiling for a single `sleep`, so a job cannot park past its own deadline. */
 const MAX_SLEEP_MS = 5 * 60 * 1000;
-/** Wall-clock ceiling for one subprocess. */
-const EXEC_TIMEOUT_MS = 5 * 60 * 1000;
-
-/**
- * Binaries a job may run: the document-conversion tools jobs need and cannot
- * reasonably reimplement in-process. Fixed names, never a path and never
- * guest-supplied, so `exec` is a door to specific tools rather than to the
- * shell — and only to the three the image installs, since allowlisting a tool
- * that does not ship buys nothing and would admit it the day it does.
- */
-const EXEC_ALLOWLIST = new Set(["htmlq", "pandoc", "rsvg-convert"]);
 
 /** Encoders the image addon ships; an unknown name would keep the input format silently. */
 const IMAGE_OUTPUT_FORMATS = new Set(["webp", "jpeg", "png"]);
@@ -91,7 +77,7 @@ function isBytesEnvelope(value: unknown): value is Record<string, string> {
 }
 
 /** Wrap bytes for the trip back into the VM, where they become a `Uint8Array`. */
-function toBytes(data: Buffer | Uint8Array): Record<string, string> {
+export function toBytes(data: Buffer | Uint8Array): Record<string, string> {
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
   return { [BYTES_KEY]: buffer.toString("base64") };
 }
@@ -100,7 +86,7 @@ function toBytes(data: Buffer | Uint8Array): Record<string, string> {
  * Accept whatever the guest passed as content: a string, a `Uint8Array` (as an
  * envelope), or nothing.
  */
-function asBuffer(value: unknown): Buffer<ArrayBuffer> {
+export function asBuffer(value: unknown): Buffer<ArrayBuffer> {
   if (value === undefined || value === null) return Buffer.alloc(0);
   if (isBytesEnvelope(value)) return Buffer.from(value[BYTES_KEY], "base64");
   if (typeof value === "string") return Buffer.from(value, "utf8");
@@ -115,13 +101,13 @@ function asText(value: unknown): string {
   return String(value);
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
 
-function checkPayloadSize(bytes: number, what: string): void {
+export function checkPayloadSize(bytes: number, what: string): void {
   if (bytes > MAX_PAYLOAD_BYTES) {
     throw new Error(
       `${what} is ${bytes} bytes, over the ${MAX_PAYLOAD_BYTES} byte limit`,
@@ -212,82 +198,6 @@ async function describeResponse(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scratch directory
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** True when an already-resolved path is the scratch root or sits under it. */
-function isInside(root: string, resolved: string): boolean {
-  const rel = relative(root, resolved);
-  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
-}
-
-/** A private directory per run, created on first use and removed at dispose. */
-class Scratch {
-  private root: string | null = null;
-
-  async dir(): Promise<string> {
-    this.root ??= await mkdtemp(join(tmpdir(), "vektor-job-"));
-    return this.root;
-  }
-
-  /** Resolve a guest-supplied path, refusing anything outside the scratch root. */
-  async resolve(rawPath: unknown): Promise<string> {
-    const root = await this.dir();
-    const requested = String(rawPath ?? "");
-    if (!requested || isAbsolute(requested)) {
-      throw new Error(`scratch: "${requested}" must be a relative path`);
-    }
-    const resolved = normalize(join(root, requested));
-    if (!isInside(root, resolved)) {
-      throw new Error(`scratch: "${requested}" escapes the scratch directory`);
-    }
-    return resolved;
-  }
-
-  /**
-   * Vet one `exec` argument. Allowlisting the binary keeps guest input from
-   * becoming a command, but the converters take input and output paths, so an
-   * unchecked argument would read or write anywhere the server process can —
-   * every argument is treated as a candidate location and has to resolve inside
-   * the scratch tree, which ordinary flags and values do unchanged.
-   */
-  async assertArgAllowed(cwd: string, arg: string): Promise<void> {
-    const root = await this.dir();
-    // Unwrapping only, and only ever narrowing: `--flag=value` and `@argfile`
-    // hide a path one level in, and a flag's value may be a `:`-separated
-    // search path. An argument that matches neither shape is checked whole,
-    // which is the stricter reading, so a missed shape cannot pass a path.
-    const flag = /^-{1,2}[^=]*=/.exec(arg);
-    const candidates = flag
-      ? arg.slice(flag[0].length).split(":")
-      : [arg.replace(/^@/, "")];
-
-    for (const candidate of candidates) {
-      if (!candidate) continue;
-      // Both decisions are a parser's, not a pattern's. A URL names a location
-      // no path check would see — `file:///etc/passwd`, and gio and libreoffice
-      // answer to schemes not worth enumerating — and the URL parser sees
-      // through the tabs, newlines and leading spaces a pattern trips over. The
-      // slash keeps CSS selectors out of it: `a:hover` parses as a URL, and
-      // htmlq takes selectors as arguments.
-      if (candidate.includes("/") && URL.canParse(candidate)) {
-        throw new Error(`exec: argument "${arg}" names a URL, not a scratch path`);
-      }
-      if (isAbsolute(candidate) || !isInside(root, normalize(join(cwd, candidate)))) {
-        throw new Error(`exec: argument "${arg}" points outside the scratch directory`);
-      }
-    }
-  }
-
-  async destroy(): Promise<void> {
-    if (!this.root) return;
-    const root = this.root;
-    this.root = null;
-    await rm(root, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // The table
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -296,10 +206,13 @@ export interface Capabilities {
   dispose(): Promise<void>;
 }
 
-export function createCapabilities(context: CapabilityContext): Capabilities {
+export function createCapabilities(
+  platform: Platform,
+  context: CapabilityContext,
+): Capabilities {
   const { spaceId, jobId, initiatedByUserId, attribution, onLog, signal } = context;
-  const scratch = new Scratch();
-  const cache = new JobCache(jobId);
+  const host = platform.jobVm.hostCapabilities(signal);
+  const cache = new JobCache(platform.jobCache, jobId);
 
   // Space operations authenticate exactly as they did from the sandbox: a
   // short-lived token scoped to this space and the initiating user.
@@ -452,18 +365,17 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       const digest = createHmac(String(algorithm ?? "sha256"), asBuffer(key))
         .update(asBuffer(data))
         .digest();
-      return String(encoding ?? "bytes") === "hex" ? digest.toString("hex") : toBytes(digest);
+      return String(encoding ?? "bytes") === "hex"
+        ? digest.toString("hex")
+        : toBytes(digest);
     }) as never,
 
-    imageMetadata: (async (bytes: unknown) => {
-      const native = await getNativeImage();
-      if (!native) throw new Error("image.metadata: the image addon is unavailable");
-      return native.metadata(asBuffer(bytes));
-    }) as never,
+    imageMetadata: (async (bytes: unknown) =>
+      platform.imageTransformer.metadata(asBuffer(bytes))) as never,
 
     /**
      * Decode, fit inside the given box without enlarging, re-encode. Shares the
-     * addon and the no-upscale rule with the upload transform path.
+     * transformer and the no-upscale rule with the upload transform path.
      */
     imageTransform: (async (bytes: unknown, rawOptions: unknown) => {
       const options = asRecord(rawOptions);
@@ -474,7 +386,7 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
         throw new Error(`image.transform: "${format}" is not an output format`);
       }
       const quality = Math.min(100, Math.max(1, Number(options.quality) || 80));
-      const out = await applyTransform(input, {
+      const out = await applyTransform(platform, input, {
         w: Math.max(0, Math.floor(Number(options.width) || 0)),
         h: Math.max(0, Math.floor(Number(options.height) || 0)),
         format: format as "webp" | "jpeg" | "png" | null,
@@ -521,90 +433,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
           typeof options.sheet === "string" || typeof options.sheet === "number"
             ? options.sheet
             : undefined,
-      });
-    }) as never,
-
-    // ── scratch filesystem ───────────────────────────────────────────────────
-    scratchRead: (async (path: unknown) => {
-      const file = await scratch.resolve(path);
-      const info = await stat(file);
-      checkPayloadSize(info.size, `scratch file ${String(path)}`);
-      return toBytes(await readFile(file));
-    }) as never,
-
-    scratchReadText: (async (path: unknown) =>
-      (await readFile(await scratch.resolve(path))).toString("utf8")) as never,
-
-    scratchWrite: (async (path: unknown, content: unknown) => {
-      const file = await scratch.resolve(path);
-      const data = asBuffer(content);
-      checkPayloadSize(data.byteLength, `scratch write to ${String(path)}`);
-      await mkdir(join(file, ".."), { recursive: true });
-      await writeFile(file, data);
-      return null;
-    }) as never,
-
-    scratchList: (async (dir: unknown) => {
-      const target = dir ? await scratch.resolve(dir) : await scratch.dir();
-      const entries = await readdir(target, { withFileTypes: true });
-      return entries.map((entry) => ({
-        name: entry.name,
-        directory: entry.isDirectory(),
-      }));
-    }) as never,
-
-    scratchRemove: (async (path: unknown) => {
-      await rm(await scratch.resolve(path), { recursive: true, force: true });
-      return null;
-    }) as never,
-
-    scratchMkdir: (async (path: unknown) => {
-      await mkdir(await scratch.resolve(path), { recursive: true });
-      return null;
-    }) as never,
-
-    // ── tools ────────────────────────────────────────────────────────────────
-    /**
-     * Run one of a fixed set of conversion tools. The command must be an
-     * allowlisted name and no shell is involved, so guest input cannot become a
-     * command; every argument is confined to the scratch tree, so it cannot
-     * become a path to another tenant's data either.
-     */
-    exec: (async (rawCommand: unknown, rawArgs: unknown, rawOptions: unknown) => {
-      const command = String(rawCommand ?? "");
-      if (!EXEC_ALLOWLIST.has(command)) {
-        throw new Error(`exec: "${command}" is not an allowed tool`);
-      }
-      const args = (Array.isArray(rawArgs) ? rawArgs : []).map(String);
-      const options = asRecord(rawOptions);
-      const cwd = options.cwd ? await scratch.resolve(options.cwd) : await scratch.dir();
-      for (const arg of args) await scratch.assertArgAllowed(cwd, arg);
-
-      return await new Promise((resolve, reject) => {
-        const child = execFile(
-          command,
-          args,
-          {
-            cwd,
-            timeout: EXEC_TIMEOUT_MS,
-            maxBuffer: MAX_PAYLOAD_BYTES,
-            encoding: "buffer",
-            signal,
-            // No inherited environment: tools get a clean, minimal one.
-            env: { PATH: process.env.PATH ?? "", HOME: cwd, LANG: "C.UTF-8" },
-          },
-          (error, stdout, stderr) => {
-            const text = stderr.toString("utf8");
-            if (error) {
-              reject(new Error(`${command} failed: ${text || error.message}`));
-              return;
-            }
-            resolve({ stdout: toBytes(stdout), stderr: text });
-          },
-        );
-        if (options.stdin !== undefined && options.stdin !== null) {
-          child.stdin?.end(asBuffer(options.stdin));
-        }
       });
     }) as never,
 
@@ -675,9 +503,7 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
           ? JSON.stringify({
               content: text,
               type: options.type,
-              ...(options.title
-                ? { properties: { title: String(options.title) } }
-                : {}),
+              ...(options.title ? { properties: { title: String(options.title) } } : {}),
             })
           : text,
       });
@@ -693,9 +519,11 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
 
     notifyInitiator: (async (documentId: unknown) => {
       if (!initiatedByUserId) {
-        throw new Error("notifyInitiator is unavailable for a job without an initiating user");
+        throw new Error(
+          "notifyInitiator is unavailable for a job without an initiating user",
+        );
       }
-      const queued = await enqueueJobNotificationEmail({
+      const queued = await enqueueJobNotificationEmail(platform, {
         spaceId,
         documentId: String(documentId),
         actorId: initiatedByUserId,
@@ -709,13 +537,14 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       return ((await response.json()) as { value: unknown }).value;
     }) as never,
 
+    // ── scratch filesystem and tools ─────────────────────────────────────────
+    ...host.table,
+
     ...context.extra,
   };
 
   return {
     table,
-    async dispose() {
-      await scratch.destroy();
-    },
+    dispose: () => host.dispose(),
   };
 }

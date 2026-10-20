@@ -9,7 +9,6 @@ import * as caldavEvent from "./routes/caldav/event.ts";
 import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
-import * as gitSmart from "./routes/git/smart.ts";
 import * as marketplaceExtension from "./routes/marketplace/extension.ts";
 import * as marketplaceExtensions from "./routes/marketplace/extensions.ts";
 import * as mcp from "./routes/mcp.ts";
@@ -32,7 +31,6 @@ import * as documentColumnRename from "./routes/spaces/document-column-rename.ts
 import * as documentContributors from "./routes/spaces/document-contributors.ts";
 import * as documentDiff from "./routes/spaces/document-diff.ts";
 import * as documentEdit from "./routes/spaces/document-edit.ts";
-import * as documentGit from "./routes/spaces/document-git.ts";
 import * as documentRevisions from "./routes/spaces/document-revisions.ts";
 import * as documents from "./routes/spaces/documents.ts";
 import * as extension from "./routes/spaces/extension.ts";
@@ -87,18 +85,15 @@ export interface ApiRoute {
 }
 
 /**
- * All HTTP routes served by the Hono API. The router sorts by specificity so
- * order here does not matter — static segments beat params, params beat catch-alls.
+ * The HTTP routes every target serves; a target may add its own, as git does.
+ * The router sorts by specificity so order here does not matter — static
+ * segments beat params, params beat catch-alls.
  * Files under `routes/` are laid out flat: the pattern below is the only thing
  * that decides a URL, so a new route is a new file plus an entry here.
  */
 export const apiRoutes: ApiRoute[] = [
   { pattern: "/.well-known/caldav", module: wellKnownCaldav },
   { pattern: "/.well-known/vektor", module: wellKnownVektor },
-
-  // Not under /api: the clone URL is the repository's own address. The literal
-  // `git` segment is what separates it from a document path — see `isGitPath`.
-  { pattern: "/[spaceSlug]/git/[repo]/[...gitPath]", module: gitSmart },
 
   { pattern: "/api/auth/[...all]", module: authAll },
 
@@ -171,10 +166,6 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",
     module: documentEdit,
-  },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/git",
-    module: documentGit,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions",

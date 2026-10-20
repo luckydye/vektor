@@ -40,11 +40,11 @@ import {
   DIMENSION_READABLE_EXTENSIONS,
   readImageDimensions,
 } from "#files/imageDimensions.ts";
-import { getFileStorage, listAllFiles } from "#files/storage.ts";
+import { listAllFiles } from "#files/storage.ts";
 import { deleteRepositoryObjects } from "#git/repos.ts";
-import { deleteDocumentSeriesObjects, seriesIdsForDocument } from "#series/catalog.ts";
 import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
+import { deleteDocumentSeriesObjects, seriesIdsForDocument } from "#series/catalog.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import {
@@ -667,10 +667,10 @@ export async function deleteDocument(
 
   if (storedFiles === null) return false;
 
-  await deleteDocumentSeriesObjects(s.spaceId, seriesIds);
-  const storage = getFileStorage();
+  await deleteDocumentSeriesObjects(s.platform, s.spaceId, seriesIds);
+  const storage = s.platform.blobStore;
   if (wasRepository) {
-    await deleteRepositoryObjects(storage, s.spaceId, id).catch((error) => {
+    await deleteRepositoryObjects(s.platform, storage, s.spaceId, id).catch((error) => {
       appLogger.warn("Failed to delete repository objects", {
         error,
         spaceId: s.spaceId,
@@ -695,7 +695,7 @@ export async function deleteDocument(
 }
 
 async function syncFileIndex(s: SpaceStore): Promise<void> {
-  const storage = getFileStorage();
+  const storage = s.platform.blobStore;
   const diskFiles = await listAllFiles(storage, s.spaceId);
   if (diskFiles.length === 0) return;
 
@@ -799,6 +799,7 @@ async function readableDocumentPage(
       .orderBy(desc(document.updatedAt), desc(document.id)),
   );
   const readable = await filterReadableResources(
+    s.platform,
     s.spaceId,
     ResourceType.DOCUMENT,
     all.map((doc) => doc.id),
@@ -868,6 +869,7 @@ async function sortedDocumentPage(
   let ids = [...values.keys()];
   if (viewer) {
     const readable = await filterReadableResources(
+      s.platform,
       s.spaceId,
       ResourceType.DOCUMENT,
       ids,
@@ -1061,6 +1063,7 @@ export async function listDocuments(
     await syncFileIndex(s).catch(() => {});
 
     const visibleFiles = await filterAccessibleFiles(
+      s.platform,
       s.spaceId,
       await many(s.db.select().from(fileTable).orderBy(desc(fileTable.updatedAt))),
       viewer,
@@ -1114,6 +1117,7 @@ export async function listArchivedDocuments(
   // what reading one takes.
   if (viewer) {
     const readable = await filterReadableResources(
+      s.platform,
       s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
@@ -1197,6 +1201,7 @@ export async function listPinnedDocuments(
 
   if (viewer) {
     const readable = await filterReadableResources(
+      s.platform,
       s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
@@ -1322,6 +1327,7 @@ export async function listAllDocumentsByCategories(
 
   const readableIds = viewer
     ? await filterReadableResources(
+        s.platform,
         s.spaceId,
         ResourceType.DOCUMENT,
         nodes.map((node) => node.id),

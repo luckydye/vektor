@@ -9,7 +9,7 @@ export interface ImageDimensions {
   height: number;
 }
 
-import type { FileStorageAdapter } from "./storage.ts";
+import type { BlobStore } from "./storage.ts";
 
 /**
  * Extensions {@link readImageDimensions} can actually read. A backfill uses this
@@ -128,7 +128,7 @@ const IMAGE_HEADER_BYTES = 64 * 1024;
  * truncated header reads as unknown rather than as a wrong answer.
  */
 export async function readStoredImageDimensions(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   key: string,
 ): Promise<ImageDimensions | null> {

@@ -1,5 +1,6 @@
 import { openSpaceStore } from "#db/client/store.ts";
 import { listExtensions } from "#db/space/extensions.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /** A shell command an extension contributes for one of its OAuth providers. */
 export interface IntegrationAgentCommand {
@@ -22,12 +23,13 @@ export interface IntegrationAgentSurface {
  * naming it would only invite calls that fail.
  */
 export async function getIntegrationAgentSurface(
+  platform: Platform,
   spaceId: string,
   connectedProviders: string[],
 ): Promise<IntegrationAgentSurface> {
   if (connectedProviders.length === 0) return { instructions: [], commands: [] };
 
-  const extensions = await listExtensions(await openSpaceStore(spaceId));
+  const extensions = await listExtensions(await openSpaceStore(platform, spaceId));
   const surface: IntegrationAgentSurface = { instructions: [], commands: [] };
   const claimed = new Set<string>();
 

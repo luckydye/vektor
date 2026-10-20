@@ -26,6 +26,7 @@ import {
   updateWorkflowSchedule,
   validateCronExpression,
 } from "#db/space/workflowSchedules.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one workflow schedule
@@ -39,13 +40,14 @@ export const GET: ApiRouteHandler = (context) =>
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.EDITOR,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const schedule = await getWorkflowSchedule(store, scheduleId);
 
     if (!schedule) {
@@ -68,13 +70,14 @@ export const PATCH: ApiRouteHandler = (context) =>
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.EDITOR,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const existing = await getWorkflowSchedule(store, scheduleId);
 
     if (!existing) {
@@ -136,13 +139,14 @@ export const DELETE: ApiRouteHandler = (context) =>
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.EDITOR,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const schedule = await getWorkflowSchedule(store, scheduleId);
 
     if (!schedule) {

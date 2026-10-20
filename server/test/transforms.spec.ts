@@ -1,7 +1,7 @@
 /**
  * Tests for image transform + cache logic.
  *
- * Unit suite:  parseTransformParams, transformCachePath — no server required.
+ * Unit suite:  parseTransformParams, transformCacheKey — no server required.
  * Integration: full route — spins up an isolated server, uploads a real PNG,
  *              exercises resize / format-convert / upscale-guard / cache-hit.
  *
@@ -10,10 +10,10 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getNativeImage } from "#files/native.ts";
+import { getNativeImage } from "#platform/bun/native.ts";
 import {
   parseTransformParams,
-  transformCachePath,
+  transformCacheKey,
   withTransformParams,
 } from "#files/transforms.ts";
 import {
@@ -152,23 +152,23 @@ describe("parseTransformParams", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Unit — transformCachePath
+// Unit — transformCacheKey
 // ---------------------------------------------------------------------------
 
-describe("transformCachePath", () => {
-  it("produces the expected path format", () => {
-    const p = transformCachePath("space1", "ab/abc123.png", {
+describe("transformCacheKey", () => {
+  it("produces the expected key format", () => {
+    const p = transformCacheKey("ab/abc123.png", {
       w: 800,
       h: 0,
       format: "webp",
       quality: 80,
     });
-    expect(p).toContain("data/transforms/space1/ab/abc123.png");
+    expect(p.startsWith("ab/abc123.png")).toBe(true);
     expect(p).toContain("_800x0_webp_q80.webp");
   });
 
   it("uses 'orig' when format is null", () => {
-    const p = transformCachePath("space1", "ab/abc123.png", {
+    const p = transformCacheKey("ab/abc123.png", {
       w: 0,
       h: 0,
       format: null,
@@ -178,7 +178,7 @@ describe("transformCachePath", () => {
   });
 
   it("uses jpg extension (not jpeg) in the cache filename for jpeg format", () => {
-    const p = transformCachePath("space1", "ab/abc123.png", {
+    const p = transformCacheKey("ab/abc123.png", {
       w: 0,
       h: 0,
       format: "jpeg",
@@ -188,7 +188,7 @@ describe("transformCachePath", () => {
   });
 
   it("preserves the original extension when format is null", () => {
-    const p = transformCachePath("space1", "ab/abc123.png", {
+    const p = transformCacheKey("ab/abc123.png", {
       w: 0,
       h: 0,
       format: null,

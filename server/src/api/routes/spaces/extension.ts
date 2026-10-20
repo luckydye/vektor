@@ -21,6 +21,7 @@ import {
   setExtensionEnabled,
 } from "#db/space/extensions.ts";
 import { serializeExtension } from "#extensions/serialize.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one installed extension
@@ -37,6 +38,7 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.VIEWER,
@@ -44,6 +46,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     if (auth.type === "user") {
       await verifyAccess(
+        context.var.platform,
         spaceId,
         { type: ResourceType.EXTENSION, id: extensionId },
         auth.user.id,
@@ -51,7 +54,7 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const ext = await getExtension(store, extensionId, { includeDisabled: true });
     if (!ext) {
       return notFoundResponse("Extension");
@@ -76,14 +79,19 @@ export const PATCH: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
 
-    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.MANAGE_EXTENSIONS,
+      user.id,
+    );
 
     const body = await parseJsonBody<{ enabled?: unknown }>(context.req.raw);
     if (typeof body.enabled !== "boolean") {
       return jsonResponse({ error: "enabled must be a boolean" }, 400);
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const ext = await setExtensionEnabled(store, extensionId, body.enabled);
     if (!ext) {
       return notFoundResponse("Extension");
@@ -108,9 +116,14 @@ export const DELETE: ApiRouteHandler = (context) =>
     const extensionId = requireParam(context.var.params, "extensionId");
 
     // Deleting an extension requires the space-wide manage_extensions capability
-    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
+    await verifyFeatureAccess(
+      context.var.platform,
+      spaceId,
+      Feature.MANAGE_EXTENSIONS,
+      user.id,
+    );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const deleted = await deleteExtension(store, extensionId);
     if (!deleted) {
       return notFoundResponse("Extension");

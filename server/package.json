@@ -48,6 +48,7 @@
     "#config": "./src/config.ts",
     "#auth": "./src/auth.ts",
     "#peerFederation": "./src/peerFederation.ts",
+    "#platform/*": "./src/platform/*",
     "#acl/*": "./src/acl/*",
     "#agent/*": "./src/agent/*",
     "#api/*": "./src/api/*",

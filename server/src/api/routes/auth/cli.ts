@@ -22,6 +22,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { listUserSpaces, type Space } from "#db/space/spaces.ts";
+import type { Platform } from "#platform/platform.ts";
 import { escapeHtml } from "#utils/html.ts";
 
 // One-time codes: code → { userId, spaceId, expiresAt }
@@ -46,9 +47,10 @@ const APPROVAL_TTL_MS = 5 * 60_000;
  * ask different things of the user, hence two error codes.
  */
 async function listCliTokenSpaces(
+  platform: Platform,
   userId: string,
 ): Promise<{ spaces: Space[]; error?: "no_spaces" | "no_space_roles" }> {
-  const spaces = await listUserSpaces(userId);
+  const spaces = await listUserSpaces(platform, userId);
   const grantingSpaces = spaces.filter((space) => isPermission(space.userRole));
 
   if (grantingSpaces.length > 0) {
@@ -488,7 +490,7 @@ export const GET: ApiRouteHandler = (context) =>
       throw badRequestResponse("state is required and must be at least 16 characters");
     }
 
-    const { spaces, error } = await listCliTokenSpaces(user.id);
+    const { spaces, error } = await listCliTokenSpaces(context.var.platform, user.id);
     if (error) {
       return redirectToCli(redirectUri, state, { error });
     }
@@ -557,7 +559,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Approval has expired. Restart CLI login.");
     }
 
-    const { spaces, error } = await listCliTokenSpaces(user.id);
+    const { spaces, error } = await listCliTokenSpaces(context.var.platform, user.id);
     if (error) {
       return renderCliCallbackPage(
         cliCallbackUrl(redirectUri, state, { error }),

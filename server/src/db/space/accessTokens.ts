@@ -17,6 +17,7 @@ import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AccessToken, AclEntry } from "#db/schema/space.ts";
 import { acl } from "#db/schema/space.ts";
+import type { Platform } from "#platform/platform.ts";
 import { listAllSpaces, listUserSpaces } from "./spaces.ts";
 
 /** Ten years: long enough for any standing credential, short enough to expire. */
@@ -276,12 +277,13 @@ export async function validateAccessToken(
   // the credential permanently so re-adding the user cannot revive a secret
   // that remained on an offboarded user's machine.
   const creatorStillBelongsToSpace = await hasPermission(
+    s.platform,
     s.spaceId,
     ResourceType.SPACE,
     s.spaceId,
     result.createdBy,
     Permission.VIEWER,
-    await getUserGroups(result.createdBy),
+    await getUserGroups(s.platform, result.createdBy),
   );
   if (!creatorStillBelongsToSpace) {
     await revokeAccessToken(s, tokenId);
@@ -396,12 +398,13 @@ export async function listAccessTokensCreatedBy(
  * since resolution caps it at what its issuer can still do.
  */
 export async function listPersonalAccessTokens(
+  platform: Platform,
   userId: string,
 ): Promise<PersonalAccessToken[]> {
   const tokens: PersonalAccessToken[] = [];
 
-  for (const space of await listUserSpaces(userId)) {
-    const store = await openSpaceStore(space.id);
+  for (const space of await listUserSpaces(platform, userId)) {
+    const store = await openSpaceStore(platform, space.id);
     for (const token of await listAccessTokensCreatedBy(store, userId)) {
       tokens.push({
         ...token,
@@ -421,11 +424,12 @@ export async function listPersonalAccessTokens(
  * its own.
  */
 export async function findPersonalTokenSpace(
+  platform: Platform,
   userId: string,
   tokenId: string,
 ): Promise<string | null> {
-  for (const space of await listUserSpaces(userId)) {
-    const token = await getAccessToken(await openSpaceStore(space.id), tokenId);
+  for (const space of await listUserSpaces(platform, userId)) {
+    const token = await getAccessToken(await openSpaceStore(platform, space.id), tokenId);
     if (token?.createdBy === userId) return space.id;
   }
   return null;
@@ -435,10 +439,13 @@ export async function findPersonalTokenSpace(
  * Find which space a raw token belongs to by scanning all spaces.
  * Returns the s.spaceId if found and valid, null otherwise.
  */
-export async function findSpaceForToken(token: string): Promise<string | null> {
-  const spaces = await listAllSpaces();
+export async function findSpaceForToken(
+  platform: Platform,
+  token: string,
+): Promise<string | null> {
+  const spaces = await listAllSpaces(platform);
   for (const space of spaces) {
-    const spaceStore = await openSpaceStore(space.id);
+    const spaceStore = await openSpaceStore(platform, space.id);
     if (await validateAccessToken(spaceStore, token)) return space.id;
   }
   return null;

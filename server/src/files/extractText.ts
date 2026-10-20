@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { xlsxToText } from "#utils/xlsx.ts";
 import { unzipSync } from "#utils/zip.ts";
 
@@ -95,18 +94,4 @@ export function extractFileTextFromBuffer(
   if (isPptx) return extractPptxText(buffer).slice(0, 512_000);
 
   return null;
-}
-
-/**
- * Extract searchable text from a file on disk.
- * Returns null for file types where extraction is not supported (images, video, etc.).
- */
-export async function extractFileText(
-  filePath: string,
-  originalName: string,
-  mimeType: string | undefined,
-): Promise<string | null> {
-  const buf = await readFile(filePath).catch(() => null);
-  if (!buf) return null;
-  return extractFileTextFromBuffer(buf, originalName, mimeType);
 }

@@ -4,9 +4,17 @@ import { join } from "node:path";
 import type { dev } from "astro";
 import { Hono } from "hono";
 import { stopSerializationPool } from "#documents/serializationPool.ts";
+import {
+  createEmbeddedClientAssetMiddleware,
+  createFileSystemClientAssetMiddleware,
+} from "#platform/bun/clientAssets.ts";
+import { createBunPlatform } from "#platform/bun/index.ts";
+import { attachRealtimeWebSocketServer } from "#platform/bun/realtimeServer.ts";
+import type { Platform } from "#platform/platform.ts";
 import { stopAgentWorker } from "./agent/agent.ts";
+import { apiRoutes } from "./api/routes.ts";
 import { sendWebResponse } from "./api/server/response.ts";
-import { apiRouter, isGitPath } from "./api/server/router.ts";
+import { createApiRouter, isApiPath } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
 import { listActiveSpaceIds } from "./db/auth/spaceIndex.ts";
@@ -24,120 +32,17 @@ import {
   METRICS_CONTENT_TYPE,
   recordHttpRequest,
   renderPrometheusMetrics,
+  startMetricsMonitor,
 } from "./observability/metrics.ts";
-import { attachRealtimeWebSocketServer } from "./realtime/websocket.ts";
-import {
-  createEmbeddedClientAssetMiddleware,
-  createFileSystemClientAssetMiddleware,
-} from "./utils/clientAssets.ts";
+import { startYRoomSweep } from "./realtime/yjsRooms.ts";
 import { APP_CSP } from "./utils/csp.ts";
 
 type AstroMiddleware = (
   req: IncomingMessage,
   res: ServerResponse,
   next: (error?: unknown) => void,
+  locals: Pick<App.Locals, "platform">,
 ) => void | Promise<void>;
-
-const app = new Hono<ApiBindings>();
-
-// Database schema preparation and local-file reconciliation must complete
-// before requests or background workers can observe the space index.
-await initializeDatabases();
-
-// Agent turns live in process memory, so one a previous process left running
-// has no agent behind it. Before listening: afterwards a turn may be live.
-for (const spaceId of await listActiveSpaceIds()) {
-  await failInterruptedAIChatTurns(await openSpaceStore(spaceId));
-}
-
-// The OpenAPI schema (served at `/api/v1/openapi.json`) is generated ahead of
-// time for a compiled instance: `task compile` runs
-// `scripts/generate-openapi.ts` while the route files it reads doc comments
-// from still exist as plain source, and embeds the result in the binary.
-// Running from source — dev, tests, or a bare `bun ./src/server.ts` — has no
-// such head start and that source can differ from any previous run, so the
-// same script runs again here, before the server accepts any request. Not
-// gated on `import.meta.env.DEV`: the test harness runs from source too,
-// without that flag set. Checking for the script itself, rather than a flag,
-// is what actually distinguishes the two — a compiled binary has no
-// `scripts/` directory on disk, only the `generated/openapi.ts` it already
-// produced. Either way, the doc-comment parsing this does has no business
-// living in the server's own module graph.
-const generateOpenApiScript = join(import.meta.dir, "../scripts/generate-openapi.ts");
-if (existsSync(generateOpenApiScript)) {
-  const proc = Bun.spawn(["bun", generateOpenApiScript], {
-    stdout: "ignore",
-    stderr: "inherit",
-  });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    throw new Error(
-      "Failed to generate the OpenAPI schema (scripts/generate-openapi.ts)",
-    );
-  }
-}
-
-app.use("*", async (c, next) => {
-  const res = c.env.outgoing;
-  if (!res.headersSent && !res.hasHeader("Content-Security-Policy")) {
-    res.setHeader("Content-Security-Policy", APP_CSP);
-  }
-  await next();
-});
-
-// Logging
-app.use("*", async (c, next) => {
-  const req = c.env.incoming as IncomingMessage & { time?: string };
-  const res = c.env.outgoing;
-  const startTime = Date.now();
-  req.time = new Date(startTime).toString();
-  recordHttpRequest();
-  appLogger.info("HTTP request", {
-    method: req.method,
-    host: c.req.header("host") ?? req.headers.host,
-    path: c.req.path,
-    time: req.time,
-  });
-
-  res.on("finish", () => {
-    const durationMs = Date.now() - startTime;
-    const attributes = {
-      method: req.method,
-      host: c.req.header("host") ?? req.headers.host,
-      path: c.req.path,
-      statusCode: res.statusCode,
-      durationMs,
-    };
-    if (res.statusCode >= 500) {
-      appLogger.error("HTTP response", attributes);
-      return;
-    }
-    if (res.statusCode >= 400) {
-      appLogger.warn("HTTP response", attributes);
-      return;
-    }
-    appLogger.info("HTTP response", attributes);
-  });
-
-  res.on("close", () => {
-    if (res.writableEnded) {
-      return;
-    }
-    appLogger.warn("HTTP connection closed before response completed", {
-      method: req.method,
-      host: c.req.header("host") ?? req.headers.host,
-      path: c.req.path,
-    });
-  });
-
-  await next();
-});
-
-// Operational metrics in Prometheus exposition format. Kept outside the API
-// router so it is reachable even in API-only deployments and without auth.
-app.get("/metrics", async (c) =>
-  c.body(await renderPrometheusMetrics(), 200, { "Content-Type": METRICS_CONTENT_TYPE }),
-);
 
 function buildHeaders(req: IncomingMessage): Headers {
   const headers = new Headers();
@@ -189,17 +94,8 @@ function createHonoRequest(req: IncomingMessage): Request {
   return new Request(requestUrl(req), init);
 }
 
-function isApiPath(pathname: string): boolean {
-  return (
-    isGitPath(pathname) ||
-    pathname === "/api" ||
-    pathname.startsWith("/api/") ||
-    pathname === "/.well-known/caldav" ||
-    pathname === "/.well-known/vektor"
-  );
-}
-
 function shouldRunAstroFallback(
+  astroHandler: AstroMiddleware | undefined,
   response: Response,
   req: IncomingMessage,
   res: ServerResponse,
@@ -212,6 +108,7 @@ function shouldRunAstroFallback(
 }
 
 async function runAstroHandler(
+  platform: Platform,
   handler: AstroMiddleware,
   req: IncomingMessage,
   res: ServerResponse,
@@ -228,161 +125,11 @@ async function runAstroHandler(
       resolve();
     };
 
-    Promise.resolve(handler(req, res, done)).then(() => {
+    Promise.resolve(handler(req, res, done, { platform })).then(() => {
       if (!settled) resolve();
     }, reject);
   });
 }
-
-// Serve the API directly from Hono so it can operate without the Astro
-// frontend. Hono retains ownership of request bodies for JSON, multipart,
-// binary uploads, and CalDAV requests.
-app.use("*", apiRouter);
-
-// The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
-// server (no client assets, no Astro dev server, no SSR handler).
-const apiOnly = config().API_ONLY === "1" || config().API_ONLY === "true";
-
-let devServer: Awaited<ReturnType<typeof dev>> | undefined;
-let astroHandler: AstroMiddleware | undefined;
-
-if (!apiOnly) {
-  if (import.meta.env.DEV) {
-    app.use("*", createFileSystemClientAssetMiddleware("dist/client"));
-  } else {
-    const { embeddedClientAssets } = await import("#generated/client-assets.ts");
-    app.use("*", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
-  }
-
-  if (import.meta.env.DEV) {
-    const { dev } = await import("astro");
-
-    devServer = await dev({
-      root: "./",
-      logLevel: "error",
-      server: {
-        host: true,
-      },
-    });
-  } else {
-    const { handler } = await import("#dist/server/entry.mjs");
-    astroHandler = handler as AstroMiddleware;
-  }
-} else {
-  appLogger.info("Starting in API-only mode (Astro frontend disabled)");
-}
-
-const runtimeArgv = globalThis.process?.argv ?? [];
-const portArgIndex = runtimeArgv.indexOf("--port");
-const portArg =
-  portArgIndex >= 0
-    ? runtimeArgv[portArgIndex + 1]
-    : runtimeArgv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
-const port = Number.parseInt(portArg ?? "8080", 10);
-const host = config().SERVER_HOST ?? "0.0.0.0";
-const server = createServer(async (req, res) => {
-  try {
-    const response = await app.fetch(createHonoRequest(req), {
-      incoming: req,
-      outgoing: res,
-    });
-
-    if (shouldRunAstroFallback(response, req, res)) {
-      await runAstroHandler(astroHandler as AstroMiddleware, req, res);
-      if (!res.writableEnded) {
-        await sendWebResponse(res, new Response(null, { status: 404 }));
-      }
-      return;
-    }
-
-    if (!res.writableEnded) {
-      await sendWebResponse(res, response);
-    }
-  } catch (error) {
-    appLogger.error("Unhandled HTTP server error", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    if (!res.headersSent && !res.writableEnded) {
-      await sendWebResponse(
-        res,
-        Response.json({ error: "Internal server error" }, { status: 500 }),
-      );
-    } else if (!res.writableEnded) {
-      res.end();
-    }
-  }
-});
-
-const realtimeWebSocketServer = attachRealtimeWebSocketServer(server);
-
-server.listen(port, host, () => {
-  appLogger.info("Server listening", { host, port });
-});
-
-startCronScheduler();
-startDiscordBots();
-startEmailNotificationWorker();
-
-let isShuttingDown = false;
-let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
-
-async function shutdown(reason: string, exitCode = 0) {
-  if (isShuttingDown) {
-    return;
-  }
-  isShuttingDown = true;
-
-  appLogger.info("Shutdown initiated", { reason, exitCode });
-
-  stopCronScheduler();
-  stopDiscordBots();
-  stopEmailNotificationWorker();
-  stopSerializationPool();
-  stopAgentWorker();
-
-  forcedShutdownTimer = setTimeout(() => {
-    appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });
-    process.exit(1);
-  }, 10_000);
-  forcedShutdownTimer.unref();
-
-  if (devServer) {
-    await devServer.stop();
-  }
-
-  try {
-    realtimeWebSocketServer.close();
-
-    await new Promise<void>((resolve, reject) => {
-      server.close((error: unknown) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-
-    if (forcedShutdownTimer) {
-      clearTimeout(forcedShutdownTimer);
-    }
-    appLogger.info("Shutdown completed", { reason });
-    await appLogger.flush();
-    process.exit(exitCode);
-  } catch (error) {
-    appLogger.error("Shutdown failed", { reason, error });
-    await appLogger.flush();
-    process.exit(1);
-  }
-}
-
-process.once("SIGINT", () => {
-  void shutdown("SIGINT", 0);
-});
-
-process.once("SIGTERM", () => {
-  void shutdown("SIGTERM", 0);
-});
 
 // A client that disconnects mid-response (e.g. navigating away while the SSR
 // stream is still being written) surfaces as an `aborted` / `ECONNRESET` error
@@ -404,20 +151,290 @@ function isBenignConnectionError(reason: unknown): boolean {
   );
 }
 
-process.on("uncaughtException", (error) => {
-  if (isBenignConnectionError(error)) {
-    appLogger.warn("Ignoring benign connection error (uncaughtException)", { error });
-    return;
-  }
-  appLogger.error("Uncaught exception", { error });
-  void shutdown("uncaughtException", 1);
-});
+/**
+ * Serve the API, the frontend and the realtime endpoint on `platform`, which
+ * everything below that touches a database, a blob or a timer is handed.
+ */
+export async function startServer(platform: Platform): Promise<void> {
+  const app = new Hono<ApiBindings>();
 
-process.on("unhandledRejection", (reason) => {
-  if (isBenignConnectionError(reason)) {
-    appLogger.warn("Ignoring benign connection error (unhandledRejection)", { reason });
-    return;
+  // Database schema preparation and local-file reconciliation must complete
+  // before requests or background workers can observe the space index.
+  await initializeDatabases(platform);
+
+  // Agent turns live in process memory, so one a previous process left running
+  // has no agent behind it. Before listening: afterwards a turn may be live.
+  for (const spaceId of await listActiveSpaceIds(platform)) {
+    await failInterruptedAIChatTurns(await openSpaceStore(platform, spaceId));
   }
-  appLogger.error("Unhandled rejection", { reason });
-  void shutdown("unhandledRejection", 1);
-});
+
+  // From source the route files may have changed since the last build, so the
+  // OpenAPI document is regenerated; a compiled binary has no `scripts/` and embeds it.
+  const generateOpenApiScript = join(import.meta.dir, "../scripts/generate-openapi.ts");
+  if (existsSync(generateOpenApiScript)) {
+    // A computed specifier, so `bun build --compile` leaves the doc tooling out.
+    const { generateOpenApiModule } = await import(generateOpenApiScript);
+    await generateOpenApiModule();
+  }
+
+  app.use("*", async (c, next) => {
+    const res = c.env.outgoing;
+    if (!res.headersSent && !res.hasHeader("Content-Security-Policy")) {
+      res.setHeader("Content-Security-Policy", APP_CSP);
+    }
+    await next();
+  });
+
+  // Logging
+  app.use("*", async (c, next) => {
+    const req = c.env.incoming as IncomingMessage & { time?: string };
+    const res = c.env.outgoing;
+    const startTime = Date.now();
+    req.time = new Date(startTime).toString();
+    recordHttpRequest();
+    appLogger.info("HTTP request", {
+      method: req.method,
+      host: c.req.header("host") ?? req.headers.host,
+      path: c.req.path,
+      time: req.time,
+    });
+
+    res.on("finish", () => {
+      const durationMs = Date.now() - startTime;
+      const attributes = {
+        method: req.method,
+        host: c.req.header("host") ?? req.headers.host,
+        path: c.req.path,
+        statusCode: res.statusCode,
+        durationMs,
+      };
+      if (res.statusCode >= 500) {
+        appLogger.error("HTTP response", attributes);
+        return;
+      }
+      if (res.statusCode >= 400) {
+        appLogger.warn("HTTP response", attributes);
+        return;
+      }
+      appLogger.info("HTTP response", attributes);
+    });
+
+    res.on("close", () => {
+      if (res.writableEnded) {
+        return;
+      }
+      appLogger.warn("HTTP connection closed before response completed", {
+        method: req.method,
+        host: c.req.header("host") ?? req.headers.host,
+        path: c.req.path,
+      });
+    });
+
+    await next();
+  });
+
+  // Operational metrics in Prometheus exposition format. Kept outside the API
+  // router so it is reachable even in API-only deployments and without auth.
+  app.get("/metrics", async (c) =>
+    c.body(await renderPrometheusMetrics(platform), 200, {
+      "Content-Type": METRICS_CONTENT_TYPE,
+    }),
+  );
+
+  // Serve the API directly from Hono so it can operate without the Astro
+  // frontend. Hono retains ownership of request bodies for JSON, multipart,
+  // binary uploads, and CalDAV requests.
+  app.use(
+    "*",
+    createApiRouter(
+      platform,
+      platform.git ? [...apiRoutes, ...platform.git.routes] : apiRoutes,
+    ),
+  );
+
+  // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
+  // server (no client assets, no Astro dev server, no SSR handler).
+  const apiOnly = config().API_ONLY === "1" || config().API_ONLY === "true";
+
+  let devServer: Awaited<ReturnType<typeof dev>> | undefined;
+  let astroHandler: AstroMiddleware | undefined;
+
+  if (!apiOnly) {
+    if (import.meta.env.DEV) {
+      app.use("*", createFileSystemClientAssetMiddleware("dist/client"));
+    } else {
+      const { embeddedClientAssets } = await import("#generated/client-assets.ts");
+      app.use("*", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
+    }
+
+    if (import.meta.env.DEV) {
+      const { dev } = await import("astro");
+
+      devServer = await dev({
+        root: "./",
+        logLevel: "error",
+        server: {
+          host: true,
+        },
+        vite: {
+          plugins: [
+            {
+              name: "vektor-platform",
+              // Astro's dev server reads a request's initial locals from this symbol,
+              // which is how pages get the platform the production handler passes.
+              configureServer(server) {
+                server.middlewares.use((req, _res, next) => {
+                  Reflect.set(req, Symbol.for("astro.locals"), { platform });
+                  next();
+                });
+              },
+            },
+          ],
+        },
+      });
+    } else {
+      const { handler } = await import("#dist/server/entry.mjs");
+      astroHandler = handler as AstroMiddleware;
+    }
+  } else {
+    appLogger.info("Starting in API-only mode (Astro frontend disabled)");
+  }
+
+  const runtimeArgv = globalThis.process?.argv ?? [];
+  const portArgIndex = runtimeArgv.indexOf("--port");
+  const portArg =
+    portArgIndex >= 0
+      ? runtimeArgv[portArgIndex + 1]
+      : runtimeArgv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
+  const port = Number.parseInt(portArg ?? "8080", 10);
+  const host = config().SERVER_HOST ?? "0.0.0.0";
+  const server = createServer(async (req, res) => {
+    try {
+      const response = await app.fetch(createHonoRequest(req), {
+        incoming: req,
+        outgoing: res,
+      });
+
+      if (astroHandler && shouldRunAstroFallback(astroHandler, response, req, res)) {
+        await runAstroHandler(platform, astroHandler, req, res);
+        if (!res.writableEnded) {
+          await sendWebResponse(res, new Response(null, { status: 404 }));
+        }
+        return;
+      }
+
+      if (!res.writableEnded) {
+        await sendWebResponse(res, response);
+      }
+    } catch (error) {
+      appLogger.error("Unhandled HTTP server error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!res.headersSent && !res.writableEnded) {
+        await sendWebResponse(
+          res,
+          Response.json({ error: "Internal server error" }, { status: 500 }),
+        );
+      } else if (!res.writableEnded) {
+        res.end();
+      }
+    }
+  });
+
+  const realtimeWebSocketServer = attachRealtimeWebSocketServer(platform, server);
+
+  server.listen(port, host, () => {
+    appLogger.info("Server listening", { host, port });
+  });
+
+  startCronScheduler(platform);
+  startDiscordBots(platform);
+  startEmailNotificationWorker(platform);
+  const stopMetricsMonitor = startMetricsMonitor(platform);
+  const stopYRoomSweep = startYRoomSweep(platform);
+
+  let isShuttingDown = false;
+  let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function shutdown(reason: string, exitCode = 0) {
+    if (isShuttingDown) {
+      return;
+    }
+    isShuttingDown = true;
+
+    appLogger.info("Shutdown initiated", { reason, exitCode });
+
+    stopCronScheduler();
+    stopMetricsMonitor();
+    stopYRoomSweep();
+    stopDiscordBots();
+    stopEmailNotificationWorker();
+    stopSerializationPool();
+    stopAgentWorker(platform);
+
+    forcedShutdownTimer = setTimeout(() => {
+      appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });
+      process.exit(1);
+    }, 10_000);
+    forcedShutdownTimer.unref();
+
+    if (devServer) {
+      await devServer.stop();
+    }
+
+    try {
+      realtimeWebSocketServer.close();
+
+      await new Promise<void>((resolve, reject) => {
+        server.close((error: unknown) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+
+      if (forcedShutdownTimer) {
+        clearTimeout(forcedShutdownTimer);
+      }
+      appLogger.info("Shutdown completed", { reason });
+      await appLogger.flush();
+      process.exit(exitCode);
+    } catch (error) {
+      appLogger.error("Shutdown failed", { reason, error });
+      await appLogger.flush();
+      process.exit(1);
+    }
+  }
+
+  process.once("SIGINT", () => {
+    void shutdown("SIGINT", 0);
+  });
+
+  process.once("SIGTERM", () => {
+    void shutdown("SIGTERM", 0);
+  });
+
+  process.on("uncaughtException", (error) => {
+    if (isBenignConnectionError(error)) {
+      appLogger.warn("Ignoring benign connection error (uncaughtException)", { error });
+      return;
+    }
+    appLogger.error("Uncaught exception", { error });
+    void shutdown("uncaughtException", 1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    if (isBenignConnectionError(reason)) {
+      appLogger.warn("Ignoring benign connection error (unhandledRejection)", { reason });
+      return;
+    }
+    appLogger.error("Unhandled rejection", { reason });
+    void shutdown("unhandledRejection", 1);
+  });
+}
+
+if (import.meta.main) {
+  await startServer(createBunPlatform());
+}

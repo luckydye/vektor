@@ -16,7 +16,10 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
  */
 export const ALL: ApiRouteHandler = async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();
-  const caldavUser = await verifyBasicAuth(context.req.raw.headers.get("Authorization"));
+  const caldavUser = await verifyBasicAuth(
+    context.var.platform,
+    context.req.raw.headers.get("Authorization"),
+  );
   if (!caldavUser) return calDavUnauthorized();
 
   const body = `<?xml version="1.0" encoding="utf-8" ?>

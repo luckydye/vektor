@@ -3,23 +3,19 @@
  * and the space events fanned back out to it.
  */
 
-import type { WebSocket } from "ws";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { getSeries } from "#series/catalog.ts";
-import {
-  catchUpSince,
-  headSyncSeq,
-  type SyncCatchUp,
-  syncEpoch,
-} from "./changeLog.ts";
+import { catchUpSince, headSyncSeq, type SyncCatchUp, syncEpoch } from "./changeLog.ts";
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
 import {
   isDocumentRealtimeTopic,
   isSeriesRealtimeTopic,
   isWorkflowRunRealtimeTopic,
+  type RealtimeSocket,
   type RealtimeSubscribePayload,
   realtimeTopics,
   type SyncCursor,
@@ -52,9 +48,10 @@ export class TopicSubscriptions {
   private readonly off: () => void;
 
   constructor(
+    readonly platform: Platform,
     private readonly spaceId: string,
     private readonly userId: string,
-    private readonly websocket: WebSocket,
+    private readonly websocket: RealtimeSocket,
   ) {
     this.off = subscribeToSyncEvents((event) => this.forward(event));
   }
@@ -191,7 +188,7 @@ export class TopicSubscriptions {
     // A series owned by a document follows its ACL; one that is not, or does
     // not exist yet, is space-wide.
     if (isSeriesRealtimeTopic(topic)) {
-      const store = await openSpaceStore(this.spaceId);
+      const store = await openSpaceStore(this.platform, this.spaceId);
       const series = await getSeries(store, topic.slice("series:".length));
       return series?.documentId
         ? this.documentAccess(series.documentId)
@@ -210,6 +207,7 @@ export class TopicSubscriptions {
   private async documentAccess(documentId: string): Promise<TopicAccess> {
     try {
       await verifyAccess(
+        this.platform,
         this.spaceId,
         { type: ResourceType.DOCUMENT, id: documentId },
         this.userId,
@@ -230,6 +228,7 @@ export class TopicSubscriptions {
     let verdict: Promise<TopicAccess> | undefined;
     return () => {
       verdict ??= verifyAccess(
+        this.platform,
         this.spaceId,
         { type: ResourceType.SPACE, id: this.spaceId },
         this.userId,

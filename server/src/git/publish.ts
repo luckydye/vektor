@@ -10,7 +10,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { localPackNames, markCache } from "./cache.ts";
 import { git } from "./run.ts";
@@ -60,7 +60,7 @@ export function diffRefs(
 }
 
 async function uploadPacks(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   dir: string,
@@ -82,7 +82,7 @@ async function uploadPacks(
  * moving. Anything else is re-applied to the state that won.
  */
 async function commit(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   loaded: LoadedState,
@@ -112,7 +112,7 @@ async function commit(
  * quiet moment.
  */
 async function repack(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   dir: string,
@@ -161,7 +161,7 @@ export interface PublishResult {
  * Returns unpublished when a genuinely conflicting push won the race.
  */
 export async function publishPush(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
   dir: string,
@@ -196,7 +196,7 @@ export async function publishPush(
  * else would ever remove them.
  */
 export async function sweepOrphanedPacks(
-  storage: FileStorageAdapter,
+  storage: BlobStore,
   spaceId: string,
   documentId: string,
 ): Promise<number> {

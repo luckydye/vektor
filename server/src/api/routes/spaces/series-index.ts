@@ -10,6 +10,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import type { Platform } from "#platform/platform.ts";
 import { declareSeries, listSeries, type SeriesKind } from "#series/catalog.ts";
 import {
   authenticateSeriesRole,
@@ -33,13 +34,19 @@ export const GET: ApiRouteHandler = (context) =>
       Permission.VIEWER,
       null,
     );
-    const rows = await listSeries(await openSpaceStore(spaceId));
+    const rows = await listSeries(await openSpaceStore(context.var.platform, spaceId));
     const documentIds = rows.flatMap((row) => (row.documentId ? [row.documentId] : []));
     const readable = aclUserId
-      ? await filterReadableResources(spaceId, ResourceType.DOCUMENT, documentIds, {
-          userId: aclUserId,
-          userGroups: await getUserGroups(aclUserId),
-        })
+      ? await filterReadableResources(
+          context.var.platform,
+          spaceId,
+          ResourceType.DOCUMENT,
+          documentIds,
+          {
+            userId: aclUserId,
+            userGroups: await getUserGroups(context.var.platform, aclUserId),
+          },
+        )
       : new Set(documentIds);
     return jsonResponse({
       series: rows
@@ -83,15 +90,18 @@ export const POST: ApiRouteHandler = (context) =>
         Permission.EDITOR,
         documentId,
       );
-      const { series, created } = await declareSeries(await openSpaceStore(spaceId), {
-        name: body.name,
-        kind: body.kind as SeriesKind,
-        documentId,
-        windowSeconds: body.windowSeconds,
-        retentionDays: body.retentionDays,
-        compactAfterSegments: body.compactAfterSegments,
-        createdBy: aclUserId ?? "system",
-      });
+      const { series, created } = await declareSeries(
+        await openSpaceStore(context.var.platform, spaceId),
+        {
+          name: body.name,
+          kind: body.kind as SeriesKind,
+          documentId,
+          windowSeconds: body.windowSeconds,
+          retentionDays: body.retentionDays,
+          compactAfterSegments: body.compactAfterSegments,
+          createdBy: aclUserId ?? "system",
+        },
+      );
       return jsonResponse({ series: publicSeries(series) }, created ? 201 : 200);
     },
     { fallbackMessage: "Failed to declare series", onError: seriesErrorResponse },

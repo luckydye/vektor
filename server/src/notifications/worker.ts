@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
-import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -22,12 +21,13 @@ import { getSpace } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { isSerializedDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
 import { renderNotificationEmail } from "./render.ts";
 
 const TICK_INTERVAL_MS = 15_000;
 
-let tickTimer: ReturnType<typeof setInterval> | null = null;
+let stopTicking: (() => void) | null = null;
 let tickInProgress = false;
 
 function documentUrl(spaceSlug: string, documentSlug: string): string {
@@ -50,10 +50,11 @@ function emailImageUrl(value: string | null | undefined): string | null {
 }
 
 async function deliver(
+  platform: Platform,
   spaceId: string,
   notification: EmailNotificationOutbox,
 ): Promise<void> {
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(platform, spaceId);
   if (await isEmailMuted(store, notification.recipientUserId, notification.documentId)) {
     await markEmailNotificationSkipped(store, notification.id, "Document muted");
     return;
@@ -61,6 +62,7 @@ async function deliver(
 
   try {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: notification.documentId },
       notification.recipientUserId,
@@ -71,7 +73,7 @@ async function deliver(
     return;
   }
 
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   const [recipient, actor, doc, space] = await Promise.all([
     one(
       authDb
@@ -85,8 +87,8 @@ async function deliver(
         .from(user)
         .where(eq(user.id, notification.actorId)),
     ),
-    getDocument(await openSpaceStore(spaceId), notification.documentId),
-    getSpace(spaceId),
+    getDocument(await openSpaceStore(platform, spaceId), notification.documentId),
+    getSpace(platform, spaceId),
   ]);
 
   if (!recipient?.email || !recipient.emailVerified) {
@@ -143,21 +145,21 @@ async function deliver(
     recipientEmail: recipient.email,
     brandColor: space.preferences?.brandColor,
   });
-  await sendEmail({ to: recipient.email, ...rendered });
+  await sendEmail(platform, { to: recipient.email, ...rendered });
   await markEmailNotificationSent(store, notification.id);
 }
 
-async function tick(): Promise<void> {
+async function tick(platform: Platform): Promise<void> {
   if (tickInProgress) return;
   tickInProgress = true;
   try {
-    for (const spaceId of await listActiveSpaceIds()) {
-      const store = await openSpaceStore(spaceId);
+    for (const spaceId of await platform.spaceHost.spaceIds()) {
+      const store = await openSpaceStore(platform, spaceId);
       try {
         const due = await claimDueEmailNotifications(store);
         for (const notification of due) {
           try {
-            await deliver(spaceId, notification);
+            await deliver(platform, spaceId, notification);
           } catch (error) {
             await retryEmailNotification(store, notification, error);
             appLogger.warn("Email notification delivery failed", {
@@ -179,25 +181,24 @@ async function tick(): Promise<void> {
   }
 }
 
-export function startEmailNotificationWorker(): void {
-  if (tickTimer) return;
-  if (!isEmailDeliveryAvailable()) {
+export function startEmailNotificationWorker(platform: Platform): void {
+  if (stopTicking) return;
+  if (!isEmailDeliveryAvailable(platform)) {
     appLogger.warn(
       "Email notification delivery is disabled; configure VEKTOR_EMAIL_FROM and VEKTOR_SMTP_HOST",
     );
     return;
   }
 
-  void tick();
-  tickTimer = setInterval(() => void tick(), TICK_INTERVAL_MS);
-  tickTimer.unref?.();
+  void tick(platform);
+  stopTicking = platform.spaceHost.every(TICK_INTERVAL_MS, () => void tick(platform));
   appLogger.info("Email notification worker started", {
     tickIntervalMs: TICK_INTERVAL_MS,
   });
 }
 
 export function stopEmailNotificationWorker(): void {
-  if (!tickTimer) return;
-  clearInterval(tickTimer);
-  tickTimer = null;
+  if (!stopTicking) return;
+  stopTicking();
+  stopTicking = null;
 }

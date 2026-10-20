@@ -21,8 +21,8 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument } from "#db/space/documents.ts";
 import { repositoryDocumentType } from "#documents/types.ts";
 import { mimeTypeForExtension } from "#files/fileTypes.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { blob, isSafePath, isSafeRev, log, overview, raw, tree } from "#git/plumbing.ts";
+import type { Platform } from "#platform/platform.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
 /** Commits a single request will return, however many are asked for. */
@@ -39,13 +39,14 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = requireParam(context.var.params, "documentId");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const document = await getDocument(store, documentId);
     if (!document || document.type !== repositoryDocumentType) {
       throw notFoundResponse("Repository");
@@ -57,7 +58,7 @@ export const GET: ApiRouteHandler = (context) =>
     if (!isSafeRev(rev)) throw badRequestResponse("Invalid rev");
     if (!isSafePath(path)) throw badRequestResponse("Invalid path");
 
-    const storage = getFileStorage();
+    const storage = store.platform.blobStore;
     // Every repository starts on `main`; what a client pushed first is what the
     // stored state records, and `overview` reports which branch that left.
     const branch = "main";

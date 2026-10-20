@@ -1,6 +1,5 @@
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
 import { assertTriggersEnabled } from "#db/space/propertyTriggers.ts";
@@ -10,6 +9,7 @@ import {
   parseWorkflowScheduleInputs,
 } from "#db/space/workflowSchedules.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { maintainSpaceSeries } from "#series/maintenance.ts";
 import { getLatestRunIdForDoc, getRunForRead } from "./runStore.ts";
 import { startWorkflowRun } from "./workflowRuns.ts";
@@ -24,7 +24,7 @@ const TICK_INTERVAL_MS = 30_000;
 const PURGE_INTERVAL_MS = 60 * 60 * 1000;
 let lastPurgeAt = 0;
 
-let tickTimer: ReturnType<typeof setInterval> | null = null;
+let stopTicking: (() => void) | null = null;
 let tickInProgress = false;
 
 /**
@@ -32,32 +32,31 @@ let tickInProgress = false;
  * each tick is a handful of indexed SQLite queries; the jobs themselves run
  * in worker threads via runJob, bounded by its concurrency semaphore.
  */
-export function startCronScheduler(): void {
-  if (tickTimer) return;
+export function startCronScheduler(platform: Platform): void {
+  if (stopTicking) return;
 
-  void tick();
+  void tick(platform);
 
-  tickTimer = setInterval(() => void tick(), TICK_INTERVAL_MS);
-  tickTimer.unref?.();
+  stopTicking = platform.spaceHost.every(TICK_INTERVAL_MS, () => void tick(platform));
   appLogger.info("Cron scheduler started", { tickIntervalMs: TICK_INTERVAL_MS });
 }
 
 export function stopCronScheduler(): void {
-  if (tickTimer) {
-    clearInterval(tickTimer);
-    tickTimer = null;
+  if (stopTicking) {
+    stopTicking();
+    stopTicking = null;
   }
 }
 
-async function tick(): Promise<void> {
+async function tick(platform: Platform): Promise<void> {
   if (tickInProgress) return;
   tickInProgress = true;
 
   try {
     const now = new Date();
-    for (const spaceId of await listActiveSpaceIds()) {
+    for (const spaceId of await platform.spaceHost.spaceIds()) {
       try {
-        const store = await openSpaceStore(spaceId);
+        const store = await openSpaceStore(platform, spaceId);
         const due = await claimDueWorkflowSchedules(store, now);
         for (const schedule of due) {
           // Recurring schedules avoid overlapping runs; each one-shot property
@@ -69,7 +68,7 @@ async function tick(): Promise<void> {
         appLogger.error("Cron tick failed for space", { spaceId, error });
       }
     }
-    await purgeExpiredSpacesIfDue(now);
+    await purgeExpiredSpacesIfDue(platform, now);
   } finally {
     tickInProgress = false;
   }
@@ -80,11 +79,11 @@ async function tick(): Promise<void> {
  * than its own timer: it is the process's one periodic sweep, and the purge has
  * to run somewhere for storage to be freed without an operator.
  */
-async function purgeExpiredSpacesIfDue(now: Date): Promise<void> {
+async function purgeExpiredSpacesIfDue(platform: Platform, now: Date): Promise<void> {
   if (now.getTime() - lastPurgeAt < PURGE_INTERVAL_MS) return;
   lastPurgeAt = now.getTime();
   try {
-    const purged = await purgeExpiredSpaces(now);
+    const purged = await purgeExpiredSpaces(platform, now);
     if (purged.length > 0) {
       appLogger.info("Reclaimed deleted spaces", { spaces: purged.length });
     }
@@ -131,8 +130,9 @@ async function runScheduledWorkflow(
     }
 
     if (schedule.sourceDocumentId) {
-      await assertTriggersEnabled(spaceId);
+      await assertTriggersEnabled(store.platform, spaceId);
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: schedule.documentId },
         schedule.createdBy,

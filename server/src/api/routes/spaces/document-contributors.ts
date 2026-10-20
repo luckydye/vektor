@@ -17,6 +17,7 @@ import {
   getAuditLogsForDocument,
   parseAuditAttribution,
 } from "#db/space/auditLogs.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * The accounts that have revised this document
@@ -30,13 +31,14 @@ export const GET: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       currentUser.id,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const { rows: logs } = await getAuditLogsForDocument(store, documentId, 1000);
 
     // Extract unique user IDs from audit logs, and the people apps acted for
@@ -62,7 +64,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Fetch user information from auth database. Only id/name/image — the
     // client shows the contributor name and an id-seeded avatar; email is PII
     // and is never needed here, so it is not selected or returned.
-    const authDb = getAuthDb();
+    const authDb = getAuthDb(context.var.platform);
     const userIdsArray = Array.from(userIds);
     const contributors = await many(
       authDb

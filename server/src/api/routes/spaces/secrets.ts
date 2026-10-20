@@ -16,6 +16,7 @@ import {
   sanitizeSecretName,
   upsertSpaceSecret,
 } from "#db/space/spaceSecrets.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List the space's secret names
@@ -28,13 +29,14 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.OWNER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const secrets = await listSpaceSecrets(store);
     return jsonResponse({ secrets });
   }, "Failed to list secrets");
@@ -51,6 +53,7 @@ export const POST: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -83,7 +86,7 @@ export const POST: ApiRouteHandler = (context) =>
         ? null
         : String(body.description).trim();
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const secret = await upsertSpaceSecret(store, name, body.value, user.id, description);
     return createdResponse({ secret });
   }, "Failed to save secret");

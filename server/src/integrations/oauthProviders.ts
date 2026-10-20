@@ -10,6 +10,7 @@ import {
 } from "#db/space/oauthIntegrations.ts";
 import type { ExtensionIntegration } from "#extensions/manifest.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 export interface OAuthProviderConfiguration {
   id: string;
@@ -88,9 +89,10 @@ export function normalizeInstanceUrl(value: string | null | undefined): string |
  * keeps whichever provider its stored connections already point at.
  */
 export async function listOAuthProviderDefinitions(
+  platform: Platform,
   spaceId: string,
 ): Promise<OAuthProviderDefinition[]> {
-  const extensions = await listExtensions(await openSpaceStore(spaceId));
+  const extensions = await listExtensions(await openSpaceStore(platform, spaceId));
   const byId = new Map<string, OAuthProviderDefinition>();
 
   for (const extension of extensions) {
@@ -113,10 +115,11 @@ export async function listOAuthProviderDefinitions(
 }
 
 export async function getOAuthProviderDefinition(
+  platform: Platform,
   spaceId: string,
   providerId: string,
 ): Promise<OAuthProviderDefinition | null> {
-  const definitions = await listOAuthProviderDefinitions(spaceId);
+  const definitions = await listOAuthProviderDefinitions(platform, spaceId);
   return definitions.find((entry) => entry.integration.id === providerId) ?? null;
 }
 
@@ -202,10 +205,11 @@ export function resolveOAuthProviderConfiguration(
 
 /** Null when no installed extension declares the provider. */
 export async function getOAuthProviderConfiguration(
+  platform: Platform,
   spaceId: string,
   providerId: string,
 ): Promise<OAuthProviderResolution | null> {
-  const definition = await getOAuthProviderDefinition(spaceId, providerId);
+  const definition = await getOAuthProviderDefinition(platform, spaceId, providerId);
   return definition ? resolveOAuthProviderConfiguration(definition) : null;
 }
 
@@ -419,6 +423,7 @@ function needsRefresh(credential: OAuthIntegrationCredential): boolean {
 }
 
 export async function resolveIntegrationAccessToken(
+  platform: Platform,
   spaceId: string,
   credential: OAuthIntegrationCredential,
   providerConfig: OAuthProviderConfiguration,
@@ -433,7 +438,7 @@ export async function resolveIntegrationAccessToken(
   const refresh = (async () => {
     // Re-read inside the exclusive section: a refresh that finished after the
     // caller read its credential has already spent that refresh token.
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(platform, spaceId);
     const current = await getOAuthIntegrationCredentialForUser(
       store,
       credential.userId,

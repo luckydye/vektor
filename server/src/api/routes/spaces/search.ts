@@ -14,6 +14,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { searchDocuments } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { refreshStaleDocumentIndexes } from "#search/indexing.ts";
 
 /**
@@ -32,6 +33,7 @@ export const GET: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
 
       const access = await authenticateSpaceAccess(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.VIEWER,
@@ -59,13 +61,14 @@ export const GET: ApiRouteHandler = (context) =>
         return jsonResponse({ results: [], nextCursor: null, query: "", filters: [] });
       }
 
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const docIds =
         userId === null
           ? null
           : await listAccessibleResources(
+              store.platform,
               spaceId,
-              await resolveIdentity(userId),
+              await resolveIdentity(store.platform, userId),
               ResourceType.DOCUMENT,
             );
 

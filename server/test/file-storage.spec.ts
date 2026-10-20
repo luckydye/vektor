@@ -10,19 +10,20 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLocalFileStorage, type FileStorageAdapter } from "#files/storage.ts";
+import type { BlobStore } from "#files/storage.ts";
+import { createLocalBlobStore } from "#platform/bun/localBlobStore.ts";
 import { describeFileStorageContract } from "./helpers/fileStorageContract.ts";
 
 // Its own root, and no touching of the process adapter: the server project runs
 // `isolate: false`, so a spec that changed either would change it for every
 // spec after it.
 let root: string;
-let storage: FileStorageAdapter;
+let storage: BlobStore;
 const SPACE = "space_1";
 
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), "vektor-storage-"));
-  storage = createLocalFileStorage(root);
+  storage = createLocalBlobStore(root);
   mkdirSync(join(root, SPACE, "adir"), { recursive: true });
 });
 

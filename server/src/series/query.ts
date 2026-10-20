@@ -5,6 +5,7 @@
  */
 
 import type { SpaceStore } from "#db/client/store.ts";
+import type { Platform } from "#platform/platform.ts";
 import { requireSeries } from "./catalog.ts";
 import { parseSeriesFilter } from "./filter.ts";
 import {
@@ -211,7 +212,7 @@ export async function querySeries(
     );
   }
   const row = await requireSeries(store, name);
-  const { spaceId } = store;
+  const { platform, spaceId } = store;
 
   const run = async (): Promise<SeriesQueryResult> => {
     const windows = windowsBetween(row, query.from, query.to);
@@ -220,13 +221,17 @@ export async function querySeries(
         windows,
         async (window) =>
           (
-            await resolveWindow(spaceId, await listWindow(spaceId, row.id, window))
+            await resolveWindow(
+              platform,
+              spaceId,
+              await listWindow(platform, spaceId, row.id, window),
+            )
           ).keys,
       )
     ).flat();
     const headers: Array<{ key: string; header: ObjectHeader }> = await mapLimited(
       keys,
-      async (key) => ({ key, header: await readHeader(spaceId, key) }),
+      async (key) => ({ key, header: await readHeader(platform, spaceId, key) }),
     );
 
     const prunedBy: Partial<Record<PruneReason, number>> = {};
@@ -247,7 +252,7 @@ export async function querySeries(
     const groups = new Map<string, SeriesQueryRow & { states: AggregateState[] }>();
     const groupValues = new Set<string>();
     for (const { key } of surviving) {
-      const object = await readObject(spaceId, key);
+      const object = await readObject(platform, spaceId, key);
       for (const point of object.points) {
         if (point.ts < query.from || point.ts >= query.to) continue;
         if (!matchesAll(point, where)) continue;

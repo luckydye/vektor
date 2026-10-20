@@ -8,8 +8,8 @@ import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { type SeriesRow, series, seriesDirtyWindow } from "#db/schema/space.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { SERIES_CLAIM_TTL_MS, SeriesInputError, seriesLimits } from "./limits.ts";
 
 export const seriesKinds = ["gps", "log", "metric"] as const;
@@ -147,8 +147,12 @@ export async function patchSeries(
 }
 
 /** Delete every object under each series' prefix. Their rows must already be gone. */
-export async function deleteSeriesObjects(spaceId: string, ids: string[]): Promise<void> {
-  const storage = getFileStorage();
+export async function deleteSeriesObjects(
+  platform: Platform,
+  spaceId: string,
+  ids: string[],
+): Promise<void> {
+  const storage = platform.blobStore;
   for (const id of ids) {
     let cursor: string | undefined;
     do {
@@ -166,7 +170,7 @@ export async function deleteSeries(store: SpaceStore, name: string): Promise<boo
     .where(eq(series.name, name))
     .returning({ id: series.id });
   if (!row) return false;
-  await deleteSeriesObjects(store.spaceId, [row.id]);
+  await deleteSeriesObjects(store.platform, store.spaceId, [row.id]);
   return true;
 }
 
@@ -185,10 +189,11 @@ export async function seriesIdsForDocument(
 
 /** After a document's row is gone: its cascaded series' objects. */
 export async function deleteDocumentSeriesObjects(
+  platform: Platform,
   spaceId: string,
   ids: string[],
 ): Promise<void> {
-  await deleteSeriesObjects(spaceId, ids).catch((error) => {
+  await deleteSeriesObjects(platform, spaceId, ids).catch((error) => {
     appLogger.warn("Failed to delete series objects", { spaceId, ids, error });
   });
 }

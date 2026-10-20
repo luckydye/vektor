@@ -32,6 +32,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getExtensionPackage, listExtensions } from "#db/space/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Run a job
@@ -47,6 +48,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       // Auth: job token OR user session
       const auth = await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.EDITOR,
@@ -63,7 +65,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (!jobId) return badRequestResponse("jobId is required");
 
       // Resolve job across all extensions in the space
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const extensions = await listExtensions(store);
       let extensionId: string | undefined;
       let entry: string | undefined;
@@ -83,6 +85,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (
         auth.type === "user" &&
         !(await canAccess(
+          store.platform,
           spaceId,
           { type: ResourceType.EXTENSION, id: extensionId },
           auth.user.id,
@@ -119,6 +122,7 @@ export const POST: ApiRouteHandler = (context) =>
 
             try {
               const outputs = await runJob(
+                context.var.platform,
                 zipBuffer,
                 entry,
                 inputs,
@@ -161,6 +165,7 @@ export const POST: ApiRouteHandler = (context) =>
       // Sync mode: run inline and return outputs
       const logs: string[] = [];
       const outputs = await runJob(
+        store.platform,
         zipBuffer,
         entry,
         inputs,

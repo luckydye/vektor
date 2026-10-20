@@ -1,13 +1,7 @@
-import { createReadStream } from "node:fs";
-import { mkdir, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { Readable } from "node:stream";
 import { appLogger } from "#observability/logger.ts";
-
+import type { Platform } from "#platform/platform.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
-import { getNativeImage } from "./native.ts";
-import type { FileStorageAdapter } from "./storage.ts";
-import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
+import { type BlobStore, containedKey } from "./storage.ts";
 
 export { withTransformParams } from "./transformUrl.ts";
 
@@ -93,15 +87,14 @@ export function parseTransformParams(
 }
 
 // ---------------------------------------------------------------------------
-// Cache path
+// Cache key
 // ---------------------------------------------------------------------------
 
 /**
- * Deterministic local cache path for a transformed variant.
- * Example: data/transforms/space1/ab/abc123.jpg_800x0_webp_q80.webp
+ * Deterministic key of a transformed variant in the space's transform cache.
+ * Example: ab/abc123.jpg_800x0_webp_q80.webp
  */
-export function transformCachePath(
-  spaceId: string,
+export function transformCacheKey(
   originalPath: string, // e.g. "ab/abc123.jpg"
   params: TransformParams,
 ): string {
@@ -113,8 +106,7 @@ export function transformCachePath(
         : originalPath.split(".").pop()?.toLowerCase();
 
   const suffix = `_${params.w}x${params.h}_${params.format ?? "orig"}_q${params.quality}.${outputExt}`;
-  const cacheFilename = originalPath + suffix;
-  return `${getTransformCacheRoot(spaceId)}/${cacheFilename}`;
+  return originalPath + suffix;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,30 +114,27 @@ export function transformCachePath(
 // ---------------------------------------------------------------------------
 
 /**
- * Apply a transform to an image buffer using the native image addon.
+ * Apply a transform to an image buffer using the platform's image transformer.
  * Images are never enlarged (fit-inside, no upscale).
  *
- * Returns null when the transform could not be applied (addon unavailable or
- * decode/encode failure). Callers must NOT cache a null result — serving the
+ * Returns null when the transform could not be applied (transformer unavailable
+ * or decode/encode failure). Callers must NOT cache a null result — serving the
  * unchanged original is a graceful fallback, but persisting it would poison the
  * cache for the (correct) params key.
  */
 export async function applyTransform(
+  platform: Platform,
   input: Buffer,
   params: TransformParams,
 ): Promise<Buffer | null> {
-  const native = await getNativeImage();
-  if (!native) return null; // addon unavailable — caller serves original uncached
-
   try {
-    const out = native.transform(input, {
+    return await platform.imageTransformer.transform(input, {
       w: params.w,
       h: params.h,
-      // null format preserves the input format; the addon expects "".
+      // null format preserves the input format; the transformer expects "".
       format: params.format ?? "",
       quality: params.quality,
     });
-    return Buffer.from(out);
   } catch (e) {
     appLogger.error("[transforms] native transform failed — serving original", {
       error: e,
@@ -160,26 +149,26 @@ export async function applyTransform(
 
 /**
  * Full transform-and-cache flow:
- *  1. Check local disk cache — stream if hit.
+ *  1. Check the platform's transform cache — serve if hit.
  *  2. On miss: read original via storage adapter (works for both local and
- *     object storage), apply transform, write to local cache, stream result.
- *
- * The transform cache is always local filesystem regardless of storage backend.
+ *     object storage), apply transform, write to the cache, stream result.
  */
 export async function serveTransformed(
+  platform: Platform,
   spaceId: string,
   originalPath: string,
   params: TransformParams,
-  storage: FileStorageAdapter,
+  storage: BlobStore,
 ): Promise<Response> {
-  const cachePath = transformCachePath(spaceId, originalPath, params);
+  const cache = platform.transformCache;
+  const cacheKey = transformCacheKey(originalPath, params);
 
-  // Security: ensure the resolved cache path stays inside the transform root
-  if (!isWithinTransformCache(spaceId, cachePath)) {
+  // Security: ensure the cache key stays inside the space's cache
+  if (containedKey(spaceId, cacheKey) === null) {
     return new Response("Invalid path", { status: 400 });
   }
 
-  const outputExt = cachePath.split(".").pop()!;
+  const outputExt = cacheKey.split(".").pop()!;
   const mimeType = OUTPUT_MIME[outputExt] ?? "image/jpeg";
 
   const responseHeaders = (contentLength: number): Record<string, string> => ({
@@ -189,20 +178,13 @@ export async function serveTransformed(
     ...servedFileSecurityHeaders(outputExt),
   });
 
-  // Cache hit — stream directly
-  try {
-    const cachedStat = await stat(cachePath);
-    if (cachedStat.isFile()) {
-      const stream = Readable.toWeb(
-        createReadStream(cachePath),
-      ) as unknown as ReadableStream;
-      return new Response(stream, {
-        status: 200,
-        headers: responseHeaders(cachedStat.size),
-      });
-    }
-  } catch {
-    // ENOENT — fall through to transform
+  // Cache hit — one read, since variants are snapped to small presets
+  const cached = await cache.read(spaceId, cacheKey);
+  if (cached) {
+    return new Response(new Uint8Array(cached), {
+      status: 200,
+      headers: responseHeaders(cached.byteLength),
+    });
   }
 
   // Cache miss — read original, transform, write cache
@@ -211,7 +193,7 @@ export async function serveTransformed(
     return new Response("File not found", { status: 404 });
   }
 
-  const buffer = await applyTransform(original, params);
+  const buffer = await applyTransform(platform, original, params);
 
   // Transform unavailable/failed: serve the original bytes with their own
   // content type and DO NOT cache — caching here would poison the params key
@@ -243,12 +225,11 @@ export async function serveTransformed(
     });
   }
 
-  // Write cache file (best-effort — don't fail the request if the write fails)
+  // Write cache entry (best-effort — don't fail the request if the write fails)
   try {
-    await mkdir(dirname(cachePath), { recursive: true });
-    await writeFile(cachePath, buffer);
+    await cache.put(spaceId, cacheKey, buffer, mimeType);
   } catch (err) {
-    appLogger.error("Failed to write transform cache", { cachePath, error: err });
+    appLogger.error("Failed to write transform cache", { spaceId, cacheKey, error: err });
   }
 
   return new Response(new Uint8Array(buffer), {

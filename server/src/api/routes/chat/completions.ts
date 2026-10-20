@@ -21,6 +21,7 @@ import {
   reserveAITokens,
 } from "#db/space/aiUsage.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { SsrfError } from "#utils/ssrf.ts";
 
 /**
@@ -46,6 +47,7 @@ export const POST: ApiRouteHandler = (context) =>
       // guard also scopes user-carrying job tokens to that user's real access,
       // which a signature-only check cannot do.
       await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.VIEWER,
@@ -54,7 +56,10 @@ export const POST: ApiRouteHandler = (context) =>
       const provider = getAIProvider();
       const bodyJson = await parseJsonBody(context.req.raw);
       const inputTokens = estimateProxyInput(bodyJson);
-      const settle = await reserveAITokens(await openSpaceStore(spaceId), inputTokens);
+      const settle = await reserveAITokens(
+        await openSpaceStore(context.var.platform, spaceId),
+        inputTokens,
+      );
 
       try {
         let response: Response;

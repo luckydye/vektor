@@ -19,13 +19,13 @@ export const GET: ApiRouteHandler = (context) =>
       image: resolveProfileImage(user),
       // What the caller may do that is not scoped to a space, so there is no
       // space-level `permissions/me` to carry it.
-      canCreateSpace: await canCreateSpace(user.id),
+      canCreateSpace: await canCreateSpace(context.var.platform, user.id),
       // The groups a "gain access" grant is written to, so the client names one
       // it is already in rather than learning the operator's whole list.
-      adminGroups: await userAdminGroups(user.id),
+      adminGroups: await userAdminGroups(context.var.platform, user.id),
       // Not `adminGroups.length > 0`: no-auth's local account administers the
       // instance without being in any group, and the client must not have to
       // know that.
-      isAdmin: await isInstanceAdmin(user.id),
+      isAdmin: await isInstanceAdmin(context.var.platform, user.id),
     });
   }, "Failed to get current user");

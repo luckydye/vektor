@@ -33,6 +33,7 @@ import {
   toWorkflowScheduleDto,
   validateCronExpression,
 } from "#db/space/workflowSchedules.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List workflow schedules
@@ -45,13 +46,14 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.EDITOR,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const schedules = await listWorkflowSchedules(store);
 
     return jsonResponse({ schedules: schedules.map(toWorkflowScheduleDto) });
@@ -69,6 +71,7 @@ export const POST: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -108,7 +111,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     // The schedule must target an existing workflow document.
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const doc = await getDocument(store, documentId);
     if (!doc) {
       throw badRequestResponse(`Document "${documentId}" not found`);

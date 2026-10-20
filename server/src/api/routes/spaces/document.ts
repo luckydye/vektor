@@ -70,6 +70,7 @@ import {
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { enqueueDocumentPublishedEmails } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import {
@@ -247,7 +248,7 @@ async function handlePublishedRevisionPatch(
   replaceLiveDocumentContent(spaceId, documentId, existing?.type, revisionContent);
 
   try {
-    await enqueueDocumentPublishedEmails({
+    await enqueueDocumentPublishedEmails(store.platform, {
       spaceId,
       documentId,
       publicationId: auditEntry.id,
@@ -286,7 +287,7 @@ async function handleReadonlyPatch(
     : false;
 
   try {
-    if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
+    if (readonly) await persistYRoomDraft(store.platform, roomKey(spaceId, documentId));
 
     const written = await store.tx(async (tx) => {
       const result = await touchDocument(tx, documentId, { readonly }, expected);
@@ -339,12 +340,14 @@ export const GET: ApiRouteHandler = (context) =>
     // collaboration room (if open), so partial edits reference the same state.
     const live = new URL(context.req.url).searchParams.get("live") === "true";
 
-    const space = (await getSpace(rawSpaceId)) ?? (await getSpaceBySlug(rawSpaceId));
+    const space =
+      (await getSpace(context.var.platform, rawSpaceId)) ??
+      (await getSpaceBySlug(context.var.platform, rawSpaceId));
     if (!space) {
       throw notFoundResponse("Space");
     }
     const spaceId = space.id;
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
 
     // Resolve slug → ID: try by ID first, fall back to slug so client-side
     // routing and cross-host callers can pass URL slugs directly.
@@ -362,6 +365,7 @@ export const GET: ApiRouteHandler = (context) =>
     // `aclUserId` is carried past the gate for the revision guard: `null` is
     // the trusted system caller, `""` public. See verifyRevisionAccess.
     const { aclUserId } = await authenticateDocumentAccess(
+      store.platform,
       context.var.credentials,
       spaceId,
       id,
@@ -382,7 +386,13 @@ export const GET: ApiRouteHandler = (context) =>
 
       // History, which the viewer gate above does not cover. Authorized before
       // the load, so a refusal cannot distinguish a missing revision.
-      const access = await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
+      const access = await verifyRevisionAccess(
+        context.var.platform,
+        spaceId,
+        id,
+        aclUserId,
+        [rev],
+      );
 
       const metadata = await getRevisionMetadata(store, id, rev);
       if (!metadata) {
@@ -471,6 +481,7 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     const headerImageAspectRatio = await getUploadImageAspectRatio(
+      store.platform,
       spaceId,
       document.properties.headerImage,
     );
@@ -506,7 +517,7 @@ export const PUT: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "documentId");
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
@@ -526,6 +537,7 @@ export const PUT: ApiRouteHandler = (context) =>
       // trusted. Either way carry the id forward for authorship/restore.
       if (parsed.userId) {
         await verifyAccess(
+          store.platform,
           spaceId,
           { type: ResourceType.DOCUMENT, id: id },
           parsed.userId,
@@ -535,9 +547,14 @@ export const PUT: ApiRouteHandler = (context) =>
       userId = parsed.userId ?? undefined;
     } else {
       // Authenticate with either user session or access token
-      const auth = await authenticateRequest(context.var.credentials, spaceId);
+      const auth = await authenticateRequest(
+        store.platform,
+        context.var.credentials,
+        spaceId,
+      );
       if (auth.type === "token") {
         await verifyAccess(
+          store.platform,
           spaceId,
           { type: ResourceType.DOCUMENT, id: id },
           auth.token.tokenId,
@@ -546,6 +563,7 @@ export const PUT: ApiRouteHandler = (context) =>
         userId = auth.token.tokenId;
       } else {
         await verifyAccess(
+          store.platform,
           spaceId,
           { type: ResourceType.DOCUMENT, id: id },
           auth.user.id,
@@ -670,13 +688,14 @@ export const PATCH: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const id = requireParam(context.var.params, "documentId");
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const existingDoc = await getDocument(store, id);
       if (!existingDoc) {
         throw notFoundResponse("Document");
       }
 
       const auth = await authenticateJobTokenOrSpaceRole(
+        store.platform,
         context.var.credentials,
         spaceId,
         Permission.EDITOR,
@@ -695,6 +714,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       const expected = requestedCondition(context);
 
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: id },
         userId,
@@ -737,6 +757,7 @@ export const PATCH: ApiRouteHandler = (context) =>
           // EDITOR on the parent, not read access: document ACLs inherit down
           // the tree, so this splices the document into grants it did not have.
           await verifyAccess(
+            store.platform,
             spaceId,
             { type: ResourceType.DOCUMENT, id: parentId },
             userId,
@@ -837,6 +858,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const id = requireParam(context.var.params, "documentId");
     const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.EDITOR,
@@ -850,7 +872,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       throw forbiddenResponse("Job token is missing user context");
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const expected = requestedCondition(context);
     // No resource, so no state to have failed a condition.
     if (expected && !(await getDocument(store, id))) {
@@ -859,6 +881,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     if (permanent) {
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: id },
         userId,
@@ -869,6 +892,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       }
     } else {
       await verifyAccess(
+        store.platform,
         spaceId,
         { type: ResourceType.DOCUMENT, id: id },
         userId,
@@ -896,13 +920,14 @@ export const POST: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
       Permission.EDITOR,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const document = await getDocument(store, documentId);
     if (!document) {
       throw badRequestResponse("Document not found");

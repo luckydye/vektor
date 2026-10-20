@@ -12,6 +12,8 @@ import BaseLayout from "#layouts/BaseLayout.astro";
 import { LAST_VISITED_SPACE_KEY } from "#utils/activeSpace.server.ts";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 
+const { platform } = Astro.locals;
+
 const { spaceSlug } = Astro.params;
 if (!spaceSlug) return Astro.redirect("/");
 
@@ -29,10 +31,10 @@ function spaceUnavailableResponse(): Response {
 
 // Missing the session is not itself the refusal: a space that grants viewer to
 // the `public` group must render without one, so only the checks below decide.
-const space = await getSpaceBySlug(spaceSlug);
+const space = await getSpaceBySlug(platform, spaceSlug);
 if (!space) return spaceUnavailableResponse();
 
-const store = await openSpaceStore(space.id);
+const store = await openSpaceStore(platform, space.id);
 
 const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
 const settingsPath =
@@ -44,6 +46,7 @@ if (settingsPath) {
 
   try {
     await verifyAccess(
+      platform,
       space.id,
       { type: ResourceType.SPACE, id: space.id },
       Astro.locals.user?.id ?? "",
@@ -67,6 +70,7 @@ const storedDocumentRecord = docSlugMatch
 async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   try {
     await verifyAccess(
+      platform,
       space.id,
       { type: ResourceType.DOCUMENT, id: documentId },
       Astro.locals.user?.id ?? null,
@@ -96,6 +100,7 @@ if (!readableDocumentRecord) {
   // the document verdict would tell a refused slug from an unresolved one.
   try {
     await verifyAccess(
+      platform,
       space.id,
       { type: ResourceType.SPACE, id: space.id, anyGrantInSpace: true },
       Astro.locals.user?.id ?? null,
@@ -128,6 +133,7 @@ let initialDocument = documentRecord
 
 if (initialDocument) {
   initialDocument.headerImageAspectRatio = await getUploadImageAspectRatio(
+    platform,
     space.id,
     initialDocument.properties.headerImage,
   );
@@ -143,7 +149,7 @@ if (Astro.locals.session) {
 }
 
 const userRole = Astro.locals.user
-  ? await getUserSpaceRole(space, Astro.locals.user.id)
+  ? await getUserSpaceRole(platform, space, Astro.locals.user.id)
   : undefined;
 // Serialize Date fields to ISO strings so the server-rendered HTML matches the
 // client props (Astro serializes props via JSON.stringify, which converts Date

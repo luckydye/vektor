@@ -16,6 +16,7 @@ import {
   listTokenResources,
   revokeAccessToken,
 } from "#db/space/accessTokens.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Read one space access token
@@ -32,18 +33,25 @@ export const GET: ApiRouteHandler = (context) =>
     const tokenId = requireParam(context.var.params, "tokenId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.EDITOR,
     );
 
-    const token = await getAccessToken(await openSpaceStore(spaceId), tokenId);
+    const token = await getAccessToken(
+      await openSpaceStore(context.var.platform, spaceId),
+      tokenId,
+    );
     if (!token) {
       throw notFoundResponse("Access token");
     }
 
-    const resources = await listTokenResources(await openSpaceStore(spaceId), tokenId);
+    const resources = await listTokenResources(
+      await openSpaceStore(context.var.platform, spaceId),
+      tokenId,
+    );
 
     return jsonResponse({ token: { ...token, resources } });
   }, "Failed to get access token");
@@ -64,6 +72,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     const tokenId = requireParam(context.var.params, "tokenId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -71,7 +80,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     );
 
     const success = await revokeAccessToken(
-      await openSpaceStore(spaceId),
+      await openSpaceStore(context.var.platform, spaceId),
       tokenId,
       user.id,
     );
@@ -97,6 +106,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const tokenId = requireParam(context.var.params, "tokenId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -104,7 +114,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     );
 
     const success = await deleteAccessToken(
-      await openSpaceStore(spaceId),
+      await openSpaceStore(context.var.platform, spaceId),
       tokenId,
       user.id,
     );

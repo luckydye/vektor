@@ -7,17 +7,18 @@ import { createDocument } from "#db/space/documents.ts";
 import { syncPropertyTriggers } from "#db/space/propertyTriggers.ts";
 import { createSpace, deleteSpace } from "#db/space/spaces.ts";
 import { claimDueWorkflowSchedules } from "#db/space/workflowSchedules.ts";
+import { platform } from "./helpers/platform.ts";
 
 let store: SpaceStore;
 let workflowId: string;
 
 beforeAll(async () => {
-  const space = await createSpace(
+  const space = await createSpace(platform,
     "alice",
     "Trigger reconciliation",
     `triggers-${Date.now()}`,
   );
-  store = await openSpaceStore(space.id);
+  store = await openSpaceStore(platform, space.id);
   const workflow = await createDocument(store, "alice", "workflow", "", {
     type: "workflow",
   });
@@ -25,7 +26,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (store) await deleteSpace(store.spaceId, { purge: true });
+  if (store) await deleteSpace(platform, store.spaceId, { purge: true });
 });
 
 async function scheduledDocument(anchor: Date, offsetMinutes: number) {

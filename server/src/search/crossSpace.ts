@@ -13,6 +13,7 @@ import {
 } from "#db/space/search.ts";
 import { listUserSpaces, type Space } from "#db/space/spaces.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { embedSearchQuery } from "#search/embedding.ts";
 
 /** A hint that matches exist elsewhere, not a second result list. */
@@ -35,12 +36,13 @@ export interface CrossSpaceSearchOptions {
 }
 
 async function searchSpace(
+  platform: Platform,
   space: Space,
   query: string,
   queryEmbedding: number[] | null,
   filters: PropertyFilter[],
 ): Promise<CrossSpaceSearchResult[]> {
-  const store = await openSpaceStore(space.id);
+  const store = await openSpaceStore(platform, space.id);
   // No stale-index catch-up: embedding another space's documents is work the
   // searcher did not ask for, and writes there refresh their own index anyway.
   const { results } = await searchDocuments(store, null, query, {
@@ -68,6 +70,7 @@ async function searchSpace(
  * newest documents.
  */
 export async function searchOtherSpaces(
+  platform: Platform,
   userId: string,
   query: string,
   options: CrossSpaceSearchOptions = {},
@@ -76,13 +79,13 @@ export async function searchOtherSpaces(
 
   // A space-wide viewer role, as the space's own search endpoint demands: a
   // grant on single documents elsewhere is not a licence to search that space.
-  const spaces = (await listUserSpaces(userId)).filter(
+  const spaces = (await listUserSpaces(platform, userId)).filter(
     (space) => space.id !== options.excludeSpaceId && canView(space.userRole),
   );
   if (spaces.length === 0) return [];
 
   // One vector for every space, and embedding is native compute.
-  const queryEmbedding = await embedSearchQuery(query);
+  const queryEmbedding = await embedSearchQuery(platform, query);
 
   const found: CrossSpaceSearchResult[] = [];
   let nextSpace = 0;
@@ -92,7 +95,13 @@ export async function searchOtherSpaces(
       const space = spaces[nextSpace++];
       try {
         found.push(
-          ...(await searchSpace(space, query, queryEmbedding, options.filters ?? [])),
+          ...(await searchSpace(
+            platform,
+            space,
+            query,
+            queryEmbedding,
+            options.filters ?? [],
+          )),
         );
       } catch (error) {
         // One unreachable space must not take the whole search down with it.

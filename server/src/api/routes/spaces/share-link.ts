@@ -10,6 +10,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getShareLink, revokeShareLink } from "#db/space/shareLinks.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Revoke a share link
@@ -23,13 +24,14 @@ export const DELETE: ApiRouteHandler = (context) =>
     const linkId = requireParam(context.var.params, "linkId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
       Permission.EDITOR,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const link = await getShareLink(store, linkId);
     if (!link || !isResourceType(link.resourceType)) {
       throw notFoundResponse("Share link");

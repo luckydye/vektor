@@ -6,7 +6,8 @@
 import { randomUUID } from "node:crypto";
 import type { SpaceStore } from "#db/client/store.ts";
 import type { SeriesRow } from "#db/schema/space.ts";
-import { getFileStorage, listAllFiles } from "#files/storage.ts";
+import { listAllFiles } from "#files/storage.ts";
+import type { Platform } from "#platform/platform.ts";
 import { recordAppend, requireSeries, seriesPrefix } from "./catalog.ts";
 import {
   compareStoredPoints,
@@ -147,27 +148,40 @@ export function forgetListing(spaceId: string, seriesId: string, window: number)
 
 // ─── objects ────────────────────────────────────────────────────────────────
 
-async function readRange(spaceId: string, key: string, end: number): Promise<Buffer> {
-  const stream = await getFileStorage().readStream(spaceId, key, { start: 0, end });
+async function readRange(
+  platform: Platform,
+  spaceId: string,
+  key: string,
+  end: number,
+): Promise<Buffer> {
+  const stream = await platform.blobStore.readStream(spaceId, key, { start: 0, end });
   if (!stream) throw new Error(`Series object vanished mid-read: ${key}`);
   return Buffer.from(await new Response(stream).arrayBuffer());
 }
 
-export async function readHeader(spaceId: string, key: string): Promise<ObjectHeader> {
+export async function readHeader(
+  platform: Platform,
+  spaceId: string,
+  key: string,
+): Promise<ObjectHeader> {
   const full = cacheGet<DecodedObject>(`o:${spaceId}/${key}`);
   if (full) return full.header;
   return cached(`h:${spaceId}/${key}`, async () => {
-    let prefix = await readRange(spaceId, key, HEADER_PROBE_BYTES - 1);
+    let prefix = await readRange(platform, spaceId, key, HEADER_PROBE_BYTES - 1);
     const end = HEADER_LENGTH_DIGITS + headerLength(prefix);
-    if (prefix.length < end) prefix = await readRange(spaceId, key, end - 1);
+    if (prefix.length < end) prefix = await readRange(platform, spaceId, key, end - 1);
     const header = decodeHeader(prefix);
     return { value: header, bytes: end };
   });
 }
 
-export async function readObject(spaceId: string, key: string): Promise<DecodedObject> {
+export async function readObject(
+  platform: Platform,
+  spaceId: string,
+  key: string,
+): Promise<DecodedObject> {
   return cached(`o:${spaceId}/${key}`, async () => {
-    const buffer = await getFileStorage().read(spaceId, key);
+    const buffer = await platform.blobStore.read(spaceId, key);
     if (!buffer) throw new Error(`Series object vanished mid-read: ${key}`);
     // Decoded JSON runs roughly ten times the brotli bytes.
     return {
@@ -179,6 +193,7 @@ export async function readObject(spaceId: string, key: string): Promise<DecodedO
 
 /** Every key under the window, listed fresh or from a listing under a second old. */
 export async function listWindow(
+  platform: Platform,
   spaceId: string,
   seriesId: string,
   window: number,
@@ -189,7 +204,7 @@ export async function listWindow(
   const hit = listings.get(cacheKey);
   if (!fresh && hit && Date.now() - hit.at < LISTING_TTL_MS) return hit.keys;
   const at = Date.now();
-  const keys = (await listAllFiles(getFileStorage(), spaceId, { prefix }))
+  const keys = (await listAllFiles(platform.blobStore, spaceId, { prefix }))
     .map((file) => file.key)
     .filter((key) => key.endsWith(OBJECT_SUFFIX))
     .sort();
@@ -205,28 +220,33 @@ export interface ResolvedWindow {
 
 /** Rule 2: the newest chunk plus every segment it does not name. */
 export async function resolveWindow(
+  platform: Platform,
   spaceId: string,
   keys: string[],
 ): Promise<ResolvedWindow> {
   const chunks = keys.filter(isChunk);
   const newest = chunks.at(-1);
   if (!newest) return { keys, chunk: null };
-  const header = await readHeader(spaceId, newest);
+  const header = await readHeader(platform, spaceId, newest);
   const subsumed = new Set(header.subsumes);
   const live = keys.filter((key) => !isChunk(key) && !subsumed.has(objectName(key)));
   return { keys: [newest, ...live], chunk: { key: newest, header } };
 }
 
 export async function windowPoints(
+  platform: Platform,
   spaceId: string,
   seriesId: string,
   window: number,
 ): Promise<StoredPoint[]> {
   const { keys } = await resolveWindow(
+    platform,
     spaceId,
-    await listWindow(spaceId, seriesId, window),
+    await listWindow(platform, spaceId, seriesId, window),
   );
-  const objects = await Promise.all(keys.map((key) => readObject(spaceId, key)));
+  const objects = await Promise.all(
+    keys.map((key) => readObject(platform, spaceId, key)),
+  );
   return objects.flatMap((object) => object.points).sort(compareStoredPoints);
 }
 
@@ -320,7 +340,7 @@ export async function appendPoints(
     byWindow.set(window, [...(byWindow.get(window) ?? []), point]);
   }
 
-  const storage = getFileStorage();
+  const storage = store.platform.blobStore;
   const writes = [...byWindow].map(async ([window, windowPoints]) => {
     const segment = `s-${pad(arrival)}-${randomUUID()}`;
     const stored = windowPoints
@@ -442,13 +462,14 @@ export async function readSeriesPoints(
         options.to,
       );
 
+  const { platform } = store;
   const read = async (): Promise<ReadResult> => {
     const collected: StoredPoint[] = [];
     for (let start = 0; start < windows.length && collected.length <= limit; ) {
       const batch = windows.slice(start, start + WINDOW_CONCURRENCY);
       start += batch.length;
       const pages = await Promise.all(
-        batch.map((window) => windowPoints(store.spaceId, row.id, window)),
+        batch.map((window) => windowPoints(platform, store.spaceId, row.id, window)),
       );
       for (const point of pages.flatMap((page) => (descending ? page.reverse() : page))) {
         if (point.ts < options.from || point.ts >= options.to) continue;

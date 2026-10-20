@@ -5,9 +5,8 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
  * request after the first is a string copy — never a per-request rebuild.
  *
  * `generated/openapi.ts` is always expected to exist by the time a request
- * lands here: `scripts/generate-openapi.ts` produces it, run ahead of time by
- * `task compile` for a compiled instance and again at every dev-server start
- * (see `server.ts`) — never lazily from inside a request handler.
+ * lands here: `scripts/generate-openapi.ts` produces it, ahead of time for a
+ * compiled binary and at startup from source — never from a request handler.
  */
 let cachedBody: Promise<string> | undefined;
 

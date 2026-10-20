@@ -10,6 +10,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 /**
  * `GET /api/v1/users` unscoped: the register, which hands over the email and
@@ -73,7 +74,7 @@ beforeAll(async () => {
   });
   memberSpaceId = (await space.json()).space.id;
 
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   if (!authDb) throw new Error("Auth database not available");
   await authDb
     .update(userTable)

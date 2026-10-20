@@ -23,6 +23,7 @@ export async function authenticateSeriesRole(
   documentId: string | null,
 ): Promise<string | null> {
   const auth = await authenticateJobTokenOrSpaceRole(
+    context.var.platform,
     context.var.credentials,
     spaceId,
     role,
@@ -41,8 +42,8 @@ export async function requireSeriesAccess(
 ): Promise<SeriesAccess> {
   const spaceId = requireParam(context.var.params, "spaceId");
   const name = requireParam(context.var.params, "name");
-  await requireSpace(spaceId);
-  const store = await openSpaceStore(spaceId);
+  await requireSpace(context.var.platform, spaceId);
+  const store = await openSpaceStore(context.var.platform, spaceId);
   const series = await getSeries(store, name);
   const aclUserId = await authenticateSeriesRole(
     context,

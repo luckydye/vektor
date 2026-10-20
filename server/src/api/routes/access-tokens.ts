@@ -18,6 +18,7 @@ import {
   MAX_ACCESS_TOKEN_EXPIRY_DAYS,
 } from "#db/space/accessTokens.ts";
 import { getSpace, getUserSpaceRole } from "#db/space/spaces.ts";
+import type { Platform } from "#platform/platform.ts";
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 /**
@@ -32,7 +33,9 @@ import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts"
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    return jsonResponse({ tokens: await listPersonalAccessTokens(user.id) });
+    return jsonResponse({
+      tokens: await listPersonalAccessTokens(context.var.platform, user.id),
+    });
   }, "Failed to list access tokens");
 
 /**
@@ -61,14 +64,14 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Space ID is required");
     }
 
-    const space = await getSpace(spaceId);
+    const space = await getSpace(context.var.platform, spaceId);
     if (!space) {
       throw notFoundResponse("Space");
     }
 
     // A resource-scoped grantee holds no space-wide role, so there is nothing to
     // delegate — the token would authenticate and then open nothing.
-    const permission = await getUserSpaceRole(space, user.id);
+    const permission = await getUserSpaceRole(context.var.platform, space, user.id);
     if (!isPermission(permission)) {
       throw forbiddenResponse("You do not hold a role on this space");
     }
@@ -83,7 +86,7 @@ export const POST: ApiRouteHandler = (context) =>
       expiresAt = addPositiveDays(new Date(), expiresInDays);
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const result = await createAccessToken(store, {
       name: name.trim(),
       resourceType: ResourceType.SPACE,

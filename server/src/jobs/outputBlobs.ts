@@ -16,10 +16,13 @@
 
 import { randomBytes } from "node:crypto";
 import { MIME_TYPES } from "#files/fileTypes.ts";
+import type { Platform } from "#platform/platform.ts";
 import { JobCache } from "./runtime/jobCache.ts";
 
 /** One cache scope for every run's blobs; ids are unguessable, not sequential. */
-const store = new JobCache("__job-output-blobs");
+function blobCache(platform: Platform): JobCache {
+  return new JobCache(platform.jobCache, "__job-output-blobs");
+}
 
 /** How long a published blob stays fetchable, absent an earlier eviction. */
 const BLOB_TTL_MS = 24 * 60 * 60 * 1000;
@@ -59,6 +62,7 @@ export function blobUrl(spaceId: string, id: string): string {
 }
 
 export async function putBlob(
+  platform: Platform,
   spaceId: string,
   bytes: Buffer,
   mimeType: string,
@@ -76,6 +80,7 @@ export async function putBlob(
     name,
     size: bytes.byteLength,
   };
+  const store = blobCache(platform);
   await store.writeBytes(id, bytes, BLOB_TTL_MS);
   await store.writeJson(metaKey(id), meta, BLOB_TTL_MS);
   return { id, size: bytes.byteLength };
@@ -85,8 +90,13 @@ export async function putBlob(
  * Returns null when the blob is gone, or when it belongs to another space — the
  * id alone must never be the authorization.
  */
-export async function readBlob(spaceId: string, id: string): Promise<StoredBlob | null> {
+export async function readBlob(
+  platform: Platform,
+  spaceId: string,
+  id: string,
+): Promise<StoredBlob | null> {
   if (!/^[0-9a-f]{32}$/.test(id)) return null;
+  const store = blobCache(platform);
   const meta = await store.readJson<BlobMeta>(metaKey(id));
   if (!meta || meta.spaceId !== spaceId) return null;
   const bytes = await store.readBytes(id);
@@ -110,6 +120,7 @@ function asBytes(value: unknown): Buffer | null {
  * run record.
  */
 export async function persistOutputBlobs(
+  platform: Platform,
   spaceId: string,
   outputs: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
@@ -129,6 +140,7 @@ export async function persistOutputBlobs(
     }
     const name = typeof record.name === "string" ? record.name : null;
     const { id, size } = await putBlob(
+      platform,
       spaceId,
       bytes,
       typeof record.mimeType === "string" ? record.mimeType : "application/octet-stream",

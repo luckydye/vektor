@@ -22,11 +22,15 @@ import {
 import { getRevisionContent } from "#db/space/revisions.ts";
 import { getUniqueMentionedEmails } from "#documents/mentions.ts";
 import { isSerializedDocumentType } from "#documents/types.ts";
+import type { Platform } from "#platform/platform.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 
-async function mentionedUserIds(html: string | null): Promise<string[]> {
+async function mentionedUserIds(
+  platform: Platform,
+  html: string | null,
+): Promise<string[]> {
   if (!html) return [];
-  return getUserIdsByEmail(getUniqueMentionedEmails(html));
+  return getUserIdsByEmail(platform, getUniqueMentionedEmails(html));
 }
 
 /**
@@ -36,6 +40,7 @@ async function mentionedUserIds(html: string | null): Promise<string[]> {
  * where the rows are the point.
  */
 async function enqueueRecipients(
+  platform: Platform,
   spaceId: string,
   notification: EmailNotificationInit,
   recipientUserIds: Iterable<string>,
@@ -49,7 +54,7 @@ async function enqueueRecipients(
   const candidates = [...new Set(recipientUserIds)].filter(
     (userId) => userId !== notification.actorId,
   );
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(platform, spaceId);
   const muted = await getEmailMutedUserIds(store, candidates, notification.documentId);
 
   return insertEmailNotifications(
@@ -59,21 +64,24 @@ async function enqueueRecipients(
   );
 }
 
-export async function enqueueDocumentPublishedEmails(params: {
-  spaceId: string;
-  documentId: string;
-  publicationId: number;
-  revision: number;
-  previousPublishedRevision: number | null;
-  documentType: string | null | undefined;
-  publishedContent: string;
-  actorId: string;
-}): Promise<number> {
-  const store = await openSpaceStore(params.spaceId);
+export async function enqueueDocumentPublishedEmails(
+  platform: Platform,
+  params: {
+    spaceId: string;
+    documentId: string;
+    publicationId: number;
+    revision: number;
+    previousPublishedRevision: number | null;
+    documentType: string | null | undefined;
+    publishedContent: string;
+    actorId: string;
+  },
+): Promise<number> {
+  const store = await openSpaceStore(platform, params.spaceId);
   const contentIsHtml = !isSerializedDocumentType(params.documentType);
   const [contributors, mentioned, previousContent] = await Promise.all([
     listDocumentContributorIds(store, params.documentId),
-    contentIsHtml ? mentionedUserIds(params.publishedContent) : [],
+    contentIsHtml ? mentionedUserIds(platform, params.publishedContent) : [],
     !contentIsHtml || params.previousPublishedRevision === null
       ? null
       : getRevisionContent(store, params.documentId, params.previousPublishedRevision),
@@ -82,7 +90,7 @@ export async function enqueueDocumentPublishedEmails(params: {
   // A mention is news the first time it reaches a published revision. Everyone
   // mentioned earlier stays on the generic fan-out, or every later publish
   // would announce the same mention again.
-  const carriedOver = new Set(await mentionedUserIds(previousContent));
+  const carriedOver = new Set(await mentionedUserIds(platform, previousContent));
   const newlyMentioned = mentioned.filter((userId) => !carriedOver.has(userId));
   const announced = new Set(newlyMentioned);
 
@@ -96,11 +104,13 @@ export async function enqueueDocumentPublishedEmails(params: {
 
   const queued = await Promise.all([
     enqueueRecipients(
+      platform,
       params.spaceId,
       { ...source, kind: "document_mention" },
       newlyMentioned,
     ),
     enqueueRecipients(
+      platform,
       params.spaceId,
       { ...source, kind: "document_published" },
       [...contributors, ...mentioned].filter((userId) => !announced.has(userId)),
@@ -110,17 +120,20 @@ export async function enqueueDocumentPublishedEmails(params: {
   return queued[0] + queued[1];
 }
 
-export async function enqueueCommentCreatedEmails(params: {
-  spaceId: string;
-  documentId: string;
-  commentId: string;
-  /** Null for a comment that is not text at all, such as a reaction. */
-  commentContent: string | null;
-  commentReference: string | null;
-  commentParentId: string | null;
-  actorId: string;
-}): Promise<number> {
-  const store = await openSpaceStore(params.spaceId);
+export async function enqueueCommentCreatedEmails(
+  platform: Platform,
+  params: {
+    spaceId: string;
+    documentId: string;
+    commentId: string;
+    /** Null for a comment that is not text at all, such as a reaction. */
+    commentContent: string | null;
+    commentReference: string | null;
+    commentParentId: string | null;
+    actorId: string;
+  },
+): Promise<number> {
+  const store = await openSpaceStore(platform, params.spaceId);
   const [contributors, threadParticipants, mentioned] = await Promise.all([
     listDocumentContributorIds(store, params.documentId),
     listThreadParticipantIds(
@@ -132,6 +145,7 @@ export async function enqueueCommentCreatedEmails(params: {
     // A comment is stored as markdown; a mention is only a `<user-mention>`
     // once rendered, which is also how the thread displays it.
     mentionedUserIds(
+      platform,
       params.commentContent ? renderMessageMarkdown(params.commentContent) : null,
     ),
   ]);
@@ -144,8 +158,14 @@ export async function enqueueCommentCreatedEmails(params: {
   };
 
   const queued = await Promise.all([
-    enqueueRecipients(params.spaceId, { ...source, kind: "comment_mention" }, mentioned),
     enqueueRecipients(
+      platform,
+      params.spaceId,
+      { ...source, kind: "comment_mention" },
+      mentioned,
+    ),
+    enqueueRecipients(
+      platform,
       params.spaceId,
       { ...source, kind: "comment_created" },
       [...contributors, ...threadParticipants].filter((userId) => !announced.has(userId)),
@@ -156,18 +176,21 @@ export async function enqueueCommentCreatedEmails(params: {
 }
 
 /** Queue an automated job's report for the account that started the job. */
-export async function enqueueJobNotificationEmail(params: {
-  spaceId: string;
-  documentId: string;
-  actorId: string;
-}): Promise<number> {
+export async function enqueueJobNotificationEmail(
+  platform: Platform,
+  params: {
+    spaceId: string;
+    documentId: string;
+    actorId: string;
+  },
+): Promise<number> {
   const appConfig = config();
   const deliveryConfigured =
     !!appConfig.EMAIL_FROM?.trim() && !!appConfig.SMTP_HOST?.trim();
   const developmentDelivery = import.meta.env.DEV || appConfig.NODE_ENV === "test";
   if (!deliveryConfigured && !developmentDelivery) return 0;
 
-  const store = await openSpaceStore(params.spaceId);
+  const store = await openSpaceStore(platform, params.spaceId);
   const muted = await getEmailMutedUserIds(store, [params.actorId], params.documentId);
   if (muted.has(params.actorId)) return 0;
 

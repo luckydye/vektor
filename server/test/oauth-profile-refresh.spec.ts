@@ -14,6 +14,7 @@ import { config } from "#config";
 import { createDatabase } from "#db/client/connection.ts";
 import { prepareAuthDb } from "#db/client/init.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import { platform } from "./helpers/platform.ts";
 
 const PROVIDER_ID = "test-idp";
 const SITE_URL = "http://localhost:8080";
@@ -117,7 +118,7 @@ beforeAll(async () => {
 
   // Its own in-memory auth database: this spec writes user rows and must not
   // race the shared data/auth.db the rest of the server suite uses.
-  authDb = createDatabase("file::memory:");
+  authDb = createDatabase(platform, "file::memory:");
   await prepareAuthDb(authDb);
 
   auth = createAuth(testConfig(), authDb);

@@ -14,6 +14,7 @@ import {
 import { workflowRunDocumentType } from "#documents/types.ts";
 import { ingestPoints } from "#events/events.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { declareSeries } from "#series/catalog.ts";
@@ -295,9 +296,9 @@ function enqueueWrite(runId: string, work: () => Promise<void>): void {
   trackWrite(tracked);
 }
 
-function persistNow(runId: string, run: RunState): void {
+function persistNow(platform: Platform, runId: string, run: RunState): void {
   enqueueWrite(runId, async () =>
-    persistRunToDocument(await openSpaceStore(run.spaceId), runId, run),
+    persistRunToDocument(await openSpaceStore(platform, run.spaceId), runId, run),
   );
 }
 
@@ -319,11 +320,12 @@ function logFlushLines(): number {
 }
 
 async function writeRunLogLines(
+  platform: Platform,
   spaceId: string,
   runId: string,
   lines: RunLogPoint[],
 ): Promise<void> {
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(platform, spaceId);
   const batch = logFlushLines();
   for (let start = 0; start < lines.length; start += batch) {
     await ingestPoints(
@@ -335,14 +337,14 @@ async function writeRunLogLines(
 }
 
 /** Queue whatever lines are pending behind the run's other writes. */
-function flushRunLogs(runId: string, run: RunState): void {
+function flushRunLogs(platform: Platform, runId: string, run: RunState): void {
   clearTimeout(logFlushTimers.get(runId));
   logFlushTimers.delete(runId);
   const lines = pendingLogs.get(runId);
   if (!lines) return;
   pendingLogs.delete(runId);
   enqueueWrite(runId, () =>
-    writeRunLogLines(run.spaceId, runId, lines).catch((error) => {
+    writeRunLogLines(platform, run.spaceId, runId, lines).catch((error) => {
       appLogger.warn("Failed to write workflow run logs", { runId, error });
     }),
   );
@@ -539,7 +541,7 @@ export function getRun(runId: string): RunState | undefined {
   return activeRuns.get(runId);
 }
 
-export function setRunStatus(runId: string, status: RunStatus): void {
+export function setRunStatus(platform: Platform, runId: string, status: RunStatus): void {
   const run = activeRuns.get(runId);
   if (!run) return;
   // "cancelled" is the truth about why a run ended, and the executor reports the
@@ -547,7 +549,7 @@ export function setRunStatus(runId: string, status: RunStatus): void {
   if (run.status === "cancelled" && status === "failed") return;
   run.status = status;
   if (status === "running" && !run.startedAt) run.startedAt = new Date();
-  persistNow(runId, run);
+  persistNow(platform, runId, run);
   emitRunChanged(runId, run);
 }
 
@@ -556,16 +558,17 @@ export function setRunAbort(runId: string, abort: () => void): void {
   if (run) run.abort = abort;
 }
 
-export function setRunError(runId: string, error: string): void {
+export function setRunError(platform: Platform, runId: string, error: string): void {
   const run = activeRuns.get(runId);
   if (!run) return;
   run.error = summarizeString(error);
-  persistNow(runId, run);
+  persistNow(platform, runId, run);
   emitRunChanged(runId, run);
 }
 
 /** Buffer a log line; lines reach the run's series by count, by interval, and on finish. */
 export function appendRunLog(
+  platform: Platform,
   runId: string,
   message: string,
   level: "info" | "error" = "info",
@@ -580,7 +583,7 @@ export function appendRunLog(
   });
   pendingLogs.set(runId, lines);
   if (lines.length >= logFlushLines()) {
-    flushRunLogs(runId, run);
+    flushRunLogs(platform, runId, run);
   } else if (!logFlushTimers.has(runId)) {
     const flushMs = positiveIntSetting(
       "VEKTOR_WORKFLOW_LOG_FLUSH_MS",
@@ -589,52 +592,59 @@ export function appendRunLog(
     );
     logFlushTimers.set(
       runId,
-      setTimeout(() => flushRunLogs(runId, run), flushMs),
+      setTimeout(() => flushRunLogs(platform, runId, run), flushMs),
     );
   }
 }
 
 export async function writeRunResult(
+  platform: Platform,
   runId: string,
   output: Record<string, unknown>,
 ): Promise<void> {
   const run = activeRuns.get(runId);
   if (!run) return;
-  const artifact = await writeWorkflowArtifact(run.spaceId, runId, "result", output);
+  const artifact = await writeWorkflowArtifact(
+    platform,
+    run.spaceId,
+    runId,
+    "result",
+    output,
+  );
   run.resultArtifactPath = artifact.key;
-  persistNow(runId, run);
+  persistNow(platform, runId, run);
   emitRunChanged(runId, run);
 }
 
 /** Wait until every buffered log line is in the run's series. */
-export async function drainRunLogs(runId: string): Promise<void> {
+export async function drainRunLogs(platform: Platform, runId: string): Promise<void> {
   const run = activeRuns.get(runId);
   if (!run) return;
-  flushRunLogs(runId, run);
+  flushRunLogs(platform, runId, run);
   await writeChains.get(runId);
 }
 
-export async function finalizeRun(runId: string): Promise<void> {
+export async function finalizeRun(platform: Platform, runId: string): Promise<void> {
   const run = activeRuns.get(runId);
   if (!run) return;
   // Before the terminal status shows, so a reader that sees it sees every line.
-  await drainRunLogs(runId);
+  await drainRunLogs(platform, runId);
   if (run.status === "pending" || run.status === "running") run.status = "completed";
   run.completedAt ??= new Date();
-  flushRunLogs(runId, run);
-  persistNow(runId, run);
+  flushRunLogs(platform, runId, run);
+  persistNow(platform, runId, run);
   emitRunChanged(runId, run);
   await writeChains.get(runId);
   activeRuns.delete(runId);
   settledRuns.dispatchEvent(new Event(runId));
 }
 
-export async function cancelRun(runId: string): Promise<void> {
+export async function cancelRun(platform: Platform, runId: string): Promise<void> {
   const run = activeRuns.get(runId);
   if (!run || (run.status !== "pending" && run.status !== "running")) return;
   run.status = "cancelled";
   run.completedAt = new Date();
-  persistNow(runId, run);
+  persistNow(platform, runId, run);
   emitRunChanged(runId, run);
 
   // With an executor attached, cancelling is a request, not a teardown: the
@@ -648,7 +658,7 @@ export async function cancelRun(runId: string): Promise<void> {
 
   // Nothing is executing this run (it never started), so nobody else will
   // finish it.
-  flushRunLogs(runId, run);
+  flushRunLogs(platform, runId, run);
   await writeChains.get(runId);
   activeRuns.delete(runId);
   settledRuns.dispatchEvent(new Event(runId));
@@ -735,11 +745,14 @@ export function resetRunStoreMemoryForTests(): void {
 }
 
 /** Reset memory and delete all hidden workflow-run documents for a space. */
-export async function clearRunStoreForTests(spaceId: string): Promise<void> {
+export async function clearRunStoreForTests(
+  platform: Platform,
+  spaceId: string,
+): Promise<void> {
   await flushRunStoreForTests();
   resetRunStoreMemoryForTests();
   try {
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(platform, spaceId);
     const runs = await many(
       store.db
         .select({ id: document.id })

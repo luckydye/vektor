@@ -10,6 +10,7 @@ import { withApiErrorHandling } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import type { Platform } from "#platform/platform.ts";
 
 export { type BasicAuthUser, verifyBasicAuth };
 
@@ -25,7 +26,10 @@ export async function verifyBasicAuthUser(
   if (sessionUser) {
     return { id: sessionUser.id, email: sessionUser.email, name: sessionUser.name };
   }
-  return verifyBasicAuth(context.req.raw.headers.get("Authorization"));
+  return verifyBasicAuth(
+    context.var.platform,
+    context.req.raw.headers.get("Authorization"),
+  );
 }
 
 export interface ParsedICalEvent {
@@ -342,6 +346,7 @@ export function calDavForbidden(): Response {
  * space, so a credential that holds nothing there cannot browse at all.
  */
 async function authorizeBasicAuthToken(
+  platform: Platform,
   caldavUser: BasicAuthUser,
   token: BasicAuthToken,
   spaceId: string | undefined,
@@ -356,6 +361,7 @@ async function authorizeBasicAuthToken(
   const targetSpaceId = spaceId ?? token.spaceId;
   try {
     await verifyAccess(
+      platform,
       targetSpaceId,
       { type: ResourceType.SPACE, id: targetSpaceId },
       token.result.tokenId,
@@ -390,6 +396,7 @@ export async function requireBasicAuthUserAndAccess(
   // collections without a space in their URL stay inside the token's scope.
   if (caldavUser.token) {
     return authorizeBasicAuthToken(
+      context.var.platform,
       caldavUser,
       caldavUser.token,
       options.spaceId,
@@ -400,6 +407,7 @@ export async function requireBasicAuthUserAndAccess(
   if (options.spaceId) {
     try {
       await verifyAccess(
+        context.var.platform,
         options.spaceId,
         { type: ResourceType.SPACE, id: options.spaceId },
         caldavUser.id,
@@ -423,6 +431,7 @@ export async function requireBasicAuthUserAndAccess(
  * @returns The refusal to return, or null when the caller may proceed.
  */
 export async function authorizeCalDAVDocument(
+  platform: Platform,
   caldavUser: BasicAuthUser,
   spaceId: string,
   documentId: string,
@@ -430,6 +439,7 @@ export async function authorizeCalDAVDocument(
 ): Promise<Response | null> {
   try {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       caldavUser.token?.result.tokenId ?? caldavUser.id,

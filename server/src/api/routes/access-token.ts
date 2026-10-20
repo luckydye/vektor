@@ -12,6 +12,7 @@ import {
   findPersonalTokenSpace,
   revokeAccessToken,
 } from "#db/space/accessTokens.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * Update one of the caller's access tokens
@@ -29,12 +30,16 @@ export const PATCH: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const tokenId = requireParam(context.var.params, "tokenId");
 
-    const spaceId = await findPersonalTokenSpace(user.id, tokenId);
+    const spaceId = await findPersonalTokenSpace(context.var.platform, user.id, tokenId);
     if (!spaceId) {
       throw notFoundResponse("Access token");
     }
 
-    await revokeAccessToken(await openSpaceStore(spaceId), tokenId, user.id);
+    await revokeAccessToken(
+      await openSpaceStore(context.var.platform, spaceId),
+      tokenId,
+      user.id,
+    );
 
     return successResponse({ message: "Token revoked successfully" });
   }, "Failed to revoke access token");
@@ -51,12 +56,16 @@ export const DELETE: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const tokenId = requireParam(context.var.params, "tokenId");
 
-    const spaceId = await findPersonalTokenSpace(user.id, tokenId);
+    const spaceId = await findPersonalTokenSpace(context.var.platform, user.id, tokenId);
     if (!spaceId) {
       throw notFoundResponse("Access token");
     }
 
-    await deleteAccessToken(await openSpaceStore(spaceId), tokenId, user.id);
+    await deleteAccessToken(
+      await openSpaceStore(context.var.platform, spaceId),
+      tokenId,
+      user.id,
+    );
 
     return successResponse({ message: "Token deleted successfully" });
   }, "Failed to delete access token");

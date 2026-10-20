@@ -1,4 +1,5 @@
 import { listUserSpaces } from "#db/space/spaces.ts";
+import type { Platform } from "#platform/platform.ts";
 
 export const LAST_VISITED_SPACE_KEY = "lastVisitedSpace";
 
@@ -7,10 +8,11 @@ export const LAST_VISITED_SPACE_KEY = "lastVisitedSpace";
  * the first one they can reach. Null when they belong to no space at all.
  */
 export async function resolveActiveSpaceSlug(
+  platform: Platform,
   userId: string | undefined,
   lastVisitedSlug: string | undefined,
 ): Promise<string | null> {
-  const userSpaces = await listUserSpaces(userId ?? "");
+  const userSpaces = await listUserSpaces(platform, userId ?? "");
   if (userSpaces.length === 0) return null;
 
   return (userSpaces.find((s) => s.slug === lastVisitedSlug) ?? userSpaces[0]).slug;

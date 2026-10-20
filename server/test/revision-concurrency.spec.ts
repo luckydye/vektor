@@ -29,6 +29,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 const PORT = 7525;
 const BASE_URL = testBaseUrl(PORT);
@@ -57,7 +58,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   serverProcess?.kill();
-  if (spaceId) await deleteSpace(spaceId);
+  if (spaceId) await deleteSpace(platform, spaceId);
 });
 
 function documentPath(id: string, suffix = ""): string {
@@ -212,7 +213,7 @@ describe("concurrent saves of one document", () => {
 // can trust — nothing above fails if a second writer is allowed to duplicate it.
 describe("a space database", () => {
   it("holds a unique index on (document_id, rev)", async () => {
-    const db = createDatabase("file::memory:");
+    const db = createDatabase(platform, "file::memory:");
     await initSpaceDbSchema(db, { local: false });
 
     const indexes = await many<{ name: string; unique: number }>(

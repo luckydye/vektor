@@ -457,11 +457,12 @@ export async function searchDocuments(
       WHERE ${nonArchivedColumnCondition("d.archived")}
     `),
       options.queryEmbedding === undefined
-        ? embedSearchQuery(query)
+        ? embedSearchQuery(s.platform, query)
         : options.queryEmbedding,
     ]);
 
     const ranked = await rankSearchCandidates(
+      s.platform,
       query,
       queryEmbedding,
       candidates.map((candidate) => ({

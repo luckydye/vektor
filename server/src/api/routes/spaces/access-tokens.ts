@@ -26,6 +26,7 @@ import {
   listTokenResources,
   MAX_ACCESS_TOKEN_EXPIRY_DAYS,
 } from "#db/space/accessTokens.ts";
+import type { Platform } from "#platform/platform.ts";
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 /**
@@ -42,6 +43,7 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -49,13 +51,15 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     // Get all tokens for this space
-    const tokens = await listAccessTokens(await openSpaceStore(spaceId));
+    const tokens = await listAccessTokens(
+      await openSpaceStore(context.var.platform, spaceId),
+    );
 
     // For each token, get its resources
     const tokensWithResources = await Promise.all(
       tokens.map(async (token) => {
         const resources = await listTokenResources(
-          await openSpaceStore(spaceId),
+          await openSpaceStore(context.var.platform, spaceId),
           token.id,
         );
         return {
@@ -93,6 +97,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     // Token creation is a privileged delegation; restrict to space owners.
     await verifyAccess(
+      context.var.platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
@@ -148,8 +153,9 @@ export const POST: ApiRouteHandler = (context) =>
     // A token is capped at its issuer's own grants when used, where instance
     // admin does not count, so a grant they cannot back would mint a dead token.
     const cap = await issuerRole(
+      context.var.platform,
       spaceId,
-      await resolveIdentity(user.id),
+      await resolveIdentity(context.var.platform, user.id),
       grant.resourceType,
       grant.resourceId,
     );
@@ -171,7 +177,7 @@ export const POST: ApiRouteHandler = (context) =>
       expiresAt = addPositiveDays(new Date(), expiresInDays);
     }
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const result = await createAccessToken(store, {
       ...grant,
       name: name.trim(),

@@ -25,6 +25,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 const PORT = 7498;
 const BASE_URL = testBaseUrl(PORT);
@@ -46,7 +47,7 @@ interface OutboxRow {
 }
 
 async function outbox(): Promise<OutboxRow[]> {
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(platform, spaceId);
   return many(
     store.db
       .select({
@@ -158,7 +159,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   serverProcess?.kill();
-  if (spaceId) await deleteSpace(spaceId);
+  if (spaceId) await deleteSpace(platform, spaceId);
 });
 
 describe("Mention notifications", () => {

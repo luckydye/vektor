@@ -10,22 +10,19 @@ import {
   checkRateLimit,
   type RateLimitCheck,
 } from "#api/rateLimit.ts";
-import { apiRoutes } from "#api/routes.ts";
+import type { ApiRoute } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
 import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
-
-const compiledRoutes: CompiledRoute[] = sortRoutes(
-  apiRoutes.map(({ pattern, module }) => compileRoute(pattern, module)),
-);
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /** Trusted origins, normalized to `proto://host[:port]` for exact comparison. */
 const trustedOrigins = new Set(
-  authTrustedOrigins.flatMap((value) => {
+  authTrustedOrigins().flatMap((value) => {
     try {
       return [new URL(value).origin];
     } catch {
@@ -73,7 +70,7 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
     headers.delete("x-forwarded-for");
   }
 
-  const { user, session } = await resolveRequestIdentity(headers);
+  const { user, session } = await resolveRequestIdentity(c.var.platform, headers);
 
   c.set("publicEnv", getPublicEnv());
   c.set("requestHeaders", headers);
@@ -95,15 +92,15 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
  * whose own slug is `git` both fall out of the arithmetic rather than needing a
  * case of their own.
  *
- * Kept beside `isApiPath` because both copies of that check must agree: miss
- * one and a clone either 404s as an unknown API path or falls through to Astro.
+ * Part of `isApiPath`, which the server also asks before falling back to Astro:
+ * miss it and a clone either 404s as an unknown API path or reaches Astro.
  */
 export function isGitPath(pathname: string): boolean {
   const spaceEnd = pathname.indexOf("/", 1);
   return spaceEnd > 1 && pathname.startsWith("/git/", spaceEnd);
 }
 
-function isApiPath(pathname: string): boolean {
+export function isApiPath(pathname: string): boolean {
   return (
     isGitPath(pathname) ||
     pathname === "/api" ||
@@ -160,10 +157,24 @@ function rateLimitedResponse(limit: RateLimitCheck): Response {
 }
 
 /**
- * Hono middleware that serves the migrated API routes. Non-API paths fall
- * through to the next handler (e.g. the Astro frontend handler, when mounted).
+ * Hono middleware that serves `routes` on `platform`, which handlers read as
+ * `c.var.platform`. Non-API paths fall through to the next handler.
  */
-export async function apiRouter(
+export function createApiRouter(
+  platform: Platform,
+  routes: ApiRoute[],
+): (c: ApiContext, next: Next) => Promise<Response | undefined> {
+  const compiledRoutes = sortRoutes(
+    routes.map(({ pattern, module }) => compileRoute(pattern, module)),
+  );
+  return (c, next) => {
+    c.set("platform", platform);
+    return routeApiRequest(compiledRoutes, c, next);
+  };
+}
+
+async function routeApiRequest(
+  compiledRoutes: CompiledRoute[],
   c: ApiContext,
   next: Next,
 ): Promise<Response | undefined> {

@@ -27,6 +27,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml } from "#documents/schema/render.ts";
+import { createBunPlatform } from "#platform/bun/index.ts";
 import { type HtmlNode, type HtmlTagNode, parseHtml, SyntaxKind } from "#utils/html.ts";
 import { slugify } from "#utils/slug.ts";
 import {
@@ -613,6 +614,8 @@ function reserialize(node: HtmlNode): string {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  // Opens databases in-process, so it runs on a platform of its own.
+  const platform = createBunPlatform();
   const options = parseOptions(process.argv.slice(2));
   const report = new Report();
 
@@ -748,6 +751,7 @@ async function main(): Promise<void> {
   if (commented) console.log(`Appended comment threads on ${commented} pages`);
 
   const result = await writeSpace(
+    platform,
     plan,
     bodies,
     uploads,

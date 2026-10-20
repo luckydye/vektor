@@ -20,6 +20,14 @@ export const realtimeTopics = {
   spaceEvents: "space:events",
 } as const;
 
+/** The server's end of a realtime connection, whatever accepted it. */
+export interface RealtimeSocket {
+  /** 1 while open, as on a WebSocket. */
+  readonly readyState: number;
+  send(data: Uint8Array): void;
+  close(code?: number, reason?: string): void;
+}
+
 /** Application close codes for an authorization refusal. */
 export const WS_CLOSE_UNAUTHORIZED = 4401;
 export const WS_CLOSE_FORBIDDEN = 4403;

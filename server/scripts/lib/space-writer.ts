@@ -33,6 +33,7 @@ import {
   property,
   spaceMetadata,
 } from "#db/schema/space.ts";
+import type { Platform } from "#platform/platform.ts";
 import { buildDocumentSearchText } from "#search/embedding.ts";
 import { htmlToPlainText } from "#utils/html.ts";
 import { slugify } from "#utils/slug.ts";
@@ -384,6 +385,7 @@ export interface WriteResult {
  * HTML, which must already carry upload URLs — nothing here rewrites content.
  */
 export async function writeSpace<T extends SourcePage>(
+  platform: Platform,
   plan: SpacePlan<T>,
   bodies: Map<string, string>,
   uploads: UploadStore,
@@ -391,7 +393,7 @@ export async function writeSpace<T extends SourcePage>(
   report: Report,
 ): Promise<WriteResult> {
   const now = new Date();
-  const db = createDatabase(`file:${options.out}`);
+  const db = createDatabase(platform, `file:${options.out}`);
   await initSpaceDbSchema(db, { local: true });
 
   await db.insert(spaceMetadata).values({
@@ -555,12 +557,14 @@ export async function writeSpace<T extends SourcePage>(
   // server re-enables WAL when it opens the database.
   await db.run(sql.raw("PRAGMA wal_checkpoint(TRUNCATE)"));
   await db.run(sql.raw("PRAGMA journal_mode = DELETE"));
-  closeDatabase(db);
+  closeDatabase(platform, db);
 
   // Counted rather than subtracted from `replaced`: a section standing in for a
   // page the export never carried is in that set too, and no document row was
   // skipped for it.
-  const documents = [...plan.byPath.values()].filter(({ id }) => !replaced.has(id)).length;
+  const documents = [...plan.byPath.values()].filter(
+    ({ id }) => !replaced.has(id),
+  ).length;
   verifyWritten(options.out, {
     document: documents,
     category: plan.sections.length,

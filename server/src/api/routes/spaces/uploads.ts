@@ -21,9 +21,9 @@ import {
   readImageDimensions,
   readStoredImageDimensions,
 } from "#files/imageDimensions.ts";
-import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 import { updateDocumentEmbedding } from "#search/indexing.ts";
 
 /**
@@ -53,6 +53,7 @@ export const GET: ApiRouteHandler = (context) =>
       // Admitted on a resource grant alone, since every row is then filtered
       // against the documents it reaches.
       const access = await authenticateSpaceAccess(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.VIEWER,
@@ -61,7 +62,7 @@ export const GET: ApiRouteHandler = (context) =>
         },
       );
 
-      const storage = getFileStorage();
+      const storage = context.var.platform.blobStore;
       // `limit` is opt-in: without it the response stays the whole listing it
       // has always been, and a caller that asks for a page gets a cursor back.
       const query = new URL(context.req.raw.url).searchParams;
@@ -77,10 +78,12 @@ export const GET: ApiRouteHandler = (context) =>
       const files = listing.files;
 
       const index = await getFileIndexEntries(
+        context.var.platform,
         spaceId,
         files.map((f) => f.key),
       );
       const visible = await filterAccessibleFiles(
+        context.var.platform,
         spaceId,
         files.map((f) => {
           // A file on disk with no index row is still a real file; it lists
@@ -138,9 +141,15 @@ export const POST: ApiRouteHandler = (context) =>
       // The real gate is below, on the document the query names. This one runs
       // first so a caller with no editor reach into the space at all cannot
       // stream a gigabyte at the disk.
-      await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.EDITOR, {
-        allowResourceGrants: true,
-      });
+      await authenticateSpaceAccess(
+        context.var.platform,
+        context.var.credentials,
+        spaceId,
+        Permission.EDITOR,
+        {
+          allowResourceGrants: true,
+        },
+      );
 
       // The file is the request body, not a multipart part: the body streams
       // straight to storage, so an upload costs a chunk of memory rather than
@@ -161,6 +170,7 @@ export const POST: ApiRouteHandler = (context) =>
       // Editor on the document being attached to, or on the space itself for
       // an upload that belongs to no document.
       await authenticateJobTokenOrSpaceRole(
+        context.var.platform,
         context.var.credentials,
         spaceId,
         Permission.EDITOR,
@@ -168,7 +178,7 @@ export const POST: ApiRouteHandler = (context) =>
       );
 
       const contentType = context.req.raw.headers.get("content-type") ?? undefined;
-      const storage = getFileStorage();
+      const storage = context.var.platform.blobStore;
       const { key, url, size } = await storage.putHashed(
         spaceId,
         safeExtension(originalName),
@@ -192,7 +202,7 @@ export const POST: ApiRouteHandler = (context) =>
         : await readStoredImageDimensions(storage, spaceId, key);
 
       // Insert full metadata to file table for all uploads
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       await store.db
         .insert(fileTable)
         .values({

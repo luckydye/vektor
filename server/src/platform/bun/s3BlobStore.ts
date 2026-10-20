@@ -2,10 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
+  type BlobStore,
   type ByteRange,
   type ConditionalPutResult,
   containedKey,
-  type FileStorageAdapter,
   isSafeSpaceId,
   type ListOptions,
   type PutCondition,
@@ -13,7 +13,7 @@ import {
   type StoredFileListing,
   type StoredFileStat,
   type StoredUpload,
-} from "./storage.ts";
+} from "#files/storage.ts";
 
 export interface S3StorageOptions {
   bucket: string;
@@ -26,18 +26,18 @@ export interface S3StorageOptions {
   virtualHostedStyle?: boolean;
   /** Prefixed before every key, for a bucket shared with something else. */
   prefix?: string;
-  /** Where {@link S3FileStorageAdapter.putHashed} stages bytes; see its note. */
+  /** Where {@link S3BlobStore.putHashed} stages bytes; see its note. */
   stagingDir: string;
 }
 
 /** Objects listed by `list`, matching the local adapter's hash-prefix layout. */
 const CONTENT_ADDRESSED_KEY = /^[0-9a-f]{2}\/[^/]+$/;
 
-class S3FileStorageAdapter implements FileStorageAdapter {
-  private readonly client: Bun.S3Client;
-  private readonly prefix: string;
+class S3BlobStore implements BlobStore {
+  readonly client: Bun.S3Client;
+  readonly prefix: string;
 
-  constructor(private readonly options: S3StorageOptions) {
+  constructor(readonly options: S3StorageOptions) {
     this.client = new Bun.S3Client({
       bucket: options.bucket,
       endpoint: options.endpoint,
@@ -55,7 +55,7 @@ class S3FileStorageAdapter implements FileStorageAdapter {
    * space. Object keys are strings rather than paths, but `..` still traverses
    * them: S3 stores `space_1/../space_2/x` under whatever the client resolved.
    */
-  private objectKey(spaceId: string, key: string): string | null {
+  objectKey(spaceId: string, key: string): string | null {
     const contained = containedKey(spaceId, key);
     return contained ? `${this.prefix}${contained}` : null;
   }
@@ -322,6 +322,6 @@ class S3FileStorageAdapter implements FileStorageAdapter {
  * a document, plus the sandbox CSP and `nosniff` — and Bun's `presign` cannot
  * set the response-header overrides that would put them back.
  */
-export function createS3FileStorage(options: S3StorageOptions): FileStorageAdapter {
-  return new S3FileStorageAdapter(options);
+export function createS3BlobStore(options: S3StorageOptions): BlobStore {
+  return new S3BlobStore(options);
 }

@@ -5,7 +5,7 @@
 
 import type { SpaceStore } from "#db/client/store.ts";
 import type { SeriesRow } from "#db/schema/space.ts";
-import { getFileStorage, listAllFiles } from "#files/storage.ts";
+import { listAllFiles } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import {
   advanceOldestWindow,
@@ -73,8 +73,8 @@ export async function compactWindow(
   const { spaceId } = store;
   return withClaim(store, row.id, async (claimedAt) => {
     const absorbed = await dirtySegmentCount(store, row.id, window);
-    const listed = await listWindow(spaceId, row.id, window, true);
-    const resolved = await resolveWindow(spaceId, listed);
+    const listed = await listWindow(store.platform, spaceId, row.id, window, true);
+    const resolved = await resolveWindow(store.platform, spaceId, listed);
     const segments = resolved.keys.filter((key) => key !== resolved.chunk?.key);
     if (segments.length === 0) {
       await settleDirtyWindow(store, row.id, window, absorbed, undefined);
@@ -82,7 +82,7 @@ export async function compactWindow(
     }
 
     const objects = await Promise.all(
-      resolved.keys.map((key) => readObject(spaceId, key)),
+      resolved.keys.map((key) => readObject(store.platform, spaceId, key)),
     );
     const points = objects.flatMap((object) => object.points).sort(compareStoredPoints);
     // Names of collected segments are dropped: a name matters only while listed.
@@ -108,7 +108,7 @@ export async function compactWindow(
       seriesLimits().maxColumnValues,
     );
     const written = await withDeadline(
-      getFileStorage().putConditional(
+      store.platform.blobStore.putConditional(
         spaceId,
         chunkKey(row.id, window, watermark),
         buffer,
@@ -140,12 +140,12 @@ export async function collectWindow(
 ): Promise<boolean> {
   const { spaceId } = store;
   return withClaim(store, row.id, async () => {
-    const keys = await listWindow(spaceId, row.id, window, true);
+    const keys = await listWindow(store.platform, spaceId, row.id, window, true);
     const chunks = keys.filter(isChunk);
     const now = Date.now();
     let nextCollectAt: number | null = null;
     for (let index = chunks.length - 1; index >= 0; index--) {
-      const header = await readHeader(spaceId, chunks[index]);
+      const header = await readHeader(store.platform, spaceId, chunks[index]);
       const collectAt = (header.compactedAt as number) + SERIES_SUPERSEDED_GRACE_MS;
       if (collectAt > now) {
         nextCollectAt = collectAt;
@@ -156,7 +156,7 @@ export async function collectWindow(
         ...chunks.slice(0, index),
         ...keys.filter((key) => !isChunk(key) && subsumed.has(objectName(key))),
       ];
-      const storage = getFileStorage();
+      const storage = store.platform.blobStore;
       for (const key of superseded) await storage.delete(spaceId, key);
       forgetListing(spaceId, row.id, window);
       break;
@@ -176,7 +176,7 @@ export async function pruneSeries(
   // value cannot land in a window being pruned under the new one.
   if (row.updatedAt.getTime() > now - SERIES_SETTLE_MS) return;
   const horizon = now - row.retentionDays * 86_400_000 - SERIES_SETTLE_MS;
-  const storage = getFileStorage();
+  const storage = store.platform.blobStore;
   let window = row.oldestWindow;
   for (
     let pass = 0;

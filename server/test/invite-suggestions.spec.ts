@@ -10,6 +10,7 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+import { platform } from "./helpers/platform.ts";
 
 const PORT = 7491;
 const BASE_URL = testBaseUrl(PORT);
@@ -18,7 +19,7 @@ const createTestUser = (name: string) =>
   createSharedTestUser(BASE_URL, name, "test-invite-suggestions");
 
 async function assignUserToGroup(userId: string, groups: string[]): Promise<void> {
-  const authDb = getAuthDb();
+  const authDb = getAuthDb(platform);
   if (!authDb) throw new Error("Auth database not available");
   await authDb
     .update(userTable)

@@ -50,7 +50,7 @@ export async function startWorkflowRun(
     options.runtimeInputs ?? {},
   );
   // Fire and forget — errors are recorded in run state.
-  executeWorkflowScript(spaceId, runId, code, {
+  executeWorkflowScript(store.platform, spaceId, runId, code, {
     runtimeInputs: options.runtimeInputs,
     seedCache: options.seedCache,
   }).catch(() => {});

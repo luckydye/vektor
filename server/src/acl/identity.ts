@@ -17,6 +17,7 @@ import { PUBLIC_GROUP } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#config";
 import { countSpacesCreatedBy } from "#db/auth/spaceIndex.ts";
+import type { Platform } from "#platform/platform.ts";
 import { createRequestScope } from "#utils/requestScope.ts";
 
 /** An identity a decision can be made against, with nothing left to look up. */
@@ -51,8 +52,12 @@ export function principalOf(identity: ResolvedIdentity): string {
 export type AccessIdentity = string | null | ResolvedIdentity;
 
 /** Narrow an {@link AccessIdentity}, resolving it only when it is still an id. */
-export async function toIdentity(who: AccessIdentity): Promise<ResolvedIdentity> {
-  if (who === null || typeof who === "string") return await resolveIdentity(who);
+export async function toIdentity(
+  platform: Platform,
+  who: AccessIdentity,
+): Promise<ResolvedIdentity> {
+  if (who === null || typeof who === "string")
+    return await resolveIdentity(platform, who);
   return who;
 }
 
@@ -82,14 +87,20 @@ export function withIdentityScope<T>(handler: () => T): T {
  * The identity behind an id, answered from the request's cache after the first
  * call. Outside a scope every call resolves, as it did before the cache existed.
  */
-export function resolveIdentity(userId: string | null): Promise<ResolvedIdentity> {
-  return identities.memoize(userId ?? "", () => resolveUncached(userId));
+export function resolveIdentity(
+  platform: Platform,
+  userId: string | null,
+): Promise<ResolvedIdentity> {
+  return identities.memoize(userId ?? "", () => resolveUncached(platform, userId));
 }
 
-async function resolveUncached(userId: string | null): Promise<ResolvedIdentity> {
+async function resolveUncached(
+  platform: Platform,
+  userId: string | null,
+): Promise<ResolvedIdentity> {
   if (!userId) return ANONYMOUS;
 
-  const groups = await getUserGroups(userId);
+  const groups = await getUserGroups(platform, userId);
   return {
     userId,
     groups,
@@ -105,13 +116,14 @@ async function resolveUncached(userId: string | null): Promise<ResolvedIdentity>
  * to answer "no".
  */
 export async function isInstanceAdmin(
+  platform: Platform,
   userId: string | null | undefined,
 ): Promise<boolean> {
   if (!userId) return false;
   if (isNoAuthMode() && userId === LOCAL_USER_ID) return true;
   if (adminGroups().length === 0) return false;
 
-  return (await resolveIdentity(userId)).isInstanceAdmin;
+  return (await resolveIdentity(platform, userId)).isInstanceAdmin;
 }
 
 /**
@@ -119,9 +131,12 @@ export async function isInstanceAdmin(
  * is the operator's, and a client that has to name a group when it writes a
  * grant needs no more than the ones it already belongs to.
  */
-export async function userAdminGroups(userId: string): Promise<string[]> {
+export async function userAdminGroups(
+  platform: Platform,
+  userId: string,
+): Promise<string[]> {
   if (adminGroups().length === 0) return [];
-  return adminGroupsIn((await resolveIdentity(userId)).groups);
+  return adminGroupsIn((await resolveIdentity(platform, userId)).groups);
 }
 
 /**
@@ -129,8 +144,11 @@ export async function userAdminGroups(userId: string): Promise<string[]> {
  * cap together. An instance admin always may: they can already delete and
  * re-own every space that exists.
  */
-export async function canCreateSpace(userId: string): Promise<boolean> {
-  return (await spaceCreationRejection(userId)) === null;
+export async function canCreateSpace(
+  platform: Platform,
+  userId: string,
+): Promise<boolean> {
+  return (await spaceCreationRejection(platform, userId)) === null;
 }
 
 /**
@@ -139,10 +157,13 @@ export async function canCreateSpace(userId: string): Promise<boolean> {
  * how many, and a user who reaches the second is told so instead of being read
  * as unauthorized.
  */
-export async function spaceCreationRejection(userId: string): Promise<string | null> {
+export async function spaceCreationRejection(
+  platform: Platform,
+  userId: string,
+): Promise<string | null> {
   if (isNoAuthMode() && userId === LOCAL_USER_ID) return null;
 
-  const identity = await resolveIdentity(userId);
+  const identity = await resolveIdentity(platform, userId);
   // An admin owns every space that exists; a cap on the ones they created would
   // bound nothing.
   if (identity.isInstanceAdmin) return null;
@@ -152,7 +173,7 @@ export async function spaceCreationRejection(userId: string): Promise<string | n
   }
 
   const limit = maxSpacesPerUser();
-  if (limit > 0 && (await countSpacesCreatedBy(userId)) >= limit) {
+  if (limit > 0 && (await countSpacesCreatedBy(platform, userId)) >= limit) {
     return `You have reached the limit of ${limit} spaces; delete one to create another`;
   }
 

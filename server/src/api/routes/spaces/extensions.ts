@@ -24,6 +24,7 @@ import {
 import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
 import { serializeExtension } from "#extensions/serialize.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * List the extensions installed in a space
@@ -39,12 +40,13 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.platform,
       context.var.credentials,
       spaceId,
       Permission.VIEWER,
     );
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const { extensions: allExtensions, errors: manifestErrors } =
       await listExtensionsWithErrors(store, { includeDisabled: true });
 
@@ -55,6 +57,7 @@ export const GET: ApiRouteHandler = (context) =>
             await Promise.all(
               allExtensions.map(async (ext) => {
                 const hasAccess = await canAccess(
+                  store.platform,
                   spaceId,
                   { type: ResourceType.EXTENSION, id: ext.id },
                   auth.user.id,
@@ -137,7 +140,7 @@ export const POST: ApiRouteHandler = (context) =>
       const extensionId = manifest.id;
 
       // Check if extension already exists - update it if so
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(context.var.platform, spaceId);
       const existing = await getExtension(store, extensionId, {
         includeDisabled: true,
       });

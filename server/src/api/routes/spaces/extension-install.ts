@@ -19,6 +19,7 @@ import {
 import { downloadRegistryPackage } from "#extensions/registry.ts";
 import { serializeExtension } from "#extensions/serialize.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { Platform } from "#platform/platform.ts";
 
 interface InstallBody {
   extensionId?: unknown;
@@ -72,7 +73,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const { detail, version, buffer } = resolved;
 
-    const store = await openSpaceStore(spaceId);
+    const store = await openSpaceStore(context.var.platform, spaceId);
     const existing = await getExtension(store, detail.id, { includeDisabled: true });
 
     // Provenance is rewritten on every install, including over a package that

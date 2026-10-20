@@ -1,5 +1,3 @@
-import type { IncomingMessage, Server } from "node:http";
-import { type WebSocket, WebSocketServer } from "ws";
 import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
@@ -8,14 +6,12 @@ import { isNoAuthMode } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
-import {
-  decrementWebSocketConnections,
-  incrementWebSocketConnections,
-} from "#observability/metrics.ts";
+import type { Platform } from "#platform/platform.ts";
 import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
   type RealtimeErrorPayload,
+  type RealtimeSocket,
   WS_CLOSE_FORBIDDEN,
   WS_CLOSE_UNAUTHORIZED,
   WsMsgType,
@@ -43,6 +39,7 @@ interface FrameHandler {
  * extension room must not fall through to document ACLs.
  */
 async function authorizePresenceRoom(
+  platform: Platform,
   spaceId: string,
   userId: string,
   room: string,
@@ -51,10 +48,11 @@ async function authorizePresenceRoom(
   if (extensionId !== null) {
     if (!extensionId) return "denied";
     try {
-      const store = await openSpaceStore(spaceId);
+      const store = await openSpaceStore(platform, spaceId);
       if (!(await getExtension(store, extensionId))) return "denied";
       if (isNoAuthMode()) return "allowed";
       await verifyAccess(
+        platform,
         spaceId,
         { type: ResourceType.EXTENSION, id: extensionId },
         userId,
@@ -68,6 +66,7 @@ async function authorizePresenceRoom(
 
   try {
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.DOCUMENT, id: room },
       userId,
@@ -81,11 +80,12 @@ async function authorizePresenceRoom(
 
 /** Resolves the connecting user, or null once the socket has been refused. */
 async function authenticateConnection(
-  websocket: WebSocket,
-  request: IncomingMessage,
+  platform: Platform,
+  websocket: RealtimeSocket,
+  headers: Headers,
   spaceId: string,
 ): Promise<string | null> {
-  const { user } = await resolveRequestIdentity(request.headers as unknown as Headers);
+  const { user } = await resolveRequestIdentity(platform, headers);
 
   if (!user) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
@@ -103,6 +103,7 @@ async function authenticateConnection(
     // a document-level grantee is admitted as it is over HTTP. Authorizes
     // nothing: every topic, Yjs room and presence room is checked on its own.
     await verifyAccess(
+      platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
       user.id,
@@ -122,26 +123,32 @@ async function authenticateConnection(
   return user.id;
 }
 
-function toBuffer(rawMessage: Buffer | ArrayBuffer | Buffer[]): Buffer {
-  if (Array.isArray(rawMessage)) return Buffer.concat(rawMessage);
-  return Buffer.isBuffer(rawMessage) ? rawMessage : Buffer.from(rawMessage);
+/** What the transport feeds an accepted connection. */
+export interface RealtimeConnection {
+  message(frame: Uint8Array): Promise<void>;
+  close(): void;
 }
 
-async function handleRealtimeWebSocket(
-  websocket: WebSocket,
-  request: IncomingMessage,
+/**
+ * Attach the realtime protocol to a socket for `spaceId`, or null once it was
+ * refused. Frames that arrive while it authenticates are dropped.
+ */
+export async function acceptRealtimeConnection(
+  platform: Platform,
+  websocket: RealtimeSocket,
+  headers: Headers,
   spaceId: string,
-): Promise<void> {
-  const userId = await authenticateConnection(websocket, request, spaceId);
-  if (userId === null) return;
+): Promise<RealtimeConnection | null> {
+  const userId = await authenticateConnection(platform, websocket, headers, spaceId);
+  if (userId === null) return null;
 
   // Teardown order matters because presence and Yjs share room membership.
-  const yjs = new YjsConnection(spaceId, userId, websocket);
+  const yjs = new YjsConnection(platform, spaceId, userId, websocket);
   const handlers: FrameHandler[] = [
-    new TopicSubscriptions(spaceId, userId, websocket),
+    new TopicSubscriptions(platform, spaceId, userId, websocket),
     yjs,
-    new PresenceConnection(spaceId, websocket, {
-      authorizeRoom: (room) => authorizePresenceRoom(spaceId, userId, room),
+    new PresenceConnection(platform, spaceId, websocket, {
+      authorizeRoom: (room) => authorizePresenceRoom(platform, spaceId, userId, room),
       holdsYjsRoom: (room) => yjs.holdsRoom(room),
     }),
   ];
@@ -162,6 +169,7 @@ async function handleRealtimeWebSocket(
     try {
       // Document-level grantees may have no space role.
       await verifyAccess(
+        platform,
         spaceId,
         { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
         userId,
@@ -210,12 +218,12 @@ async function handleRealtimeWebSocket(
     scheduleRevalidation();
   });
 
-  websocket.on("message", async (rawMessage: Buffer | ArrayBuffer | Buffer[]) => {
+  const message = async (frame: Uint8Array): Promise<void> => {
     // Hoisted so the failure below can name the frame it was handling; the
     // client logs the payload, and "Invalid message" alone identifies nothing.
     let frameType: WsMsgType | null = null;
     try {
-      const { type, payload } = wsDecode(toBuffer(rawMessage));
+      const { type, payload } = wsDecode(frame);
       frameType = type;
 
       if (type === WsMsgType.Ping) {
@@ -240,70 +248,14 @@ async function handleRealtimeWebSocket(
         } satisfies RealtimeErrorPayload),
       );
     }
-  });
-
-  websocket.on("close", () => {
-    offAuthorizationChanges();
-    for (const handler of handlers) handler.close();
-    appLogger.info("Realtime WebSocket connection closed", { spaceId });
-  });
-}
-
-export interface RealtimeWebSocketServer {
-  close(): void;
-}
-
-/**
- * How long a connection may go without a frame before it is dropped, and how
- * often the sweep looks. Clients ping every 25s, so silence this long is three
- * missed rounds — a connection that died without a close frame, holding its
- * Yjs rooms and presence entries.
- */
-const CONNECTION_IDLE_TIMEOUT_MS = 90_000;
-const IDLE_SWEEP_INTERVAL_MS = 30_000;
-
-/** Attaches the realtime collaboration endpoint to the HTTP server. */
-export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocketServer {
-  const websocketServer = new WebSocketServer({ noServer: true });
-  const lastSeenAt = new WeakMap<WebSocket, number>();
-
-  const idleSweep = setInterval(() => {
-    const deadline = Date.now() - CONNECTION_IDLE_TIMEOUT_MS;
-    for (const client of websocketServer.clients) {
-      if ((lastSeenAt.get(client) ?? 0) > deadline) continue;
-      client.terminate();
-    }
-  }, IDLE_SWEEP_INTERVAL_MS);
-  idleSweep.unref?.();
-
-  server.on("upgrade", (request, socket, head) => {
-    const url = new URL(request.url ?? "/", "http://localhost");
-    const match = url.pathname.match(/^\/events\/([^/]+)$/);
-    if (!match) {
-      socket.destroy();
-      return;
-    }
-
-    websocketServer.handleUpgrade(request, socket, head, (websocket) => {
-      incrementWebSocketConnections();
-      websocket.once("close", decrementWebSocketConnections);
-      lastSeenAt.set(websocket, Date.now());
-      websocket.on("message", () => lastSeenAt.set(websocket, Date.now()));
-      void handleRealtimeWebSocket(websocket, request, match[1]);
-    });
-  });
+  };
 
   return {
-    close(): void {
-      clearInterval(idleSweep);
-      websocketServer.close();
-      for (const client of websocketServer.clients) {
-        try {
-          client.close();
-        } catch (error) {
-          appLogger.warn("Failed to close WebSocket client", { error });
-        }
-      }
+    message,
+    close() {
+      offAuthorizationChanges();
+      for (const handler of handlers) handler.close();
+      appLogger.info("Realtime WebSocket connection closed", { spaceId });
     },
   };
 }

@@ -1,5 +1,5 @@
-import { buildIntegrationApiUrl } from "#api/routes/spaces/integration-proxy.ts";
 import type { AIProvider } from "#api/provider/types.ts";
+import { buildIntegrationApiUrl } from "#api/routes/spaces/integration-proxy.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import {
@@ -10,21 +10,27 @@ import {
   getOAuthProviderConfiguration,
   resolveIntegrationAccessToken,
 } from "#integrations/oauthProviders.ts";
+import type { Platform } from "#platform/platform.ts";
 
 /**
  * The provider a user's agent chats run on: the integration they picked a
  * model on, or the instance's provider when they picked none.
  */
 export async function resolveUserAIProvider(
+  platform: Platform,
   spaceId: string,
   userId: string,
 ): Promise<AIProvider> {
-  const store = await openSpaceStore(spaceId);
+  const store = await openSpaceStore(platform, spaceId);
   const connections = await listOAuthIntegrationsForUser(store, userId);
   const selected = connections.find((connection) => connection.aiModel);
   if (!selected?.aiModel) return getAIProvider();
 
-  const resolved = await getOAuthProviderConfiguration(spaceId, selected.provider);
+  const resolved = await getOAuthProviderConfiguration(
+    platform,
+    spaceId,
+    selected.provider,
+  );
   if (!resolved?.configured || !resolved.config.ai) {
     throw new Error(
       `${selected.provider} no longer provides AI models. Pick another model under Integrations.`,
@@ -46,7 +52,7 @@ export async function resolveUserAIProvider(
         selected.provider,
       );
       if (!credential) throw new Error(`${selected.provider} is not connected`);
-      return resolveIntegrationAccessToken(spaceId, credential, providerConfig);
+      return resolveIntegrationAccessToken(platform, spaceId, credential, providerConfig);
     },
     model: selected.aiModel,
   };

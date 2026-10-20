@@ -3,7 +3,6 @@
  * it may write to, and the frames that carry document state.
  */
 
-import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
@@ -11,8 +10,10 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { documentIsReadonlyById } from "#db/space/documents.ts";
 import { appLogger } from "#observability/logger.ts";
 import { tracedSync } from "#observability/trace.ts";
+import type { Platform } from "#platform/platform.ts";
 import {
   type RealtimeErrorPayload,
+  type RealtimeSocket,
   WsMsgType,
   wsDecodeJson,
   wsDecodeYjsUpdate,
@@ -68,9 +69,10 @@ export class YjsConnection {
   private readonly joinedRooms = new Map<string, JoinedRoom>();
 
   constructor(
+    readonly platform: Platform,
     private readonly spaceId: string,
     private readonly userId: string,
-    private readonly websocket: WebSocket,
+    private readonly websocket: RealtimeSocket,
   ) {}
 
   /** Handles a Yjs frame and returns whether the frame was recognized. */
@@ -130,7 +132,7 @@ export class YjsConnection {
     }
 
     const roomKey = `${this.spaceId}:${documentId}`;
-    const doc = await ensureRoomDoc(this.spaceId, documentId);
+    const doc = await ensureRoomDoc(this.platform, this.spaceId, documentId);
     // `close()` only visits rooms in `joinedRooms`, which this join has not
     // reached yet, so a socket that dropped during the load would stay in
     // `clients` forever and pin the room and its document.
@@ -208,7 +210,7 @@ export class YjsConnection {
     tracedSync("yjs.applyUpdate", () =>
       Y.applyUpdate(room.doc as Y.Doc, update, this.websocket),
     );
-    scheduleYRoomDraftPersist(roomKey, this.userId);
+    scheduleYRoomDraftPersist(this.platform, roomKey, this.userId);
 
     const frame = wsEncodeYjsUpdate(documentId, update);
     tracedSync("yjs.broadcast", () => {
@@ -300,9 +302,9 @@ export class YjsConnection {
 
     room.clients.delete(this.websocket);
     if (room.clients.size === 0 && room.presences.size === 0) {
-      retireYRoom(roomKey);
+      retireYRoom(this.platform, roomKey);
     } else {
-      persistYRoomDraftBestEffort(roomKey);
+      persistYRoomDraftBestEffort(this.platform, roomKey);
     }
   }
 
@@ -312,7 +314,7 @@ export class YjsConnection {
     if (asEditor === "held") {
       try {
         return (await documentIsReadonlyById(
-          await openSpaceStore(this.spaceId),
+          await openSpaceStore(this.platform, this.spaceId),
           documentId,
         ))
           ? "view"
@@ -333,6 +335,7 @@ export class YjsConnection {
   ): Promise<"held" | "denied" | "unknown"> {
     try {
       await verifyAccess(
+        this.platform,
         this.spaceId,
         { type: ResourceType.DOCUMENT, id: documentId },
         this.userId,

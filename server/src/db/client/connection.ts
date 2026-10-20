@@ -1,9 +1,8 @@
-import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
+import type { drizzle } from "drizzle-orm/libsql";
 import { config, isInMemoryDb } from "#config";
+import type { Platform } from "#platform/platform.ts";
 
 /** Resolved per call rather than at import, so `DATA_DIR` is read after config. */
 export function dataDirectory(): string {
@@ -11,11 +10,6 @@ export function dataDirectory(): string {
 }
 
 export type Database = ReturnType<typeof drizzle>;
-
-declare global {
-  // biome-ignore lint: globalThis augmentation requires var
-  var __vektor_auth_db: Database | undefined;
-}
 
 export function getDatabaseFilePath(databaseUrl: string): string | null {
   if (!databaseUrl.startsWith("file:") || databaseUrl.startsWith("file::memory:")) {
@@ -28,13 +22,6 @@ export function getDatabaseFilePath(databaseUrl: string): string | null {
   }
 
   return path.resolve(decodeURIComponent(urlWithoutQuery.slice("file:".length)));
-}
-
-function ensureLocalDatabaseDirectory(databaseUrl: string): void {
-  const databasePath = getDatabaseFilePath(databaseUrl);
-  if (!databasePath) return;
-  const directory = path.dirname(databasePath);
-  if (!existsSync(directory)) mkdirSync(directory, { recursive: true });
 }
 
 /** The `?authToken=` a connection string carries, if any. */
@@ -131,17 +118,15 @@ export type DatabaseCredentials = {
 };
 
 export function createDatabase(
+  platform: Platform,
   databaseUrl: string,
   credentials: DatabaseCredentials = {},
 ): Database {
-  ensureLocalDatabaseDirectory(databaseUrl);
-  const client = createClient({
-    url: databaseUrl,
+  const database = platform.spaceDatabase.open(databaseUrl, {
     // Locations stored in the auth index carry no credentials, so an empty
     // token here means an unauthenticated connection rather than a shared one.
     authToken: credentials.authToken ?? authTokenFromDatabaseUrl(databaseUrl),
   });
-  const database = drizzle(client);
   if (databaseUrl.startsWith("file::memory:") || databaseUrl === ":memory:") {
     memoryBacked.add(database);
   }
@@ -161,13 +146,11 @@ export function isMemoryBackedDatabase(database: object): boolean {
   return memoryBacked.has(database);
 }
 
-export function closeDatabase(database: Database): void {
-  database.$client.close();
+export function closeDatabase(platform: Platform, database: Database): void {
+  platform.spaceDatabase.close(database);
 }
 
-export function getAuthDb(): Database {
-  if (!globalThis.__vektor_auth_db) {
-    globalThis.__vektor_auth_db = createDatabase(getAuthDatabaseUrl());
-  }
-  return globalThis.__vektor_auth_db;
+export function getAuthDb(platform: Platform): Database {
+  platform.state.authDb ??= platform.globalDatabase.open();
+  return platform.state.authDb;
 }
