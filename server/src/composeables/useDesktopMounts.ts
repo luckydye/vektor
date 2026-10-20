@@ -31,9 +31,8 @@ export function useDesktopMounts() {
       // "already gone": another tab may have deleted it first.
       const { tokens } = await api.personalAccessTokens.get();
       for (const id of pending) {
-        if (tokens.some((token) => token.id === id)) {
-          await api.personalAccessTokens.delete(id);
-        }
+        const listed = tokens.find((token) => token.id === id);
+        if (listed) await api.personalAccessTokens.delete(listed.spaceId, id);
         postToNativeApp({ type: "tokenRevoked", tokenId: id });
       }
     } catch (cause) {
@@ -57,7 +56,12 @@ export function useDesktopMounts() {
 
   function mount(space: Space, writable: boolean) {
     setError(null);
-    postToNativeApp({ type: "mount", spaceId: space.id, spaceSlug: space.slug, writable });
+    postToNativeApp({
+      type: "mount",
+      spaceId: space.id,
+      spaceSlug: space.slug,
+      writable,
+    });
   }
 
   /** Mints a token for the space; it shows up under Access Tokens as "Vektor Desktop". */

@@ -3,12 +3,15 @@
  * concern. Each entry point creates one and passes it down; nothing reads it from module scope.
  */
 
+import type * as Y from "yjs";
 import type { ApiRoute } from "#api/routes.ts";
 import type { SpaceIndexRecord } from "#db/auth/spaceIndex.ts";
 import type { Database } from "#db/client/connection.ts";
 import type { PlatformState } from "#db/client/db.ts";
+import type { CollaborationContentFormat } from "#documents/serialization.ts";
 import type { BlobStore } from "#files/storage.ts";
 import type { Capabilities } from "#jobs/runtime/capabilities.ts";
+import type { CapabilityTable } from "#jobs/runtime/types.ts";
 import type { EmailMessage } from "#notifications/email.ts";
 import type { SafeFetch } from "#utils/ssrf.ts";
 
@@ -66,7 +69,7 @@ export interface ImageMetadata {
   format: string;
 }
 
-/** Throws when an image cannot be decoded. */
+/** Throws when an image cannot be decoded, and inside a transaction (`assertOutsideTransaction`). */
 export interface ImageTransformer {
   /** Null when this host has no image support, so the original is served as is. */
   transform(input: Buffer, options: ImageTransformOptions): Promise<Buffer | null>;
@@ -77,37 +80,45 @@ export interface ImageTransformer {
 export interface Embedder {
   /** Stored beside every vector, so a model change is detected as stale. */
   readonly model: string;
+  /** Throws inside a transaction (`assertOutsideTransaction`). */
   embed(texts: string[]): Promise<number[][]>;
 }
 
-export interface VmEvent {
-  type: "log" | "call" | "done" | "error";
-  callId?: string;
-  name?: string;
-  args?: unknown[];
-  message?: string;
-  output?: unknown;
+/** One job for a {@link JobVm} to run. */
+export interface JobVmRun {
+  /** Guest source: a workflow script body or a bundled ESM job. */
+  script: string;
+  /** Becomes the guest's `input` global. */
+  inputs: Record<string, unknown>;
+  /** Host calls the guest may make; a name missing here rejects in the guest. */
+  capabilities: CapabilityTable;
+  /** Each guest log line, which also renews the inactivity deadline. */
+  onLog(message: string): void;
+  /** How long the job may go without logging or being touched before it fails. */
+  timeoutMs?: number;
+  /** Aborting stops the job; in-flight host calls reject so it can unwind. */
+  signal?: AbortSignal;
 }
 
-/** One loaded VM runtime; the semantics are those of `native/exec/index.d.ts`. */
-export interface JobVmRuntime {
-  create(
-    prelude: string,
-    code: string,
-    inputs: Record<string, unknown>,
-    options: { timeoutMs?: number },
-    onEvent: (event: VmEvent) => void,
-  ): number;
-  resolve(id: number, callId: string, value: unknown): void;
-  reject(id: number, callId: string, message: string): void;
-  touch(id: number): void;
-  destroy(id: number): void;
+/** A job underway. */
+export interface JobVmRunning {
+  /** What the guest returned; rejects when it throws, times out or is aborted. */
+  result: Promise<unknown>;
+  /** Renew the inactivity deadline for progress the host sees and the guest does not log. */
+  touch(): void;
 }
 
+/** Runs guest code isolated from the host, which it reaches only through its capabilities. */
 export interface JobVm {
-  load(): Promise<JobVmRuntime>;
+  run(job: JobVmRun): JobVmRunning;
   /** Capabilities the host itself backs: the scratch directory and `exec`. */
   hostCapabilities(signal?: AbortSignal): Capabilities;
+}
+
+/** Converts collaborative documents to and from their stored content, off the request path where the host can. */
+export interface DocSerializer {
+  serialize(format: CollaborationContentFormat, doc: Y.Doc): Promise<string>;
+  deserialize(format: CollaborationContentFormat, content: string): Promise<Y.Doc>;
 }
 
 export interface PasswordHasher {
@@ -118,6 +129,7 @@ export interface PasswordHasher {
 export interface Mailer {
   /** Whether outgoing mail is configured on this host. */
   available(): boolean;
+  /** Throws inside a transaction (`assertOutsideTransaction`). */
   send(message: EmailMessage): Promise<void>;
 }
 
@@ -152,10 +164,14 @@ export interface Platform {
   imageTransformer: ImageTransformer;
   embedder: Embedder;
   jobVm: JobVm;
+  docSerializer: DocSerializer;
   passwordHasher: PasswordHasher;
   mailer: Mailer;
   spaceHost: SpaceHost;
-  /** `fetch` for caller-influenced URLs, refusing private targets on every redirect hop. */
+  /**
+   * `fetch` for caller-influenced URLs, refusing private targets on every redirect
+   * hop. Throws inside a transaction (`assertOutsideTransaction`).
+   */
   fetch: SafeFetch;
   /** Null where the target cannot run git. */
   git: GitHost | null;

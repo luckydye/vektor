@@ -9,7 +9,9 @@ import {
   MAX_PAYLOAD_BYTES,
   toBytes,
 } from "#jobs/runtime/capabilities.ts";
+import { PRELUDE } from "#jobs/runtime/prelude.ts";
 import type { CapabilityTable } from "#jobs/runtime/types.ts";
+import type { VmEvent } from "#native/exec/index.d.ts";
 import type { JobVm } from "#platform/platform.ts";
 import { getNativeExec } from "./native.ts";
 
@@ -180,7 +182,11 @@ function scratchCapabilities(
   };
 }
 
-/** The Boa VM from the native exec addon, with a private scratch directory per run. */
+/**
+ * The Boa VM from the native exec addon, with a private scratch directory per run.
+ * Guest code runs on its own OS thread; this only translates its events into
+ * capability calls and back, with no polling loop.
+ */
 export function createBoaJobVm(options: {
   /**
    * Binaries a job may run: fixed names, never a path and never guest-supplied,
@@ -189,15 +195,95 @@ export function createBoaJobVm(options: {
   execAllowlist: ReadonlySet<string>;
 }): JobVm {
   return {
-    async load() {
-      const native = await getNativeExec();
-      return {
-        create: native.vmCreate,
-        resolve: native.vmResolve,
-        reject: native.vmReject,
-        touch: native.vmTouch,
-        destroy: native.vmDestroy,
-      };
+    run({ script, inputs, capabilities, onLog, timeoutMs, signal }) {
+      let touch = () => {};
+      const result = getNativeExec().then(
+        (native) =>
+          new Promise<unknown>((resolve, reject) => {
+            let vmId: number | null = null;
+            let settled = false;
+
+            const finish = (outcome: () => void) => {
+              if (settled) return;
+              settled = true;
+              signal?.removeEventListener("abort", onAbort);
+              outcome();
+            };
+
+            const onAbort = () => {
+              // The VM rejects in-flight calls and lets the script unwind, so the
+              // terminal error event still arrives and settles this promise.
+              if (vmId !== null) native.vmDestroy(vmId);
+            };
+
+            const onEvent = (event: VmEvent) => {
+              switch (event.type) {
+                case "log":
+                  onLog(event.message ?? "");
+                  // A guest log is observable proof of progress, so it renews the
+                  // inactivity timeout even if the next host call takes a while.
+                  if (vmId !== null) native.vmTouch(vmId);
+                  return;
+
+                case "call": {
+                  const { callId, name } = event;
+                  if (!callId || !name) return;
+                  const capability = capabilities[name];
+                  if (!capability) {
+                    // Deny by default: a capability the host did not grant.
+                    if (vmId !== null) {
+                      native.vmReject(
+                        vmId,
+                        callId,
+                        `"${name}" is not available in this job`,
+                      );
+                    }
+                    return;
+                  }
+                  // Capabilities may be sync or async; normalize to a promise so a
+                  // synchronous throw becomes a rejection in the guest too.
+                  void (async () => {
+                    try {
+                      const args = (event.args ?? []) as never[];
+                      const value = await capability(...args);
+                      if (vmId !== null) native.vmResolve(vmId, callId, value ?? null);
+                    } catch (error) {
+                      const message =
+                        error instanceof Error ? error.message : String(error);
+                      if (vmId !== null) native.vmReject(vmId, callId, message);
+                    }
+                  })();
+                  return;
+                }
+
+                case "done":
+                  finish(() => resolve(event.output));
+                  return;
+
+                case "error":
+                  finish(() => reject(new Error(event.message ?? "job failed")));
+                  return;
+              }
+            };
+
+            try {
+              vmId = native.vmCreate(PRELUDE, script, inputs, { timeoutMs }, onEvent);
+              touch = () => {
+                if (vmId !== null && !settled) native.vmTouch(vmId);
+              };
+            } catch (error) {
+              finish(() =>
+                reject(error instanceof Error ? error : new Error(String(error))),
+              );
+              return;
+            }
+
+            // An abort that arrives before the VM is created still has to land.
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          }),
+      );
+      return { result, touch: () => touch() };
     },
 
     hostCapabilities(signal) {

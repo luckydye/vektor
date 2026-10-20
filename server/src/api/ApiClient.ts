@@ -2118,16 +2118,19 @@ export class ApiClient {
       }>(this.baseUrl, "/api/v1/access-tokens", body);
     },
 
-    revoke: async (tokenId: string) => {
+    revoke: async (spaceId: string, tokenId: string) => {
       return await this.apiPatch<{ message: string }>(
         this.baseUrl,
-        `/api/v1/access-tokens/${tokenId}`,
+        `/api/v1/access-tokens/${tokenId}?space=${encodeURIComponent(spaceId)}`,
         {},
       );
     },
 
-    delete: async (tokenId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/access-tokens/${tokenId}`);
+    delete: async (spaceId: string, tokenId: string) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/access-tokens/${tokenId}?space=${encodeURIComponent(spaceId)}`,
+      );
     },
   };
 

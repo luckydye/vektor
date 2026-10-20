@@ -31,7 +31,6 @@ import { history } from "#utils/history.ts";
 import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
-import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
 import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
@@ -303,7 +302,6 @@ export function SpaceApp(props: Props) {
             setShowOrganizationTour(value);
           }}
         />
-        <CalDAVSetupDialog />
         <ToastContainer />
         <DialogHost />
         <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />

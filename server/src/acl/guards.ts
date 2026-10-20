@@ -48,7 +48,7 @@ import {
   hasPermission,
   listAccessibleResources,
 } from "#acl/store.ts";
-import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
+import { isActiveSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
@@ -102,7 +102,7 @@ export interface AclTarget {
  */
 async function spaceExists(platform: Platform, spaceId: string): Promise<boolean> {
   await initializeDatabases(platform);
-  return (await getIndexedSpace(platform, spaceId)) !== null;
+  return await isActiveSpace(platform, spaceId);
 }
 
 /**

@@ -52,14 +52,13 @@ export default defineConfig({
     server: {
       cors: {
         origin: "*",
-        methods: ["GET", "POST", "PUT", "DELETE", "PROPFIND", "REPORT", "OPTIONS"],
-        allowedHeaders: ["Authorization", "Content-Type", "Depth"],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Authorization", "Content-Type"],
         maxAge: 86400,
       },
       proxy: {
         // API routes are served by the Hono server (src/server.ts), not Astro.
         "/api": { target: "http://127.0.0.1:8080", changeOrigin: true },
-        "/.well-known/caldav": { target: "http://127.0.0.1:8080", changeOrigin: true },
         // Repository URLs are `/<space>/git/...`, so there is no fixed prefix
         // to match on — a regex key is the only way to reach them. Without it
         // a clone gets this dev server's HTML and reports that the URL is not

@@ -6,6 +6,7 @@ import {
   SsrfError,
   safeFetch,
 } from "#utils/ssrf.ts";
+import { assertOutsideTransaction } from "#utils/transactionScope.ts";
 
 const MAX_RACED_ADDRESSES = 8;
 const CONNECT_STAGGER_MS = 250;
@@ -103,5 +104,8 @@ const connectPinned: ConnectValidated = async (target, init) => {
 
 /** The SSRF-safe `fetch` of a Bun process, for the platform and for threads that run without one. */
 export function createBunFetch(): SafeFetch {
-  return (url, init, validate) => safeFetch(connectPinned, url, init, validate);
+  return (url, init, validate) => {
+    assertOutsideTransaction("platform.fetch");
+    return safeFetch(connectPinned, url, init, validate);
+  };
 }

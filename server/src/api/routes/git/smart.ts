@@ -9,7 +9,7 @@
 import { AclFailure } from "#acl/errors.ts";
 import { canAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { type BasicAuthUser, verifyBasicAuth } from "#api/basicAuth.ts";
+import { type BasicAuthUser, verifyBasicAuthUser } from "#api/basicAuth.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getSpaceBySlug } from "#db/space/spaces.ts";
@@ -61,15 +61,6 @@ function notFound(): Response {
 /** Which service a request is for, and therefore what it must be allowed to do. */
 function isWrite(path: string, query: string): boolean {
   return path === "git-receive-pack" || query.includes("service=git-receive-pack");
-}
-
-async function authenticate(context: ApiContext): Promise<BasicAuthUser | null> {
-  const user = context.var.user;
-  if (user) return { id: user.id, email: user.email, name: user.name };
-  return verifyBasicAuth(
-    context.var.platform,
-    context.req.raw.headers.get("Authorization"),
-  );
 }
 
 /**
@@ -228,7 +219,7 @@ export const ALL: ApiRouteHandler = async (context) => {
   );
   if (!repository) return notFound();
 
-  const caller = await authenticate(context);
+  const caller = await verifyBasicAuthUser(context, space.id);
   if (!caller) return unauthorized();
 
   if (path.startsWith(LFS_PATH)) {

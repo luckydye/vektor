@@ -39,7 +39,6 @@ describe("storedPropertyKey", () => {
   it("folds an app-owned key onto the spelling the app reads", () => {
     expect(storedPropertyKey("TITLE")).toBe("title");
     expect(storedPropertyKey("headerimage")).toBe("headerImage");
-    expect(storedPropertyKey("EVENTSTART")).toBe("eventStart");
   });
 });
 

@@ -9,6 +9,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { isActiveSpace } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   CategorySlugTakenError,
@@ -16,7 +17,6 @@ import {
   listCategories,
   reorderCategories,
 } from "#db/space/categories.ts";
-import { getSpace } from "#db/space/spaces.ts";
 import type { Platform } from "#platform/platform.ts";
 import { isHexColor } from "#utils/color.ts";
 
@@ -52,8 +52,7 @@ async function visibleCategoryIds(
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const space = await getSpace(context.var.platform, spaceId);
-    if (!space) {
+    if (!(await isActiveSpace(context.var.platform, spaceId))) {
       return new Response("Space not found", {
         status: 404,
         statusText: "Space not found",

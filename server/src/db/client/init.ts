@@ -43,6 +43,11 @@ export async function prepareAuthDb(authDb: Database) {
       "CREATE UNIQUE INDEX IF NOT EXISTS space_index_active_slug_unique ON space_index (slug) WHERE status = 'active'",
     ),
   );
+  // Lookups bind the status as a parameter, which the partial index above can't serve.
+  await exec(
+    authDb,
+    sql.raw("CREATE INDEX IF NOT EXISTS space_index_slug ON space_index (slug)"),
+  );
 }
 
 export async function applySpaceDbPragmas(spaceDb: Database) {

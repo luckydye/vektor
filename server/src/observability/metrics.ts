@@ -98,8 +98,8 @@ const eventLoopDelaysMs = new Array<number>(MONITOR_SAMPLES).fill(0);
 let sampleIndex = 0;
 let samplesFilled = 0;
 
-let lastSampleWallMs = performance.now();
-let lastCpu = process.cpuUsage();
+let lastSampleWallMs = 0;
+let lastCpu: NodeJS.CpuUsage = { user: 0, system: 0 };
 
 function sampleMonitor(): void {
   const nowWall = performance.now();
@@ -124,6 +124,8 @@ function sampleMonitor(): void {
 
 /** Sample the event loop on a background timer; returns what stops it. */
 export function startMetricsMonitor(platform: Platform): () => void {
+  lastSampleWallMs = performance.now();
+  lastCpu = process.cpuUsage();
   return platform.spaceHost.every(MONITOR_INTERVAL_MS, sampleMonitor);
 }
 

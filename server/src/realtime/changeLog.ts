@@ -7,18 +7,17 @@
 import { randomUUID } from "node:crypto";
 import type { RealtimeTopic, RealtimeTopicEvent, SyncCursor } from "./protocol.ts";
 
-/**
- * Names this process's numbering. Sequence numbers restart at zero on boot, so
- * without it a client would read a new 1..500 as already seen.
- */
-export const syncEpoch = randomUUID();
-
 /** Envelopes of history one space keeps. Beyond this, a client resyncs. */
 export const SYNC_HISTORY_LIMIT = 256;
 
 const SYNC_HISTORY_SPACES = 512;
 
 interface SpaceHistory {
+  /**
+   * Names this history's numbering. Sequence numbers restart at one whenever a
+   * history is recreated, so without it a client would read a new 1..500 as already seen.
+   */
+  epoch: string;
   /** Oldest first, and contiguous: `seq` only ever advances by one. */
   entries: Array<{ seq: number; events: RealtimeTopicEvent[] }>;
   nextSeq: number;
@@ -29,7 +28,7 @@ const histories = new Map<string, SpaceHistory>();
 
 export type SyncCatchUp =
   | { kind: "resync" }
-  | { kind: "events"; seq: number; events: RealtimeTopicEvent[] };
+  | { kind: "events"; cursor: SyncCursor; events: RealtimeTopicEvent[] };
 
 /**
  * This space's history, created if absent. Reads create it too, which is what
@@ -39,7 +38,7 @@ export type SyncCatchUp =
 function historyFor(spaceId: string): SpaceHistory {
   const existing = histories.get(spaceId);
   if (existing) histories.delete(spaceId);
-  const history = existing ?? { entries: [], nextSeq: 1 };
+  const history = existing ?? { epoch: randomUUID(), entries: [], nextSeq: 1 };
   histories.set(spaceId, history);
 
   while (histories.size > SYNC_HISTORY_SPACES) {
@@ -51,26 +50,27 @@ function historyFor(spaceId: string): SpaceHistory {
   return history;
 }
 
+/** Record one envelope and return the cursor that names it. */
 export function appendSyncEnvelope(
   spaceId: string,
   events: RealtimeTopicEvent[],
-): number {
+): SyncCursor {
   const history = historyFor(spaceId);
   const seq = history.nextSeq++;
   history.entries.push({ seq, events });
   if (history.entries.length > SYNC_HISTORY_LIMIT) {
     history.entries.splice(0, history.entries.length - SYNC_HISTORY_LIMIT);
   }
-  return seq;
+  return { epoch: history.epoch, seq };
 }
 
 /**
- * The newest sequence number, for a client that holds no cursor yet. Without
- * one, a client that had never seen an event would reconnect with nothing to
- * compare against.
+ * The newest cursor, for a client that holds none yet. Without one, a client
+ * that had never seen an event would reconnect with nothing to compare against.
  */
-export function headSyncSeq(spaceId: string): number {
-  return historyFor(spaceId).nextSeq - 1;
+export function headSyncCursor(spaceId: string): SyncCursor {
+  const history = historyFor(spaceId);
+  return { epoch: history.epoch, seq: history.nextSeq - 1 };
 }
 
 /**
@@ -82,13 +82,12 @@ export function catchUpSince(
   cursor: SyncCursor,
   isSubscribed: (topic: RealtimeTopic) => boolean,
 ): SyncCatchUp {
-  if (cursor.epoch !== syncEpoch) return { kind: "resync" };
-
   const history = histories.get(spaceId);
-  if (!history) return { kind: "resync" };
+  if (!history || cursor.epoch !== history.epoch) return { kind: "resync" };
 
   const oldest = history.entries[0];
-  if (!oldest) return { kind: "events", seq: history.nextSeq - 1, events: [] };
+  const head = { epoch: history.epoch, seq: history.nextSeq - 1 };
+  if (!oldest) return { kind: "events", cursor: head, events: [] };
   // The first entry the client needs is gone, so the gap cannot be described.
   if (oldest.seq > cursor.seq + 1) return { kind: "resync" };
 
@@ -104,5 +103,5 @@ export function catchUpSince(
 
   // The newest seq, not the newest that matched: an envelope of topics this
   // connection ignores is still read.
-  return { kind: "events", seq: history.nextSeq - 1, events: [...missed.values()] };
+  return { kind: "events", cursor: head, events: [...missed.values()] };
 }

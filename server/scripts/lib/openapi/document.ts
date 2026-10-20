@@ -10,7 +10,7 @@ import type {
   RouteDoc,
 } from "./types.ts";
 
-/** The methods OpenAPI can describe. `ALL`, PROPFIND and friends have no slot. */
+/** The methods OpenAPI can describe. `ALL` has no slot. */
 const OPENAPI_METHODS = [
   "GET",
   "PUT",
@@ -45,7 +45,6 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "Access tokens": "Long-lived credentials for scripts, CI and the CLI.",
   AI: "Model configuration and the chat endpoints built on it.",
   Auth: "Sign-in, sessions and CLI pairing.",
-  CalDAV: "Calendar access over CalDAV. Mostly WebDAV methods OpenAPI cannot describe.",
   Categories: "The category tree documents are filed under.",
   Comments: "Discussion attached to documents.",
   Discovery: "Unauthenticated endpoints describing the instance itself.",

@@ -1,7 +1,7 @@
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -55,7 +55,7 @@ export const GET: ApiRouteHandler = (context) =>
     // see everything.
     const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
     const viewerGroups = aclUserId
-      ? await getUserGroups(context.var.platform, aclUserId)
+      ? (await resolveIdentity(context.var.platform, aclUserId)).groups
       : undefined;
     /**
      * Readable ids out of a whole set at once. `filterReadableResources`

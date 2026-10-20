@@ -1,12 +1,11 @@
 import type { Bash } from "just-bash";
 import { describe, expect, it } from "vitest";
+import { createAgentShell, runAgentPrompt } from "#agent/core.ts";
 import {
-  createAgentShell,
   isOpenCodeZenClaudeModel,
   isOpenCodeZenGPTModel,
   isOpenCodeZenTextOnlyModel,
-  runAgentPrompt,
-} from "#agent/core.ts";
+} from "#agent/model.ts";
 import { callTool } from "#agent/tools.ts";
 import {
   toAnthropicMessages,

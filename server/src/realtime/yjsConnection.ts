@@ -132,7 +132,25 @@ export class YjsConnection {
     }
 
     const roomKey = `${this.spaceId}:${documentId}`;
-    const doc = await ensureRoomDoc(this.platform, this.spaceId, documentId);
+    let doc: Awaited<ReturnType<typeof ensureRoomDoc>>;
+    try {
+      doc = await ensureRoomDoc(this.platform, this.spaceId, documentId);
+    } catch (error) {
+      // Answered as a failed join, so the client stops waiting instead of reading a generic frame error.
+      appLogger.error("Failed to load a document into its room", {
+        error,
+        spaceId: this.spaceId,
+        documentId,
+      });
+      this.websocket.send(
+        wsEncode(WsMsgType.Error, {
+          message: "This document could not be loaded",
+          scope: "yjs-join",
+          documentId,
+        } satisfies RealtimeErrorPayload),
+      );
+      return;
+    }
     // `close()` only visits rooms in `joinedRooms`, which this join has not
     // reached yet, so a socket that dropped during the load would stay in
     // `clients` forever and pin the room and its document.

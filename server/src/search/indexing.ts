@@ -68,13 +68,18 @@ export async function updateDocumentEmbedding(
   });
 }
 
-/** Start a search refresh without delaying or failing the document write. */
+/**
+ * Start a search refresh without delaying or failing the document write. It
+ * waits for the commit: embedding is external I/O and must not run inside one.
+ */
 export function scheduleDocumentSearchRefresh(s: SpaceStore, documentId: string): void {
-  void updateDocumentEmbedding(s, documentId).catch((error) => {
-    appLogger.warn("Failed to refresh document search", {
-      error,
-      spaceId: s.spaceId,
-      documentId,
+  s.afterCommit((committed) => {
+    void updateDocumentEmbedding(committed, documentId).catch((error) => {
+      appLogger.warn("Failed to refresh document search", {
+        error,
+        spaceId: committed.spaceId,
+        documentId,
+      });
     });
   });
 }

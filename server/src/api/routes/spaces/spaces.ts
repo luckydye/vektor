@@ -11,8 +11,10 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { requireSpaceQuery } from "#api/tokenSpace.ts";
+import { isActiveSpace } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { findSpaceForToken } from "#db/space/accessTokens.ts";
+import { validateAccessToken } from "#db/space/accessTokens.ts";
 import { maxWeeklyAITokens } from "#db/space/aiConfig.ts";
 import {
   createSpace,
@@ -33,17 +35,22 @@ import {
 /**
  * List the spaces the caller can read
  *
- * A session lists the caller's spaces, an access token the single space it belongs to, and an anonymous caller the publicly readable ones.
+ * A session lists the caller's spaces, an access token the space it names in `?space=` (checked there only), and an anonymous caller the publicly readable ones.
  *
  * @tag Spaces
+ * @query space ID of the space the access token belongs to; required with a token.
  * @response array #/components/schemas/Space
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const rawToken = extractAccessToken(context.var.credentials);
     if (rawToken) {
-      const spaceId = await findSpaceForToken(context.var.platform, rawToken);
-      if (!spaceId) return jsonResponse([]);
+      const spaceId = requireSpaceQuery(context);
+      // The token is checked before anything is read for it: the index lookup is
+      // the least that opening its space needs.
+      if (!(await isActiveSpace(context.var.platform, spaceId))) return jsonResponse([]);
+      const store = await openSpaceStore(context.var.platform, spaceId);
+      if (!(await validateAccessToken(store, rawToken))) return jsonResponse([]);
       const space = await getSpace(context.var.platform, spaceId);
       return jsonResponse(space ? [space] : []);
     }

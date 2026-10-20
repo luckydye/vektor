@@ -1,8 +1,8 @@
 import { defineMiddleware } from "astro:middleware";
-import { withIdentityScope } from "./acl/identity.ts";
 import { resolveRequestIdentity } from "./acl/session.ts";
 import { getPublicEnv } from "./config.ts";
 import { appLogger } from "./observability/logger.ts";
+import { requestScope } from "./utils/requestScope.ts";
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const startTime = Date.now();
@@ -26,7 +26,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.user = user;
   context.locals.session = session;
   try {
-    const response = await withIdentityScope(next);
+    const response = await requestScope.withinResponse(next);
     const durationMs = Date.now() - startTime;
     const attributes = {
       method: request.method,

@@ -67,7 +67,7 @@ describe("OpenAPI document", () => {
   });
 
   it("documents every method a route module answers, unless it exports ALL", () => {
-    // An `ALL`-exporting handler (CalDAV, git smart HTTP, better-auth) answers
+    // An `ALL`-exporting handler (git smart HTTP, better-auth) answers
     // methods OpenAPI cannot describe by design — see `comments.ts` — so it
     // only has to document a subset, not all of them.
     const undocumented: string[] = [];

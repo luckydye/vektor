@@ -3,10 +3,6 @@ import * as personalAccessTokens from "./routes/access-tokens.ts";
 import * as authAll from "./routes/auth/all.ts";
 import * as authCli from "./routes/auth/cli.ts";
 import * as authCliToken from "./routes/auth/cli-token.ts";
-import * as caldavCalendar from "./routes/caldav/calendar.ts";
-import * as caldavCalendars from "./routes/caldav/calendars.ts";
-import * as caldavEvent from "./routes/caldav/event.ts";
-import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
 import * as marketplaceExtension from "./routes/marketplace/extension.ts";
@@ -74,7 +70,6 @@ import * as urlMetadata from "./routes/url-metadata.ts";
 import * as usersMe from "./routes/users/me.ts";
 import * as usersSuggestions from "./routes/users/suggestions.ts";
 import * as users from "./routes/users/users.ts";
-import * as wellKnownCaldav from "./routes/well-known/caldav.ts";
 import * as wellKnownVektor from "./routes/well-known/vektor.ts";
 import type { ApiRouteModule } from "./server/types.ts";
 
@@ -92,7 +87,6 @@ export interface ApiRoute {
  * that decides a URL, so a new route is a new file plus an entry here.
  */
 export const apiRoutes: ApiRoute[] = [
-  { pattern: "/.well-known/caldav", module: wellKnownCaldav },
   { pattern: "/.well-known/vektor", module: wellKnownVektor },
 
   { pattern: "/api/auth/[...all]", module: authAll },
@@ -106,11 +100,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/chat/acp", module: chatAcp },
   { pattern: "/api/v1/chat/completions", module: chatCompletions },
-
-  { pattern: "/api/caldav/calendars/[userId]/[spaceId]/[eventId]", module: caldavEvent },
-  { pattern: "/api/caldav/calendars/[userId]/[spaceId]", module: caldavCalendar },
-  { pattern: "/api/caldav/calendars/[userId]", module: caldavCalendars },
-  { pattern: "/api/caldav/principals/[userId]", module: caldavPrincipal },
 
   { pattern: "/api/v1/spaces", module: spaces },
   { pattern: "/api/v1/spaces/[spaceId]", module: space },

@@ -1,7 +1,7 @@
 import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -64,7 +64,7 @@ export const GET: ApiRouteHandler = (context) =>
         [found.documentId],
         {
           userId: aclUserId,
-          userGroups: await getUserGroups(context.var.platform, aclUserId),
+          userGroups: (await resolveIdentity(context.var.platform, aclUserId)).groups,
         },
       );
       if (!readable.has(found.documentId)) return notFoundResponse("Run");

@@ -10,15 +10,15 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { resolveIdentity } from "#acl/identity.ts";
 import { AclKind, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasPermission, logAclChange } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AccessToken, AclEntry } from "#db/schema/space.ts";
 import { acl } from "#db/schema/space.ts";
 import type { Platform } from "#platform/platform.ts";
-import { listAllSpaces, listUserSpaces } from "./spaces.ts";
+import { listUserSpaces } from "./spaces.ts";
 
 /** Ten years: long enough for any standing credential, short enough to expire. */
 export const MAX_ACCESS_TOKEN_EXPIRY_DAYS = 3650;
@@ -283,7 +283,7 @@ export async function validateAccessToken(
     s.spaceId,
     result.createdBy,
     Permission.VIEWER,
-    await getUserGroups(s.platform, result.createdBy),
+    (await resolveIdentity(s.platform, result.createdBy)).groups,
   );
   if (!creatorStillBelongsToSpace) {
     await revokeAccessToken(s, tokenId);
@@ -419,36 +419,15 @@ export async function listPersonalAccessTokens(
 }
 
 /**
- * The space holding a token this user issued. Null when no such token exists,
- * which is also the answer for someone else's token — the caller may only reach
- * its own.
+ * Whether this space holds a token this user issued. False for someone else's
+ * token too: the caller may only reach its own.
  */
-export async function findPersonalTokenSpace(
-  platform: Platform,
+export async function isPersonalToken(
+  s: SpaceStore,
   userId: string,
   tokenId: string,
-): Promise<string | null> {
-  for (const space of await listUserSpaces(platform, userId)) {
-    const token = await getAccessToken(await openSpaceStore(platform, space.id), tokenId);
-    if (token?.createdBy === userId) return space.id;
-  }
-  return null;
-}
-
-/**
- * Find which space a raw token belongs to by scanning all spaces.
- * Returns the s.spaceId if found and valid, null otherwise.
- */
-export async function findSpaceForToken(
-  platform: Platform,
-  token: string,
-): Promise<string | null> {
-  const spaces = await listAllSpaces(platform);
-  for (const space of spaces) {
-    const spaceStore = await openSpaceStore(platform, space.id);
-    if (await validateAccessToken(spaceStore, token)) return space.id;
-  }
-  return null;
+): Promise<boolean> {
+  return (await getAccessToken(s, tokenId))?.createdBy === userId;
 }
 
 /**

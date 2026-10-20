@@ -173,7 +173,7 @@ export async function executeWorkflowScript(
   };
 
   try {
-    const output = await getJobRuntime().execute(code, {
+    const execution = getJobRuntime().execute(code, {
       platform,
       spaceId,
       jobId: `workflow:${runId}`,
@@ -181,12 +181,11 @@ export async function executeWorkflowScript(
       attribution,
       inputs: runtimeInputs,
       onLog: appendWorkflowLog,
-      onVmReady: (touch) => {
-        touchWorkflowVm = touch;
-      },
       signal: controller.signal,
       extraCapabilities: { runJob: runWorkflowJob as never },
     });
+    touchWorkflowVm = execution.touch;
+    const output = await execution.result;
 
     await writeRunResult(platform, runId, output);
     await persistResumeState();

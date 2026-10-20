@@ -1,6 +1,6 @@
 /**
- * HTTP Basic authentication for the protocols that only speak it — CalDAV
- * clients, git over HTTPS, anything else that cannot carry a session cookie.
+ * HTTP Basic authentication for the protocols that only speak it — git over
+ * HTTPS, anything else that cannot carry a session cookie.
  *
  * The username is the user's email and the password an access token, and the
  * identity that comes back carries the token rather than merely being found by
@@ -9,23 +9,22 @@
  */
 
 import { eq } from "drizzle-orm";
+import type { ApiContext } from "#api/server/types.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
+import { isActiveSpace } from "#db/auth/spaceIndex.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
-import { listUserSpaces } from "#db/space/spaces.ts";
 import type { Platform } from "#platform/platform.ts";
 
 /**
  * The access token a Basic-auth client authenticated with.
  *
- * `spaceId` is the space whose store holds the token row. Access tokens live in
- * exactly one space's database, so that space is the only one a token can ever
- * reach — every other space the user belongs to is out of the token's scope by
- * construction, and `result` carries the ACL identity — the token's id — that says
- * what it may do *within* that space.
+ * `spaceId` is the space the URL named and whose store holds the token row, the
+ * only space the token can reach. `result` carries the token's id, the ACL
+ * identity that says what it may do there.
  */
 export interface BasicAuthToken {
   spaceId: string;
@@ -51,15 +50,13 @@ export interface BasicAuthUser {
  * Authenticate a request using HTTP Basic auth.
  * Username is the user's email, password is an access token (at_...).
  *
- * The returned identity carries the token that authenticated it: the token is
- * NOT merely a way to look the user up. Callers must authorize against
- * {@link BasicAuthUser.token} (see {@link requireBasicAuthUserAndAccess}), otherwise a
- * token scoped to one space at viewer level would grant the user's full access
- * to every space they belong to.
+ * The token is checked only in `spaceId`, the space the request URL names. The
+ * returned identity carries the token, and callers must authorize against {@link BasicAuthUser.token}.
  */
 export async function verifyBasicAuth(
   platform: Platform,
   authHeader: string | null,
+  spaceId: string,
 ): Promise<BasicAuthUser | null> {
   if (!authHeader?.startsWith("Basic ")) return null;
 
@@ -80,29 +77,41 @@ export async function verifyBasicAuth(
     return { id: LOCAL_USER_ID, email: LOCAL_USER.email, name: LOCAL_USER.name };
   }
 
+  if (!(await isActiveSpace(platform, spaceId))) return null;
+
   const authDb = getAuthDb(platform);
   const foundUser = await one(authDb.select().from(user).where(eq(user.email, email)));
   if (!foundUser) return null;
 
-  // A token row exists only in the database of the space it was created in, so
-  // this search establishes *which* space the token belongs to — it can never
-  // "find" a space-A token by probing space B. The space it is found in is
-  // carried out as the token's scope.
-  const spaces = await listUserSpaces(platform, foundUser.id);
-  for (const space of spaces) {
-    const result = await validateAccessToken(
-      await openSpaceStore(platform, space.id),
-      token,
-    );
-    if (result && result.token.createdBy === foundUser.id) {
-      return {
-        id: foundUser.id,
-        email: foundUser.email,
-        name: foundUser.name,
-        token: { spaceId: space.id, result },
-      };
-    }
-  }
+  const result = await validateAccessToken(
+    await openSpaceStore(platform, spaceId),
+    token,
+  );
+  if (!result || result.token.createdBy !== foundUser.id) return null;
 
-  return null;
+  return {
+    id: foundUser.id,
+    email: foundUser.email,
+    name: foundUser.name,
+    token: { spaceId, result },
+  };
+}
+
+/**
+ * The caller of a protocol that also speaks Basic auth: the session user when
+ * there is one, else the Basic-auth user checked in `spaceId`.
+ */
+export async function verifyBasicAuthUser(
+  context: ApiContext,
+  spaceId: string,
+): Promise<BasicAuthUser | null> {
+  const sessionUser = context.var.user;
+  if (sessionUser) {
+    return { id: sessionUser.id, email: sessionUser.email, name: sessionUser.name };
+  }
+  return verifyBasicAuth(
+    context.var.platform,
+    context.req.raw.headers.get("Authorization"),
+    spaceId,
+  );
 }

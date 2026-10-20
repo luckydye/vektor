@@ -6,12 +6,12 @@ import {
   type AgentEvent,
   type AgentHost,
   type AgentResult,
-  AgentTurnError,
   type AgentTurnSetup,
-  type SettleAITokens,
 } from "./core.ts";
 import { createAgentHost } from "./host.ts";
 import { getIntegrationAgentSurface } from "./integrations.ts";
+import type { SettleAITokens } from "./model.ts";
+import { AgentTurnError } from "./turnError.ts";
 import type {
   AgentHostCall,
   AgentWorkerProvider,

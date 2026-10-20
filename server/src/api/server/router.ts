@@ -1,7 +1,6 @@
 import type { Next } from "hono";
 import { withAttributionScope } from "#acl/attribution.ts";
 import { AclFailure } from "#acl/errors.ts";
-import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { aclFailureResponse } from "#api/http.ts";
@@ -15,6 +14,7 @@ import { authTrustedOrigins } from "#auth";
 import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import { requestScope } from "#utils/requestScope.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
 
@@ -35,7 +35,7 @@ const trustedOrigins = new Set(
  * CSRF guard: browsers attach the session cookie to cross-site requests (and
  * always send an `Origin` header on cross-site non-GET requests), so unsafe
  * methods from an untrusted origin are rejected outright. Requests without an
- * `Origin` header (curl, access tokens, CalDAV clients, same-origin GET
+ * `Origin` header (curl, access tokens, git clients, same-origin GET
  * navigations) pass through — they are not forgeable by a hostile web page.
  * This is an explicit second layer on top of the SameSite cookie default.
  */
@@ -105,7 +105,6 @@ export function isApiPath(pathname: string): boolean {
     isGitPath(pathname) ||
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
-    pathname === "/.well-known/caldav" ||
     pathname === "/.well-known/vektor"
   );
 }
@@ -224,7 +223,7 @@ async function routeApiRequest(
   try {
     // One identity cache for the length of this request, so the IdP staleness
     // bound stays a per-request bound rather than a per-check one.
-    const { limit, result } = await withIdentityScope(() =>
+    const { limit, result } = await requestScope.within(() =>
       withAttributionScope(async () => {
         await hydrateRequestContext(c);
         // Keyed on the resolved user: a credential the server never accepted

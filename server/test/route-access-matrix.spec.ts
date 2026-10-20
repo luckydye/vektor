@@ -49,7 +49,7 @@ const BASE_URL = testBaseUrl(PORT);
 const apiRequest = createSessionApiRequest(BASE_URL);
 const FIXTURE_TITLE = "Matrix Document";
 
-const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PROPFIND", "REPORT"]);
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const HTTP_METHODS = [
   "GET",
   "HEAD",
@@ -58,9 +58,6 @@ const HTTP_METHODS = [
   "PUT",
   "PATCH",
   "DELETE",
-  "PROPFIND",
-  "REPORT",
-  "MKCALENDAR",
 ] as const;
 
 /**
@@ -68,7 +65,6 @@ const HTTP_METHODS = [
  * thing to argue about in review — everything not on it must reject an outsider.
  */
 const PUBLIC_ROUTES: Record<string, string> = {
-  "/.well-known/caldav": "service discovery, no space data",
   "/.well-known/vektor": "service discovery, no space data",
   "/api/auth/[...all]": "better-auth: sign-in/sign-up must be reachable",
   "/api/v1/auth/cli": "CLI pairing: authenticated by the one-time code it mints",
@@ -228,14 +224,14 @@ function buildPath(
 
 /**
  * The methods a route module answers. A module may export one handler per
- * method, or a single `ALL` catch-all — the caldav and better-auth routes use
+ * method, or a single `ALL` catch-all — git smart HTTP and better-auth use
  * the latter, so probing only named exports would skip them entirely.
  */
 function methodsOf(module: Record<string, unknown>): string[] {
   const named = HTTP_METHODS.filter((method) => typeof module[method] === "function");
   if (typeof module.ALL === "function") {
-    // Representative sample: a read, a write, and the caldav discovery verb.
-    for (const method of ["GET", "POST", "PROPFIND"]) {
+    // Representative sample: a read and a write.
+    for (const method of ["GET", "POST"]) {
       if (!named.includes(method as (typeof HTTP_METHODS)[number])) {
         named.push(method as (typeof HTTP_METHODS)[number]);
       }

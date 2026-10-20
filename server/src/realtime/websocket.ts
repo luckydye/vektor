@@ -7,6 +7,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import { requestScope } from "#utils/requestScope.ts";
 import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
@@ -203,7 +204,7 @@ export async function acceptRealtimeConnection(
   let pendingRevalidation: Promise<void> = Promise.resolve();
   const scheduleRevalidation = (): void => {
     pendingRevalidation = pendingRevalidation
-      .then(revalidateConnection)
+      .then(() => requestScope.within(revalidateConnection))
       .catch((error) => {
         appLogger.warn("Failed to re-authorize realtime connection", { error, spaceId });
       });
@@ -251,7 +252,8 @@ export async function acceptRealtimeConnection(
   };
 
   return {
-    message,
+    // One scope per frame, so its checks share one identity and space lookup.
+    message: (frame) => requestScope.within(() => message(frame)),
     close() {
       offAuthorizationChanges();
       for (const handler of handlers) handler.close();

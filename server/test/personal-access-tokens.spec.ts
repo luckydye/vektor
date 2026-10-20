@@ -175,7 +175,7 @@ describe("personal access tokens", () => {
 
     for (const method of ["PATCH", "DELETE"] as const) {
       const response = await apiRequest(
-        `/api/v1/access-tokens/${memberToken?.id}`,
+        `/api/v1/access-tokens/${memberToken?.id}?space=${memberToken?.spaceId}`,
         owner.token,
         { method },
       );
@@ -192,7 +192,7 @@ describe("personal access tokens", () => {
     expect((await listDocumentsWithToken(created.token)).status).toBe(200);
 
     const revoked = await apiRequest(
-      `/api/v1/access-tokens/${created.id}`,
+      `/api/v1/access-tokens/${created.id}?space=${spaceId}`,
       member.token,
       { method: "PATCH" },
     );
@@ -204,7 +204,7 @@ describe("personal access tokens", () => {
     ).not.toBeNull();
 
     const deleted = await apiRequest(
-      `/api/v1/access-tokens/${created.id}`,
+      `/api/v1/access-tokens/${created.id}?space=${spaceId}`,
       member.token,
       { method: "DELETE" },
     );

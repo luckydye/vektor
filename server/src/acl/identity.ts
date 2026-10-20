@@ -18,7 +18,7 @@ import { getUserGroups } from "#acl/userGroups.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#config";
 import { countSpacesCreatedBy } from "#db/auth/spaceIndex.ts";
 import type { Platform } from "#platform/platform.ts";
-import { createRequestScope } from "#utils/requestScope.ts";
+import { requestScope } from "#utils/requestScope.ts";
 
 /** An identity a decision can be made against, with nothing left to look up. */
 export interface ResolvedIdentity {
@@ -69,29 +69,17 @@ const ANONYMOUS: ResolvedIdentity = Object.freeze({
 });
 
 /**
- * Request-scoped rather than global on purpose: the IdP staleness bound is what
- * makes the cache safe, and outliving the request would remove it.
- */
-const identities = createRequestScope<ResolvedIdentity>();
-
-/**
- * Run `handler` with a fresh identity cache. Installed around one HTTP request
- * and nothing longer-lived: a websocket lasts days, and holding a group claim
- * that long is what `ensureFreshGroups` exists to bound.
- */
-export function withIdentityScope<T>(handler: () => T): T {
-  return identities.within(handler);
-}
-
-/**
  * The identity behind an id, answered from the request's cache after the first
- * call. Outside a scope every call resolves, as it did before the cache existed.
+ * call. Request-scoped rather than global on purpose: the IdP staleness bound is
+ * what makes the cache safe, and outliving the request would remove it.
  */
 export function resolveIdentity(
   platform: Platform,
   userId: string | null,
 ): Promise<ResolvedIdentity> {
-  return identities.memoize(userId ?? "", () => resolveUncached(platform, userId));
+  return requestScope.memoize(`identity:${userId ?? ""}`, () =>
+    resolveUncached(platform, userId),
+  );
 }
 
 async function resolveUncached(

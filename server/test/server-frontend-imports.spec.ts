@@ -59,7 +59,7 @@ const SERVER_ROOTS = [
   "src/documents/schema/render.ts",
   "src/documents/serialization.ts",
   "src/documents/serializationWorker.ts",
-  "src/documents/serializationPool.ts",
+  "src/platform/bun/serializationPool.ts",
   "src/realtime/yjsRooms.ts",
 ];
 

@@ -1,4 +1,7 @@
-export type TestServerProcess = ReturnType<typeof Bun.spawn>;
+/** A spawned server, or one the suite reaches at `VEKTOR_TEST_BASE_URL` and does not own. */
+export interface TestServerProcess {
+  kill(): void;
+}
 
 export interface TestUserSession {
   userId: string;
@@ -18,8 +21,10 @@ export interface TestUserSession {
  */
 const APP_DIR = process.cwd();
 
+/** `VEKTOR_TEST_BASE_URL` when set, so every spec talks to that one server. */
 export function testBaseUrl(port: number): string {
-  return `http://127.0.0.1:${port}`;
+  const external = process.env.VEKTOR_TEST_BASE_URL;
+  return external ? new URL(external).origin : `http://127.0.0.1:${port}`;
 }
 
 export async function waitForServer(
@@ -86,6 +91,18 @@ export function startTestServer(
   port: number,
   env: Record<string, string | undefined>,
 ): TestServerProcess {
+  // A server at VEKTOR_TEST_BASE_URL is already running, so nothing starts or
+  // stops, and a spec that needs its own settings cannot run against it.
+  if (process.env.VEKTOR_TEST_BASE_URL) {
+    const overrides = Object.keys(env);
+    if (overrides.length > 0) {
+      throw new Error(
+        `VEKTOR_TEST_BASE_URL is set, but this spec configures its server with ${overrides.join(", ")}`,
+      );
+    }
+    return { kill() {} };
+  }
+
   // Set VEKTOR_TEST_SERVER_LOG to a path to keep the server's output; without it
   // the specs stay quiet.
   const logPath = process.env.VEKTOR_TEST_SERVER_LOG;

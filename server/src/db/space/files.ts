@@ -8,10 +8,10 @@
 import { eq, inArray } from "drizzle-orm";
 import { type AclViewer, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
+import { isActiveSpace } from "#db/auth/spaceIndex.ts";
 import { many, one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { getSpace } from "#db/space/spaces.ts";
 import { uploadKeyFromUrl } from "#files/uploads.ts";
 import type { Platform } from "#platform/platform.ts";
 
@@ -42,7 +42,7 @@ export async function getFileIndexEntry(
   spaceId: string,
   path: string,
 ): Promise<FileIndexEntry | null> {
-  if (!(await getSpace(platform, spaceId))) return null;
+  if (!(await isActiveSpace(platform, spaceId))) return null;
 
   const { db } = await openSpaceStore(platform, spaceId);
   const row = await one(
@@ -153,7 +153,7 @@ export async function getUploadImageDimensions(
 ): Promise<{ width: number; height: number } | null> {
   const key = uploadKeyFromUrl(spaceId, Array.isArray(url) ? url[0] : url);
   if (!key) return null;
-  if (!(await getSpace(platform, spaceId))) return null;
+  if (!(await isActiveSpace(platform, spaceId))) return null;
 
   const { db } = await openSpaceStore(platform, spaceId);
   const row = await one(

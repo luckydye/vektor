@@ -151,7 +151,7 @@ Configuration:
 
 Env vars (override the stored config):
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
-  VEKTOR_SPACE_ID       Space to use (default: first space on server)
+  VEKTOR_SPACE_ID       Space to use (required with a token; else the first space on server)
   VEKTOR_ACCESS_TOKEN   API token (required if auth is enabled; used by vektor mcp)
   VEKTOR_DATABASE_URL   Auth database URL (default: file:./data/auth.db)
   XDG_CONFIG_HOME       Config directory root (default: ~/.config)

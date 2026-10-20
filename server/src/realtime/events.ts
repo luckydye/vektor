@@ -5,7 +5,7 @@
  */
 
 import { publishAuthorizationChange } from "#acl/events.ts";
-import { appendSyncEnvelope, syncEpoch } from "./changeLog.ts";
+import { appendSyncEnvelope } from "./changeLog.ts";
 import { documentLockChangedKind } from "./changes.ts";
 import {
   type RealtimeEventInput,
@@ -48,8 +48,7 @@ function flushSyncEvents(spaceId: string) {
     topics: [...topicEvents.keys()],
     events,
     timestamp: new Date().toISOString(),
-    seq: appendSyncEnvelope(spaceId, events),
-    epoch: syncEpoch,
+    ...appendSyncEnvelope(spaceId, events),
   };
   for (const listener of listeners) {
     listener(envelope);

@@ -133,6 +133,12 @@ export interface GetDocumentOptions {
   signal?: AbortSignal;
 }
 
+export interface ListSpacesOptions {
+  /** The space id an access token belongs to; required when the client has one. */
+  space?: string;
+  signal?: AbortSignal;
+}
+
 export interface PropertyFilter {
   key: string;
   value: string | null;
@@ -245,8 +251,13 @@ export class VektorClient {
     return status === 404;
   }
 
-  listSpaces(signal?: AbortSignal): Promise<Space[]> {
-    return this.get("/api/v1/spaces", {}, signal);
+  /** With an access token, `space` names the token's space, the only one it can list. */
+  listSpaces(options: ListSpacesOptions = {}): Promise<Space[]> {
+    const { space, signal } = options;
+    if (this.accessToken && !space) {
+      throw new Error("An access token lists only its own space; pass it as `space`.");
+    }
+    return this.get("/api/v1/spaces", { space }, signal);
   }
 
   listDocuments(
