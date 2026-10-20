@@ -7,9 +7,9 @@ import {
   isPrivateOrBlockedIp,
   resolvePublicUrl,
   SsrfError,
-  safeFetch,
   type UrlValidator,
 } from "#utils/ssrf.ts";
+import { platform } from "./helpers/platform.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The denylist
@@ -120,7 +120,7 @@ describe("resolvePublicUrl", () => {
 // Redirect hops
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("safeFetch redirects", () => {
+describe("platform fetch redirects", () => {
   it("refuses a redirect into loopback instead of following it", async () => {
     // The bypass that made the media proxy usable as an SSRF relay.
     const calls: string[] = [];
@@ -138,7 +138,7 @@ describe("safeFetch redirects", () => {
 
     try {
       await expect(
-        safeFetch("http://93.184.216.34/preview", { method: "GET" }),
+        platform.fetch("http://93.184.216.34/preview", { method: "GET" }),
       ).rejects.toBeInstanceOf(SsrfError);
     } finally {
       stub.mockRestore();
@@ -159,7 +159,7 @@ describe("safeFetch redirects", () => {
 
     try {
       await expect(
-        safeFetch("http://93.184.216.34/loop", { method: "GET" }),
+        platform.fetch("http://93.184.216.34/loop", { method: "GET" }),
       ).rejects.toThrow(/Too many redirects/);
     } finally {
       stub.mockRestore();
@@ -246,9 +246,9 @@ afterAll(() => {
   partner.stop(true);
 });
 
-describe("safeFetch against a real upstream", () => {
+describe("platform fetch against a real upstream", () => {
   it("follows an allowed redirect and reports the final URL", async () => {
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `${upstreamOrigin}/start`,
       { method: "GET" },
       allowUpstream,
@@ -261,12 +261,12 @@ describe("safeFetch against a real upstream", () => {
 
   it("refuses a real redirect aimed at a private address", async () => {
     await expect(
-      safeFetch(`${upstreamOrigin}/off-limits`, { method: "GET" }, allowUpstream),
+      platform.fetch(`${upstreamOrigin}/off-limits`, { method: "GET" }, allowUpstream),
     ).rejects.toBeInstanceOf(SsrfError);
   });
 
   it('hands the 3xx back untouched when the caller asks for redirect: "manual"', async () => {
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `${upstreamOrigin}/start`,
       { method: "GET", redirect: "manual" },
       allowUpstream,
@@ -277,7 +277,7 @@ describe("safeFetch against a real upstream", () => {
 
   it('refuses the redirect outright for redirect: "error"', async () => {
     await expect(
-      safeFetch(
+      platform.fetch(
         `${upstreamOrigin}/start`,
         { method: "GET", redirect: "error" },
         allowUpstream,
@@ -293,7 +293,7 @@ describe("safeFetch against a real upstream", () => {
       addresses: ["127.0.0.1"],
     });
 
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `http://pinned.test:${upstream.port}/host`,
       { method: "GET" },
       pinToUpstream,
@@ -311,7 +311,7 @@ describe("safeFetch against a real upstream", () => {
       addresses: ["127.0.0.2", "127.0.0.1"],
     });
 
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `http://pinned.test:${upstream.port}/host`,
       { method: "GET" },
       pinToTwo,
@@ -328,15 +328,15 @@ describe("safeFetch against a real upstream", () => {
     });
 
     await expect(
-      safeFetch(`http://pinned.test:${vacantPort}/host`, { method: "GET" }, pinToNothing),
+      platform.fetch(`http://pinned.test:${vacantPort}/host`, { method: "GET" }, pinToNothing),
     ).rejects.toThrow();
   });
 });
 
 // Both of these match native `fetch`, verified against it.
-describe("safeFetch redirect semantics", () => {
+describe("platform fetch redirect semantics", () => {
   it("keeps credentials on a same-origin redirect", async () => {
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `${upstreamOrigin}/moved`,
       {
         method: "GET",
@@ -352,7 +352,7 @@ describe("safeFetch redirect semantics", () => {
 
   // Otherwise a 302 to a CDN or pre-signed URL is handed the bearer token.
   it("drops credentials when the redirect leaves the origin", async () => {
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `${upstreamOrigin}/to-partner`,
       {
         method: "GET",
@@ -371,7 +371,7 @@ describe("safeFetch redirect semantics", () => {
     ["302", "/moved"],
     ["303", "/see-other"],
   ])("turns a POST into a bodyless GET on %s", async (_status, path) => {
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `${upstreamOrigin}${path}`,
       {
         method: "POST",
@@ -389,7 +389,7 @@ describe("safeFetch redirect semantics", () => {
   });
 
   it("preserves the method and body on 307", async () => {
-    const response = await safeFetch(
+    const response = await platform.fetch(
       `${upstreamOrigin}/keeps-method`,
       {
         method: "POST",
@@ -459,7 +459,7 @@ describe("job egress policy", () => {
 
     try {
       await expect(
-        safeFetch("http://93.184.216.34/x", { method: "GET" }, assertEgressAllowed),
+        platform.fetch("http://93.184.216.34/x", { method: "GET" }, assertEgressAllowed),
       ).rejects.toThrow("resolves to the private address 169.254.169.254");
     } finally {
       stub.mockRestore();
@@ -534,7 +534,7 @@ describe("AI provider base URL at fetch time", () => {
 
     try {
       await expect(
-        proxyToOllama(baseUrl, "llama", { messages: [] }, signal()),
+        proxyToOllama(platform.fetch, baseUrl, "llama", { messages: [] }, signal()),
       ).rejects.toBeInstanceOf(SsrfError);
       expect(stub).not.toHaveBeenCalled();
     } finally {
@@ -545,6 +545,7 @@ describe("AI provider base URL at fetch time", () => {
   it("refuses it on the agent path as well", async () => {
     await expect(
       callOllama({
+        fetch: platform.fetch,
         provider: {
           provider: "ollama",
           baseUrl: "http://127.0.0.1:9097",
@@ -569,6 +570,7 @@ describe("AI provider base URL at fetch time", () => {
 
     try {
       const response = await proxyToOllama(
+        platform.fetch,
         "http://93.184.216.34:11434/",
         "llama",
         { messages: [] },
@@ -590,7 +592,7 @@ describe("AI provider base URL at fetch time", () => {
   // policy, URL construction and the request, against a real loopback listener.
   it("reaches a private baseUrl under the private-egress opt-in", async () => {
     const response = await withPrivateEgress(() =>
-      proxyToOllama(upstreamOrigin, "llama", { messages: [] }, signal()),
+      proxyToOllama(platform.fetch, upstreamOrigin, "llama", { messages: [] }, signal()),
     );
     expect(response.status).toBe(200);
     const completion = (await response.json()) as {

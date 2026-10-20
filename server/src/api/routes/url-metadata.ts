@@ -16,7 +16,7 @@ import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
-import { assertPublicUrl, SsrfError, safeFetch } from "#utils/ssrf.ts";
+import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
 
 export interface LinkMetadata {
   url: string;
@@ -153,14 +153,17 @@ function resolveUrl(href: string, baseUrl: string): string {
   }
 }
 
-async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
+async function fetchExternalMetadata(
+  platform: Platform,
+  url: string,
+): Promise<LinkMetadata> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
-    // `safeFetch` pins the socket to the address it validated and re-validates
+    // The platform `fetch` pins the socket to the address it validated and re-validates
     // every redirect hop, closing the DNS-rebinding window a bare `fetch` leaves.
-    const response = await safeFetch(url, {
+    const response = await platform.fetch(url, {
       method: "GET",
       signal: controller.signal,
       headers: {
@@ -223,7 +226,10 @@ function isTwitterStatusUrl(url: URL): boolean {
  * the live embed via widgets.js. `omit_script` keeps the returned HTML free of
  * any `<script>`, and `dnt` opts out of tracking.
  */
-async function fetchTwitterEmbed(url: string): Promise<LinkMetadata | null> {
+async function fetchTwitterEmbed(
+  platform: Platform,
+  url: string,
+): Promise<LinkMetadata | null> {
   // Use `publish.x.com` directly: `publish.twitter.com` 301-redirects here, and
   // `fetchJsonWithTimeout` rejects redirects (`redirect: "error"`) as an SSRF
   // guard, so the legacy host would never resolve.
@@ -233,7 +239,7 @@ async function fetchTwitterEmbed(url: string): Promise<LinkMetadata | null> {
   oembedUrl.searchParams.set("dnt", "true");
   oembedUrl.searchParams.set("hide_thread", "false");
 
-  const data = await fetchJsonWithTimeout(oembedUrl.toString());
+  const data = await fetchJsonWithTimeout(platform, oembedUrl.toString());
   if (!isRecord(data) || typeof data.html !== "string") return null;
 
   const authorName = typeof data.author_name === "string" ? data.author_name : null;
@@ -304,11 +310,11 @@ function textFromUnknownProperty(value: unknown): string {
   }
 }
 
-async function fetchJsonWithTimeout(url: string): Promise<unknown> {
+async function fetchJsonWithTimeout(platform: Platform, url: string): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    const response = await safeFetch(url, {
+    const response = await platform.fetch(url, {
       method: "GET",
       signal: controller.signal,
       headers: {
@@ -326,7 +332,10 @@ async function fetchJsonWithTimeout(url: string): Promise<unknown> {
   }
 }
 
-async function fetchRemoteVektorMetadata(url: string): Promise<LinkMetadata | null> {
+async function fetchRemoteVektorMetadata(
+  platform: Platform,
+  url: string,
+): Promise<LinkMetadata | null> {
   let target: URL;
   try {
     target = await validateExternalUrl(url);
@@ -335,6 +344,7 @@ async function fetchRemoteVektorMetadata(url: string): Promise<LinkMetadata | nu
   }
 
   const discovery = await fetchJsonWithTimeout(
+    platform,
     new URL("/.well-known/vektor", target.origin).toString(),
   );
   if (!isRecord(discovery) || discovery.service !== "vektor") return null;
@@ -351,7 +361,7 @@ async function fetchRemoteVektorMetadata(url: string): Promise<LinkMetadata | nu
   );
   if (!documentApiUrl) return null;
 
-  const apiResult = await fetchJsonWithTimeout(documentApiUrl.toString());
+  const apiResult = await fetchJsonWithTimeout(platform, documentApiUrl.toString());
   if (!isRecord(apiResult)) return null;
 
   const space = isRecord(apiResult.space) ? apiResult.space : null;
@@ -547,20 +557,20 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       if (isTwitterStatusUrl(new URL(url))) {
-        const twitterMetadata = await fetchTwitterEmbed(url);
+        const twitterMetadata = await fetchTwitterEmbed(context.var.platform, url);
         if (twitterMetadata) {
           setCachedMetadata(cacheKey, twitterMetadata, EXTERNAL_CACHE_TTL_MS);
           return jsonResponse(twitterMetadata);
         }
       }
 
-      const vektorMetadata = await fetchRemoteVektorMetadata(url);
+      const vektorMetadata = await fetchRemoteVektorMetadata(context.var.platform, url);
       if (vektorMetadata) {
         setCachedMetadata(cacheKey, vektorMetadata, INTERNAL_CACHE_TTL_MS);
         return jsonResponse(vektorMetadata);
       }
 
-      const metadata = await fetchExternalMetadata(url);
+      const metadata = await fetchExternalMetadata(context.var.platform, url);
       setCachedMetadata(cacheKey, metadata, EXTERNAL_CACHE_TTL_MS);
 
       return jsonResponse(metadata);

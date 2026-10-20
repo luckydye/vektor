@@ -66,7 +66,11 @@ export const POST: ApiRouteHandler = (context) =>
 
     let resolved: Awaited<ReturnType<typeof downloadRegistryPackage>>;
     try {
-      resolved = await downloadRegistryPackage(extensionId.trim(), body.version);
+      resolved = await downloadRegistryPackage(
+        context.var.platform.fetch,
+        extensionId.trim(),
+        body.version,
+      );
     } catch (error) {
       return registryErrorResponse(error);
     }

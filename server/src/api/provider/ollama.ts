@@ -2,8 +2,8 @@ import { config } from "#config";
 import {
   parseHttpUrl,
   resolvePublicUrl,
+  type SafeFetch,
   SsrfError,
-  safeFetch,
   type UrlValidator,
 } from "#utils/ssrf.ts";
 import type { ChatMessage } from "./types.ts";
@@ -104,6 +104,7 @@ export function toOllamaMessages(
 }
 
 export async function callOllama(options: {
+  fetch: SafeFetch;
   provider: OllamaProvider;
   messages: ChatMessage[];
   tools: unknown[];
@@ -113,7 +114,7 @@ export async function callOllama(options: {
 }): Promise<{ message: ChatMessage; finishReason: string }> {
   // Never a bare `fetch`: a stored base URL may predate the write-time check, and
   // its name may resolve somewhere else by now.
-  const response = await safeFetch(
+  const response = await options.fetch(
     ollamaChatUrl(options.provider.baseUrl),
     {
       method: "POST",
@@ -204,6 +205,7 @@ export async function callOllama(options: {
 }
 
 export async function proxyToOllama(
+  fetch: SafeFetch,
   baseUrl: string,
   model: string,
   body: Record<string, unknown>,
@@ -223,7 +225,7 @@ export async function proxyToOllama(
     ...(typeof maxTokens === "number" ? { options: { num_predict: maxTokens } } : {}),
   };
 
-  const response = await safeFetch(
+  const response = await fetch(
     ollamaChatUrl(baseUrl),
     {
       method: "POST",

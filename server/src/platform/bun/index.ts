@@ -13,6 +13,7 @@ import type { BlobStore } from "#files/storage.ts";
 import { invalidateCache } from "#git/cache.ts";
 import type { LocalJobFile, Platform } from "#platform/platform.ts";
 import { libsqlSpaceDatabase } from "./database.ts";
+import { createBunFetch } from "./fetch.ts";
 import { diskJobCacheStore } from "./jobCacheStore.ts";
 import { createBoaJobVm } from "./jobVm.ts";
 import { createLocalBlobStore } from "./localBlobStore.ts";
@@ -114,6 +115,8 @@ export function createBunPlatform(): Platform {
         return () => clearInterval(timer);
       },
     },
+
+    fetch: createBunFetch(),
 
     git: { routes: gitRoutes, forget: invalidateCache },
 

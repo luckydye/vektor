@@ -7,6 +7,7 @@ import type {
   InstanceAIProvider,
   IntegrationAIProvider,
 } from "#api/provider/types.ts";
+import { createBunFetch } from "#platform/bun/fetch.ts";
 import {
   type AgentEvent,
   type AgentHost,
@@ -249,7 +250,7 @@ async function getOrCreateSession(options: AgentTurnRequest): Promise<AgentSessi
     } satisfies VektorMcpConfig,
   };
   const session: AgentSession = {
-    bash: createAgentShell(mcpConfigRef, {
+    bash: createAgentShell(mcpConfigRef, workerFetch, {
       cwd: parsedShellState?.cwd,
       env: parsedShellState?.env,
       integrationCommands: options.integrationSurface.commands,
@@ -283,6 +284,9 @@ function callHost<T>(call: AgentHostCall): Promise<T> {
     ctx.postMessage({ type: "hostCall", callId, ...call });
   });
 }
+
+/** The worker is a Bun thread without a platform, so it builds the platform's `fetch` itself. */
+const workerFetch = createBunFetch();
 
 const workerHost: AgentHost = {
   async reserveAITokens(spaceId, inputTokens) {
@@ -321,6 +325,7 @@ async function runTurn(turnId: number, request: AgentTurnRequest): Promise<void>
       connectedProviders: session.connectedProviders,
       integrationSurface: session.integrationSurface,
       host: workerHost,
+      fetch: workerFetch,
       bash: session.bash,
       signal: controller.signal,
       onEvent: (event) => ctx.postMessage({ type: "event", turnId, event }),

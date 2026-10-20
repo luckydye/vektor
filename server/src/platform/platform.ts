@@ -9,6 +9,7 @@ import type { PlatformState } from "#db/client/db.ts";
 import type { BlobStore } from "#files/storage.ts";
 import type { Capabilities } from "#jobs/runtime/capabilities.ts";
 import type { EmailMessage } from "#notifications/email.ts";
+import type { SafeFetch } from "#utils/ssrf.ts";
 
 /** The database holding users, sessions and the space index. */
 export interface GlobalDatabase {
@@ -143,6 +144,8 @@ export interface Platform {
   passwordHasher: PasswordHasher;
   mailer: Mailer;
   spaceHost: SpaceHost;
+  /** `fetch` for caller-influenced URLs, refusing private targets on every redirect hop. */
+  fetch: SafeFetch;
   /** Null where the target cannot run git. */
   git: GitHost | null;
   /** Job bundles an operator dropped next to the server, served as a system extension. */

@@ -15,6 +15,7 @@ import {
 } from "#api/provider/anthropic.ts";
 import { toOpenAIResponsesInput } from "#api/provider/openaiCompatible.ts";
 import type { ChatMessage } from "#api/provider/types.ts";
+import { platform } from "./helpers/platform.ts";
 
 const provider = {
   provider: "ollama" as const,
@@ -200,6 +201,7 @@ describe("agent model loop", () => {
     } as unknown as Bash;
 
     const result = await runAgentPrompt({
+      fetch: platform.fetch,
       messages: [{ role: "user", content: "Add two and two" }],
       apiUrl: "http://unused.invalid",
       spaceId: "space",
@@ -229,6 +231,7 @@ describe("agent model loop", () => {
 
     await expect(
       runAgentPrompt({
+        fetch: platform.fetch,
         messages: [{ role: "user", content: "Add two and two" }],
         apiUrl: "http://unused.invalid",
         spaceId: "space",
@@ -250,7 +253,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         jobToken: "token",
       },
-    });
+    }, platform.fetch);
     const initialContent = 'ablausd "aslnads"\n$HOME `oops`\n';
     const responses: Array<{ message: ChatMessage; finishReason: string }> = [
       {
@@ -301,6 +304,7 @@ describe("agent model loop", () => {
     let callCount = 0;
 
     await runAgentPrompt({
+      fetch: platform.fetch,
       messages: [{ role: "user", content: "Write the file" }],
       apiUrl: "http://unused.invalid",
       spaceId: "space",
@@ -347,7 +351,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         jobToken: "token",
       },
-    });
+    }, platform.fetch);
     const projectPath = bash.fs.resolvePath(bash.getCwd(), "project");
     await bash.fs.mkdir(`${projectPath}/src/nested`, { recursive: true });
     await bash.fs.writeFile(`${projectPath}/README.md`, "readme", "utf8");
@@ -387,6 +391,7 @@ describe("agent model loop", () => {
     ];
 
     await runAgentPrompt({
+      fetch: platform.fetch,
       messages: [{ role: "user", content: "List the project" }],
       apiUrl: "http://unused.invalid",
       spaceId: "space",
@@ -427,6 +432,7 @@ describe("agent model loop", () => {
       { documentType: "workflow-run", documentReadonly: true },
     ]) {
       await runAgentPrompt({
+        fetch: platform.fetch,
         messages: [{ role: "user", content: "Edit this document" }],
         apiUrl: "http://unused.invalid",
         spaceId: "space",
@@ -537,6 +543,7 @@ describe("agent model loop", () => {
 
     try {
       await runAgentPrompt({
+        fetch: platform.fetch,
         messages: [{ role: "user", content: "List documents" }],
         apiUrl: "http://vektor.test",
         spaceId: "space",
@@ -628,6 +635,7 @@ describe("agent model loop", () => {
     const toolResults: Array<{ content: string; isError: boolean }> = [];
 
     await runAgentPrompt({
+      fetch: platform.fetch,
       messages: [{ role: "user", content: "Run the legacy tool" }],
       apiUrl: "http://unused.invalid",
       spaceId: "space",
@@ -659,7 +667,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         jobToken: "token",
       },
-    });
+    }, platform.fetch);
     const filePath = bash.fs.resolvePath(bash.getCwd(), "large.txt");
     await bash.fs.writeFile(filePath, `BEGIN\n${"x".repeat(8_000)}\nEND`, "utf8");
     const responses: Array<{ message: ChatMessage; finishReason: string }> = [
@@ -688,6 +696,7 @@ describe("agent model loop", () => {
     let callCount = 0;
 
     await runAgentPrompt({
+      fetch: platform.fetch,
       messages: [{ role: "user", content: "Read the large file" }],
       apiUrl: "http://unused.invalid",
       spaceId: "space",
@@ -719,7 +728,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         jobToken: "token",
       },
-    });
+    }, platform.fetch);
 
     const vektorResult = await bash.exec("vektor list");
     const aiResult = await bash.exec("ai hello");
@@ -744,7 +753,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         jobToken: "token",
       },
-    });
+    }, platform.fetch);
     const filePath = bash.fs.resolvePath(bash.getCwd(), "report.txt");
     await bash.fs.writeFile(filePath, "report body", "utf8");
 
@@ -782,7 +791,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         jobToken: "token",
       },
-    });
+    }, platform.fetch);
 
     try {
       expect((await bash.exec("extension init test-extension")).exitCode).toBe(0);

@@ -31,7 +31,6 @@ import type { Platform } from "#platform/platform.ts";
 import {
   isLoopbackIp,
   isPrivateOrBlockedIp,
-  safeFetch,
   type UrlValidator,
   urlHostname,
 } from "#utils/ssrf.ts";
@@ -272,7 +271,7 @@ export function createCapabilities(
 
       // Validated and pinned on every hop: a bare `fetch` here let a public 302
       // walk the server into loopback or the metadata endpoint.
-      const response = await safeFetch(
+      const response = await platform.fetch(
         url.href,
         {
           method,

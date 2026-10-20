@@ -1,7 +1,6 @@
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { checkServerIdentity } from "node:tls";
 
 /**
  * Server-Side Request Forgery (SSRF) guard.
@@ -14,8 +13,8 @@ import { checkServerIdentity } from "node:tls";
  * cloud metadata endpoint (169.254.169.254).
  *
  * NOTE: DNS is resolved here and again by `fetch`, leaving a small rebinding
- * window. For the highest-risk callers prefer {@link safeFetch}, which pins the
- * connection to the address that was validated.
+ * window. For the highest-risk callers prefer the platform's `fetch`, a
+ * {@link safeFetch} that pins the connection to the address that was validated.
  */
 
 export class SsrfError extends Error {
@@ -146,7 +145,9 @@ export function isLoopbackIp(ip: string): boolean {
   if (isIP(ip) === 4) return isIPv4InCidr(ip, "127.0.0.0/8");
   if (isIP(ip) !== 6) return false;
   const normalized = ip.toLowerCase();
-  return isIPv6InCidr(normalized, "::1/128") || isIPv6InCidr(normalized, "::ffff:7f00:0/104");
+  return (
+    isIPv6InCidr(normalized, "::1/128") || isIPv6InCidr(normalized, "::ffff:7f00:0/104")
+  );
 }
 
 export function isBlockedHostname(hostname: string): boolean {
@@ -244,104 +245,20 @@ export async function assertPublicUrl(url: string): Promise<URL> {
   return (await resolvePublicUrl(url)).url;
 }
 
-const MAX_REDIRECTS = 5;
-
-const MAX_RACED_ADDRESSES = 8;
-const CONNECT_STAGGER_MS = 250;
-const CONNECT_RACE_TIMEOUT_MS = 5_000;
-
-/** Unref'd, so a race timer left over cannot hold the process open. */
-function after<T>(ms: number, value: T): Promise<T> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(value), ms);
-    (timer as unknown as { unref?: () => void }).unref?.();
-  });
-}
-
-/** Resolves once `attempt` has failed, and stays pending if it succeeds. */
-function whenFailed(attempt: Promise<unknown>): Promise<null> {
-  return attempt.then(
-    () => new Promise<null>(() => {}),
-    () => null,
-  );
-}
-
-/**
- * Pick which validated address to connect to, racing them as `fetch` does
- * natively. Pinning gives that race up, and a record that black-holes packets
- * rather than refusing them costs a full OS connect timeout, so trying them in
- * series would turn a working name into a failing one.
- */
-async function pickAddress(addresses: string[], url: URL): Promise<string> {
-  const candidates = addresses.slice(0, MAX_RACED_ADDRESSES);
-  if (candidates.length === 1) return candidates[0];
-
-  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
-  const attempts: Promise<string>[] = [];
-  let winner: string | undefined;
-
-  for (const [index, address] of candidates.entries()) {
-    attempts.push(
-      (async () => {
-        if (index > 0) {
-          await Promise.race([
-            after(index * CONNECT_STAGGER_MS, null),
-            whenFailed(attempts[index - 1]),
-          ]);
-          // Must throw rather than return, or it could be taken for the winner.
-          if (winner) throw new SsrfError(`${address} was not needed`);
-        }
-        const socket = await Bun.connect({
-          hostname: address,
-          port,
-          socket: { data() {}, error() {}, close() {} },
-        });
-        socket.end();
-        winner ??= address;
-        return address;
-      })(),
-    );
-  }
-
-  // Falling back to the first address reports its real failure, which beats
-  // anything a probe could say.
-  const decided = await Promise.race([
-    Promise.any(attempts).catch(() => candidates[0]),
-    after(CONNECT_RACE_TIMEOUT_MS, candidates[0]),
-  ]);
-  winner ??= decided;
-  return decided;
-}
-
-/**
- * Connect to a validated address while still addressing the request to the
- * hostname, which is what closes the DNS-rebinding window. `Host` and the TLS
- * identity checks stay on the original hostname, so pinning breaks neither
- * virtual hosting nor certificate validation.
- */
-async function fetchPinned(
+/** One request to a validated target, connecting only to an address it was validated with. */
+export type ConnectValidated = (
   target: ValidatedUrl,
   init: RequestInit & { redirect: "manual" },
-): Promise<Response> {
-  if (target.addresses.length === 0) return await fetch(target.url, init);
+) => Promise<Response>;
 
-  const hostname = target.url.hostname;
-  const headers = new Headers(init.headers);
-  headers.set("Host", target.url.host);
+/** The shape of {@link safeFetch} once a platform has supplied the connection. */
+export type SafeFetch = (
+  url: string,
+  init: RequestInit & { method: string },
+  validate?: UrlValidator,
+) => Promise<Response>;
 
-  const request: BunFetchRequestInit = { ...init, headers };
-  if (target.url.protocol === "https:") {
-    request.tls = {
-      serverName: hostname,
-      checkServerIdentity: (_peerName, cert) => checkServerIdentity(hostname, cert),
-    };
-  }
-
-  const address = await pickAddress(target.addresses, target.url);
-  const pinned = new URL(target.url.toString());
-  pinned.hostname = isIP(address) === 6 ? `[${address}]` : address;
-  return await fetch(pinned, request);
-}
+const MAX_REDIRECTS = 5;
 
 /**
  * Restore the logical view of a pinned response, whose `url` would otherwise be
@@ -387,6 +304,7 @@ function redirectBecomesGet(status: number, method: string): boolean {
  * forking the hop loop.
  */
 export async function safeFetch(
+  connect: ConnectValidated,
   url: string,
   init: RequestInit & { method: string },
   validate: UrlValidator = resolvePublicUrl,
@@ -397,7 +315,7 @@ export async function safeFetch(
   const headers = new Headers(init.headers);
 
   for (let i = 0; i <= MAX_REDIRECTS; i += 1) {
-    const response = await fetchPinned(target, {
+    const response = await connect(target, {
       ...init,
       method,
       body,

@@ -1,7 +1,7 @@
 /**
- * An inventory of every server-side `fetch` that is not `safeFetch`.
+ * An inventory of every server-side `fetch` that is not the platform's SSRF-safe one.
  *
- * `assertPublicUrl` + a bare `fetch` is shorter to write than `safeFetch`, and it
+ * `assertPublicUrl` + a bare `fetch` is shorter to write than `platform.fetch`, and it
  * is the combination that produced #50, #51 and #52: the guard sees the first hop
  * and the redirect goes wherever it likes. A reviewer cannot be relied on to spot
  * the shorter form, so a new bare `fetch` in these directories fails this test
@@ -20,14 +20,19 @@ const SCANNED_DIRS = [
   "src/agent",
   "src/jobs",
   "src/integrations",
+  "src/platform",
   "src/utils",
 ];
 
 const ALLOWED: Record<string, { calls: number; why: string }> = {
-  "src/utils/ssrf.ts": {
+  "src/platform/bun/fetch.ts": {
     calls: 2,
-    why: "safeFetch itself: the plain and the pinned call it is built from",
+    why: "the platform fetch's connection on Bun: the plain and the pinned call, after validation",
   },
+
+  // The platform's SSRF-safe fetch, handed in as a `fetch: SafeFetch` parameter.
+  "src/api/provider/ollama.ts": { calls: 1, why: "the injected SafeFetch" },
+  "src/agent/commands/sandboxFetch.ts": { calls: 1, why: "the injected SafeFetch" },
 
   // Targets fixed by deployment config, not reachable by a caller-supplied URL.
   "src/integrations/oauthProviders.ts": {
@@ -35,6 +40,7 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
     why: "OAuth token and userinfo endpoints from the provider config",
   },
   "src/api/provider/anthropic.ts": { calls: 2, why: "the Anthropic API" },
+  "src/platform/bun/s3BlobStore.ts": { calls: 1, why: "the configured S3 endpoint" },
 
   // This instance's own API, which is the point of the call.
   "src/agent/core.ts": {
@@ -44,11 +50,11 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   "src/agent/tools.ts": { calls: 1, why: "own API by configured apiUrl" },
   "src/jobs/runtime/capabilities.ts": {
     calls: 2,
-    why: "own API for the space and job-token capabilities; the job `fetch` capability uses safeFetch",
+    why: "own API for the space and job-token capabilities; the job `fetch` capability uses platform.fetch",
   },
   "src/jobs/runtime/agentCapability.ts": { calls: 1, why: "own API, /api/v1/chat/acp" },
 
-  // Caller-influenced, and guarded by something other than safeFetch.
+  // Caller-influenced, and guarded by something other than the platform fetch.
   "src/api/routes/spaces/integration-proxy.ts": {
     calls: 1,
     why: "URL asserted to match the provider origin, and redirect: manual so the bearer token cannot follow a 3xx (#52)",
@@ -68,8 +74,8 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   },
 };
 
-/** Files that take a URL straight from a caller, so nothing but safeFetch will do. */
-const MUST_USE_SAFE_FETCH = [
+/** Files that take a URL straight from a caller, so nothing but the platform fetch will do. */
+const MUST_USE_PLATFORM_FETCH = [
   "src/api/routes/proxy-media.ts",
   "src/agent/commands/sandboxFetch.ts",
   // The operator-supplied provider baseUrl, which reaches wherever it points (#71).
@@ -87,7 +93,7 @@ function sourceFiles(dir: string): string[] {
   return found;
 }
 
-/** Bare `fetch(...)` calls, ignoring `safeFetch`, `x.fetch` and commented-out code. */
+/** Bare `fetch(...)` calls, ignoring `x.fetch` and commented-out code. */
 function countBareFetches(path: string): number {
   const source = readFileSync(path, "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -108,7 +114,7 @@ describe("server-side fetch call sites", () => {
 
   it("has no bare fetch that is not accounted for", () => {
     const unlisted = [...counted.keys()].filter((file) => !(file in ALLOWED));
-    // Route a caller-supplied URL through `safeFetch` (#utils/ssrf.ts), or add the
+    // Route a caller-supplied URL through `platform.fetch`, or add the
     // file to ALLOWED with the reason it cannot reach a caller-chosen host.
     expect(unlisted).toEqual([]);
   });
@@ -129,8 +135,8 @@ describe("server-side fetch call sites", () => {
     expect(stale).toEqual([]);
   });
 
-  it.each(MUST_USE_SAFE_FETCH)("%s fetches only through safeFetch", (file) => {
-    expect(readFileSync(file, "utf8")).toContain("safeFetch(");
-    expect(countBareFetches(file)).toBe(0);
+  it.each(MUST_USE_PLATFORM_FETCH)("%s fetches only through the platform fetch", (file) => {
+    expect(readFileSync(file, "utf8")).toMatch(/platform\.fetch\(|fetch: SafeFetch/);
+    expect(countBareFetches(file)).toBe(ALLOWED[file]?.calls ?? 0);
   });
 });

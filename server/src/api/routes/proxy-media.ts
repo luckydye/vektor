@@ -1,7 +1,7 @@
 import { badRequestResponse, requireUser, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { appLogger } from "#observability/logger.ts";
-import { SsrfError, safeFetch } from "#utils/ssrf.ts";
+import { SsrfError } from "#utils/ssrf.ts";
 
 // Only relay content types the canvas can display. An SVG is a document that
 // could run script, which the sandbox CSP on every response forbids.
@@ -80,9 +80,9 @@ export const GET: ApiRouteHandler = (context) =>
 
     let upstream: Response;
     try {
-      // `safeFetch`, never a bare `fetch`: a public URL must not be able to 302
+      // The platform `fetch`, never a bare one: a public URL must not be able to 302
       // the server into loopback or the metadata endpoint.
-      upstream = await safeFetch(url, {
+      upstream = await context.var.platform.fetch(url, {
         method: "GET",
         signal: controller.signal,
         headers: upstreamHeaders,

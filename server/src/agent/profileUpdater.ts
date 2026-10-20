@@ -82,6 +82,7 @@ async function runProfileUpdate(
     `- Return only the updated profile markdown, no commentary or wrapper text`;
 
   const { message } = await callModel({
+    fetch: platform.fetch,
     spaceId: options.spaceId,
     provider,
     messages: [{ role: "user", content: prompt }],

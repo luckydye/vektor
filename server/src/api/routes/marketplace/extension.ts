@@ -22,7 +22,11 @@ export const GET: ApiRouteHandler = (context) =>
     const extensionId = requireParam(context.var.params, "extensionId");
 
     try {
-      return jsonResponse(absolutizeListing(await fetchRegistryExtension(extensionId)));
+      return jsonResponse(
+        absolutizeListing(
+          await fetchRegistryExtension(context.var.platform.fetch, extensionId),
+        ),
+      );
     } catch (error) {
       return registryErrorResponse(error);
     }

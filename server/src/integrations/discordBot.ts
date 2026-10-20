@@ -518,7 +518,7 @@ export function connectDiscordBot(
         return;
       }
       // Discord asks for a 1–5 s pause before identifying again after an invalid session.
-      await Bun.sleep(1000 + Math.random() * 4000);
+      await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 4000));
     }
   })().catch((error) => appLogger.error("Discord bot stopped", { error }));
 

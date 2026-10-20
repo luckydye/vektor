@@ -73,6 +73,7 @@ export const POST: ApiRouteHandler = (context) =>
           );
         } else if (provider.provider === "ollama") {
           response = await proxyToOllama(
+            context.var.platform.fetch,
             provider.baseUrl,
             provider.model,
             bodyJson,

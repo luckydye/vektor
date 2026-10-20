@@ -14,18 +14,19 @@ import {
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import { estimateModelInput, estimateTokens } from "#db/space/aiUsage.ts";
+import type { SafeFetch } from "#utils/ssrf.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
 import { integrationCommand } from "./commands/integration.ts";
 import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: "text" };
 import { getRecipe, queryRecipes } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
-import { sandboxFetch } from "./commands/sandboxFetch.ts";
+import { createSandboxFetch } from "./commands/sandboxFetch.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { vektorCommand } from "./commands/vektor.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
-import { webSearch, webSearchTool } from "./webSearch.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
+import { webSearch, webSearchTool } from "./webSearch.ts";
 
 export type AgentResult = {
   content: string;
@@ -129,7 +130,8 @@ function buildCoreAgentSystemPrompt(
 }
 
 const turnContextHeader = "Context for this message, from Vektor:\n";
-const unchangedDocumentNote = "\n## Current document\n- Unchanged; see the earlier context.";
+const unchangedDocumentNote =
+  "\n## Current document\n- Unchanged; see the earlier context.";
 
 /** Sent after the user's message: the facts of this turn the session's system prompt cannot hold. */
 function buildTurnContext(
@@ -206,6 +208,7 @@ ${
 }
 
 export async function callModel(options: {
+  fetch: SafeFetch;
   spaceId: string;
   provider: AIProvider;
   messages: ChatMessage[];
@@ -620,13 +623,14 @@ export async function runAgentPrompt(options: {
   integrationSurface?: IntegrationAgentSurface;
   /** Required unless `modelCaller` is given and no integration command is contributed. */
   host?: AgentHost;
+  fetch: SafeFetch;
   bash?: Bash;
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   /** Test seam for deterministic provider responses. */
   modelCaller?: (
-    options: Omit<Parameters<typeof callModel>[0], "reserveAITokens">,
+    options: Omit<Parameters<typeof callModel>[0], "reserveAITokens" | "fetch">,
   ) => ReturnType<typeof callModel>;
   /** Unset runs on the instance's provider. */
   provider?: AIProvider;
@@ -636,13 +640,16 @@ export async function runAgentPrompt(options: {
   const { messages, spaceId, bash: providedBash, signal, onChunk, onEvent } = options;
 
   const provider = options.provider ?? getAIProvider();
-  const { host } = options;
+  const { host, fetch } = options;
   const modelCaller =
     options.modelCaller ??
-    ((callOptions: Omit<Parameters<typeof callModel>[0], "reserveAITokens">) => {
+    ((
+      callOptions: Omit<Parameters<typeof callModel>[0], "reserveAITokens" | "fetch">,
+    ) => {
       if (!host) throw new Error("runAgentPrompt needs a host to call the model");
       return callModel({
         ...callOptions,
+        fetch,
         reserveAITokens: (inputTokens) => host.reserveAITokens(spaceId, inputTokens),
       });
     });
@@ -656,10 +663,11 @@ export async function runAgentPrompt(options: {
   options.onSetup?.({ model: provider.model, systemPrompt, tools });
   const bash =
     providedBash ??
-    createAgentShell(
-      { current: mcpConfig },
-      { integrationCommands: integrationSurface.commands, userId: options.userId, host },
-    );
+    createAgentShell({ current: mcpConfig }, fetch, {
+      integrationCommands: integrationSurface.commands,
+      userId: options.userId,
+      host,
+    });
   // The turn context follows the input, so it is the first of the turn's own messages and persists with them.
   const agentMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -870,12 +878,13 @@ export async function runAgentPrompt(options: {
 
 export function createAgentShell(
   mcpConfigRef: { current: VektorMcpConfig },
+  fetch: SafeFetch,
   bootstrap?: AgentShellBootstrap,
 ): Bash {
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    fetch: sandboxFetch,
+    fetch: createSandboxFetch(fetch),
     customCommands: [
       zipCommand,
       zipinfoCommand,

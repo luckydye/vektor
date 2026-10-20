@@ -29,7 +29,7 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     try {
-      const index = await fetchRegistryIndex();
+      const index = await fetchRegistryIndex(context.var.platform.fetch);
       return jsonResponse({
         enabled: true,
         registry: registryBaseUrl(),

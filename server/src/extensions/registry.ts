@@ -3,7 +3,12 @@ import { marketplaceOrigin } from "#config";
 import { EXTENSION_ID_PATTERN } from "#extensions/manifest.ts";
 import { MAX_PACKAGE_ARCHIVE_BYTES } from "#extensions/packageCache.ts";
 import { appLogger } from "#observability/logger.ts";
-import { parseHttpUrl, SsrfError, safeFetch, type ValidatedUrl } from "#utils/ssrf.ts";
+import {
+  parseHttpUrl,
+  type SafeFetch,
+  SsrfError,
+  type ValidatedUrl,
+} from "#utils/ssrf.ts";
 
 /**
  * Client for an extension store registry.
@@ -168,12 +173,16 @@ function sameOriginValidator(origin: string) {
  * never the origin of the URL being fetched, which for a `downloadUrl` is a
  * value the registry's own JSON chose.
  */
-async function registryFetch(url: string, timeoutMs: number): Promise<Response> {
+async function registryFetch(
+  fetch: SafeFetch,
+  url: string,
+  timeoutMs: number,
+): Promise<Response> {
   const origin = requireRegistry();
 
   let response: Response;
   try {
-    response = await safeFetch(
+    response = await fetch(
       url,
       {
         method: "GET",
@@ -201,8 +210,9 @@ async function registryFetch(url: string, timeoutMs: number): Promise<Response> 
   return response;
 }
 
-async function registryJson<T>(path: string): Promise<T> {
+async function registryJson<T>(fetch: SafeFetch, path: string): Promise<T> {
   const response = await registryFetch(
+    fetch,
     `${requireRegistry()}${path}`,
     METADATA_TIMEOUT_MS,
   );
@@ -222,6 +232,7 @@ let catalogueCache: { value: RegistryIndex; expiresAt: number; origin: string } 
  * registry directly.
  */
 export async function fetchRegistryIndex(
+  fetch: SafeFetch,
   options: { force?: boolean } = {},
 ): Promise<RegistryIndex> {
   const origin = requireRegistry();
@@ -236,7 +247,10 @@ export async function fetchRegistryIndex(
     return catalogueCache.value;
   }
 
-  const index = await registryJson<RegistryIndex>(`${REGISTRY_BASE_PATH}/index.json`);
+  const index = await registryJson<RegistryIndex>(
+    fetch,
+    `${REGISTRY_BASE_PATH}/index.json`,
+  );
   if (!Array.isArray(index?.extensions)) {
     throw new RegistryError("Extension store returned an unexpected catalogue");
   }
@@ -272,6 +286,7 @@ export function absolutizeListing<T extends { icon?: string; screenshots?: strin
 
 /** Ids are path segments; anything else must not reach the registry URL. */
 export async function fetchRegistryExtension(
+  fetch: SafeFetch,
   extensionId: string,
 ): Promise<RegistryExtensionDetail> {
   if (!EXTENSION_ID_PATTERN.test(extensionId)) {
@@ -279,6 +294,7 @@ export async function fetchRegistryExtension(
   }
 
   const detail = await registryJson<RegistryExtensionDetail>(
+    fetch,
     `${REGISTRY_BASE_PATH}/${extensionId}.json`,
   );
   if (detail?.id !== extensionId || !Array.isArray(detail.versions)) {
@@ -303,10 +319,11 @@ export interface ResolvedRegistryPackage {
  * reaches the unzipper.
  */
 export async function downloadRegistryPackage(
+  fetch: SafeFetch,
   extensionId: string,
   requestedVersion?: string,
 ): Promise<ResolvedRegistryPackage> {
-  const detail = await fetchRegistryExtension(extensionId);
+  const detail = await fetchRegistryExtension(fetch, extensionId);
 
   const version = requestedVersion
     ? detail.versions.find((candidate) => candidate.version === requestedVersion)
@@ -327,6 +344,7 @@ export async function downloadRegistryPackage(
   }
 
   const response = await registryFetch(
+    fetch,
     resolveRegistryUrl(version.downloadUrl, requireRegistry()),
     PACKAGE_TIMEOUT_MS,
   );
