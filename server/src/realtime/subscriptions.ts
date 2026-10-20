@@ -9,7 +9,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { getSeries } from "#series/catalog.ts";
-import { catchUpSince, headSyncSeq, type SyncCatchUp, syncEpoch } from "./changeLog.ts";
+import { catchUpSince, headSyncCursor, type SyncCatchUp } from "./changeLog.ts";
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
 import {
   isDocumentRealtimeTopic,
@@ -102,7 +102,7 @@ export class TopicSubscriptions {
   private answerCursor(cursor: SyncCursor | undefined): void {
     const catchUp: SyncCatchUp = cursor
       ? catchUpSince(this.spaceId, cursor, (topic) => this.topics.has(topic))
-      : { kind: "events", seq: headSyncSeq(this.spaceId), events: [] };
+      : { kind: "events", cursor: headSyncCursor(this.spaceId), events: [] };
     const timestamp = new Date().toISOString();
 
     if (catchUp.kind === "resync") {
@@ -115,8 +115,7 @@ export class TopicSubscriptions {
           topics: [],
           events: [],
           timestamp,
-          seq: headSyncSeq(this.spaceId),
-          epoch: syncEpoch,
+          ...headSyncCursor(this.spaceId),
         }),
       );
       return;
@@ -129,8 +128,7 @@ export class TopicSubscriptions {
         topics: catchUp.events.map(({ topic }) => topic),
         events: catchUp.events,
         timestamp,
-        seq: catchUp.seq,
-        epoch: syncEpoch,
+        ...catchUp.cursor,
       }),
     );
   }

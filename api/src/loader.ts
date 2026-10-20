@@ -17,8 +17,8 @@ export type VektorLoaderRevision = "published" | "current";
 export type VektorLoaderAssetMode = "download" | "remote";
 
 export interface VektorLoaderOptions {
-  /** Space to load. Defaults to the first space visible to the token. */
-  spaceId?: string;
+  /** Space to load; an access token only opens the space it belongs to. */
+  spaceId: string;
   /**
    * Which document content to load.
    *
@@ -56,7 +56,7 @@ export interface VektorLoaderOptions {
 }
 
 interface NormalizedVektorLoaderOptions {
-  spaceId?: string;
+  spaceId: string;
   revision: VektorLoaderRevision;
   assetMode: VektorLoaderAssetMode;
   categorySlugs?: string[];
@@ -66,12 +66,17 @@ interface NormalizedVektorLoaderOptions {
 }
 
 function normalizeOptions(
-  spaceIdOrOptions?: string | VektorLoaderOptions,
+  spaceIdOrOptions: string | VektorLoaderOptions,
 ): NormalizedVektorLoaderOptions {
-  const options =
+  const options: Partial<VektorLoaderOptions> =
     typeof spaceIdOrOptions === "string"
       ? { spaceId: spaceIdOrOptions }
       : (spaceIdOrOptions ?? {});
+  if (!options.spaceId) {
+    throw new Error(
+      "vektorLoader needs the spaceId of the space to load: an access token only opens the space it belongs to.",
+    );
+  }
   return {
     spaceId: options.spaceId,
     revision: options.revision ?? "published",
@@ -283,7 +288,7 @@ async function rewriteMedia(
 
 export function vektorLoader(
   client: VektorClient,
-  spaceIdOrOptions?: string | VektorLoaderOptions,
+  spaceIdOrOptions: string | VektorLoaderOptions,
 ): Loader {
   const options = normalizeOptions(spaceIdOrOptions);
   return {
@@ -303,19 +308,11 @@ export function vektorLoader(
           urlCache.delete(url);
       }
 
-      let spaceId = options.spaceId;
-      if (!spaceId) {
-        const spaces = await client.listSpaces();
-        if (spaces.length === 0) throw new Error("No spaces found for this token.");
-        spaceId = spaces[0].id;
-        logger.info(`Using space: ${spaces[0].name} (${spaceId})`);
-      }
-
       const PAGE_SIZE = 500;
       const documents: Awaited<ReturnType<typeof client.listDocuments>>["documents"] = [];
       let cursor: string | undefined;
       for (;;) {
-        const page = await client.listDocuments(spaceId, {
+        const page = await client.listDocuments(options.spaceId, {
           limit: PAGE_SIZE,
           cursor,
           categorySlugs: options.categorySlugs,
@@ -349,7 +346,7 @@ export function vektorLoader(
         const wantsDraft = options.revision === "current" && !draftsDenied;
         try {
           return await gate.run(() =>
-            client.getDocument(spaceId, id, { draft: wantsDraft }),
+            client.getDocument(options.spaceId, id, { draft: wantsDraft }),
           );
         } catch (error) {
           if (wantsDraft && error instanceof VektorApiError && error.status === 403) {

@@ -1,6 +1,9 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import type { PersonalAccessToken, Space } from "#api/client.ts";
-import type { CreatePersonalTokenInput } from "#composeables/usePersonalAccessTokens.ts";
+import type {
+  CreatedPersonalToken,
+  CreatePersonalTokenInput,
+} from "#composeables/usePersonalAccessTokens.ts";
 import {
   type AccessTokenStatus,
   roleBadgeClass,
@@ -22,12 +25,12 @@ interface Props {
   isLoading: boolean;
   isCreating: boolean;
   pendingTokenId: string | null;
-  createdToken: string | null;
+  createdToken: CreatedPersonalToken | null;
   error: string | null;
   onCreate: (input: CreatePersonalTokenInput) => Promise<boolean>;
   onDismissCreatedToken: () => void;
-  onRevoke: (tokenId: string) => void;
-  onDelete: (tokenId: string) => void;
+  onRevoke: (token: PersonalAccessToken) => void;
+  onDelete: (token: PersonalAccessToken) => void;
 }
 
 export function AccessTokensPanel(props: Props) {
@@ -79,7 +82,7 @@ export function AccessTokensPanel(props: Props) {
   }
 
   async function copyToken() {
-    const value = props.createdToken; // solid-reactivity-ok: click handler, reads per click
+    const value = props.createdToken?.token; // solid-reactivity-ok: click handler, reads per click
     if (!value) return;
     await navigator.clipboard.writeText(value);
     setCopied(true);
@@ -222,7 +225,7 @@ export function AccessTokensPanel(props: Props) {
               </p>
               <div class="mt-3 flex items-center gap-2">
                 <code class="min-w-0 flex-1 select-all break-all rounded-sm border border-green-500/20 bg-background px-2 py-1.5 font-mono text-size-small">
-                  {props.createdToken}
+                  {props.createdToken?.token}
                 </code>
                 <Button
                   size="small"
@@ -231,6 +234,10 @@ export function AccessTokensPanel(props: Props) {
                   onClick={() => void copyToken()}
                 />
               </div>
+              <p class="mt-3 text-neutral-600 text-size-small">
+                {t("Space ID, which callers name along with the token:")}{" "}
+                <code class="select-all font-mono">{props.createdToken?.spaceId}</code>
+              </p>
               <div class="mt-3 flex justify-end">
                 <Button
                   size="small"
@@ -338,7 +345,7 @@ export function AccessTokensPanel(props: Props) {
                                 <button
                                   type="button"
                                   disabled={props.pendingTokenId === token.id}
-                                  onClick={() => props.onRevoke(token.id)}
+                                  onClick={() => props.onRevoke(token)}
                                   class="text-red-600 text-size-small hover:text-red-800 disabled:opacity-50"
                                 >
                                   {t("Revoke")}
@@ -347,7 +354,7 @@ export function AccessTokensPanel(props: Props) {
                               <button
                                 type="button"
                                 disabled={props.pendingTokenId === token.id}
-                                onClick={() => props.onDelete(token.id)}
+                                onClick={() => props.onDelete(token)}
                                 class="text-neutral-500 text-size-small hover:text-neutral-700 disabled:opacity-50"
                               >
                                 {t("Delete")}

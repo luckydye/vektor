@@ -16,10 +16,6 @@ import {
   mapSnapshotFromDoc,
   toCleanHtml,
 } from "#documents/serialization.ts";
-import {
-  deserializeDocContent,
-  serializeDocContent,
-} from "#documents/serializationPool.ts";
 import { documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced, tracedSync } from "#observability/trace.ts";
@@ -92,9 +88,9 @@ export async function loadYDoc(
   );
   if (!content) return new Y.Doc();
   // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
-  // event loop and spikes memory; the pool falls back to in-process on failure.
+  // event loop and spikes memory.
   return traced("loadYDoc", () =>
-    deserializeDocContent(collaborationContentFormat(meta.type), content),
+    platform.docSerializer.deserialize(collaborationContentFormat(meta.type), content),
   );
 }
 
@@ -359,7 +355,7 @@ export async function persistYRoomDraft(platform: Platform, key: string): Promis
   const doc = room.doc;
   const format = collaborationContentFormat(meta.type);
   const serialized = await traced("persist.serialize", () =>
-    serializeDocContent(format, doc),
+    platform.docSerializer.serialize(format, doc),
   );
   const content = format === "html" ? sanitizeDocumentHtml(serialized) : serialized;
 
@@ -919,7 +915,10 @@ export async function transformDocumentContent(
       broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
     }
     return {
-      content: await serializeDocContent(collaborationContentFormat(dbDoc.type), doc),
+      content: await platform.docSerializer.serialize(
+        collaborationContentFormat(dbDoc.type),
+        doc,
+      ),
       live: true,
     };
   }
@@ -961,7 +960,10 @@ export async function transformDocumentContent(
   }
 
   return {
-    content: await serializeDocContent(collaborationContentFormat(dbDoc.type), doc),
+    content: await platform.docSerializer.serialize(
+      collaborationContentFormat(dbDoc.type),
+      doc,
+    ),
     live: true,
   };
 }

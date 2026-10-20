@@ -8,6 +8,12 @@ export interface CreatePersonalTokenInput {
   expiresInDays: number | null;
 }
 
+/** A freshly minted secret and the space its callers must name alongside it. */
+export interface CreatedPersonalToken {
+  token: string;
+  spaceId: string;
+}
+
 /**
  * The caller's own access tokens. The secret of a freshly minted token is held
  * here until dismissed — the server hands it over once and never again.
@@ -20,7 +26,7 @@ export function usePersonalAccessTokens() {
   const [isLoading, setIsLoading] = createSignal(true);
   const [isCreating, setIsCreating] = createSignal(false);
   const [pendingTokenId, setPendingTokenId] = createSignal<string | null>(null);
-  const [createdToken, setCreatedToken] = createSignal<string | null>(null);
+  const [createdToken, setCreatedToken] = createSignal<CreatedPersonalToken | null>(null);
   const [error, setError] = createSignal<string | null>(null);
 
   function message(cause: unknown, fallback: string): string {
@@ -50,7 +56,7 @@ export function usePersonalAccessTokens() {
         spaceId: input.spaceId,
         ...(input.expiresInDays ? { expiresInDays: input.expiresInDays } : {}),
       });
-      setCreatedToken(result.token);
+      setCreatedToken({ token: result.token, spaceId: result.spaceId });
       await load();
       return true;
     } catch (cause) {
@@ -61,11 +67,11 @@ export function usePersonalAccessTokens() {
     }
   }
 
-  async function revoke(tokenId: string) {
-    setPendingTokenId(tokenId);
+  async function revoke(token: PersonalAccessToken) {
+    setPendingTokenId(token.id);
     setError(null);
     try {
-      await api.personalAccessTokens.revoke(tokenId);
+      await api.personalAccessTokens.revoke(token.spaceId, token.id);
       await load();
     } catch (cause) {
       setError(message(cause, t("Failed to revoke access token")));
@@ -74,11 +80,11 @@ export function usePersonalAccessTokens() {
     }
   }
 
-  async function remove(tokenId: string) {
-    setPendingTokenId(tokenId);
+  async function remove(token: PersonalAccessToken) {
+    setPendingTokenId(token.id);
     setError(null);
     try {
-      await api.personalAccessTokens.delete(tokenId);
+      await api.personalAccessTokens.delete(token.spaceId, token.id);
       await load();
     } catch (cause) {
       setError(message(cause, t("Failed to delete access token")));

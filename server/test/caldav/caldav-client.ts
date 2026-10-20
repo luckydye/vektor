@@ -95,16 +95,11 @@ export class CalDAVSource implements CalendarSource {
   }
 
   /**
-   * Find the calendar home URL using the well-known CalDAV endpoint.
+   * Find the calendar home URL, starting from the configured server URL.
    */
   private async findCalendarHome(): Promise<string> {
-    const wellKnownUrl = new URL(
-      "/.well-known/caldav",
-      this.credentials.serverUrl,
-    ).toString();
-
     const response = await this.request(
-      wellKnownUrl,
+      this.credentials.serverUrl,
       "PROPFIND",
       `<?xml version="1.0" encoding="utf-8" ?>
 <d:propfind xmlns:d="DAV:">
@@ -157,13 +152,8 @@ export class CalDAVSource implements CalendarSource {
    * Falls back to the configured username if the server doesn't support it.
    */
   async fetchCurrentUserEmail(): Promise<string> {
-    const wellKnownUrl = new URL(
-      "/.well-known/caldav",
-      this.credentials.serverUrl,
-    ).toString();
-
     const discoveryResponse = await this.request(
-      wellKnownUrl,
+      this.credentials.serverUrl,
       "PROPFIND",
       `<?xml version="1.0" encoding="utf-8" ?>
 <d:propfind xmlns:d="DAV:">

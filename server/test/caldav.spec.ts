@@ -20,7 +20,7 @@ let serverProcess: TestServerProcess;
 
 function createCalDAVSource() {
   return new CalDAVSource("test-caldav", "Test Calendar", "#FF6E68", {
-    serverUrl: BASE_URL,
+    serverUrl: `${BASE_URL}/api/caldav/principals/${LOCAL_USER_ID}/${testSpaceId}/`,
     username: LOCAL_USER_EMAIL,
     password: "noauth",
   });

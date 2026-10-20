@@ -7,6 +7,7 @@ import { createPlatformState } from "#db/client/db.ts";
 import type { BlobStore } from "#files/storage.ts";
 import { invalidateCache } from "#git/cache.ts";
 import type { LocalJobFile, Platform } from "#platform/platform.ts";
+import { assertOutsideTransaction } from "#utils/transactionScope.ts";
 import { createDatabase, dataDirectory, getAuthDatabaseUrl } from "./database.ts";
 import { createBunFetch } from "./fetch.ts";
 import { diskJobCacheStore } from "./jobCacheStore.ts";
@@ -15,6 +16,7 @@ import { createLocalBlobStore } from "./localBlobStore.ts";
 import { smtpMailer } from "./mailer.ts";
 import { getNativeEmbedding, getNativeImage } from "./native.ts";
 import { createS3BlobStore } from "./s3BlobStore.ts";
+import { poolDocSerializer } from "./serializationPool.ts";
 import { createLibsqlSpaceDatabase } from "./spaceDatabase.ts";
 
 /** S3-compatible object storage when a bucket is set, and `data/uploads` otherwise. */
@@ -74,10 +76,12 @@ export function createBunPlatform(): Platform {
 
     imageTransformer: {
       async transform(input, options) {
+        assertOutsideTransaction("platform.imageTransformer.transform");
         const native = await getNativeImage();
         return native && Buffer.from(native.transform(input, options));
       },
       async metadata(input) {
+        assertOutsideTransaction("platform.imageTransformer.metadata");
         const native = await getNativeImage();
         if (!native) throw new Error("image.metadata: the image addon is unavailable");
         return native.metadata(input);
@@ -86,8 +90,10 @@ export function createBunPlatform(): Platform {
 
     embedder: {
       model: "Qdrant/bge-small-en-v1.5-onnx-Q@c32e6154d1bb7a0e47c5e745fd895e7700f44385",
-      embed: async (texts) =>
-        texts.length === 0 ? [] : (await getNativeEmbedding()).embed(texts),
+      async embed(texts) {
+        assertOutsideTransaction("platform.embedder.embed");
+        return texts.length === 0 ? [] : (await getNativeEmbedding()).embed(texts);
+      },
     },
 
     jobVm: createBoaJobVm({
@@ -95,6 +101,8 @@ export function createBunPlatform(): Platform {
       // would be admitted the day it does.
       execAllowlist: new Set(["htmlq", "pandoc", "rsvg-convert"]),
     }),
+
+    docSerializer: poolDocSerializer,
 
     passwordHasher: {
       hash: (password) => Bun.password.hash(password),

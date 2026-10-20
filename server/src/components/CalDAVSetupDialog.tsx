@@ -1,8 +1,9 @@
 import { createSignal, onCleanup, Show } from "solid-js";
+import { useCalDavServerUrl } from "#composeables/useCalDavServerUrl.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Actions } from "#utils/actions.ts";
 import { Dialog } from "./Dialog.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function CalDAVSetupDialog() {
   const t = useTranslation();
@@ -10,8 +11,7 @@ export function CalDAVSetupDialog() {
   const [show, setShow] = createSignal(false);
   const [copied, setCopied] = createSignal<string | null>(null);
   const user = useUserProfile();
-
-  const serverUrl = () => (typeof window !== "undefined" ? window.location.origin : "");
+  const serverUrl = useCalDavServerUrl();
 
   async function copy(text: string, key: string) {
     await navigator.clipboard.writeText(text);
@@ -46,8 +46,8 @@ export function CalDAVSetupDialog() {
           <li class="flex flex-col gap-4xs">
             <span class="font-medium text-small">1. Create an access token</span>
             <span class="text-neutral-500 text-small">
-              Open a Space → Settings → Access Tokens, create a token with <em>viewer</em>{" "}
-              permission.
+              In this space, open Settings → Access Tokens and create a token with{" "}
+              <em>viewer</em> permission.
             </span>
           </li>
 
@@ -60,14 +60,25 @@ export function CalDAVSetupDialog() {
             <div class="flex flex-col gap-4xs">
               <div class="flex items-center gap-4xs">
                 <span class="w-24 shrink-0 text-neutral-400 text-small">Server URL</span>
-                <button
-                  type="button"
-                  class="flex-1 truncate rounded-sm bg-neutral-100 px-3xs py-5xs text-left font-mono text-small transition-colors hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
-                  title={serverUrl()}
-                  onClick={() => void copy(serverUrl(), "url")}
+                <Show
+                  when={serverUrl()}
+                  fallback={
+                    <span class="flex-1 text-neutral-500 text-small italic">
+                      Open a space to get its server URL
+                    </span>
+                  }
                 >
-                  {serverUrl()}
-                </button>
+                  {(url) => (
+                    <button
+                      type="button"
+                      class="flex-1 truncate rounded-sm bg-neutral-100 px-3xs py-5xs text-left font-mono text-small transition-colors hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                      title={url()}
+                      onClick={() => void copy(url(), "url")}
+                    >
+                      {url()}
+                    </button>
+                  )}
+                </Show>
                 <Show when={copied() === "url"}>
                   <span class="shrink-0 text-green-500 text-small">Copied!</span>
                 </Show>

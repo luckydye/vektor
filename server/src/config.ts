@@ -246,10 +246,8 @@ export function config() {
       AI_WEEKLY_MAX_TOKENS: process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS,
 
       /**
-       * Which runtime executes extension jobs and workflow scripts. Only "boa"
-       * ships today; the setting names the choice so another executor can be
-       * plugged in without touching call sites. Isolation is not optional — there
-       * is no unsandboxed path.
+       * Which runtime executes extension jobs and workflow scripts. Only "vm",
+       * the platform's job VM, ships today; isolation is not optional.
        */
       JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
       /**
@@ -517,6 +515,15 @@ if (typeof document === "undefined" && isNoAuthMode()) {
         `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local VEKTOR_SITE_URL (${siteUrl})`,
       );
     }
+  }
+}
+
+// Checked at boot like the above, so an unknown runtime fails the start rather
+// than the first job.
+if (typeof document === "undefined") {
+  const jobRuntime = config().JOB_RUNTIME?.trim();
+  if (jobRuntime && jobRuntime !== "vm") {
+    throw new Error(`VEKTOR_JOB_RUNTIME must be "vm", got "${jobRuntime}"`);
   }
 }
 

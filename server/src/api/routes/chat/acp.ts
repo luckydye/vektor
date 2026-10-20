@@ -6,8 +6,8 @@ import {
   type ChatMessage,
   runAgentInWorker,
 } from "#agent/agent.ts";
-import { AgentTurnError } from "#agent/core.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
+import { AgentTurnError } from "#agent/turnError.ts";
 import {
   badRequestResponse,
   errorResponse,

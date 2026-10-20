@@ -18,10 +18,10 @@ export TOKEN="at_9f1cb37a0d5e48c2b6a71f8043e29dbc5471aa9e2c60d8f31b74e05ca6d92f8
 export SPACE="space_4f2b8c1e-7a93-4d55-b0e1-6c3a9f81d240"
 ```
 
-List the spaces the token can reach:
+Read the space the token belongs to; a token is checked only in the space you name:
 
 ```bash
-curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces"
+curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces?space=$SPACE"
 ```
 
 ```json
@@ -199,8 +199,10 @@ ones printed in the `API rate limit exceeded` log line.
 ## Endpoint index
 
 Every path below is mounted under `/api/v1`. Session auth itself
-(`/api/auth/[...all]`, better-auth) and CalDAV (`/api/caldav/...`, `/.well-known/caldav`,
-`/.well-known/vektor`) are served alongside this API and are out of scope here; the CLI
+(`/api/auth/[...all]`, better-auth), CalDAV and `/.well-known/vektor` are served
+alongside this API and are out of scope here. A calendar app connects to its space's
+principal, `/api/caldav/principals/<userId>/<spaceId>/`, with an access token from that
+space; the CLI
 login endpoints under `/api/v1/auth/cli` are documented. Internally each route is one file
 registered in `src/api/routes.ts`, exporting one function per HTTP method.
 
@@ -526,14 +528,14 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/suggestions?q=grace"
 ### `GET /spaces`
 
 - **Auth**: any of access token / session / unauthenticated.
-- **Behavior**: if a bearer access token is present, returns the single space it's
-  scoped to (or `[]`); else if a session exists, returns all spaces the user belongs
+- **Behavior**: if a bearer access token is present, `?space=<id>` is required and the
+  token is checked in that space only; returns that space, or `[]`; else if a session exists, returns all spaces the user belongs
   to (`listUserSpaces`) — every space on the instance, as `owner`, for a member of
   `VEKTOR_ADMIN_GROUPS`; else returns spaces with `public` viewer access.
 - **Returns**: `200` array of space objects.
 
 ```bash
-curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces"
+curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces?space=$SPACE"
 ```
 
 ```json

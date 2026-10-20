@@ -1,14 +1,11 @@
 import * as Y from "yjs";
-import { appLogger } from "#observability/logger.ts";
-import {
-  type CollaborationContentFormat,
-  contentFromDoc,
-  docFromContent,
-} from "./serialization.ts";
+import type { CollaborationContentFormat } from "#documents/serialization.ts";
 import type {
   SerializationRequest,
   SerializationResponse,
-} from "./serializationWorker.ts";
+} from "#documents/serializationWorker.ts";
+import { appLogger } from "#observability/logger.ts";
+import type { DocSerializer } from "#platform/platform.ts";
 
 /**
  * A small pool of persistent workers that run document (de)serialization off
@@ -16,13 +13,13 @@ import type {
  * (whole-doc HTML⇄ProseMirror⇄Yjs marshalling) and spike transient memory on
  * the request path.
  *
- * The pool is best-effort: if a worker fails to spawn or crashes, callers fall
- * back to serializing in-process, so correctness never depends on the workers.
+ * A worker that fails to spawn, crashes or times out fails the call, with the
+ * worker's error as the cause.
  */
 
 const POOL_SIZE = 2;
-// Safety net: if a worker loses a message or wedges, reject so the caller falls
-// back to in-process serialization instead of hanging the request forever.
+// Safety net: if a worker loses a message or wedges, the call fails instead of
+// hanging the request forever.
 const REQUEST_TIMEOUT_MS = 60_000;
 
 interface Pending {
@@ -73,11 +70,11 @@ function resolveWorkerSpec(): Promise<string | URL> {
   if (workerSpecPromise) return workerSpecPromise;
   workerSpecPromise = import.meta.url.includes("$bunfs")
     ? import("./serializationWorkerEmbed.ts").then((m) => m.serializationWorkerPath)
-    : Promise.resolve(new URL("./serializationWorker.ts", import.meta.url));
+    : Promise.resolve(new URL("../../documents/serializationWorker.ts", import.meta.url));
   return workerSpecPromise;
 }
 
-function spawnWorker(spec: string | URL): PoolWorker | null {
+function spawnWorker(spec: string | URL): PoolWorker {
   try {
     const worker = new Worker(spec, { type: "module" });
     const entry: PoolWorker = { worker, inFlight: 0 };
@@ -90,38 +87,28 @@ function spawnWorker(spec: string | URL): PoolWorker | null {
       appLogger.warn("Serialization worker errored; dropping it from the pool", {
         message: event.message,
       });
-      // Drop the dead worker and reject its in-flight requests so their callers
-      // fall back to in-process serialization. A fresh worker is spawned lazily
-      // on the next request.
+      // Drop the dead worker and fail its in-flight requests; a fresh worker is
+      // spawned lazily on the next request.
       workers = workers?.filter((w) => w !== entry) ?? null;
       failWorkerRequests(entry, "serialization worker crashed");
     });
 
     return entry;
   } catch (error) {
-    appLogger.warn("Failed to spawn serialization worker; using in-process fallback", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
+    throw new Error("Failed to spawn a serialization worker", { cause: error });
   }
 }
 
-async function buildPool(): Promise<PoolWorker[] | null> {
-  let spec: string | URL;
-  try {
-    spec = await resolveWorkerSpec();
-  } catch (error) {
-    appLogger.warn("Failed to resolve serialization worker; using in-process fallback", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
+async function buildPool(): Promise<PoolWorker[]> {
+  const spec = await resolveWorkerSpec();
   const spawned: PoolWorker[] = [];
-  for (let i = 0; i < POOL_SIZE; i++) {
-    const worker = spawnWorker(spec);
-    if (worker) spawned.push(worker);
+  try {
+    for (let i = 0; i < POOL_SIZE; i++) spawned.push(spawnWorker(spec));
+  } catch (error) {
+    // A partial pool is never kept: the next dispatch builds a whole one again.
+    for (const entry of spawned) entry.worker.terminate();
+    throw error;
   }
-  if (spawned.length === 0) return null;
   workers = spawned;
   return workers;
 }
@@ -130,9 +117,9 @@ async function buildPool(): Promise<PoolWorker[] | null> {
 // concurrent first-time dispatches would otherwise each spawn POOL_SIZE workers
 // and the losing set would be unreachable — never terminated on shutdown, each
 // still holding the full editor/schema graph resident.
-let poolPromise: Promise<PoolWorker[] | null> | null = null;
+let poolPromise: Promise<PoolWorker[]> | null = null;
 
-function ensurePool(): Promise<PoolWorker[] | null> {
+function ensurePool(): Promise<PoolWorker[]> {
   if (workers && workers.length > 0) return Promise.resolve(workers);
   poolPromise ??= buildPool().finally(() => {
     poolPromise = null;
@@ -157,7 +144,6 @@ async function dispatch(
   request: WithoutId<SerializationRequest>,
 ): Promise<SerializationResponse> {
   const pool = await ensurePool();
-  if (!pool) throw new Error("serialization pool unavailable");
 
   const entry = pickWorker(pool);
   const id = nextRequestId++;
@@ -179,44 +165,48 @@ async function dispatch(
   });
 }
 
-/**
- * Serializes a Y.Doc to persisted content off-thread. Falls back to in-process
- * serialization if the pool is unavailable or the worker fails.
- */
-export async function serializeDocContent(
+/** Serializes a Y.Doc to persisted content off-thread; a worker failure is the cause of what it throws. */
+async function serializeDocContent(
   format: CollaborationContentFormat,
   doc: Y.Doc,
 ): Promise<string> {
-  try {
-    const update = Y.encodeStateAsUpdate(doc);
-    const response = await dispatch({ op: "serialize", format, update });
-    if (response.ok && "content" in response) return response.content;
-    throw new Error(response.ok ? "unexpected worker response" : response.error);
-  } catch {
-    return contentFromDoc(format, doc);
-  }
+  const response = await dispatch({
+    op: "serialize",
+    format,
+    update: Y.encodeStateAsUpdate(doc),
+  }).catch((error) => {
+    throw new Error("Serializing a document failed", { cause: error });
+  });
+  if (response.ok && "content" in response) return response.content;
+  throw new Error("Serializing a document failed", {
+    cause: new Error(response.ok ? "unexpected worker response" : response.error),
+  });
 }
 
-/**
- * Deserializes persisted content into a Y.Doc off-thread. Falls back to
- * in-process deserialization if the pool is unavailable or the worker fails.
- */
-export async function deserializeDocContent(
+/** Deserializes persisted content into a Y.Doc off-thread; a worker failure is the cause of what it throws. */
+async function deserializeDocContent(
   format: CollaborationContentFormat,
   content: string,
 ): Promise<Y.Doc> {
-  try {
-    const response = await dispatch({ op: "deserialize", format, content });
-    if (response.ok && "update" in response) {
-      const doc = new Y.Doc();
-      Y.applyUpdate(doc, response.update);
-      return doc;
-    }
-    throw new Error(response.ok ? "unexpected worker response" : response.error);
-  } catch {
-    return docFromContent(format, content);
+  const response = await dispatch({ op: "deserialize", format, content }).catch(
+    (error) => {
+      throw new Error("Deserializing a document failed", { cause: error });
+    },
+  );
+  if (response.ok && "update" in response) {
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, response.update);
+    return doc;
   }
+  throw new Error("Deserializing a document failed", {
+    cause: new Error(response.ok ? "unexpected worker response" : response.error),
+  });
 }
+
+export const poolDocSerializer: DocSerializer = {
+  serialize: serializeDocContent,
+  deserialize: deserializeDocContent,
+};
 
 /** Terminates all pool workers (used on shutdown). */
 export function stopSerializationPool(): void {

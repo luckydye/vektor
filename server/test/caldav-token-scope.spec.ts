@@ -169,30 +169,30 @@ describe("CalDAV token scope", () => {
   });
 
   it("refuses a space-A token access to space B", async () => {
-    // The user owns space B, so the pre-fix code authorized this via the user's
-    // ACL and served B's events to a token scoped to A.
+    // The user owns space B, but the token is checked only in the space the URL
+    // names, and B holds no such token.
     expect(
       (await calDav(`${calendarPath(spaceB)}/`, "PROPFIND", viewerToken)).status,
-    ).toBe(403);
+    ).toBe(401);
     expect((await calDav(`${calendarPath(spaceB)}/`, "REPORT", viewerToken)).status).toBe(
-      403,
+      401,
     );
-    expect((await calDav(eventPath(spaceB, docB), "GET", viewerToken)).status).toBe(403);
+    expect((await calDav(eventPath(spaceB, docB), "GET", viewerToken)).status).toBe(401);
     expect(
       (await calDav(eventPath(spaceB, docB), "PUT", editorToken, icalEvent("Injected")))
         .status,
-    ).toBe(403);
+    ).toBe(401);
   });
 
-  it("does not leak other spaces in the calendar home of a scoped token", async () => {
+  it("does not leak other spaces in the space-scoped principal of a token", async () => {
     const response = await calDav(
-      `/api/caldav/calendars/${owner.userId}/`,
+      `/api/caldav/principals/${owner.userId}/${spaceA}/`,
       "PROPFIND",
       viewerToken,
     );
     expect(response.status).toBe(207);
     const body = await response.text();
-    expect(body).toContain(spaceA);
+    expect(body).toContain(calendarPath(spaceA));
     expect(body).not.toContain(spaceB);
     expect(body).not.toContain("Scope Space B");
   });
@@ -241,14 +241,14 @@ describe("CalDAV token scope", () => {
     expect(revoke.ok).toBe(true);
 
     // The credential no longer authenticates at all — neither the calendar it
-    // was scoped to nor the calendar home.
+    // was scoped to nor its space's principal.
     expect(
       (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedToken.token)).status,
     ).toBe(401);
     expect(
       (
         await calDav(
-          `/api/caldav/calendars/${owner.userId}/`,
+          `/api/caldav/principals/${owner.userId}/${spaceA}/`,
           "PROPFIND",
           revokedToken.token,
         )
@@ -273,13 +273,16 @@ describe("CalDAV token scope", () => {
       expect(response.status).toBe(207);
     }
 
-    const home = await fetch(`${BASE_URL}/api/caldav/calendars/${owner.userId}/`, {
-      method: "PROPFIND",
-      headers: { Cookie: `vektor.session_token=${owner.token}` },
-    });
-    expect(home.status).toBe(207);
-    const body = await home.text();
-    expect(body).toContain(spaceA);
-    expect(body).toContain(spaceB);
+    for (const spaceId of [spaceA, spaceB]) {
+      const principal = await fetch(
+        `${BASE_URL}/api/caldav/principals/${owner.userId}/${spaceId}/`,
+        {
+          method: "PROPFIND",
+          headers: { Cookie: `vektor.session_token=${owner.token}`, Depth: "1" },
+        },
+      );
+      expect(principal.status).toBe(207);
+      expect(await principal.text()).toContain(calendarPath(spaceId));
+    }
   });
 });

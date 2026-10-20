@@ -16,6 +16,7 @@ import {
   getIndexedSpace,
   getIndexedSpaceBySlug,
   getSpaceDatabaseRecord,
+  isActiveSpace,
   listDeletedSpaceDatabases,
   listIndexedSpaces,
   markSpaceDeleted,
@@ -196,7 +197,7 @@ export async function createSpace(
 
 export async function getSpace(platform: Platform, id: string): Promise<Space | null> {
   await initializeDatabases(platform);
-  if (!(await getIndexedSpace(platform, id))) return null;
+  if (!(await isActiveSpace(platform, id))) return null;
   return await readSpace(await openSpaceStore(platform, id));
 }
 
@@ -262,7 +263,7 @@ export async function getSpaceBySlug(
   const indexed =
     (await getIndexedSpaceBySlug(platform, slug)) ??
     (await getIndexedSpace(platform, slug));
-  return indexed ? getSpace(platform, indexed.spaceId) : null;
+  return indexed ? readSpace(await openSpaceStore(platform, indexed.spaceId)) : null;
 }
 
 export async function listAllSpaces(platform: Platform): Promise<Space[]> {
@@ -435,6 +436,21 @@ export async function listPublicSpaces(platform: Platform): Promise<Space[]> {
   });
 }
 
+/** The index's copy of a space's name and slug, with a taken slug reported as such. */
+async function writeIndexedSpaceMetadata(
+  platform: Platform,
+  spaceId: string,
+  values: { name: string; slug: string; updatedAt: Date },
+): Promise<void> {
+  try {
+    await updateIndexedSpaceMetadata(platform, spaceId, values);
+  } catch (indexError) {
+    throw isSlugUniqueViolation(indexError)
+      ? new SpaceSlugTakenError(values.slug)
+      : indexError;
+  }
+}
+
 export async function updateSpace(
   store: SpaceStore,
   name: string,
@@ -454,55 +470,52 @@ export async function updateSpace(
   }
 
   const now = new Date();
-  // Space metadata and preferences live together and must land together. The
-  // auth index is a separate database, so update it last: an index failure can
-  // still roll this transaction back.
+  // The index is written before the space's transaction, so a taken slug fails
+  // before the space changes, and it is restored if that transaction then fails.
+  await writeIndexedSpaceMetadata(store.platform, id, { name, slug, updatedAt: now });
   const updatedPreferences = new Map(Object.entries(existing.preferences));
-  await store.tx(async (tx) => {
-    await tx.db
-      .update(spaceMetadata)
-      .set({ name, slug, updatedAt: now })
-      .where(eq(spaceMetadata.id, id));
+  await store
+    .tx(async (tx) => {
+      await tx.db
+        .update(spaceMetadata)
+        .set({ name, slug, updatedAt: now })
+        .where(eq(spaceMetadata.id, id));
 
-    if (preferences) {
-      for (const [key, value] of Object.entries(preferences)) {
-        const existingPref = await one(
-          tx.db
-            .select()
-            .from(preference)
-            .where(and(eq(preference.key, key), isNull(preference.userId))),
-        );
+      if (preferences) {
+        for (const [key, value] of Object.entries(preferences)) {
+          const existingPref = await one(
+            tx.db
+              .select()
+              .from(preference)
+              .where(and(eq(preference.key, key), isNull(preference.userId))),
+          );
 
-        if (existingPref) {
-          await tx.db
-            .update(preference)
-            .set({ value, updatedAt: now })
-            .where(eq(preference.id, existingPref.id));
-        } else {
-          await tx.db.insert(preference).values({
-            id: createId("preference"),
-            key,
-            value,
-            createdAt: now,
-            updatedAt: now,
-          });
+          if (existingPref) {
+            await tx.db
+              .update(preference)
+              .set({ value, updatedAt: now })
+              .where(eq(preference.id, existingPref.id));
+          } else {
+            await tx.db.insert(preference).values({
+              id: createId("preference"),
+              key,
+              value,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+          updatedPreferences.set(key, value);
         }
-        updatedPreferences.set(key, value);
       }
-    }
-
-    try {
+    })
+    .catch(async (error) => {
       await updateIndexedSpaceMetadata(store.platform, id, {
-        name,
-        slug,
-        updatedAt: now,
+        name: existing.name,
+        slug: existing.slug,
+        updatedAt: existing.updatedAt,
       });
-    } catch (indexError) {
-      throw isSlugUniqueViolation(indexError)
-        ? new SpaceSlugTakenError(slug)
-        : indexError;
-    }
-  });
+      throw error;
+    });
 
   return {
     id,

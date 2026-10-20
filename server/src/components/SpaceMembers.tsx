@@ -32,10 +32,11 @@ import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
+import type { CreatedPersonalToken } from "#composeables/usePersonalAccessTokens.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { Icon } from "./Icon.tsx";
-import { confirmDialog } from "#composeables/useDialogs.ts";
-import { useToast } from "#composeables/useToast.ts";
 
 /** Scope select values that carry the id of the resource a grant lands on. */
 const CATEGORY_SCOPE_PREFIX = "category:";
@@ -124,7 +125,7 @@ export function SpaceMembers() {
   const [expandedMembers, setExpandedMembers] = createSignal(new Set<string>());
   const [inviteSuggestions, setInviteSuggestions] = createSignal<User[]>([]);
   const [accessTokens, setAccessTokens] = createSignal<AccessToken[]>([]);
-  const [createdTokenValue, setCreatedTokenValue] = createSignal<string | null>(null);
+  const [createdToken, setCreatedToken] = createSignal<CreatedPersonalToken | null>(null);
   const [tokenCopied, setTokenCopied] = createSignal(false);
   let nextInviteRowId = 0;
 
@@ -216,7 +217,7 @@ export function SpaceMembers() {
   }
 
   async function handleCopyToken() {
-    const value = createdTokenValue();
+    const value = createdToken()?.token;
     if (!value) return;
     await navigator.clipboard.writeText(value);
     setTokenCopied(true);
@@ -573,7 +574,7 @@ export function SpaceMembers() {
 
       setInviteRows([]);
       if (tokenResult) {
-        setCreatedTokenValue(tokenResult.token);
+        setCreatedToken({ token: tokenResult.token, spaceId });
         setTokenCopied(false);
       }
       await Promise.all([fetchPermissions(), fetchUsers(), fetchAccessTokens()]);
@@ -990,15 +991,15 @@ export function SpaceMembers() {
           </div>
         */}
 
-        <Show when={createdTokenValue()}>
-          {(value) => (
+        <Show when={createdToken()}>
+          {(created) => (
             <div class="rounded-md border border-green-200 bg-green-50 p-3">
               <p class="mb-2 font-medium text-green-800 text-size-small">
                 Token created — copy it now, it won't be shown again.
               </p>
               <div class="flex items-center gap-2">
                 <code class="flex-1 select-all break-all rounded-sm border border-green-200 bg-background px-2 py-1.5 font-mono text-size-small">
-                  {value()}
+                  {created().token}
                 </code>
                 <button
                   type="button"
@@ -1008,10 +1009,14 @@ export function SpaceMembers() {
                   {tokenCopied() ? "Copied!" : "Copy"}
                 </button>
               </div>
+              <p class="mt-2 text-green-800 text-size-small">
+                {t("Space ID, which callers name along with the token:")}{" "}
+                <code class="select-all font-mono">{created().spaceId}</code>
+              </p>
               <button
                 type="button"
                 onClick={() => {
-                  setCreatedTokenValue(null);
+                  setCreatedToken(null);
                   setTokenCopied(false);
                 }}
                 class="mt-2 text-green-700 text-size-small hover:text-green-900"
@@ -1451,7 +1456,9 @@ export function SpaceMembers() {
                                     </span>
                                     <span class="flex items-center gap-2">
                                       <Show
-                                        when={getScopedGrants(member).some(canRemoveMember)}
+                                        when={getScopedGrants(member).some(
+                                          canRemoveMember,
+                                        )}
                                       >
                                         <button
                                           type="button"

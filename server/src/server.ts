@@ -3,13 +3,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { join } from "node:path";
 import type { dev } from "astro";
 import { Hono } from "hono";
-import { stopSerializationPool } from "#documents/serializationPool.ts";
 import {
   createEmbeddedClientAssetMiddleware,
   createFileSystemClientAssetMiddleware,
 } from "#platform/bun/clientAssets.ts";
 import { createBunPlatform } from "#platform/bun/index.ts";
 import { attachRealtimeWebSocketServer } from "#platform/bun/realtimeServer.ts";
+import { stopSerializationPool } from "#platform/bun/serializationPool.ts";
 import type { Platform } from "#platform/platform.ts";
 import { stopAgentWorker } from "./agent/agent.ts";
 import { apiRoutes } from "./api/routes.ts";

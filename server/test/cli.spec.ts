@@ -559,20 +559,18 @@ describe("stored config", () => {
     });
   });
 
-  test("discovers the first space from the server with nothing configured", async () => {
+  test("refuses to guess the space of a token with no space configured", async () => {
     delete process.env.VEKTOR_SPACE_ID;
     writeStoredConfig({ accessToken: "at_stored" });
-    let seenAuth: string | null = null;
-    mockFetch((_url, init) => {
-      seenAuth = new Headers(init?.headers).get("authorization");
-      return Response.json([{ id: "space-discovered" }]);
+    let requested = false;
+    mockFetch(() => {
+      requested = true;
+      return Response.json([]);
     });
 
-    const { spaceId } = await resolveConfig();
-
-    expect(spaceId).toBe("space-discovered");
-    // Discovery has to carry the token, or it 401s on an auth-enabled server.
-    expect(seenAuth).toBe("Bearer at_stored");
+    // A token is only checked in the space its caller names, so there is nothing to discover.
+    await expect(resolveConfig()).rejects.toThrow("Set VEKTOR_SPACE_ID");
+    expect(requested).toBe(false);
   });
 
   test("the host comes from the env var only, never the file", () => {

@@ -4,7 +4,7 @@ import { getUserProfile, setUserProfile } from "#db/space/userProfiles.ts";
 import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
-import { callModel } from "./core.ts";
+import { callModel } from "./model.ts";
 
 /** How long after the last completed turn before the profile is regenerated. */
 const IDLE_DELAY_MS = 10 * 60 * 1000;

@@ -1,4 +1,4 @@
-import { getUserGroups } from "#acl/userGroups.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import {
   caldavRoute,
   documentToICal,
@@ -34,7 +34,7 @@ export const ALL: ApiRouteHandler = caldavRoute(async (context) => {
       {
         viewer: {
           userId: caldavUser.id,
-          userGroups: await getUserGroups(context.var.platform, caldavUser.id),
+          userGroups: (await resolveIdentity(context.var.platform, caldavUser.id)).groups,
         },
       },
     );
@@ -80,7 +80,7 @@ ${eventEntries}
       {
         viewer: {
           userId: caldavUser.id,
-          userGroups: await getUserGroups(context.var.platform, caldavUser.id),
+          userGroups: (await resolveIdentity(context.var.platform, caldavUser.id)).groups,
         },
       },
     );

@@ -6,6 +6,7 @@ import {
   api,
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
+  type PersonalAccessToken,
 } from "#api/client.ts";
 import { useQueryClient } from "#composeables/query.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
@@ -293,7 +294,7 @@ export function UserPreferencesPanel(props: Props) {
     }
   };
 
-  const revokeToken = async (tokenId: string) => {
+  const revokeToken = async (token: PersonalAccessToken) => {
     if (
       !(await confirmDialog(
         t("Revoke this token? Anything using it stops working immediately."),
@@ -301,16 +302,16 @@ export function UserPreferencesPanel(props: Props) {
       ))
     )
       return;
-    void accessTokens.revoke(tokenId);
+    void accessTokens.revoke(token);
   };
 
-  const deleteToken = async (tokenId: string) => {
+  const deleteToken = async (token: PersonalAccessToken) => {
     if (!(await confirmDialog(t("Delete this token permanently?"), {
         tone: "danger",
         confirmLabel: t("Delete"),
       })))
       return;
-    void accessTokens.remove(tokenId);
+    void accessTokens.remove(token);
   };
 
   const handleConnectIntegration = async (connection: OAuthIntegrationConnection) => {

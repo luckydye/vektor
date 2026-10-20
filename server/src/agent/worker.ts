@@ -12,12 +12,12 @@ import {
   type AgentEvent,
   type AgentHost,
   type AgentResult,
-  AgentTurnError,
   type AgentTurnSetup,
   createAgentShell,
   runAgentPrompt,
 } from "./core.ts";
 import type { IntegrationAgentSurface } from "./integrations.ts";
+import { AgentTurnError } from "./turnError.ts";
 
 /**
  * Agent worker: runs agent turns off the main event loop — the model loop, the

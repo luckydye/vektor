@@ -3,26 +3,26 @@
  *
  * There is one runtime today and the whole system talks to it through
  * `JobRuntime`, so swapping in another executor is a change to this function and
- * nothing else. `VEKTOR_JOB_RUNTIME` exists to name that choice explicitly
- * rather than to configure isolation: isolation is no longer optional, and there
- * is no unsandboxed path to fall back to.
+ * nothing else. `VEKTOR_JOB_RUNTIME` names that choice and is validated at boot
+ * in `config.ts`; isolation is not optional.
  */
 
-import { config } from "#config";
-import { createBoaRuntime } from "./boa.ts";
 import type { JobRuntime } from "./types.ts";
+import { createVmRuntime } from "./vm.ts";
 
-export type { Capability, CapabilityTable, JobRunContext, JobRuntime } from "./types.ts";
+export type {
+  Capability,
+  CapabilityTable,
+  JobExecution,
+  JobRunContext,
+  JobRuntime,
+} from "./types.ts";
 
 let cached: JobRuntime | undefined;
 
 /** The runtime every job and workflow script runs in. */
 export function getJobRuntime(): JobRuntime {
-  const requested = config().JOB_RUNTIME?.trim() || "boa";
-  if (requested !== "boa") {
-    throw new Error(`Unknown job runtime "${requested}". Supported values: boa.`);
-  }
-  cached ??= createBoaRuntime();
+  cached ??= createVmRuntime();
   return cached;
 }
 

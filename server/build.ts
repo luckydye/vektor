@@ -110,8 +110,8 @@ await generateOpenApiModule();
 /**
  * Pre-bundle the serialization worker into a single self-contained file so it
  * can be embedded in the standalone binary. Bun's `--compile` does not emit a
- * loadable worker entry for `new Worker(new URL(...))`, so documents/serializationPool.ts
- * loads this bundle via `documents/serializationWorkerEmbed.ts` (`with { type: "file" }`)
+ * loadable worker entry for `new Worker(new URL(...))`, so platform/bun/serializationPool.ts
+ * loads this bundle via `platform/bun/serializationWorkerEmbed.ts` (`with { type: "file" }`)
  * in the compiled binary. The worker pulls in the full editor/schema graph, so
  * this must be bundled (not left as a bare `.ts` with unresolved imports).
  */

@@ -5,6 +5,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Platform } from "#platform/platform.ts";
+import { withinTransaction } from "#utils/transactionScope.ts";
 import type { Database } from "./connection.ts";
 import { exec, many, one } from "./query.ts";
 
@@ -201,10 +202,12 @@ async function applyMigration(
       sql`INSERT OR REPLACE INTO schema_migration (id, name, applied_at) VALUES (${migration.id}, ${migration.name}, ${Date.now()})`,
     );
 
-  await platform.spaceDatabase.transaction(db, async (tx) => {
-    await migration.up(tx);
-    await stamp(tx);
-  });
+  await platform.spaceDatabase.transaction(db, (tx) =>
+    withinTransaction(async () => {
+      await migration.up(tx);
+      await stamp(tx);
+    }),
+  );
 }
 
 /**

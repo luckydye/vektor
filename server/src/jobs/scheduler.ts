@@ -122,7 +122,7 @@ export async function runJob(
   }
 
   try {
-    const outputs = await getJobRuntime().execute(fileBuffer.toString("utf8"), {
+    const execution = getJobRuntime().execute(fileBuffer.toString("utf8"), {
       platform,
       spaceId,
       jobId: logicalJobId ?? entryPath,
@@ -134,6 +134,7 @@ export async function runJob(
       timeoutMs,
       extraCapabilities,
     });
+    const outputs = await execution.result;
     jobsSucceededTotal += 1;
     return outputs;
   } catch (error) {

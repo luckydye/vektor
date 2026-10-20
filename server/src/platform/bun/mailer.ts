@@ -4,6 +4,7 @@ import { createTransport, type Transporter } from "nodemailer";
 import { config } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import type { Mailer } from "#platform/platform.ts";
+import { assertOutsideTransaction } from "#utils/transactionScope.ts";
 
 type TlsMode = "starttls" | "implicit" | "off";
 
@@ -133,6 +134,7 @@ export const smtpMailer: Mailer = {
   available: () => !!configuredTransport(),
 
   async send(message) {
+    assertOutsideTransaction("platform.mailer.send");
     const transport = configuredTransport();
     if (!transport) throw new Error("Email delivery is not configured");
     await transport.sendMail({

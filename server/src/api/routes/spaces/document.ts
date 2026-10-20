@@ -30,6 +30,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
+import { getIndexedSpace, getIndexedSpaceBySlug } from "#db/auth/spaceIndex.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
@@ -55,7 +56,6 @@ import {
   getRevisionMetadata,
   resolvePublishedDocumentContent,
 } from "#db/space/revisions.ts";
-import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
 import { getMimeType, prepareDocumentContent } from "#documents/content.ts";
 import {
   type DocumentPropertyPatch,
@@ -340,13 +340,14 @@ export const GET: ApiRouteHandler = (context) =>
     // collaboration room (if open), so partial edits reference the same state.
     const live = new URL(context.req.url).searchParams.get("live") === "true";
 
+    // The index carries id, slug and name, all this response needs of the space.
     const space =
-      (await getSpace(context.var.platform, rawSpaceId)) ??
-      (await getSpaceBySlug(context.var.platform, rawSpaceId));
+      (await getIndexedSpace(context.var.platform, rawSpaceId)) ??
+      (await getIndexedSpaceBySlug(context.var.platform, rawSpaceId));
     if (!space) {
       throw notFoundResponse("Space");
     }
-    const spaceId = space.id;
+    const spaceId = space.spaceId;
     const store = await openSpaceStore(context.var.platform, spaceId);
 
     // Resolve slug → ID: try by ID first, fall back to slug so client-side
@@ -491,7 +492,7 @@ export const GET: ApiRouteHandler = (context) =>
         {
           document: { ...document, headerImageAspectRatio },
           space: {
-            id: space.id,
+            id: space.spaceId,
             slug: space.slug,
             name: space.name,
           },

@@ -1,36 +1,15 @@
 import { ResourceUnavailableError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import {
-  type BasicAuthToken,
-  type BasicAuthUser,
-  verifyBasicAuth,
-} from "#api/basicAuth.ts";
+import { type BasicAuthUser, verifyBasicAuthUser } from "#api/basicAuth.ts";
 import { withApiErrorHandling } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
+import { getSpace, type Space } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import type { Platform } from "#platform/platform.ts";
 
-export { type BasicAuthUser, verifyBasicAuth };
-
-/**
- * Authenticate a CalDAV request using either session cookies or HTTP Basic auth.
- * Session auth is checked first (for browser-based clients), then Basic auth
- * with email:access_token (for external CalDAV clients).
- */
-export async function verifyBasicAuthUser(
-  context: ApiContext,
-): Promise<BasicAuthUser | null> {
-  const sessionUser = context.var.user;
-  if (sessionUser) {
-    return { id: sessionUser.id, email: sessionUser.email, name: sessionUser.name };
-  }
-  return verifyBasicAuth(
-    context.var.platform,
-    context.req.raw.headers.get("Authorization"),
-  );
-}
+export type { BasicAuthUser };
 
 export interface ParsedICalEvent {
   summary: string;
@@ -333,52 +312,11 @@ export function calDavForbidden(): Response {
   });
 }
 
-/**
- * Authorize a Basic-auth CalDAV caller against the *token's* grants.
- *
- * This is the CalDAV counterpart of the API path's token check and
- * deliberately never consults the user's own ACL: an access token exists to
- * delegate limited access, so a token scoped "viewer on space A" must not reach
- * space B and must not write anywhere, no matter what its creator may do.
- *
- * `spaceId` is the space named in the CalDAV URL, absent for the principal and
- * calendar-home collections — those are authorized against the token's own
- * space, so a credential that holds nothing there cannot browse at all.
- */
-async function authorizeBasicAuthToken(
-  platform: Platform,
-  caldavUser: BasicAuthUser,
-  token: BasicAuthToken,
-  spaceId: string | undefined,
-  requiredRole: Permission,
-): Promise<BasicAuthUser | Response> {
-  // The token reaches exactly one space (see BasicAuthToken). Any other space in
-  // the URL is outside its scope, whatever the user themselves may access.
-  if (spaceId && spaceId !== token.spaceId) {
-    return calDavForbidden();
-  }
-
-  const targetSpaceId = spaceId ?? token.spaceId;
-  try {
-    await verifyAccess(
-      platform,
-      targetSpaceId,
-      { type: ResourceType.SPACE, id: targetSpaceId },
-      token.result.tokenId,
-      requiredRole,
-    );
-  } catch {
-    return calDavForbidden();
-  }
-
-  return caldavUser;
-}
-
 export async function requireBasicAuthUserAndAccess(
   context: ApiContext,
-  options: { userId?: string; spaceId?: string; requiredRole?: Permission },
+  options: { userId?: string; spaceId: string; requiredRole?: Permission },
 ): Promise<BasicAuthUser | Response> {
-  const caldavUser = await verifyBasicAuthUser(context);
+  const caldavUser = await verifyBasicAuthUser(context, options.spaceId);
   if (!caldavUser) {
     return calDavUnauthorized();
   }
@@ -388,37 +326,56 @@ export async function requireBasicAuthUserAndAccess(
   }
 
   // Writes (PUT/DELETE) must require the corresponding role, not just read
-  // access — a viewer must not be able to create/modify events.
-  const requiredRole = options.requiredRole ?? Permission.VIEWER;
-
-  // An access token's authority is its own ACL grants, never the access of the
-  // user who created it. Checked before anything space-scoped so that even the
-  // collections without a space in their URL stay inside the token's scope.
-  if (caldavUser.token) {
-    return authorizeBasicAuthToken(
+  // access — a viewer must not be able to create/modify events. A token is
+  // authorized on its own grants, never on the access of the user who made it.
+  try {
+    await verifyAccess(
       context.var.platform,
-      caldavUser,
-      caldavUser.token,
       options.spaceId,
-      requiredRole,
+      { type: ResourceType.SPACE, id: options.spaceId },
+      caldavUser.token?.result.tokenId ?? caldavUser.id,
+      options.requiredRole ?? Permission.VIEWER,
     );
-  }
-
-  if (options.spaceId) {
-    try {
-      await verifyAccess(
-        context.var.platform,
-        options.spaceId,
-        { type: ResourceType.SPACE, id: options.spaceId },
-        caldavUser.id,
-        requiredRole,
-      );
-    } catch {
-      return calDavForbidden();
-    }
+  } catch {
+    return calDavForbidden();
   }
 
   return caldavUser;
+}
+
+/**
+ * Whether a PROPFIND asks for the children too. RFC 4918 reads a missing `Depth`
+ * as infinity, which here is one level, since nothing below a calendar is listed.
+ */
+export function listsChildren(context: ApiContext): boolean {
+  if (context.req.raw.method.toUpperCase() !== "PROPFIND") return false;
+  return context.req.raw.headers.get("Depth") !== "0";
+}
+
+/** The space behind a calendar the caller was just authorized on. */
+export async function requireCalendarSpace(
+  platform: Platform,
+  spaceId: string,
+): Promise<Space> {
+  const space = await getSpace(platform, spaceId);
+  if (!space) throw new Error(`Space ${spaceId} passed authorization but cannot be read`);
+  return space;
+}
+
+/** A space as a calendar inside a calendar home's PROPFIND listing. */
+export function calendarEntry(userId: string, space: Space): string {
+  return `  <d:response>
+    <d:href>/api/caldav/calendars/${userId}/${space.id}/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+        <d:displayname>${escapeXml(space.name)}</d:displayname>
+        <cs:getctag>${space.updatedAt.getTime()}</cs:getctag>
+        <apple:calendar-color>${escapeXml(space.preferences.brandColor || "#1e293b")}</apple:calendar-color>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>`;
 }
 
 /**
@@ -426,7 +383,7 @@ export async function requireBasicAuthUserAndAccess(
  * space-level check for. Space access is not document access: without this the
  * route hands out documents a per-document ACL withholds, and misses the
  * archived-document rule the guard layer raises. Token callers are authorized
- * against the token's grants, matching {@link authorizeBasicAuthToken}.
+ * against the token's grants, matching {@link requireBasicAuthUserAndAccess}.
  *
  * @returns The refusal to return, or null when the caller may proceed.
  */

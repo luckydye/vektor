@@ -186,9 +186,10 @@ tasks:
       VEKTOR_TEST_S3_ACCESS_KEY_ID: vektor
       VEKTOR_TEST_S3_SECRET_ACCESS_KEY: vektorsecret
     cmds:
-      - bash -c './vektor serve --email-auth --port 4321 --host 127.0.0.1 & echo $! > /tmp/vektor-test-server.pid'
-      - defer: kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true
-      - until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done
+      # VEKTOR_TEST_BASE_URL points the suite at a server that is already running.
+      - bash -c '[ -n "$VEKTOR_TEST_BASE_URL" ] || { ./vektor serve --email-auth --port 4321 --host 127.0.0.1 & echo $! > /tmp/vektor-test-server.pid; }'
+      - defer: bash -c '[ -n "$VEKTOR_TEST_BASE_URL" ] || kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true'
+      - bash -c '[ -n "$VEKTOR_TEST_BASE_URL" ] || until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done'
       - bunx --bun vitest run --project server {{.CLI_ARGS}}
 
   s3:up:

@@ -789,7 +789,7 @@ vektor extension install <extension-id>   # installs from the server's store
 
 `upload` takes its token and space from whatever `vektor login` stored in
 `~/.config/vektor/config.json`, both overridable per-run with `VEKTOR_ACCESS_TOKEN`
-(required) and `VEKTOR_SPACE_ID` (otherwise the first space you can see). The server
+(required) and `VEKTOR_SPACE_ID` (the space the token belongs to). The server
 comes from `VEKTOR_HOST` alone and defaults to localhost. A zip can also be uploaded
 through the extensions management UI.
 

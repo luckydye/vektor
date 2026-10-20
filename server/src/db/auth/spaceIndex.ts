@@ -5,6 +5,7 @@ import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import { requestScope } from "#utils/requestScope.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
 export type ActiveSpaceIndexRecord = SpaceIndexRecord & {
@@ -152,6 +153,26 @@ export async function getIndexedSpace(
   return asActiveSpace(record);
 }
 
+const activeSpaceKey = (spaceId: string) => `activeSpace:${spaceId}`;
+
+/**
+ * Whether the space is active, read once per request scope. Only a resolved yes
+ * is held, and a space another request deletes meanwhile still counts as active
+ * for the rest of this scope.
+ */
+export function isActiveSpace(platform: Platform, spaceId: string): Promise<boolean> {
+  const key = activeSpaceKey(spaceId);
+  return requestScope.memoize(key, async () => {
+    let active = false;
+    try {
+      active = (await getIndexedSpace(platform, spaceId)) !== null;
+    } finally {
+      if (!active) requestScope.forget(key);
+    }
+    return active;
+  });
+}
+
 export async function getIndexedSpaceBySlug(
   platform: Platform,
   slug: string,
@@ -213,6 +234,7 @@ export async function markSpaceDeleted(
     .update(spaceIndex)
     .set({ status: "deleted", deletedAt: now, updatedAt: now })
     .where(eq(spaceIndex.spaceId, spaceId));
+  requestScope.forget(activeSpaceKey(spaceId));
 }
 
 /**

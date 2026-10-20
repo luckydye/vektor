@@ -1,6 +1,6 @@
+import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -44,7 +44,7 @@ export const GET: ApiRouteHandler = (context) =>
           documentIds,
           {
             userId: aclUserId,
-            userGroups: await getUserGroups(context.var.platform, aclUserId),
+            userGroups: (await resolveIdentity(context.var.platform, aclUserId)).groups,
           },
         )
       : new Set(documentIds);

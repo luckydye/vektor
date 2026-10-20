@@ -59,10 +59,14 @@ function resolveToken(): string | undefined {
 async function resolveSpaceId(host: string, token?: string): Promise<string> {
   const configured = config().CLI_SPACE_ID || readStoredConfig().spaceId;
   if (configured) return configured;
+  // A token is only checked in the space its caller names, so it cannot discover one.
+  if (token) {
+    throw new Error(
+      "Set VEKTOR_SPACE_ID to the space this access token belongs to, or run `vektor login`.",
+    );
+  }
 
-  const res = await fetch(`${host}/api/v1/spaces`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetch(`${host}/api/v1/spaces`);
   if (!res.ok) throw new Error(`Failed to discover spaces from ${host} (${res.status})`);
   const spaces = (await res.json()) as Array<{ id: string }>;
   if (!spaces.length) throw new Error("No spaces found on server");

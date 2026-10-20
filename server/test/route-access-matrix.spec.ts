@@ -68,7 +68,6 @@ const HTTP_METHODS = [
  * thing to argue about in review — everything not on it must reject an outsider.
  */
 const PUBLIC_ROUTES: Record<string, string> = {
-  "/.well-known/caldav": "service discovery, no space data",
   "/.well-known/vektor": "service discovery, no space data",
   "/api/auth/[...all]": "better-auth: sign-in/sign-up must be reachable",
   "/api/v1/auth/cli": "CLI pairing: authenticated by the one-time code it mints",
