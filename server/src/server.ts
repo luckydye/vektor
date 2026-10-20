@@ -243,7 +243,7 @@ export async function startServer(platform: Platform): Promise<void> {
 
   // Serve the API directly from Hono so it can operate without the Astro
   // frontend. Hono retains ownership of request bodies for JSON, multipart,
-  // binary uploads, and CalDAV requests.
+  // and binary uploads.
   app.use(
     "*",
     createApiRouter(

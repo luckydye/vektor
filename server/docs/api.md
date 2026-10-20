@@ -145,7 +145,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/secrets"
 Browser clients also pass a CSRF check: a request with an unsafe method whose `Origin` is
 neither a configured trusted origin nor this host is rejected with `403 Cross-origin
 request rejected` before routing, in addition to the SameSite cookie default. Requests
-without an `Origin` header — curl, access tokens, CalDAV clients — are unaffected.
+without an `Origin` header — curl, access tokens, git clients — are unaffected.
 
 ## Rate limits
 
@@ -199,10 +199,8 @@ ones printed in the `API rate limit exceeded` log line.
 ## Endpoint index
 
 Every path below is mounted under `/api/v1`. Session auth itself
-(`/api/auth/[...all]`, better-auth), CalDAV and `/.well-known/vektor` are served
-alongside this API and are out of scope here. A calendar app connects to its space's
-principal, `/api/caldav/principals/<userId>/<spaceId>/`, with an access token from that
-space; the CLI
+(`/api/auth/[...all]`, better-auth) and `/.well-known/vektor` are served
+alongside this API and are out of scope here; the CLI
 login endpoints under `/api/v1/auth/cli` are documented. Internally each route is one file
 registered in `src/api/routes.ts`, exporting one function per HTTP method.
 

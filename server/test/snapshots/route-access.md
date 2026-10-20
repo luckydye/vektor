@@ -4,19 +4,8 @@
 | `/.well-known/vektor` | OPTIONS | 204 | 204 | 204 | 204 | 204 | public — service discovery, no space data |
 | `/[spaceSlug]/git/[repo]/[...gitPath]` | GET | 404 | 404 | 404 | 404 | 404 | no fixture for spaceSlug, repo, gitPath |
 | `/[spaceSlug]/git/[repo]/[...gitPath]` | POST | 404 | 404 | 404 | 404 | 404 | no fixture for spaceSlug, repo, gitPath |
-| `/[spaceSlug]/git/[repo]/[...gitPath]` | PROPFIND | 404 | 404 | 404 | 404 | 404 | no fixture for spaceSlug, repo, gitPath |
 | `/api/auth/[...all]` | GET | 404 | 404 | 404 | 404 | 404 | public — better-auth: sign-in/sign-up must be reachable |
 | `/api/auth/[...all]` | POST | 404 | 404 | 404 | 404 | 404 | public — better-auth: sign-in/sign-up must be reachable |
-| `/api/auth/[...all]` | PROPFIND | 404 | 404 | 404 | 404 | 404 | public — better-auth: sign-in/sign-up must be reachable |
-| `/api/caldav/calendars/[userId]/[spaceId]` | GET | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/calendars/[userId]/[spaceId]` | POST | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/calendars/[userId]/[spaceId]` | PROPFIND | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/calendars/[userId]/[spaceId]/[eventId]` | GET | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/calendars/[userId]/[spaceId]/[eventId]` | OPTIONS | 204 | 204 | 204 | 204 | 204 |  |
-| `/api/caldav/calendars/[userId]/[spaceId]/[eventId]` | PUT | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/principals/[userId]/[spaceId]` | GET | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/principals/[userId]/[spaceId]` | POST | 401 | 403 | 403 | 403 | 403 |  |
-| `/api/caldav/principals/[userId]/[spaceId]` | PROPFIND | 401 | 403 | 403 | 403 | 403 |  |
 | `/api/mcp` | POST | 400 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/access-tokens` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — the caller's own tokens, in the spaces it belongs to |
 | `/api/v1/access-tokens` | POST | 401 | 400 | 400 | 400 | 400 | caller-scoped — the caller's own tokens, in the spaces it belongs to |

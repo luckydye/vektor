@@ -138,7 +138,7 @@ private-parent + shared-child; and at least one archived document.** This exerci
 2. **Fan out by domain, not by file.** Independent auditors per surface find more than one serial
    pass. Domains that paid off: (a) authorization/ACL per-resource; (b) input-validation/500s/
    injection; (c) SSRF/file-handling/path; (d) data-integrity/DoS; (e) auth/session/OAuth/CLI;
-   (f) realtime/Yjs + extensions; (g) jobs/workflow runtime; (h) CalDAV + output-encoding;
+   (f) realtime/Yjs + extensions; (g) jobs/workflow runtime; (h) output-encoding;
    (i) content-sanitization/XSS; (j) search/query; (k) native modules; (l) notifications/tokens;
    (m) SSR/publishing/provisioning; (n) concurrency/TOCTOU; (o) quotas/resource-abuse.
 3. **Give every auditor the exclusion list** (already-filed issues + already-confirmed-robust
@@ -192,7 +192,7 @@ multi-tenant process.
   write endpoints); array/object where a string is expected reaching a Drizzle bind; a parsed
   manifest/JSON whose *shape* isn't validated before property access.
 - **Trigger:** `-d 'null'`, `{"categoryIds":[{"a":1},123]}`, malformed-shape manifest zip,
-  unvalidated `date`-typed property → later `new Date(x).toISOString()` throws (also breaks CalDAV).
+  unvalidated `date`-typed property → later `new Date(x).toISOString()` throws.
 - **Found:** #124, #125, #145, #170.
 
 ### 5.5 XSS / markup injection sinks that bypass the sanitizer

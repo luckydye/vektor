@@ -13,7 +13,7 @@ import type { OperationDoc, QueryParameterDoc, RouteDoc } from "./types.ts";
  *   @jobToken              Route-level: also accepts a running job's token.
  *   @param name Text        Route-level: describes a `[name]` path segment.
  *   @note Text              Route-level: a path-wide note (e.g. "also answers
- *                            WebDAV PROPFIND"), kept alongside the operations.
+ *                            git's binary protocol"), kept alongside the operations.
  *   @query name[!][:type] Text   A query parameter. `!` marks it required;
  *                                `:type` is `string` (default), `integer` or
  *                                `boolean`.
@@ -32,9 +32,9 @@ import type { OperationDoc, QueryParameterDoc, RouteDoc } from "./types.ts";
  * A route whose handlers disagree on a route-level tag keeps the first one
  * seen; `@public` and `@jobToken` are on if any handler in the file sets them.
  *
- * A handful of routes (CalDAV, git smart HTTP, better-auth) answer every
+ * A handful of routes (git smart HTTP, better-auth) answer every
  * method through one `export const ALL`, since OpenAPI has no way to describe
- * most of what they actually serve (WebDAV verbs, git's binary protocol).
+ * most of what they actually serve (git's binary protocol).
  * Above `ALL`, stack one comment block per OpenAPI-describable method instead,
  * each starting with `@method NAME` in place of the method the export name
  * would otherwise supply.

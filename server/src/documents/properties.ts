@@ -37,9 +37,9 @@ export function canonicalPropertyKey(key: string): string {
 }
 
 /**
- * Keys the app itself reads by a fixed spelling — `headerImage` and the calendar
- * pair among them. A write naming one of these in any other case folds onto the
- * spelling listed here, instead of storing a row nothing reads.
+ * Keys the app itself reads by a fixed spelling — `headerImage` among them. A
+ * write naming one of these in any other case folds onto the spelling listed
+ * here, instead of storing a row nothing reads.
  */
 const APP_OWNED_PROPERTY_KEYS = [
   "title",
@@ -48,8 +48,6 @@ const APP_OWNED_PROPERTY_KEYS = [
   "layout",
   "gridtype",
   "headerImage",
-  "eventStart",
-  "eventEnd",
   "pinned",
   "pinnedOrder",
 ];
@@ -218,7 +216,7 @@ export function normalizeDocumentPropertyPatch(
 
       // A stored date is read back by serializers that construct a Date from
       // it, so an unparseable one is a persistent failure for every consumer of
-      // the document (the CalDAV feed above all), not just this write.
+      // the document, not just this write.
       if (type === "date") {
         for (const item of Array.isArray(value) ? value : [value]) {
           if (item !== "" && Number.isNaN(new Date(item).getTime())) {

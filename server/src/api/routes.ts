@@ -3,9 +3,6 @@ import * as personalAccessTokens from "./routes/access-tokens.ts";
 import * as authAll from "./routes/auth/all.ts";
 import * as authCli from "./routes/auth/cli.ts";
 import * as authCliToken from "./routes/auth/cli-token.ts";
-import * as caldavCalendar from "./routes/caldav/calendar.ts";
-import * as caldavEvent from "./routes/caldav/event.ts";
-import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
 import * as marketplaceExtension from "./routes/marketplace/extension.ts";
@@ -103,10 +100,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/chat/acp", module: chatAcp },
   { pattern: "/api/v1/chat/completions", module: chatCompletions },
-
-  { pattern: "/api/caldav/calendars/[userId]/[spaceId]/[eventId]", module: caldavEvent },
-  { pattern: "/api/caldav/calendars/[userId]/[spaceId]", module: caldavCalendar },
-  { pattern: "/api/caldav/principals/[userId]/[spaceId]", module: caldavPrincipal },
 
   { pattern: "/api/v1/spaces", module: spaces },
   { pattern: "/api/v1/spaces/[spaceId]", module: space },

@@ -1,6 +1,6 @@
 /**
- * HTTP Basic authentication for the protocols that only speak it — CalDAV
- * clients, git over HTTPS, anything else that cannot carry a session cookie.
+ * HTTP Basic authentication for the protocols that only speak it — git over
+ * HTTPS, anything else that cannot carry a session cookie.
  *
  * The username is the user's email and the password an access token, and the
  * identity that comes back carries the token rather than merely being found by

@@ -35,7 +35,7 @@ const trustedOrigins = new Set(
  * CSRF guard: browsers attach the session cookie to cross-site requests (and
  * always send an `Origin` header on cross-site non-GET requests), so unsafe
  * methods from an untrusted origin are rejected outright. Requests without an
- * `Origin` header (curl, access tokens, CalDAV clients, same-origin GET
+ * `Origin` header (curl, access tokens, git clients, same-origin GET
  * navigations) pass through — they are not forgeable by a hostile web page.
  * This is an explicit second layer on top of the SameSite cookie default.
  */
