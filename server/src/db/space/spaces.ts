@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import { countSpaceMembers, resolveGranteeName } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
-import { isInstanceAdmin, resolveIdentity } from "#acl/identity.ts";
+import { principalOf, type ResolvedIdentity, resolveIdentity } from "#acl/identity.ts";
 import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   grantPermission,
@@ -82,6 +82,8 @@ export interface Space {
    * administers the instance, not because any grant in it names them.
    */
   adminAccess?: boolean;
+  /** The caller's own `user:` preferences, which live in per-user rows. */
+  userPreferences?: Record<string, string>;
 }
 
 /** A caller-supplied space slug that cannot become a space URL. */
@@ -212,8 +214,12 @@ export async function createSpace(
 export async function getSpace(platform: Platform, id: string): Promise<Space | null> {
   await initializeDatabases(platform);
   if (!(await getIndexedSpace(platform, id))) return null;
+  return await readSpace(await openSpaceStore(platform, id));
+}
 
-  const { db: spaceDb } = await openSpaceStore(platform, id);
+/** The space's own metadata and preferences, for a space already known to be indexed. */
+async function readSpace(store: SpaceStore): Promise<Space | null> {
+  const { platform, spaceId: id, db: spaceDb } = store;
 
   const result = await one(
     spaceDb.select().from(spaceMetadata).where(eq(spaceMetadata.id, id)),
@@ -277,9 +283,22 @@ export async function getSpaceBySlug(
 }
 
 export async function listAllSpaces(platform: Platform): Promise<Space[]> {
+  return await readIndexedSpaces(platform, readSpace);
+}
+
+/**
+ * `read` over every indexed space at once, dropping the spaces it answers null for.
+ * Each read gets one space's store and nothing shared, so it maps onto one call per space.
+ */
+async function readIndexedSpaces(
+  platform: Platform,
+  read: (store: SpaceStore) => Promise<Space | null>,
+): Promise<Space[]> {
   await initializeDatabases(platform);
   const spaces = await Promise.all(
-    (await listIndexedSpaces(platform)).map(({ spaceId }) => getSpace(platform, spaceId)),
+    (await listIndexedSpaces(platform)).map(async ({ spaceId }) =>
+      read(await openSpaceStore(platform, spaceId)),
+    ),
   );
   return spaces.filter((space): space is Space => space !== null);
 }
@@ -291,30 +310,6 @@ export async function listAllSpaces(platform: Platform): Promise<Space[]> {
  * the client caches spaces by id, so a response that omits it overwrites the
  * role the listing established and locks the user out of role-gated UI.
  */
-/**
- * Each space with the caller's own preferences attached — the `user:` namespace,
- * which lives in per-user rows and so is not part of the space itself.
- *
- * Every response carrying a `Space` sets it for the same reason it sets
- * `userRole`: the client caches spaces by id, so a response that omits it
- * overwrites what the last one established.
- */
-async function withUserPreferences(
-  platform: Platform,
-  spaces: Space[],
-  userId: string,
-): Promise<Space[]> {
-  return await Promise.all(
-    spaces.map(async (space) => ({
-      ...space,
-      userPreferences: await getUserPreferences(
-        await openSpaceStore(platform, space.id),
-        userId,
-      ),
-    })),
-  );
-}
-
 export async function getUserSpaceRole(
   platform: Platform,
   space: Space,
@@ -352,7 +347,7 @@ async function spaceGrants(
 }
 
 /**
- * What the user holds in the space on their own account: their space-wide role,
+ * What `identity` holds in the space on their own account: their space-wide role,
  * and whether any grant in it reaches them at all. Both unset means they are not
  * a member, which for an instance admin separates a space they administer from
  * one they belong to.
@@ -360,57 +355,88 @@ async function spaceGrants(
 async function spaceMembership(
   platform: Platform,
   space: Space,
-  userId: string,
+  identity: ResolvedIdentity,
 ): Promise<{ role?: Permission; reachable: boolean }> {
+  const userId = principalOf(identity);
   try {
-    const { groups } = await resolveIdentity(platform, userId);
-    const role = highestPermission(await spaceGrants(platform, space, userId, groups));
+    const role = highestPermission(
+      await spaceGrants(platform, space, userId, identity.groups),
+    );
     if (role) return { role, reachable: true };
     return {
-      reachable: await hasAnyResourceScopedAccess(platform, space.id, userId, groups),
+      reachable: await hasAnyResourceScopedAccess(
+        platform,
+        space.id,
+        userId,
+        identity.groups,
+      ),
     };
   } catch {
     return { reachable: false };
   }
 }
 
+/**
+ * The space as `identity`'s listing shows it, or null when it is not theirs to see.
+ * The `user:` preferences ride along because the client caches spaces by id, so a
+ * response that omits them overwrites what the last one established.
+ */
+async function describeSpaceFor(
+  store: SpaceStore,
+  identity: ResolvedIdentity,
+): Promise<Space | null> {
+  const space = await readSpace(store);
+  if (!space) return null;
+
+  const membership = await spaceMembership(store.platform, space, identity);
+  let listed: Space;
+  if (identity.isInstanceAdmin) {
+    // The whole instance, at the role the guards will decide their requests
+    // at. `adminAccess` is what tells the two apart in the UI.
+    listed = { ...space, userRole: Permission.OWNER, adminAccess: !membership.reachable };
+  } else if (membership.role) {
+    listed = { ...space, userRole: membership.role };
+  } else if (membership.reachable) {
+    // No space-wide grant, but a document/tree/category grant in this space —
+    // surface it so they can reach it, with `userRole` left unset so
+    // space-wide UI stays gated as before.
+    listed = { ...space };
+  } else {
+    return null;
+  }
+  return {
+    ...listed,
+    userPreferences: await getUserPreferences(store, principalOf(identity)),
+  };
+}
+
 export async function listUserSpaces(
   platform: Platform,
   userId: string,
 ): Promise<Space[]> {
-  const allSpaces = await listAllSpaces(platform);
-  const admin = await isInstanceAdmin(platform, userId);
-  const userSpaces: Space[] = [];
+  const identity = await resolveIdentity(platform, userId);
+  return await readIndexedSpaces(platform, (store) => describeSpaceFor(store, identity));
+}
 
-  for (const space of allSpaces) {
-    const membership = await spaceMembership(platform, space, userId);
-
-    if (admin) {
-      // The whole instance, at the role the guards will decide their requests
-      // at. `adminAccess` is what tells the two apart in the UI.
-      userSpaces.push({
-        ...space,
-        userRole: Permission.OWNER,
-        adminAccess: !membership.reachable,
-      });
-    } else if (membership.role) {
-      userSpaces.push({ ...space, userRole: membership.role });
-    } else if (membership.reachable) {
-      // No space-wide grant, but a document/tree/category grant in this space —
-      // surface it so they can reach it, with `userRole` left unset so
-      // space-wide UI stays gated as before.
-      userSpaces.push({ ...space });
-    }
-  }
-
-  return await withUserPreferences(platform, userSpaces, userId);
+/** The space behind `slug` as `userId`'s listing shows it, or null when it is not theirs to see. */
+export async function findUserSpaceBySlug(
+  platform: Platform,
+  userId: string,
+  slug: string,
+): Promise<Space | null> {
+  await initializeDatabases(platform);
+  const indexed = await getIndexedSpaceBySlug(platform, slug);
+  if (!indexed) return null;
+  return await describeSpaceFor(
+    await openSpaceStore(platform, indexed.spaceId),
+    await resolveIdentity(platform, userId),
+  );
 }
 
 export async function listPublicSpaces(platform: Platform): Promise<Space[]> {
-  const allSpaces = await listAllSpaces(platform);
-  const publicSpaces: Space[] = [];
-
-  for (const space of allSpaces) {
+  return await readIndexedSpaces(platform, async (store) => {
+    const space = await readSpace(store);
+    if (!space) return null;
     try {
       const canView = await canAccess(
         platform,
@@ -419,13 +445,11 @@ export async function listPublicSpaces(platform: Platform): Promise<Space[]> {
         null,
         Permission.VIEWER,
       );
-      if (canView) {
-        publicSpaces.push({ ...space, userRole: "viewer" });
-      }
-    } catch {}
-  }
-
-  return publicSpaces;
+      return canView ? { ...space, userRole: "viewer" } : null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export async function updateSpace(

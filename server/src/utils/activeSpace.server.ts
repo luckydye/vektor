@@ -1,4 +1,4 @@
-import { listUserSpaces } from "#db/space/spaces.ts";
+import { findUserSpaceBySlug, listUserSpaces } from "#db/space/spaces.ts";
 import type { Platform } from "#platform/platform.ts";
 
 export const LAST_VISITED_SPACE_KEY = "lastVisitedSpace";
@@ -12,8 +12,15 @@ export async function resolveActiveSpaceSlug(
   userId: string | undefined,
   lastVisitedSlug: string | undefined,
 ): Promise<string | null> {
+  // The last-visited space is one lookup; listing every space is only for when it misses.
+  if (lastVisitedSlug) {
+    const lastVisited = await findUserSpaceBySlug(
+      platform,
+      userId ?? "",
+      lastVisitedSlug,
+    );
+    if (lastVisited) return lastVisited.slug;
+  }
   const userSpaces = await listUserSpaces(platform, userId ?? "");
-  if (userSpaces.length === 0) return null;
-
-  return (userSpaces.find((s) => s.slug === lastVisitedSlug) ?? userSpaces[0]).slug;
+  return userSpaces[0]?.slug ?? null;
 }
