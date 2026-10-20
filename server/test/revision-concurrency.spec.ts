@@ -18,7 +18,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDatabase } from "#db/client/connection.ts";
+import { createDatabase } from "#platform/bun/database.ts";
 import { initSpaceDbSchema } from "#db/client/init.ts";
 import { many } from "#db/client/query.ts";
 import { deleteSpace } from "#db/space/spaces.ts";
@@ -213,8 +213,8 @@ describe("concurrent saves of one document", () => {
 // can trust — nothing above fails if a second writer is allowed to duplicate it.
 describe("a space database", () => {
   it("holds a unique index on (document_id, rev)", async () => {
-    const db = createDatabase(platform, "file::memory:");
-    await initSpaceDbSchema(db, { local: false });
+    const db = createDatabase("file::memory:");
+    await initSpaceDbSchema(platform, db, { local: false });
 
     const indexes = await many<{ name: string; unique: number }>(
       db,

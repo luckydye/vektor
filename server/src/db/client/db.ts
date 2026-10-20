@@ -1,21 +1,9 @@
 import type { IdpGroupSync } from "#acl/idpSync.ts";
 import type { Auth } from "#auth";
 import { config, isInMemoryDb } from "#config";
-import {
-  getAssignedSpaceDatabase,
-  reconcileLocalSpaceIndex,
-  spaceDatabaseCredentials,
-} from "#db/auth/spaceIndex.ts";
 import { federationOf, syncPeerClients } from "#peerFederation";
-import type { Platform } from "#platform/platform.ts";
-import {
-  closeDatabase,
-  createDatabase,
-  type Database,
-  getAuthDb,
-  isMemoryBackedDatabase,
-  resolveSpaceLocation,
-} from "./connection.ts";
+import type { OpenedSpaceDatabase, Platform } from "#platform/platform.ts";
+import { type Database, getAuthDb } from "./connection.ts";
 import { initSpaceDbSchema, prepareAuthDb } from "./init.ts";
 
 /** The connections a process keeps open, on its platform so every module instance shares them. */
@@ -78,7 +66,7 @@ export function initializeDatabases(platform: Platform): Promise<void> {
   platform.state.initialization ??= (async () => {
     await prepareAuthDb(getAuthDb(platform));
     await syncPeerClients(getAuthDb(platform), federationOf(config()));
-    await reconcileLocalSpaceIndex(platform);
+    await platform.spaceDatabase.reconcile();
   })();
   return platform.state.initialization;
 }
@@ -88,7 +76,7 @@ export { getAuthDb };
 async function openSpaceDb(
   platform: Platform,
   spaceId: string,
-  createLocalFile: boolean,
+  create: boolean,
 ): Promise<Database> {
   await initializeDatabases(platform);
   const {
@@ -115,48 +103,30 @@ async function openSpaceDb(
   if (inFlight) return inFlight;
 
   const opening = (async (): Promise<Database> => {
-    const databaseRecord = await getAssignedSpaceDatabase(platform, spaceId);
-    if (!databaseRecord) {
-      throw new Error(`Space database not found: ${spaceId}`);
-    }
-
-    const location = resolveSpaceLocation(databaseRecord.location);
-    if (
-      location.filePath &&
-      !createLocalFile &&
-      !platform.spaceDatabase.exists(location.filePath)
-    ) {
-      throw new Error(`Space database file not found: ${spaceId}`);
-    }
-
-    const spaceDb = createDatabase(
-      platform,
-      location.url,
-      spaceDatabaseCredentials(databaseRecord),
-    );
-    spaceDbKind.set(spaceId, location.filePath ? "file" : "remote");
+    const opened = await platform.spaceDatabase.open(spaceId, { create });
+    const spaceDb = opened.database;
+    const migrated = migratedKey(spaceId, opened.location);
+    spaceDbKind.set(spaceId, opened.kind);
     // Cache before applying schema so concurrent first requests share both the
     // connection and its preparation promise.
     touch(platform, spaceId, spaceDb);
 
     // Pragmas are connection state and always run; the migration check is per
     // database, so a reopen of one this process already migrated skips it.
-    const preparation = initSpaceDbSchema(spaceDb, {
-      local: location.localFile,
-      migrations: !migratedSpaceDbs.has(migratedKey(spaceId, databaseRecord.location)),
+    const preparation = initSpaceDbSchema(platform, spaceDb, {
+      local: opened.kind === "file",
+      migrations: !migratedSpaceDbs.has(migrated),
     }).then(
       () => {
         // Never for an in-memory location: every connection to one is its own
         // empty database, so the next open has to migrate again.
-        if (!isMemoryBackedDatabase(spaceDb)) {
-          migratedSpaceDbs.add(migratedKey(spaceId, databaseRecord.location));
-        }
+        if (opened.kind !== "memory") migratedSpaceDbs.add(migrated);
       },
       (error: unknown) => {
         spaceDbCache.delete(spaceId);
         spaceDbPreparation.delete(spaceId);
         spaceDbKind.delete(spaceId);
-        closeDatabase(platform, spaceDb);
+        platform.spaceDatabase.close(spaceDb);
         throw error;
       },
     );
@@ -193,7 +163,7 @@ export async function createAllocatedSpaceDb(
 export function closeSpaceDb(platform: Platform, spaceId: string): void {
   const state = platform.state;
   const database = state.spaceDbs.get(spaceId);
-  if (database) closeDatabase(platform, database);
+  if (database) platform.spaceDatabase.close(database);
   state.spaceDbs.delete(spaceId);
   state.spaceDbLastUsed.delete(spaceId);
   state.spaceDbPreparation.delete(spaceId);
@@ -227,7 +197,7 @@ const DEFAULT_MAX_OPEN_FILE_SPACE_DBS = 128;
 const DEFAULT_MAX_OPEN_REMOTE_SPACE_DBS = 4096;
 
 /** What a cached connection costs to keep, which is what its ceiling bounds. */
-type ConnectionKind = "file" | "remote";
+type ConnectionKind = OpenedSpaceDatabase["kind"];
 
 /**
  * How many space connections of each kind may stay open; `0` lifts the ceiling.
@@ -259,9 +229,9 @@ function evictIdleSpaceDbs(platform: Platform): void {
   if (isInMemoryDb()) return;
 
   const open = new Map<ConnectionKind, string[]>();
-  for (const [spaceId, database] of spaceDbCache) {
-    if (isMemoryBackedDatabase(database)) continue;
+  for (const spaceId of spaceDbCache.keys()) {
     const kind = spaceDbKind.get(spaceId) ?? "remote";
+    if (kind === "memory") continue;
     const kindSpaces = open.get(kind);
     if (kindSpaces) kindSpaces.push(spaceId);
     else open.set(kind, [spaceId]);

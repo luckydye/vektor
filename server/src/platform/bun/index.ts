@@ -3,16 +3,11 @@ import { join, resolve } from "node:path";
 import { gitRoutes } from "#api/gitRoutes.ts";
 import { config } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
-import {
-  createDatabase,
-  dataDirectory,
-  getAuthDatabaseUrl,
-} from "#db/client/connection.ts";
 import { createPlatformState } from "#db/client/db.ts";
 import type { BlobStore } from "#files/storage.ts";
 import { invalidateCache } from "#git/cache.ts";
 import type { LocalJobFile, Platform } from "#platform/platform.ts";
-import { libsqlSpaceDatabase } from "./database.ts";
+import { createDatabase, dataDirectory, getAuthDatabaseUrl } from "./database.ts";
 import { createBunFetch } from "./fetch.ts";
 import { diskJobCacheStore } from "./jobCacheStore.ts";
 import { createBoaJobVm } from "./jobVm.ts";
@@ -20,6 +15,7 @@ import { createLocalBlobStore } from "./localBlobStore.ts";
 import { smtpMailer } from "./mailer.ts";
 import { getNativeEmbedding, getNativeImage } from "./native.ts";
 import { createS3BlobStore } from "./s3BlobStore.ts";
+import { createLibsqlSpaceDatabase } from "./spaceDatabase.ts";
 
 /** S3-compatible object storage when a bucket is set, and `data/uploads` otherwise. */
 function configuredBlobStore(): BlobStore {
@@ -61,8 +57,8 @@ export function createBunPlatform(): Platform {
 
   const platform: Platform = {
     // Through `createDatabase`, so an in-memory auth database is tracked like a space one.
-    globalDatabase: { open: () => createDatabase(platform, getAuthDatabaseUrl()) },
-    spaceDatabase: libsqlSpaceDatabase,
+    globalDatabase: { open: () => createDatabase(getAuthDatabaseUrl()) },
+    spaceDatabase: createLibsqlSpaceDatabase(() => platform),
     get blobStore() {
       blobStore ??= configuredBlobStore();
       return blobStore;

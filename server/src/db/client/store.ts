@@ -10,17 +10,14 @@
 import type { Platform } from "#platform/platform.ts";
 import { changeToEvents, type SpaceChange } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
-import { type Database, supportsTransactions } from "./connection.ts";
+import type { Database } from "./connection.ts";
 import { openSpaceDbForStore } from "./db.ts";
-
-/** A connection, or the transaction-scoped view of one. Both accept queries. */
-export type SpaceDb = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export interface SpaceStore {
   /** The platform the store was opened through, for whatever else the space needs. */
   readonly platform: Platform;
   readonly spaceId: string;
-  readonly db: SpaceDb;
+  readonly db: Database;
   /**
    * Run `fn` against a transaction-scoped store. Sync events emitted inside are
    * held until the commit succeeds and dropped if it throws. Nesting reuses the
@@ -43,7 +40,7 @@ function publish(spaceId: string, changes: SpaceChange[]): void {
 function createStore(
   platform: Platform,
   spaceId: string,
-  db: SpaceDb,
+  db: Database,
   pending: SpaceChange[] | null,
 ): SpaceStore {
   const store: SpaceStore = {
@@ -60,15 +57,12 @@ function createStore(
     async tx(fn) {
       if (pending) return fn(store);
 
+      // Nothing is announced unless `fn` returns, however atomic the platform's
+      // transaction is.
       const buffered: SpaceChange[] = [];
-      // An in-memory database cannot open a transaction, so there the callback
-      // runs directly and the writes are not atomic. Event buffering is
-      // identical either way: nothing is announced unless `fn` returns.
-      const result = supportsTransactions(db)
-        ? await (db as Database).transaction((txDb) =>
-            fn(createStore(platform, spaceId, txDb, buffered)),
-          )
-        : await fn(createStore(platform, spaceId, db, buffered));
+      const result = await platform.spaceDatabase.transaction(db, (txDb) =>
+        fn(createStore(platform, spaceId, txDb, buffered)),
+      );
       publish(spaceId, buffered);
       return result;
     },

@@ -10,7 +10,7 @@
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { resolveLocalSpaceSlugCollision } from "#db/auth/spaceIndex.ts";
-import { closeDatabase, createDatabase } from "#db/client/connection.ts";
+import { closeDatabase, createDatabase } from "#platform/bun/database.ts";
 import { initSpaceDbSchema, prepareAuthDb } from "#db/client/init.ts";
 import { one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
@@ -21,7 +21,7 @@ import { platform } from "./helpers/platform.ts";
 let authDb: ReturnType<typeof createDatabase>;
 
 beforeAll(async () => {
-  authDb = createDatabase(platform, "file::memory:");
+  authDb = createDatabase("file::memory:");
   await prepareAuthDb(authDb);
 });
 
@@ -99,7 +99,7 @@ describe("active space slug uniqueness", () => {
   }
 
   it("refuses a second active space on the same slug", async () => {
-    const database = createDatabase(platform, "file::memory:");
+    const database = createDatabase("file::memory:");
     await prepareAuthDb(database);
 
     await database.insert(spaceIndex).values(activeSpaceRow(1, "engineering"));
@@ -109,10 +109,10 @@ describe("active space slug uniqueness", () => {
   });
 
   it("renames a discovered local space when its slug is already active", async () => {
-    const database = createDatabase(platform, "file::memory:");
-    const localSpace = createDatabase(platform, "file::memory:");
+    const database = createDatabase("file::memory:");
+    const localSpace = createDatabase("file::memory:");
     await prepareAuthDb(database);
-    await initSpaceDbSchema(localSpace, { local: false });
+    await initSpaceDbSchema(platform, localSpace, { local: false });
 
     const now = new Date();
     await database.insert(spaceIndex).values([
@@ -138,7 +138,7 @@ describe("active space slug uniqueness", () => {
 
     expect(resolved.slug).toBe("demo-3");
     expect(stored?.slug).toBe("demo-3");
-    closeDatabase(platform, database);
-    closeDatabase(platform, localSpace);
+    closeDatabase(database);
+    closeDatabase(localSpace);
   });
 });

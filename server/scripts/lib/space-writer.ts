@@ -16,12 +16,6 @@
 import { Database as SqliteDatabase } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { sql } from "drizzle-orm";
-import {
-  closeDatabase,
-  createDatabase,
-  getAuthDatabaseUrl,
-  getDatabaseFilePath,
-} from "#db/client/connection.ts";
 import { initSpaceDbSchema } from "#db/client/init.ts";
 import { createId } from "#db/ids.ts";
 import {
@@ -33,6 +27,12 @@ import {
   property,
   spaceMetadata,
 } from "#db/schema/space.ts";
+import {
+  closeDatabase,
+  createDatabase,
+  getAuthDatabaseUrl,
+  getDatabaseFilePath,
+} from "#platform/bun/database.ts";
 import type { Platform } from "#platform/platform.ts";
 import { buildDocumentSearchText } from "#search/embedding.ts";
 import { htmlToPlainText } from "#utils/html.ts";
@@ -393,8 +393,8 @@ export async function writeSpace<T extends SourcePage>(
   report: Report,
 ): Promise<WriteResult> {
   const now = new Date();
-  const db = createDatabase(platform, `file:${options.out}`);
-  await initSpaceDbSchema(db, { local: true });
+  const db = createDatabase(`file:${options.out}`);
+  await initSpaceDbSchema(platform, db, { local: true });
 
   await db.insert(spaceMetadata).values({
     id: plan.spaceId,
@@ -557,7 +557,7 @@ export async function writeSpace<T extends SourcePage>(
   // server re-enables WAL when it opens the database.
   await db.run(sql.raw("PRAGMA wal_checkpoint(TRUNCATE)"));
   await db.run(sql.raw("PRAGMA journal_mode = DELETE"));
-  closeDatabase(platform, db);
+  closeDatabase(db);
 
   // Counted rather than subtracted from `replaced`: a section standing in for a
   // page the export never carried is in that set too, and no document row was

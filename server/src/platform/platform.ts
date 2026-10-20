@@ -4,7 +4,8 @@
  */
 
 import type { ApiRoute } from "#api/routes.ts";
-import type { Database, DatabaseCredentials } from "#db/client/connection.ts";
+import type { SpaceIndexRecord } from "#db/auth/spaceIndex.ts";
+import type { Database } from "#db/client/connection.ts";
 import type { PlatformState } from "#db/client/db.ts";
 import type { BlobStore } from "#files/storage.ts";
 import type { Capabilities } from "#jobs/runtime/capabilities.ts";
@@ -16,20 +17,30 @@ export interface GlobalDatabase {
   open(): Database;
 }
 
-/**
- * Connections to space databases, by the driver URL a `space_index` location
- * resolves to. The file operations only ever see locations that name a file.
- */
+/** A space's database as just opened, with what the cache needs to know about it. */
+export interface OpenedSpaceDatabase {
+  database: Database;
+  /** What keeping it open costs: a file descriptor, a network client, or the data itself. */
+  kind: "file" | "remote" | "memory";
+  /** Where the data lives; a database migrated at one location needs no check there again. */
+  location: string;
+}
+
+/** Each space's own database, addressed by space ID; where it is stored is the platform's business. */
 export interface SpaceDatabase {
-  open(url: string, credentials: DatabaseCredentials): Database;
+  /** Bring the space index in line with what storage holds, once before any space opens. */
+  reconcile(): Promise<void>;
+  /** Claim storage for a new space and record the claim in the index. */
+  allocate(spaceId: string): Promise<SpaceIndexRecord>;
+  /** `create` admits a space whose storage does not exist yet. */
+  open(spaceId: string, options: { create: boolean }): Promise<OpenedSpaceDatabase>;
   close(database: Database): void;
-  exists(filePath: string): boolean;
-  /** The database files in `directory`, which is created when missing. */
-  listFiles(directory: string): string[];
-  /** Move a database file and drop its journal; false when there was no file. */
-  archive(filePath: string, archivePath: string): boolean;
-  /** Delete a database file and its journal. */
-  remove(filePath: string): void;
+  /** Run `fn` as one transaction, as atomic as this storage allows. */
+  transaction<T>(database: Database, fn: (tx: Database) => Promise<T>): Promise<T>;
+  /** Take a deleted space's data out of reach until it is purged; false when there was none. */
+  archive(spaceId: string): Promise<boolean>;
+  /** Reclaim whatever a deleted space's database still occupies, index record included. */
+  purge(spaceId: string): Promise<void>;
 }
 
 /** Storage for job cache entries, held under a budget by evicting the least recently read. */

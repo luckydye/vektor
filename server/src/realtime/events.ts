@@ -25,50 +25,34 @@ export interface RealtimeEventEnvelope {
   epoch: string;
 }
 
-/** An envelope before the change log gives it a position. */
-type UnnumberedEnvelope = Omit<RealtimeEventEnvelope, "seq" | "epoch">;
-
 const listeners = new Set<(event: RealtimeEventEnvelope) => void>();
+/**
+ * Coalesced and flushed per space, so a flush never carries another space's
+ * events: a process may host several spaces that must not share I/O.
+ */
 const pendingEvents = new Map<string, Map<RealtimeTopic, RealtimeTopicEvent>>();
-let debounceTimer: NodeJS.Timeout | null = null;
+const debounceTimers = new Map<string, NodeJS.Timeout>();
 const DEBOUNCE_DELAY = 100;
 
-function drainPendingEvents(): UnnumberedEnvelope[] {
-  if (pendingEvents.size === 0) {
-    return [];
-  }
+function flushSyncEvents(spaceId: string) {
+  debounceTimers.delete(spaceId);
+  const topicEvents = pendingEvents.get(spaceId);
+  if (!topicEvents) return;
+  pendingEvents.delete(spaceId);
 
-  const timestamp = new Date().toISOString();
-  const events = [...pendingEvents.entries()].map(([spaceId, topicEvents]) => ({
+  const events = [...topicEvents.values()];
+  // Numbered here so every route reaching `sendSyncEvent` is recorded without
+  // having to know about the log.
+  const envelope: RealtimeEventEnvelope = {
     spaceId,
     topics: [...topicEvents.keys()],
-    events: [...topicEvents.values()],
-    timestamp,
-  }));
-
-  pendingEvents.clear();
-  return events;
-}
-
-export function publishSyncEvents(events: UnnumberedEnvelope[]) {
-  for (const event of events) {
-    // Numbered here so every route reaching `sendSyncEvent` is recorded without
-    // having to know about the log.
-    const envelope: RealtimeEventEnvelope = {
-      ...event,
-      seq: appendSyncEnvelope(event.spaceId, event.events),
-      epoch: syncEpoch,
-    };
-    for (const listener of listeners) {
-      listener(envelope);
-    }
-  }
-}
-
-function flushSyncEvents() {
-  const events = drainPendingEvents();
-  if (events.length > 0) {
-    publishSyncEvents(events);
+    events,
+    timestamp: new Date().toISOString(),
+    seq: appendSyncEnvelope(spaceId, events),
+    epoch: syncEpoch,
+  };
+  for (const listener of listeners) {
+    listener(envelope);
   }
 }
 
@@ -99,12 +83,9 @@ export function sendSyncEvent(spaceId: string, ...events: RealtimeEventInput[]) 
   if (authorizationChanged) publishAuthorizationChange({ spaceId });
   pendingEvents.set(spaceId, pendingTopicEvents);
 
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
-  }
-
-  debounceTimer = setTimeout(() => {
-    flushSyncEvents();
-    debounceTimer = null;
-  }, DEBOUNCE_DELAY);
+  clearTimeout(debounceTimers.get(spaceId));
+  debounceTimers.set(
+    spaceId,
+    setTimeout(() => flushSyncEvents(spaceId), DEBOUNCE_DELAY),
+  );
 }

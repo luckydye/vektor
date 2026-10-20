@@ -8,6 +8,7 @@ import { eq, isNull, sql } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
+import type { Database } from "./connection.ts";
 import type { Migration } from "./migrator.ts";
 import { exec, one } from "./query.ts";
 import {
@@ -15,15 +16,14 @@ import {
   generateCreateTableSQL,
   renameColumnIfNeeded,
 } from "./schemaUtils.ts";
-import type { SpaceDb } from "./store.ts";
 
-export async function createTables(db: SpaceDb, tables: SQLiteTable[]): Promise<void> {
+export async function createTables(db: Database, tables: SQLiteTable[]): Promise<void> {
   for (const table of tables) {
     await exec(db, sql.raw(generateCreateTableSQL(table)));
   }
 }
 
-async function run(db: SpaceDb, statements: string[]): Promise<void> {
+async function run(db: Database, statements: string[]): Promise<void> {
   for (const statement of statements) {
     await exec(db, sql.raw(statement));
   }
@@ -33,7 +33,7 @@ async function run(db: SpaceDb, statements: string[]): Promise<void> {
  * Derive `last_message_role` for sessions stored before the column existed. A
  * row with an empty or unreadable history keeps its null, which reads as no role.
  */
-async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
+async function backfillAIChatSessionRoles(db: Database): Promise<void> {
   const rows = await db
     .select({
       id: spaceSchema.aiChatSession.id,
@@ -63,7 +63,7 @@ async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
  * Every schema change made before databases were versioned. Idempotent, unlike
  * the migrations after it: a database predating the stamp replays it once.
  */
-async function baseline(db: SpaceDb): Promise<void> {
+async function baseline(db: Database): Promise<void> {
   await createTables(db, [
     spaceSchema.spaceMetadata,
     spaceSchema.document,
@@ -138,7 +138,7 @@ async function baseline(db: SpaceDb): Promise<void> {
  * backfill is skipped once the counter has moved, in case the step is ever
  * replayed against a database whose rows are already live.
  */
-async function documentChangeSeq(db: SpaceDb): Promise<void> {
+async function documentChangeSeq(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
   await addColumnIfMissing(db, spaceSchema.document.changeSeq);
   await exec(
@@ -166,7 +166,7 @@ async function documentChangeSeq(db: SpaceDb): Promise<void> {
  * `generateUniqueSlug` looks up one candidate slug at a time; without an
  * index each lookup is a full scan of every document in the space.
  */
-async function documentSlugIndex(db: SpaceDb): Promise<void> {
+async function documentSlugIndex(db: Database): Promise<void> {
   await exec(
     db,
     sql.raw("CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)"),
@@ -177,14 +177,14 @@ async function documentSlugIndex(db: SpaceDb): Promise<void> {
  * Extension job runs are ephemeral — only full workflow runs are logged — so
  * the table and its history go away.
  */
-async function dropJobRuns(db: SpaceDb): Promise<void> {
+async function dropJobRuns(db: Database): Promise<void> {
   await run(db, [
     "DROP INDEX IF EXISTS job_run_queued_at_idx",
     "DROP TABLE IF EXISTS job_run",
   ]);
 }
 
-async function aiWeeklyUsage(db: SpaceDb): Promise<void> {
+async function aiWeeklyUsage(db: Database): Promise<void> {
   await createTables(db, [spaceSchema.aiWeeklyUsage]);
   await run(db, [
     "DELETE FROM preference WHERE key IN ('ai:provider', 'ai:model', 'ai:baseUrl')",
@@ -192,7 +192,7 @@ async function aiWeeklyUsage(db: SpaceDb): Promise<void> {
   ]);
 }
 
-async function timeSeries(db: SpaceDb): Promise<void> {
+async function timeSeries(db: Database): Promise<void> {
   await createTables(db, [spaceSchema.series, spaceSchema.seriesDirtyWindow]);
   await run(db, [
     "CREATE UNIQUE INDEX IF NOT EXISTS series_name_unique ON series (name)",
@@ -201,27 +201,27 @@ async function timeSeries(db: SpaceDb): Promise<void> {
 }
 
 /** Lets the space-wide key listing read each key's type from the index alone. */
-async function propertyKeyTypeIndex(db: SpaceDb): Promise<void> {
+async function propertyKeyTypeIndex(db: Database): Promise<void> {
   await exec(
     db,
     sql.raw("CREATE INDEX IF NOT EXISTS property_key_type_idx ON property (key, type)"),
   );
 }
 
-async function oauthIntegrationClientAndModel(db: SpaceDb): Promise<void> {
+async function oauthIntegrationClientAndModel(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.oauthIntegration.clientId);
   await addColumnIfMissing(db, spaceSchema.oauthIntegration.aiModel);
 }
 
-async function auditLogAttribution(db: SpaceDb): Promise<void> {
+async function auditLogAttribution(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.auditLog.attribution);
 }
 
-async function aiChatSessionSource(db: SpaceDb): Promise<void> {
+async function aiChatSessionSource(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
 }
 
-async function oneShotWorkflowSchedules(db: SpaceDb): Promise<void> {
+async function oneShotWorkflowSchedules(db: Database): Promise<void> {
   // Rebuild to allow NULL cron_expression for one-shot schedules.
   const create = generateCreateTableSQL(spaceSchema.workflowSchedule).replace(
     "CREATE TABLE IF NOT EXISTS workflow_schedule",
@@ -243,7 +243,7 @@ async function oneShotWorkflowSchedules(db: SpaceDb): Promise<void> {
 }
 
 /** @deprecated Only migrates databases opened by the branch's former migration 11. */
-async function migrateDeprecatedPropertyTriggers(db: SpaceDb): Promise<void> {
+async function migrateDeprecatedPropertyTriggers(db: Database): Promise<void> {
   const oldTable = await one<{ name: string }>(db, sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'property_trigger'
   `);

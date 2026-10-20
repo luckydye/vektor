@@ -1,21 +1,23 @@
 import {
-  attachExistingSpaceDatabase,
-  enableSpaceDatabase,
   getAssignedSpaceDatabase,
   listActiveSpaceIds,
   listSpaceDatabaseRecords,
-  registerAvailableSpaceDatabase,
-  setSpaceDatabaseAuthToken,
-  spaceDatabaseCredentials,
 } from "#db/auth/spaceIndex.ts";
+import { initializeDatabases } from "#db/client/db.ts";
+import { initSpaceDbSchema } from "#db/client/init.ts";
+import { purgeExpiredSpaces, purgeSpace } from "#db/space/spaces.ts";
 import {
   closeDatabase,
   createDatabase,
   resolveSpaceLocation,
-} from "#db/client/connection.ts";
-import { initializeDatabases } from "#db/client/db.ts";
-import { initSpaceDbSchema } from "#db/client/init.ts";
-import { purgeExpiredSpaces, purgeSpace } from "#db/space/spaces.ts";
+} from "#platform/bun/database.ts";
+import {
+  attachExistingSpaceDatabase,
+  enableSpaceDatabase,
+  registerAvailableSpaceDatabase,
+  setSpaceDatabaseAuthToken,
+  spaceDatabaseCredentials,
+} from "#platform/bun/spaceDatabase.ts";
 import type { Platform } from "#platform/platform.ts";
 
 export async function commandSpaceRegister(
@@ -112,13 +114,11 @@ export async function commandSpaceMigrate(
       continue;
     }
 
-    const spaceDb = createDatabase(
-      platform,
-      location.url,
-      spaceDatabaseCredentials(record),
-    );
+    const spaceDb = createDatabase(location.url, spaceDatabaseCredentials(record));
     try {
-      const applied = await initSpaceDbSchema(spaceDb, { local: location.localFile });
+      const applied = await initSpaceDbSchema(platform, spaceDb, {
+        local: location.localFile,
+      });
       const detail = applied.length ? applied.join(",") : "-";
       process.stdout.write(
         `${id}\t${applied.length ? "migrated" : "current"}\t${detail}\n`,
@@ -127,7 +127,7 @@ export async function commandSpaceMigrate(
       failed++;
       process.stdout.write(`${id}\terror\t${(error as Error).message}\n`);
     } finally {
-      closeDatabase(platform, spaceDb);
+      closeDatabase(spaceDb);
     }
   }
 

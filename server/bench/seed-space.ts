@@ -43,7 +43,7 @@
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
-import type { SpaceDb } from "#db/client/store.ts";
+import type { Database } from "#db/client/connection.ts";
 import type { Platform } from "#platform/platform.ts";
 
 // ---------------------------------------------------------------------------
@@ -301,7 +301,7 @@ function revisionCount(rng: () => number, maxRevisions: number): number {
 const ROWS_PER_INSERT = 400;
 
 async function insertChunked<Table extends SQLiteTable>(
-  db: SpaceDb,
+  db: Database,
   table: Table,
   rows: Table["$inferInsert"][],
   rowsPerInsert = ROWS_PER_INSERT,

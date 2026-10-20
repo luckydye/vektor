@@ -11,7 +11,7 @@ import { createClient } from "@libsql/client";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { describe, expect, it } from "vitest";
-import { resolveSpaceLocation } from "#db/client/connection.ts";
+import { resolveSpaceLocation } from "#platform/bun/database.ts";
 import { prepareAuthDb } from "#db/client/init.ts";
 import { many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";

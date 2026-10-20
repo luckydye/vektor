@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import * as authSchema from "#db/schema/auth.ts";
+import type { Platform } from "#platform/platform.ts";
 import type { Database } from "./connection.ts";
 import { spaceMigrations } from "./migrations.ts";
 import { runMigrations } from "./migrator.ts";
@@ -61,6 +62,7 @@ export async function applySpaceDbPragmas(spaceDb: Database) {
  * already knows this database is migrated can skip with `migrations: false`.
  */
 export async function initSpaceDbSchema(
+  platform: Platform,
   spaceDb: Database,
   options: { local: boolean; migrations?: boolean },
 ): Promise<number[]> {
@@ -70,5 +72,5 @@ export async function initSpaceDbSchema(
   if (options.local) await applySpaceDbPragmas(spaceDb);
 
   if (options.migrations === false) return [];
-  return runMigrations(spaceDb, spaceMigrations);
+  return runMigrations(platform, spaceDb, spaceMigrations);
 }

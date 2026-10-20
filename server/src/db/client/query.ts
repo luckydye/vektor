@@ -9,7 +9,6 @@
 
 import type { SQL } from "drizzle-orm";
 import type { Database } from "./connection.ts";
-import type { SpaceDb } from "./store.ts";
 
 /**
  * The first row a query matched, or undefined if it matched none.
@@ -29,9 +28,9 @@ export async function one<T>(query: PromiseLike<T[]>): Promise<T | undefined> {
  * system table, say — and mirrors `exec`: a statement needs a handle to run on.
  */
 export async function many<T>(query: PromiseLike<T[]>): Promise<T[]>;
-export async function many<T>(db: Database | SpaceDb, statement: SQL): Promise<T[]>;
+export async function many<T>(db: Database, statement: SQL): Promise<T[]>;
 export async function many<T>(
-  source: PromiseLike<T[]> | Database | SpaceDb,
+  source: PromiseLike<T[]> | Database,
   statement?: SQL,
 ): Promise<T[]> {
   if (statement) return (source as Database).all<T>(statement);
@@ -39,6 +38,6 @@ export async function many<T>(
 }
 
 /** Run a statement for its effect, discarding whatever the driver reports. */
-export async function exec(db: Database | SpaceDb, statement: SQL): Promise<void> {
+export async function exec(db: Database, statement: SQL): Promise<void> {
   await db.run(statement);
 }

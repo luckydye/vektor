@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import { countSpaceMembers, resolveGranteeName } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
@@ -9,12 +8,10 @@ import {
   hasAnyResourceScopedAccess,
   listUserPermissions,
 } from "#acl/store.ts";
-import { config, isInMemoryDb } from "#config";
+import { config } from "#config";
 import {
-  allocateSpaceDatabase,
   deletionTime,
   disableSpaceDatabase,
-  forgetSpaceDatabase,
   getAssignedSpaceDatabase,
   getIndexedSpace,
   getIndexedSpaceBySlug,
@@ -22,12 +19,9 @@ import {
   listDeletedSpaceDatabases,
   listIndexedSpaces,
   markSpaceDeleted,
-  recycleSpaceDatabase,
   updateIndexedSpaceMetadata,
   upsertSpaceIndex,
-  wipeSpaceDatabase,
 } from "#db/auth/spaceIndex.ts";
-import { dataDirectory, resolveSpaceLocation } from "#db/client/connection.ts";
 import {
   closeSpaceDb,
   createAllocatedSpaceDb,
@@ -45,17 +39,6 @@ import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
 /** Default retention for a deleted space, in days. */
 const DEFAULT_SPACE_RETENTION_DAYS = 30;
-
-/**
- * Where a deleted local space database waits out its retention window.
- *
- * Outside `data/spaces`, because that directory is the local index:
- * `reconcileLocalSpaceIndex` indexes every database file it finds there, so a
- * deleted one left in place comes back as an active space on the next start.
- */
-function archivedSpaceDatabasePath(spaceId: string): string {
-  return join(dataDirectory(), "deleted", "spaces", `${spaceId}.db`);
-}
 
 /** How long deleted data is kept, `0` when a delete should purge at once. */
 function retentionMs(): number {
@@ -142,7 +125,7 @@ export async function createSpace(
 
   slug = await resolveSpaceSlug(platform, slug);
 
-  const allocation = await allocateSpaceDatabase(platform, id);
+  const allocation = await platform.spaceDatabase.allocate(id);
   let store: SpaceStore;
   const defaultPreferences = {
     brandColor: "#1e293b",
@@ -572,15 +555,7 @@ export async function deleteSpace(
   if (!databaseRecord) return false;
 
   closeSpaceDb(platform, id);
-
-  let databaseExisted = true;
-  const spacePath = resolveSpaceLocation(databaseRecord.location).filePath;
-  if (!isInMemoryDb() && spacePath) {
-    databaseExisted = platform.spaceDatabase.archive(
-      spacePath,
-      archivedSpaceDatabasePath(id),
-    );
-  }
+  const databaseExisted = await platform.spaceDatabase.archive(id);
 
   await markSpaceDeleted(platform, id);
   if (options.purge || retentionMs() === 0) {
@@ -619,23 +594,8 @@ export async function purgeSpace(platform: Platform, spaceId: string): Promise<v
   // repositories and extension bundles under its own id.
   await platform.blobStore.deleteAll(spaceId);
 
-  platform.spaceDatabase.remove(archivedSpaceDatabasePath(spaceId));
-
+  await platform.spaceDatabase.purge(spaceId);
   if (!record) return;
-
-  const location = resolveSpaceLocation(record.location);
-  if (location.filePath) {
-    // A local database is its file: the archive above was it, and the record
-    // has nothing left to point at.
-    platform.spaceDatabase.remove(location.filePath);
-    await forgetSpaceDatabase(platform, record.id);
-  } else if (location.url.startsWith("file::memory:")) {
-    // The connection was the database, and closing it dropped it.
-    await forgetSpaceDatabase(platform, record.id);
-  } else {
-    await wipeSpaceDatabase(platform, record);
-    await recycleSpaceDatabase(platform, record.id);
-  }
 
   appLogger.info("Purged a deleted space", { spaceId, record: record.id });
 }

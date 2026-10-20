@@ -4,9 +4,9 @@
  */
 
 import { sql } from "drizzle-orm";
-import { type Database, supportsTransactions } from "./connection.ts";
+import type { Platform } from "#platform/platform.ts";
+import type { Database } from "./connection.ts";
 import { exec, many, one } from "./query.ts";
-import type { SpaceDb } from "./store.ts";
 
 export type Migration = {
   /** Permanent and monotonic: never reused, never reordered. */
@@ -16,7 +16,7 @@ export type Migration = {
    * Takes the transaction-scoped handle where the driver has one, so a failure
    * rolls the whole step back rather than leaving half of it applied.
    */
-  up: (db: SpaceDb) => Promise<void>;
+  up: (db: Database) => Promise<void>;
 };
 
 const MIGRATION_TABLE = "schema_migration";
@@ -189,23 +189,19 @@ async function withMigrationLock<T>(db: Database, work: () => Promise<T>): Promi
   }
 }
 
-/** Apply one migration and stamp it, as one unit where the driver has them. */
-async function applyMigration(db: Database, migration: Migration): Promise<void> {
-  const stamp = (target: SpaceDb) =>
+/** Apply one migration and stamp it, as one unit where the platform has them. */
+async function applyMigration(
+  platform: Platform,
+  db: Database,
+  migration: Migration,
+): Promise<void> {
+  const stamp = (target: Database) =>
     exec(
       target,
       sql`INSERT OR REPLACE INTO schema_migration (id, name, applied_at) VALUES (${migration.id}, ${migration.name}, ${Date.now()})`,
     );
 
-  // An in-memory database cannot open a transaction — dev and test only, where
-  // an interrupted migration is a database nobody keeps.
-  if (!supportsTransactions(db)) {
-    await migration.up(db);
-    await stamp(db);
-    return;
-  }
-
-  await db.transaction(async (tx) => {
+  await platform.spaceDatabase.transaction(db, async (tx) => {
     await migration.up(tx);
     await stamp(tx);
   });
@@ -220,6 +216,7 @@ async function applyMigration(db: Database, migration: Migration): Promise<void>
  * at the single version read.
  */
 export async function runMigrations(
+  platform: Platform,
   db: Database,
   migrations: Migration[],
 ): Promise<number[]> {
@@ -233,7 +230,7 @@ export async function runMigrations(
     // all of the pending set while this caller was waiting.
     const applied: number[] = [];
     for (const migration of pendingSince(migrations, (await appliedVersion(db)) ?? 0)) {
-      await applyMigration(db, migration);
+      await applyMigration(platform, db, migration);
       applied.push(migration.id);
     }
     return applied;

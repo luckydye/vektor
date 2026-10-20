@@ -11,10 +11,9 @@ import { createIdpGroupSync } from "#acl/idpSync.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import { createAuth } from "#auth";
 import { config } from "#config";
-import { createDatabase } from "#db/client/connection.ts";
+import { createDatabase } from "#platform/bun/database.ts";
 import { prepareAuthDb } from "#db/client/init.ts";
 import { user as userTable } from "#db/schema/auth.ts";
-import { platform } from "./helpers/platform.ts";
 
 const PROVIDER_ID = "test-idp";
 const SITE_URL = "http://localhost:8080";
@@ -118,7 +117,7 @@ beforeAll(async () => {
 
   // Its own in-memory auth database: this spec writes user rows and must not
   // race the shared data/auth.db the rest of the server suite uses.
-  authDb = createDatabase(platform, "file::memory:");
+  authDb = createDatabase("file::memory:");
   await prepareAuthDb(authDb);
 
   auth = createAuth(testConfig(), authDb);

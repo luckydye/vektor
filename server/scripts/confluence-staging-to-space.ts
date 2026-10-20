@@ -34,11 +34,6 @@ import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlibConstants } from "node:zlib";
-import {
-  closeDatabase,
-  createDatabase,
-  getLocalSpaceDatabaseUrl,
-} from "#db/client/connection.ts";
 import { initSpaceDbSchema } from "#db/client/init.ts";
 import { createId } from "#db/ids.ts";
 import {
@@ -53,6 +48,11 @@ import {
 } from "#db/schema/space.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml } from "#documents/schema/render.ts";
+import {
+  closeDatabase,
+  createDatabase,
+  getLocalSpaceDatabaseUrl,
+} from "#platform/bun/database.ts";
 import { createBunPlatform } from "#platform/bun/index.ts";
 import { buildDocumentSearchText } from "#search/embedding.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
@@ -305,7 +305,7 @@ console.log(
 // Space database
 // ---------------------------------------------------------------------------
 
-const db = createDatabase(platform, getLocalSpaceDatabaseUrl(space.id));
+const db = createDatabase(getLocalSpaceDatabaseUrl(space.id));
 let created = 0;
 let revisionCount = 0;
 let rawBytes = 0;
@@ -313,7 +313,7 @@ let packedBytes = 0;
 const documentIds = new Set(docs.map((doc) => doc.id));
 
 try {
-  await initSpaceDbSchema(db, { local: true });
+  await initSpaceDbSchema(platform, db, { local: true });
 
   await db.insert(spaceMetadata).values({
     id: space.id,
@@ -450,7 +450,7 @@ try {
   }
   console.log(`acl        ${aclRows.length}`);
 } finally {
-  closeDatabase(platform, db);
+  closeDatabase(db);
   staging.close();
 }
 
