@@ -28,6 +28,12 @@ export default defineConfig({
     checkOrigin: false,
   },
 
+  // The node adapter's `/_image` endpoint walks `import.meta.url` up to a `server`
+  // folder; inside the compiled binary there is none, so it spins forever.
+  image: {
+    endpoint: { entrypoint: "astro/assets/endpoint/generic" },
+  },
+
   vite: {
     plugins: [
       //
