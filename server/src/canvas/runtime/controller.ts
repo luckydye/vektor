@@ -38,6 +38,13 @@ import {
   resolvePass,
   withScissor,
 } from "#canvas/render/webgl.ts";
+import {
+  buildAccessibilityTree,
+  type CanvasAccessibleElement,
+  type CanvasAccessibleNode,
+  flattenAccessibilityTree,
+  navigateAccessibilityTree,
+} from "#canvas/runtime/accessibility.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
 import type {
   CanvasClientPoint,
@@ -449,6 +456,8 @@ export function createCanvasController(
     isCameraMoving: false,
     canUndo: false,
     canRedo: false,
+    // The tree item keyboard focus rests on: the one Tab reaches.
+    accessibleFocusId: null as string | null,
   };
 
   /** Ask for a frame. Batched onto a microtask by the host. */
@@ -1236,8 +1245,7 @@ export function createCanvasController(
     return Math.max(0, rect?.right ?? 0);
   }
 
-  function moveToShape(shape: CanvasShape) {
-    const bounds = shapeAabb(shape);
+  function moveToBounds(bounds: Rect) {
     const inset = reservedSidebarWidth();
     const scale = transform().scale;
     state.camera = {
@@ -1371,7 +1379,7 @@ export function createCanvasController(
     const shape = shapeId ? shapesById().get(shapeId) : null;
     if (!article || !shape) return;
 
-    moveToShape(shape);
+    moveToBounds(shapeAabb(shape));
     foundShape = { id: shape.id, at: performance.now() };
     scheduleInkRender();
 
@@ -2192,6 +2200,7 @@ export function createCanvasController(
     session.finish?.(dom.activeEditorElement);
     state.activeEditSession = null;
     dom.activeEditorElement = null;
+    returnAccessibleFocus(session.shapeId);
   }
 
   // Insertion/engine services the tool extensions (draw/shape/create) drive.
@@ -3150,7 +3159,7 @@ export function createCanvasController(
     renderScene();
   }
 
-  /** Text the browser's find-in-page and screen readers see for painted shapes. */
+  /** Text the browser's find-in-page sees for painted shapes. */
   function findableShapes() {
     return canvasShapes().map((shape) => {
       const data = shape.data;
@@ -3158,7 +3167,7 @@ export function createCanvasController(
         .filter((value): value is string => typeof value === "string" && value !== "")
         .join(" ");
       const bounds = shapeBounds(shape);
-      // Laid over the painted shape, so assistive tech outlines the right spot.
+      // Laid over the painted shape, so a match reveals the right spot.
       const style = {
         left: `${bounds.x}px`,
         top: `${bounds.y}px`,
@@ -3166,8 +3175,144 @@ export function createCanvasController(
         height: `${bounds.height}px`,
         transform: `rotate(${bounds.rotation}deg)`,
       };
-      return { id: shape.id, label: `${shape.type}: ${text}`, text, style };
+      return { id: shape.id, text, style };
     });
+  }
+
+  // --- accessibility tree ---------------------------------------------------
+  // Painted elements have no DOM, so the template gives the scene canvas a tree
+  // of plain items as fallback content. Rebuilt only when the elements change.
+
+  let accessibility: { key: readonly unknown[]; tree: CanvasAccessibleNode[] } | null =
+    null;
+
+  function accessibilityTree(): CanvasAccessibleNode[] {
+    const key = [state.shapes, state.strokes];
+    if (accessibility?.key.every((value, index) => value === key[index])) {
+      return accessibility.tree;
+    }
+    const shapes = state.shapes.map((shape): CanvasAccessibleElement => {
+      const data = shape.data;
+      const text = [data.title, data.text, data.alt, data.src]
+        .filter((value): value is string => typeof value === "string" && value !== "")
+        .join(" ");
+      const name = t(shape.type[0].toUpperCase() + shape.type.slice(1));
+      const container = extensionManager.get(shape.type).behavior.container;
+      return {
+        id: shape.id,
+        label: text ? `${name}: ${text}` : name,
+        locked: shape.locked === true,
+        bounds: shapeAabb(shape),
+        contains: container ? (bounds) => container.containsBounds(shape, bounds) : null,
+      };
+    });
+    const strokes = state.strokes.flatMap((stroke): CanvasAccessibleElement[] => {
+      const bounds = strokeBounds(stroke);
+      if (!bounds) return [];
+      const label = t(stroke.kind === "shape" ? "Shape" : "Drawing");
+      return [
+        { id: stroke.id, label, locked: stroke.locked === true, bounds, contains: null },
+      ];
+    });
+    accessibility = { key, tree: buildAccessibilityTree([...shapes, ...strokes]) };
+    return accessibility.tree;
+  }
+
+  const accessibleIds = () =>
+    flattenAccessibilityTree(accessibilityTree()).map((node) => node.id);
+
+  /** The one item in the tab order: the focused one, else the selection, else the first. */
+  function accessibleTabStop(): string | null {
+    const ids = accessibleIds();
+    const focused = state.accessibleFocusId;
+    if (focused && ids.includes(focused)) return focused;
+    return ids.find((id) => state.selectedIds.has(id)) ?? ids[0] ?? null;
+  }
+
+  // Set when the keyboard moved focus; DOM focus follows after the next render.
+  let pullAccessibleFocus = false;
+
+  function focusAccessibleElement(id: string, extendSelection: boolean) {
+    state.accessibleFocusId = id;
+    pullAccessibleFocus = true;
+    if (!isElementLocked(id)) {
+      setSelection(new Set(extendSelection ? [...state.selectedIds, id] : [id]));
+    } else if (!extendSelection) {
+      clearSelection();
+    }
+    const bounds = elementHandle(id)?.bounds;
+    if (!bounds) throw new Error(`Canvas element ${id} has no bounds`);
+    const visible = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE);
+    if (!rectContains(visible, bounds)) moveToBounds(bounds);
+  }
+
+  // An edit ending inside the focused element hands focus back to its item.
+  function returnAccessibleFocus(id: string) {
+    if (state.accessibleFocusId === id) pullAccessibleFocus = true;
+  }
+
+  function focusPulledAccessibleElement() {
+    const id = state.accessibleFocusId;
+    if (!pullAccessibleFocus || !id) return;
+    pullAccessibleFocus = false;
+    // Never steal focus from something outside the canvas.
+    const active = document.activeElement;
+    if (active !== document.body && !dom.viewport?.contains(active)) return;
+    const item = dom.scene?.querySelector<HTMLElement>(
+      `[data-element-id="${CSS.escape(id)}"]`,
+    );
+    if (!item) throw new Error(`Canvas element ${id} has no tree item`);
+    item.focus({ preventScroll: true });
+  }
+
+  /** Opens an element's editor, as a press or a double-click on its title would. */
+  function editElement(id: string) {
+    const shape = shapesById().get(id);
+    if (!shape || shape.locked || !host.canEdit) return;
+    const extension = extensionManager.get(shape.type);
+    const session = extension.render.editor?.(shape, null);
+    if (session) beginEdit(session);
+    else extension.events?.editChrome?.(shape, extHost);
+  }
+
+  function handleAccessibilityFocus(event: FocusEvent) {
+    const id = (event.target as HTMLElement).closest<HTMLElement>("[data-element-id]")
+      ?.dataset.elementId;
+    if (id) state.accessibleFocusId = id;
+  }
+
+  // Arrows on the canvas itself, after a click, step into the tree at the selection.
+  function handleViewportKey(event: KeyboardEvent) {
+    if (event.target !== dom.viewport || !event.key.startsWith("Arrow")) return;
+    const id = accessibleTabStop();
+    if (!id) return;
+    event.preventDefault();
+    focusAccessibleElement(id, false);
+  }
+
+  function handleAccessibilityKey(event: KeyboardEvent) {
+    const id = (event.target as HTMLElement).closest<HTMLElement>("[data-element-id]")
+      ?.dataset.elementId;
+    if (!id || event.metaKey || event.ctrlKey || event.altKey) return;
+
+    if (event.key === "Enter") {
+      editElement(id);
+    } else if (event.key === " ") {
+      toggleSelection(id);
+    } else if (event.key === "Delete" || event.key === "Backspace") {
+      // Focus moves on to whatever takes the deleted item's place.
+      const index = accessibleIds().indexOf(id);
+      deleteSelection();
+      const remaining = accessibleIds();
+      const next = remaining[Math.min(index, remaining.length - 1)];
+      state.accessibleFocusId = next ?? null;
+      pullAccessibleFocus = next !== undefined;
+    } else {
+      const next = navigateAccessibilityTree(accessibilityTree(), id, event.key);
+      if (!next) return;
+      focusAccessibleElement(next, event.shiftKey);
+    }
+    event.preventDefault();
   }
 
   // --- edit modes ---------------------------------------------------------
@@ -3327,6 +3472,7 @@ export function createCanvasController(
     if (!edit) return;
     state.textEdit = null;
     if (commit) edit.commit(edit.value);
+    returnAccessibleFocus(edit.shapeId);
     renderScene();
   }
 
@@ -4212,6 +4358,7 @@ export function createCanvasController(
    */
   function runPostRenderReactions(): void {
     watchPost("transform", transform(), () => dom.canvasToolbar?.reposition());
+    focusPulledAccessibleElement();
 
     watchPost(
       "viewport",
@@ -4519,6 +4666,8 @@ export function createCanvasController(
     // per-shape queries
     articleStyle,
     findableShapes,
+    accessibilityTree,
+    accessibleTabStop,
     elementTagForShape,
     elementChromePosition,
     transformControlPositions,
@@ -4591,6 +4740,9 @@ export function createCanvasController(
     handleDragOver,
     handleDrop,
     handleBrowserFindMatch,
+    handleAccessibilityFocus,
+    handleAccessibilityKey,
+    handleViewportKey,
   };
 
   // Page-level values live outside this host's revision counter, so the host

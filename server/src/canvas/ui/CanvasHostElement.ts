@@ -24,6 +24,7 @@ import { html as staticHtml, unsafeStatic } from "lit-html/static.js";
 import type { CanvasCollaborationFactory } from "#canvas/document/collaboration.ts";
 import type { DocumentPreviewSource } from "#canvas/extensions/documentLink.ts";
 import type { CanvasUploader } from "#canvas/extensions/media.ts";
+import type { CanvasAccessibleNode } from "#canvas/runtime/accessibility.ts";
 import { HostElement } from "#canvas/runtime/elementBase.ts";
 import type {
   CanvasElementExtension,
@@ -783,6 +784,40 @@ function contextMenu(view: CanvasView) {
   `;
 }
 
+/**
+ * The painted elements as an ARIA tree, rendered as the scene canvas's fallback
+ * content: never drawn, but exposed to assistive tech and focusable.
+ */
+function accessibilityTree(view: CanvasView) {
+  const tabStop = view.accessibleTabStop();
+  const item = (node: CanvasAccessibleNode): TemplateResult => {
+    return html`<li
+      role="treeitem"
+      tabindex=${node.id === tabStop ? 0 : -1}
+      aria-label=${node.label}
+      aria-selected=${view.state.selectedIds.has(node.id)}
+      aria-expanded=${ifDefined(node.children.length > 0 ? "true" : undefined)}
+      aria-disabled=${ifDefined(node.locked ? "true" : undefined)}
+      data-element-id=${node.id}
+    >
+      ${
+        node.children.length > 0
+          ? html`<ul role="group">${repeat(node.children, (child) => child.id, item)}</ul>`
+          : nothing
+      }
+    </li>`;
+  };
+  return html`<ul
+    role="tree"
+    aria-label=${t("Canvas")}
+    aria-multiselectable="true"
+    @focusin=${(event: FocusEvent) => view.handleAccessibilityFocus(event)}
+    @keydown=${(event: KeyboardEvent) => view.handleAccessibilityKey(event)}
+  >
+    ${repeat(view.accessibilityTree(), (node) => node.id, item)}
+  </ul>`;
+}
+
 export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateResult {
   const transform = view.transform();
   const lockPosition = view.hoveredLockedElementPosition();
@@ -799,6 +834,7 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
         })}
         @contextmenu=${(event: MouseEvent) => view.handleContextMenu(event)}
         @pointerdown=${(event: PointerEvent) => view.handleViewportPointerDown(event)}
+        @keydown=${(event: KeyboardEvent) => view.handleViewportKey(event)}
         @pointercancel=${(event: PointerEvent) => view.handlePointerCancel(event)}
         @pointerleave=${() => view.handlePointerLeave()}
         @dblclick=${(event: MouseEvent) => view.handleViewportDoubleClick(event)}
@@ -810,7 +846,16 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
           ${ref((element) => {
             dom.scene = (element as HTMLCanvasElement) ?? null;
           })}
-        ></canvas>
+        >
+          ${guard(
+            [
+              view.accessibilityTree(),
+              view.state.selectedIds,
+              view.state.accessibleFocusId,
+            ],
+            () => accessibilityTree(view),
+          )}
+        </canvas>
         <canvas
           class="canvas-overlay"
           ${ref((element) => {
@@ -830,7 +875,7 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
             (shape) => shape.id,
             (shape) => shapeArticle(view, shape),
           )}
-          <ul class="canvas-text-mirror" aria-label=${t("Canvas")}>
+          <ul class="canvas-text-mirror" aria-hidden="true">
             ${
               // World-space, under the transformed world: it only changes with
               // the shapes (and which one is edited as live DOM), not the camera,
@@ -839,11 +884,9 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
                 repeat(
                   view.findableShapes(),
                   (item) => item.id,
-                  (item) => html`<li
-                    aria-label=${item.label}
-                    data-shape-id=${item.id}
-                    style=${styleMap(item.style)}
-                  >
+                  (
+                    item,
+                  ) => html`<li data-shape-id=${item.id} style=${styleMap(item.style)}>
                     <div hidden="until-found" data-find-shape-id=${item.id}>${item.text}</div>
                   </li>`,
                 ),

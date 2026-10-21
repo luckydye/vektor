@@ -979,9 +979,9 @@ svg.canvas-selection-icon {
   color: #111827;
 }
 
-/* Painted shapes' text, for find-in-page and screen readers only: each item
-   sits over its shape but is clipped away. A match the browser reveals moves
-   the camera to its shape instead. */
+/* Painted shapes' text, for find-in-page only: each item sits over its shape
+   but is clipped away. A match the browser reveals moves the camera to its
+   shape instead. */
 .canvas-text-mirror {
   position: absolute;
   top: 0;

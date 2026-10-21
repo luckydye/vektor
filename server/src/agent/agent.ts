@@ -51,9 +51,9 @@ function getWorker(platform: Platform): Worker {
   const host = createAgentHost(platform);
   // In the compiled binary every module's import.meta.url is the binary's own
   // (`$bunfs/root/vektor`), and build.ts embeds the worker entrypoint under its
-  // path from the build root.
+  // path from the build root, with its extension rewritten to `.js`.
   const workerUrl = import.meta.url.includes("$bunfs")
-    ? new URL("./src/agent/worker.ts", import.meta.url)
+    ? new URL("./src/agent/worker.js", import.meta.url)
     : new URL("./worker.ts", import.meta.url);
   const spawned = new Worker(workerUrl, { type: "module" });
   spawned.addEventListener("message", (event: MessageEvent<AgentWorkerResponse>) =>

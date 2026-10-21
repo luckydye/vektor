@@ -749,5 +749,9 @@
   "From date": "日付から",
   "Offset in minutes": "オフセット（分）",
   "No workflows in this space": "このスペースにワークフローはありません",
-  "No date properties on this document": "このドキュメントに日付プロパティはありません"
+  "No date properties on this document": "このドキュメントに日付プロパティはありません",
+  "Drawing": "描画",
+  "File": "ファイル",
+  "Audio": "音声",
+  "Model": "3Dモデル"
 }

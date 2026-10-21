@@ -749,5 +749,9 @@
   "From date": "Ab Datum",
   "Offset in minutes": "Versatz in Minuten",
   "No workflows in this space": "Keine Workflows in diesem Space",
-  "No date properties on this document": "Keine Datumseigenschaften in diesem Dokument"
+  "No date properties on this document": "Keine Datumseigenschaften in diesem Dokument",
+  "Drawing": "Zeichnung",
+  "File": "Datei",
+  "Audio": "Audio",
+  "Model": "3D-Modell"
 }

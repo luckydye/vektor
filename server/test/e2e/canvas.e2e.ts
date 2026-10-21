@@ -27,11 +27,8 @@ const CANVAS = process.env.VEKTOR_E2E_CANVAS ?? "untitled-2";
 const SECOND_CANVAS = process.env.VEKTOR_E2E_CANVAS_SECOND ?? "other-canvas-fixture";
 const CATEGORY = "Guidelines";
 
-/**
- * Every shape: painted ones through the clipped text mirror laid over them, and
- * live DOM ones (a PDF, the shape being edited) through their article.
- */
-const SHAPES = "vektor-canvas .canvas-text-mirror > li, vektor-canvas .canvas-shape";
+/** Every element, through the accessibility tree inside the scene canvas. */
+const SHAPES = 'vektor-canvas [role="treeitem"]';
 const NOTE = '[data-shape-id="shape-fixture-note"]';
 const OTHER_NOTE = '[data-shape-id="shape-fixture-other-note"]';
 
@@ -115,9 +112,9 @@ test("upgrades the host element and paints the document", async ({ page }) => {
     "the host element must register, or the canvas is an empty box",
   ).toBe(true);
 
-  // All three fixture shapes (note, text, section) are painted with WebGL, so
-  // each is present as a mirror item rather than a DOM body.
-  await expect(page.locator(SHAPES)).toHaveCount(3);
+  // The three fixture shapes (note, text, section) and the stroke are painted
+  // with WebGL, so each is present as an accessibility tree item.
+  await expect(page.locator(SHAPES)).toHaveCount(4);
   await expect(page.locator(NOTE)).toHaveCount(1);
   expect(await paintedPixels(page, "canvas-scene")).toBeGreaterThan(0);
   expect(errors).toEqual([]);
@@ -143,6 +140,41 @@ test("selects on click and clears on a click into empty space", async ({ page })
       message: "clicking empty canvas must clear the selection",
     })
     .toBe(0);
+});
+
+test("walks the elements with the keyboard, selection following focus", async ({
+  page,
+}) => {
+  await openCanvas(page);
+  // Canvas fallback content is in Chrome's accessibility tree, but Playwright's
+  // role engine counts anything without a layout box as hidden.
+  const hidden = { includeHidden: true };
+  const tree = page.getByRole("tree", { name: "Canvas", ...hidden });
+  const note = tree.getByRole("treeitem", { name: "Note: A seeded note.", ...hidden });
+  const text = tree.getByRole("treeitem", { name: "Text: Seeded text", ...hidden });
+
+  // The seeded text sits to the right of the note, the section below both.
+  await note.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(text, "arrow right moves to the nearest element that way").toBeFocused();
+  await expect(text).toHaveAttribute("aria-selected", "true");
+  await expect
+    .poll(() => paintedPixels(page, "canvas-overlay"), {
+      message: "the focused element is selected, so it is painted",
+    })
+    .toBeGreaterThan(0);
+
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(note).toBeFocused();
+  await expect(tree.getByRole("treeitem", { selected: true, ...hidden })).toHaveCount(2);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    tree.getByRole("treeitem", { name: /^Section/, ...hidden }),
+  ).toBeFocused();
+
+  await page.keyboard.press("End");
+  await expect(tree.getByRole("treeitem", { name: "Drawing", ...hidden })).toBeFocused();
 });
 
 test("draws the marquee while dragging across empty space", async ({ page }) => {
