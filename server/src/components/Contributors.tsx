@@ -142,14 +142,14 @@ export function Contributors(props: Props) {
                   title={collaborator.user.name}
                 >
                   <span
-                    class="block rounded-full transition-shadow duration-200"
+                    class="block rounded-full outline-2 -outline-offset-2 transition-shadow duration-200 [&>*]:scale-[0.86] [&>*]:transition-transform"
                     classList={{
-                      "ring-2 ring-green-500 ring-offset-1 ring-offset-background":
-                        collaborator.isPresent,
+                      "outline-green-500": collaborator.isPresent,
+                      "outline-neutral-300": !collaborator.isPresent,
                     }}
                   >
                     <vektor-avatar
-                      size="small"
+                      size="36"
                       attr:user-id={collaborator.key}
                       prop:user={collaborator.user}
                     />
@@ -162,8 +162,8 @@ export function Contributors(props: Props) {
             <div
               class="relative flex items-center justify-center rounded-full border-2 border-background bg-primary-100 font-medium text-label text-primary-400"
               style={{
-                width: "32px",
-                height: "32px",
+                width: "36px",
+                height: "36px",
                 "margin-left": "-8px",
                 "z-index": "0",
               }}

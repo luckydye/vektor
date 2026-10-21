@@ -13,6 +13,8 @@ interface Props {
   initialTab?: string;
   panels: Record<string, () => JSX.Element>;
   class?: string;
+  /** Background of the sticky tab bar; must match the surface the layout sits on. */
+  stickyClass?: string;
   onTabChange?: (id: string) => void;
 }
 
@@ -71,7 +73,7 @@ export function SettingsLayout(props: Props) {
         when={ready()}
         fallback={
           <>
-            <div class="pt-3">
+            <div class="mt-3">
               <div class="flex h-9 w-full items-center gap-1 overflow-hidden rounded-lg border border-neutral-100 px-1">
                 <For each={props.tabs}>
                   {(tab) => (
@@ -95,7 +97,7 @@ export function SettingsLayout(props: Props) {
       >
         {/* Scroll anchoring would follow the old panel's content and undo scrollToPanelStart. */}
         <a-tabs ref={tabsEl} class="[overflow-anchor:none]" on:tab-selected={onTabSelected}>
-          <div ref={stickyEl} class="sticky top-0 z-10 bg-neutral-10 pt-3">
+          <div ref={stickyEl} class={`sticky top-0 z-10 pt-3 ${props.stickyClass ?? "bg-neutral-10"}`}>
             <TabsList class="w-full">
               <For each={props.tabs}>
                 {(tab, index) => (

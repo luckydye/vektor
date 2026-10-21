@@ -421,6 +421,7 @@ export function UserPreferencesPanel(props: Props) {
           if (id === "tokens") void accessTokens.load();
         }}
         class="min-h-[200px] w-[620px] max-w-[calc(100vw-2rem)]"
+        stickyClass="bg-background"
         panels={{
           general: () => (
             <>

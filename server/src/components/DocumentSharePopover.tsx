@@ -609,7 +609,7 @@ export function DocumentSharePopover(props: Props) {
   return (
     <a-popover-trigger
       ref={(el: HTMLElement) => props.ref?.(el as SharePopoverTrigger)}
-      class="group relative z-10 -ml-4 flex-none"
+      class="group relative z-10 -ml-5 flex-none"
       on:show={() => setOpen(true)}
       on:hide={() => setOpen(false)}
     >
@@ -618,7 +618,7 @@ export function DocumentSharePopover(props: Props) {
         slot="trigger"
         aria-label={t("Share")}
         title={t("Share")}
-        class="button-outline size-9 justify-center rounded-full! border-dashed px-0! text-neutral-600! aria-expanded:bg-neutral-50 max-md:hidden"
+        class="button-outline size-9 min-h-0 justify-center rounded-full! border-2! border-dashed border-neutral-200! px-0! text-neutral-600! aria-expanded:bg-neutral-50 max-md:hidden"
       >
         <Icon name="add" />
       </button>
