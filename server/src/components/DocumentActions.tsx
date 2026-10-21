@@ -350,6 +350,12 @@ export function DocumentActions(props: Props) {
           const source = await api.document.get(spaceId, currentDocumentId);
           const duplicate = await api.documents.post(spaceId, {
             content: source.content,
+            properties: Object.fromEntries(
+              Object.entries(source.properties).map(([key, value]) => [
+                key,
+                { value, type: source.propertyTypes?.[key] ?? null },
+              ]),
+            ),
             ...(source.type ? { type: source.type } : {}),
             ...(source.readonly ? { readonly: true } : {}),
           });
