@@ -79,6 +79,7 @@
   --color-primary-900: #33153e;
   --color-primary-950: #100613;
   --color-neutral-10: #ffffff;
+  --color-neutral-15: #fbfbfb;
   --color-neutral-25: #f5f5f5;
   --color-neutral-50: #f9f9f9;
   --color-neutral-100: #e8e8e8;
@@ -122,7 +123,8 @@
   --theme-dark-primary-800: #af9ec8;
   --theme-dark-primary-900: #c2b6d4;
   --theme-dark-primary-950: #d5cee1;
-  --theme-dark-neutral-10: #151515;
+  --theme-dark-neutral-10: #121212;
+  --theme-dark-neutral-15: #1d1d1d;
   --theme-dark-neutral-25: #202020;
   --theme-dark-neutral-50: #212121;
   --theme-dark-neutral-100: #222222;
@@ -135,7 +137,7 @@
   --theme-dark-neutral-800: #f3f3f3;
   --theme-dark-neutral-900: #fbfbfb;
   --theme-dark-neutral-950: #ffffff;
-  --theme-dark-background: #151515;
+  --theme-dark-background: #191919;
   --theme-dark-forground: #ffffff;
   --theme-dark-gray-10: #1b1b1b;
   --theme-dark-gray-50: #272727;
@@ -167,6 +169,7 @@
     --color-primary-900: var(--theme-dark-primary-900);
     --color-primary-950: var(--theme-dark-primary-950);
     --color-neutral-10: var(--theme-dark-neutral-10);
+    --color-neutral-15: var(--theme-dark-neutral-15);
     --color-neutral-50: var(--theme-dark-neutral-50);
     --color-neutral-25: var(--theme-dark-neutral-25);
     --color-neutral-100: var(--theme-dark-neutral-100);
@@ -214,6 +217,7 @@
   --color-primary-900: var(--theme-dark-primary-900);
   --color-primary-950: var(--theme-dark-primary-950);
   --color-neutral-10: var(--theme-dark-neutral-10);
+  --color-neutral-15: var(--theme-dark-neutral-15);
   --color-neutral-50: var(--theme-dark-neutral-50);
   --color-neutral-25: var(--theme-dark-neutral-25);
   --color-neutral-100: var(--theme-dark-neutral-100);
@@ -659,10 +663,25 @@
   inset: 0;
   pointer-events: none;
   opacity: 0.05;
+  mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.2' intercept='-0.1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 
   @media (prefers-color-scheme: dark) {
     opacity: 0.08;
+  }
+}
+
+/* Translucent, blurred panel shared by menus and popovers. */
+@utility surface-menu {
+  border: 1px solid var(--color-neutral-100);
+  background: rgb(255 255 255 / 0.6);
+  box-shadow: 0 4px 16px rgb(15 23 42 / 0.08), 0 1px 3px rgb(15 23 42 / 0.08);
+  backdrop-filter: blur(24px);
+
+  @media (prefers-color-scheme: dark) {
+    border-color: rgb(255 255 255 / 0.1);
+    background: rgb(39 39 42 / 0.6);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.3);
   }
 }
 

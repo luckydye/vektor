@@ -159,7 +159,7 @@ export function generatePaletteCss(baseColor: string) {
     ].join("\n  "),
     dark: [
       declare("primary", generateDarkColorPalette(baseColor)),
-      declare("neutral", generateNeutralPalette(baseColor, NEUTRAL_DARK_STOPS)),
+      declare("neutral", generateNeutralPalette(baseColor, NEUTRAL_DARK_STOPS, NEUTRAL_DARK_TINT)),
     ].join("\n  "),
   };
 }
@@ -204,6 +204,7 @@ export function brandTextColor(color: string | undefined): string | undefined {
  */
 const NEUTRAL_LIGHT_STOPS: Array<[string, number]> = [
   ["10", 100],
+  ["15", 98.4],
   ["25", 96],
   ["50", 97.6],
   ["100", 91],
@@ -219,7 +220,8 @@ const NEUTRAL_LIGHT_STOPS: Array<[string, number]> = [
 ];
 
 const NEUTRAL_DARK_STOPS: Array<[string, number]> = [
-  ["10", 8],
+  ["10", 7],
+  ["15", 11.4],
   ["25", 12.5],
   ["50", 13],
   ["100", 13.5],
@@ -241,6 +243,9 @@ const NEUTRAL_DARK_STOPS: Array<[string, number]> = [
  */
 const NEUTRAL_TINT = 0.14;
 
+/** Dark surfaces read as muddy when tinted as strongly as light ones. */
+const NEUTRAL_DARK_TINT = 0.08;
+
 /**
  * The greys of a space, tinted with the *complement* of its brand hue. A neutral
  * carrying the brand's own hue reads as a washed-out primary and muddies the
@@ -253,6 +258,7 @@ const NEUTRAL_TINT = 0.14;
 function generateNeutralPalette(
   baseColor: string,
   stops: Array<[string, number]>,
+  tint = NEUTRAL_TINT,
 ): Record<string, string> {
   const [hue, saturation] = hexToHsl(baseColor);
   const complement = (hue + 180) % 360;
@@ -264,7 +270,7 @@ function generateNeutralPalette(
     const taper = 1 - Math.abs(lightness - 50) / 50;
     palette[key] = hslToHex(
       complement,
-      Math.min(saturation, NEUTRAL_TINT) * (0.45 + 0.55 * taper),
+      Math.min(saturation, tint) * (0.45 + 0.55 * taper),
       lightness / 100,
     );
   }

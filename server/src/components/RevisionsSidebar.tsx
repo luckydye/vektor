@@ -363,14 +363,14 @@ export function RevisionsSidebar(props: Props) {
 
                             <a-popover class="group popover-sheet" placements="bottom-end">
                               <div class="revision-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                                <div class="revision-context-panel min-w-[224px] origin-top-right scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100">
+                                <div class="revision-context-panel min-w-[224px] origin-top-right scale-95 rounded-xl surface-menu space-y-5xs p-5xs transition-transform duration-150 group-[&[enabled]]:scale-100">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       exitPopover(e);
                                       void viewRevision(primary.revisionId);
                                     }}
-                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
                                   >
                                     <Icon class="h-4 w-4 flex-none" name="eye" />
                                     View Revision
@@ -381,7 +381,7 @@ export function RevisionsSidebar(props: Props) {
                                       exitPopover(e);
                                       void showRevisionDiff(primary.revisionId);
                                     }}
-                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
                                   >
                                     <Icon class="h-4 w-4 flex-none" name="paste" />
                                     Show Diff
@@ -392,7 +392,7 @@ export function RevisionsSidebar(props: Props) {
                                       exitPopover(e);
                                       copyRevisionLink(primary.revisionId);
                                     }}
-                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
                                   >
                                     <Icon class="h-4 w-4 flex-none" name="copy" />
                                     Copy Link
@@ -404,7 +404,7 @@ export function RevisionsSidebar(props: Props) {
                                         exitPopover(e);
                                         void publishRevisionAction(primary.revisionId);
                                       }}
-                                      class={`flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50`}
+                                      class={`flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16 disabled:cursor-not-allowed disabled:opacity-50`}
                                       disabled={isPublishing()}
                                     >
                                       <Icon class="h-4 w-4 flex-none" name="publish" />

@@ -25,7 +25,7 @@ interface Props {
 // A plain element, not an <a-list-item>: a-list only collects list items, so
 // keyboard navigation skips the separator.
 export function ContextMenuSeparator() {
-  return <div class="my-5xs border-neutral-100 border-t" />;
+  return <div class="my-5xs border-neutral-100 border-t dark:border-white/10" />;
 }
 
 function menuOrigin(placements = "bottom-end"): string {
@@ -80,7 +80,7 @@ export function ContextMenu(props: Props) {
       >
         <div class="w-max p-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
           <div
-            class={`min-w-[100px] ${menuOrigin(props.placements)} scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-all duration-150 group-[&[enabled]]:scale-100`}
+            class={`min-w-[100px] ${menuOrigin(props.placements)} scale-95 rounded-xl surface-menu p-5xs transition-all duration-150 group-[&[enabled]]:scale-100`}
           >
             <a-list
               on:change={handleSubmit}

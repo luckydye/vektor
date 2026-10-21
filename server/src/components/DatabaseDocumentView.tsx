@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { api, type ExtensionRoute } from "#api/client.ts";
-import { ContextMenu } from "#components/ContextMenu.tsx";
+import { ContextMenu, ContextMenuSeparator } from "#components/ContextMenu.tsx";
 import { ContextMenuItem } from "#components/ContextMenuItem.tsx";
 import { DatabaseView } from "#components/DatabaseView.tsx";
 import { Dialog } from "#components/Dialog.tsx";
@@ -274,72 +274,67 @@ export function DatabaseDocumentView(props: Props) {
                         >
                           {extensionViewTitle(view)}
                         </TabButton>
-
-                        {/* Only the selected view gets one; hidden ones still took
-                            their width and left uneven gaps between the tabs. */}
-                        <Show when={selectedViewId() === viewId}>
-                          <ContextMenu
-                            ariaLabel={`Manage ${extensionViewTitle(view)} view`}
-                            trigger={
-                              <button
-                                type="button"
-                                slot="trigger"
-                                aria-label={`Manage ${extensionViewTitle(view)} view`}
-                                class="flex h-7 w-6 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700"
-                              >
-                                <Icon class="h-4 w-4" name="context-menu-more" />
-                              </button>
-                            }
-                          >
-                            <ContextMenuItem
-                              onClick={(event) => void removeExtensionView(view, event)}
-                            >
-                              <Icon
-                                class="h-4 w-4 flex-none text-red-600"
-                                name="delete-entry"
-                              />
-                              <span class="text-red-600">Remove view</span>
-                            </ContextMenuItem>
-                          </ContextMenu>
-                        </Show>
                       </span>
                     );
                   }}
                 </For>
               </div>
 
-              <Show when={availableExtensionViews().length > 0}>
+              <Show when={availableExtensionViews().length > 0 || selectedExtensionView()}>
                 <ContextMenu
-                  ariaLabel="Add database view"
+                  ariaLabel="Database views"
                   placements="bottom-start"
                   trigger={
                     <button
                       type="button"
                       slot="trigger"
-                      aria-label="Add view"
-                      title="Add view"
+                      aria-label="Manage views"
+                      title="Manage views"
                       class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-700"
                     >
-                      <Icon class="h-4 w-4" name="add" />
+                      <Icon class="h-4 w-4" name="context-menu-more" />
                     </button>
                   }
                 >
-                  <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
-                    Add view
-                  </div>
-                  <For each={availableExtensionViews()}>
+                  <Show when={availableExtensionViews().length > 0}>
+                    <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
+                      Add view
+                    </div>
+                    <For each={availableExtensionViews()}>
+                      {(view) => (
+                        <ContextMenuItem
+                          class="min-w-48"
+                          onClick={(event) => void addExtensionView(view, event)}
+                        >
+                          <Icon class="h-4 w-4 flex-none" name="grid-grid" />
+                          <span class="min-w-0 truncate text-left text-neutral-900">
+                            {extensionViewTitle(view)}
+                          </span>
+                        </ContextMenuItem>
+                      )}
+                    </For>
+                  </Show>
+                  <Show when={selectedExtensionView()}>
                     {(view) => (
-                      <ContextMenuItem
-                        class="min-w-48"
-                        onClick={(event) => void addExtensionView(view, event)}
-                      >
-                        <Icon class="h-4 w-4 flex-none" name="grid-grid" />
-                        <span class="min-w-0 truncate text-left text-neutral-900">
-                          {extensionViewTitle(view)}
-                        </span>
-                      </ContextMenuItem>
+                      <>
+                        <Show when={availableExtensionViews().length > 0}>
+                          <ContextMenuSeparator />
+                        </Show>
+                        <ContextMenuItem
+                          class="min-w-48"
+                          onClick={(event) => void removeExtensionView(view(), event)}
+                        >
+                          <Icon
+                            class="h-4 w-4 flex-none text-red-600"
+                            name="delete-entry"
+                          />
+                          <span class="text-red-600">
+                            Remove {extensionViewTitle(view())}
+                          </span>
+                        </ContextMenuItem>
+                      </>
                     )}
-                  </For>
+                  </Show>
                 </ContextMenu>
               </Show>
             </div>

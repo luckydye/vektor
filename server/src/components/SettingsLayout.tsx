@@ -95,7 +95,7 @@ export function SettingsLayout(props: Props) {
       >
         {/* Scroll anchoring would follow the old panel's content and undo scrollToPanelStart. */}
         <a-tabs ref={tabsEl} class="[overflow-anchor:none]" on:tab-selected={onTabSelected}>
-          <div ref={stickyEl} class="sticky top-0 z-10 bg-background pt-3">
+          <div ref={stickyEl} class="sticky top-0 z-10 bg-neutral-10 pt-3">
             <TabsList class="w-full">
               <For each={props.tabs}>
                 {(tab, index) => (

@@ -22,9 +22,12 @@ vektor-canvas {
   --canvas-text: var(--color-neutral-900);
   --canvas-muted: #6b7280;
   --canvas-strong: #374151;
-  --canvas-toolbar-bg: rgba(255, 255, 255, 0.94);
+  --canvas-toolbar-bg: rgba(255, 255, 255, 0.6);
+  --canvas-panel-bg: var(--color-background);
+  --canvas-panel-border: var(--color-neutral-100);
   --canvas-toolbar-border: var(--color-neutral-100);
-  --canvas-toolbar-shadow: rgba(15, 23, 42, 0.14);
+  --canvas-toolbar-shadow: rgba(15, 23, 42, 0.08);
+  --canvas-surface-shadow: 0 4px 16px var(--canvas-toolbar-shadow), 0 1px 3px var(--canvas-toolbar-shadow);
   --canvas-tool-text: #374151;
   --canvas-tool-hover-bg: #f3f4f6;
   --canvas-tool-active-bg: #dbeafe;
@@ -66,8 +69,10 @@ vektor-canvas {
   .canvas-root {
     --canvas-muted: #9ca3af;
     --canvas-strong: #e5e7eb;
-    --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
-    --canvas-toolbar-shadow: rgba(0, 0, 0, 0.38);
+    --canvas-toolbar-bg: rgba(39, 39, 42, 0.6);
+    --canvas-toolbar-border: rgba(255, 255, 255, 0.14);
+    --canvas-panel-border: var(--color-neutral-200);
+    --canvas-toolbar-shadow: rgba(0, 0, 0, 0.3);
     --canvas-tool-text: #d1d5db;
     --canvas-tool-hover-bg: rgba(255, 255, 255, 0.08);
     --canvas-tool-active-bg: rgba(37, 99, 235, 0.26);
@@ -113,7 +118,8 @@ vektor-canvas {
   border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 6px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--canvas-surface-shadow);
 }
 
 .canvas-properties-bar {
@@ -136,7 +142,8 @@ vektor-canvas {
   border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 6px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(4px);
+  box-shadow: var(--canvas-surface-shadow);
 }
 
 /* The panel and its tab strip; only they take pointer input, not the gap below. */
@@ -167,11 +174,12 @@ vektor-canvas {
   overscroll-behavior: contain;
   flex-direction: column;
   gap: 16px;
-  border: 1px solid var(--canvas-toolbar-border);
+  border: 1px solid var(--canvas-panel-border);
   border-radius: 12px;
-  background: var(--canvas-toolbar-bg);
+  background: var(--canvas-panel-bg);
   padding: 14px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(4px);
+  box-shadow: var(--canvas-surface-shadow);
 }
 
 .canvas-properties-sidebar > * {
@@ -188,10 +196,10 @@ vektor-canvas {
 }
 
 .canvas-properties-tab {
-  border: 1px solid var(--canvas-toolbar-border);
+  border: 1px solid var(--canvas-panel-border);
   border-left: 0;
   border-radius: 0 8px 8px 0;
-  background: var(--canvas-toolbar-bg);
+  background: var(--canvas-panel-bg);
   padding: 10px 5px;
   color: var(--canvas-muted);
   font-size: 12px;
@@ -202,7 +210,7 @@ vektor-canvas {
 }
 
 .canvas-properties-tabs:first-child .canvas-properties-tab {
-  border-left: 1px solid var(--canvas-toolbar-border);
+  border-left: 1px solid var(--canvas-panel-border);
   border-radius: 8px;
 }
 
@@ -211,8 +219,8 @@ vektor-canvas {
 }
 
 .canvas-properties-tab[aria-selected="true"] {
+  background: color-mix(in srgb, var(--canvas-panel-bg), var(--canvas-text) 8%);
   color: var(--canvas-text);
-  box-shadow: inset 2px 0 0 var(--canvas-tool-active-text);
 }
 
 .canvas-properties-sidebar-title {
@@ -357,11 +365,12 @@ vektor-canvas {
   flex-direction: column;
   gap: 2px;
   min-width: 150px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-neutral-100);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.6);
   padding: 6px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
 .canvas-shape-option {
@@ -400,8 +409,9 @@ vektor-canvas {
 
 @media (prefers-color-scheme: dark) {
   .canvas-shape-popover-panel {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(24, 24, 27, 0.94);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(39, 39, 42, 0.6);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.3);
   }
 
   .canvas-shape-option {
@@ -471,10 +481,10 @@ vektor-canvas {
   min-width: 96px;
   flex-direction: column;
   border: 1px solid var(--canvas-toolbar-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 4px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(4px);
   pointer-events: auto;
 }
 
@@ -500,10 +510,10 @@ vektor-canvas {
   align-items: center;
   gap: 2px;
   border: 1px solid var(--canvas-toolbar-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 4px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(4px);
   pointer-events: auto;
   will-change: transform;
   /* Offset slightly below and to the right of the long-press point. */
@@ -519,12 +529,14 @@ vektor-canvas {
   align-items: center;
   gap: 1px;
   border: 1px solid var(--canvas-toolbar-border);
-  border-radius: 20px;
+  border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 3px;
+  backdrop-filter: blur(4px);
   pointer-events: auto;
   /* Centered, and clear of the rotate handle above the selection. */
   translate: -50% calc(-100% - 36px);
+  box-shadow: var(--canvas-surface-shadow);
 }
 
 .canvas-selection-action {

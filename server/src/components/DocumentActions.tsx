@@ -565,7 +565,11 @@ export function DocumentActions(props: Props) {
                 {saveError()?.message ?? t("Publishing failed")}
               </p>
             </Show>
-            <Button disabled={publishDisabled()} onClick={(e) => void publishDocument(e)}>
+            <Button
+              class="h-9 rounded-lg!"
+              disabled={publishDisabled()}
+              onClick={(e) => void publishDocument(e)}
+            >
               <Icon name="publish" />
               <span>
                 {isSaving() ? t("Saving…") : isNewDocument() ? t("Create") : t("Publish")}
@@ -574,7 +578,7 @@ export function DocumentActions(props: Props) {
           </div>
 
           <Show when={showCancel()}>
-            <Button variant="outline" onClick={cancelEditing}>
+            <Button variant="outline" class="h-9 rounded-lg!" onClick={cancelEditing}>
               <Icon name="cancel" />
               <span>{t("Cancel")}</span>
             </Button>
@@ -594,7 +598,7 @@ export function DocumentActions(props: Props) {
         <ContextMenu
           ariaLabel={t("Document actions")}
           triggerVariant="outline"
-          triggerClass="h-9 w-9 justify-center rounded-lg! px-0"
+          triggerClass="h-9 w-9 justify-center rounded-lg! px-0 text-neutral-600!"
         >
           <Show when={showTableOfContents()}>
             <ContextMenuItem onClick={toggleTableOfContentsFromMenu}>

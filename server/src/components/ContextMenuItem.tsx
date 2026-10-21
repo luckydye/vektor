@@ -17,7 +17,7 @@ export function ContextMenuItem(props: Props) {
           event.stopPropagation();
           props.onClick(event);
         }}
-        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
+        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs hover:bg-black/6 active:bg-black/10 group-aria-selected:bg-black/6 dark:active:bg-white/16 dark:hover:bg-white/10 dark:group-aria-selected:bg-white/10"
       >
         {props.children}
       </button>

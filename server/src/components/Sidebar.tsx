@@ -197,7 +197,7 @@ export function Sidebar(props: Props) {
           "--mobile-sidebar-width": `${mobileDrawerWidth()}px`,
           translate: drawer.translate(),
           transition: drawer.transition(),
-          "--color-background": "var(--color-neutral-10)",
+          "--color-background": "var(--color-neutral-15)",
         }}
         class={twMerge(
           "@container sidebar flex p-1.5",
@@ -230,7 +230,7 @@ export function Sidebar(props: Props) {
         </button>
 
         <div class={twMerge(
-          "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-50",
+          "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-100 dark:border-neutral-200",
           (drawer.isDragging() || isMobileOpen()) && "shadow-2xl"
         )}>
           <Navigation />

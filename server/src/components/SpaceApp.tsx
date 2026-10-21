@@ -243,12 +243,12 @@ export function SpaceApp(props: Props) {
           background:
             drawerReveal.progress() === 0
               ? undefined
-              : `color-mix(in srgb, var(--color-background) ${100 - drawerReveal.progress() * 30}%, black)`,
+              : `color-mix(in srgb, var(--color-neutral-10) ${100 - drawerReveal.progress() * 30}%, black)`,
           transition: drawerReveal.isDragging() ? "none" : undefined,
         }}
       >
         <div
-          class="main-content relative h-full min-h-screen bg-background transition-[transform,filter] md:transition-none"
+          class="main-content relative h-full min-h-screen bg-neutral-10 transition-[transform,filter] md:transition-none"
           style={{
             transform:
               drawerReveal.progress() === 0

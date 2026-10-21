@@ -744,7 +744,7 @@ export function DocumentTree(props: Props) {
                 {(menu) => (
                   // biome-ignore lint/a11y/noStaticElementInteractions: suppressing the native context menu does not make the panel a control.
                   <div
-                    class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100 [.category-context-menu[data-placement^='left']_&]:origin-top-right [.category-context-menu[data-placement^='right']_&]:origin-top-left"
+                    class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-xl surface-menu space-y-5xs p-5xs transition-transform duration-150 group-[&[enabled]]:scale-100 [.category-context-menu[data-placement^='left']_&]:origin-top-right [.category-context-menu[data-placement^='right']_&]:origin-top-left"
                     onContextMenu={(e) => e.preventDefault()}
                   >
                     <div class="truncate px-3xs py-5xs text-neutral-500 text-size-extra-small">
@@ -758,13 +758,13 @@ export function DocumentTree(props: Props) {
                         closeContextMenu();
                         startEditing(category);
                       }}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
                     >
                       <Icon class="h-4 w-4 flex-none" name="edit-entry" />
                       <span>{t("Edit category")}</span>
                     </button>
 
-                    <div class="my-5xs h-px bg-neutral-100" />
+                    <div class="my-5xs h-px bg-neutral-100 dark:bg-white/10" />
 
                     <button
                       type="button"
@@ -772,7 +772,7 @@ export function DocumentTree(props: Props) {
                         closeContextMenu();
                         startCreating();
                       }}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
                     >
                       <Icon class="h-4 w-4 flex-none" name="add" />
                       <span>{t("New category")}</span>
@@ -783,13 +783,13 @@ export function DocumentTree(props: Props) {
                         closeContextMenu();
                         if (!isEditMode()) toggleEditMode();
                       }}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
                     >
                       <Icon class="h-4 w-4 flex-none" name="drag-dots" />
                       <span>{t("Rearrange categories")}</span>
                     </button>
 
-                    <div class="my-5xs h-px bg-neutral-100" />
+                    <div class="my-5xs h-px bg-neutral-100 dark:bg-white/10" />
 
                     <button
                       type="button"
@@ -799,7 +799,7 @@ export function DocumentTree(props: Props) {
                         requestDelete(category);
                       }}
                       disabled={deletingIds().has(menu().category.id)}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-red-600 text-size-normal transition-colors hover:bg-red-500 hover:text-white active:bg-red-500 disabled:opacity-50"
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-red-600 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16 disabled:opacity-50"
                     >
                       <Icon class="h-4 w-4 flex-none" name="delete-entry" />
                       <span>{t("Delete category")}</span>
