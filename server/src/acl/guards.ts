@@ -326,6 +326,26 @@ export async function authenticateJobTokenOrSpaceRole(
 }
 
 /**
+ * The user whose AI chat sessions the caller may read: chats belong to the
+ * user who started them, so a user-less job token reaches none.
+ */
+export async function requireChatSessionOwner(
+  platform: Platform,
+  credentials: CallerCredentials,
+  spaceId: string,
+): Promise<string> {
+  const auth = await authenticateJobTokenOrSpaceRole(
+    platform,
+    credentials,
+    spaceId,
+    Permission.VIEWER,
+  );
+  const userId = auth.type === "user" ? auth.user.id : auth.userId;
+  if (!userId) throw new PermissionDeniedError("AI chat sessions need a user");
+  return userId;
+}
+
+/**
  * The document-scoped sibling of {@link authenticateJobTokenOrSpaceRole},
  * extended with the unauthenticated case. For a resource belonging to a document
  * rather than to the space — an attachment above all.
