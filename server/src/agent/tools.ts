@@ -5,6 +5,7 @@
  * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
  */
 
+import type { StoredAIChatSession } from "#db/space/aiChatSessions.ts";
 import type { JobDefinition } from "#extensions/manifest.ts";
 import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 
@@ -536,6 +537,18 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
         "List the enabled extensions in the current space with the jobs each defines: id, name, description, inputs and outputs. " +
         'A workflow script calls a job as `await runJob("<extensionId>", "<jobId>", inputs)`; use only job ids listed here.',
       inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "read_chat",
+      description:
+        "Read the user and assistant messages of one of the user's AI chats, oldest first. Tool calls are left out.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          chatId: { type: "string", description: "Chat ID from a chat:<id> link" },
+        },
+        required: ["chatId"],
+      },
     },
     // The schedule routes need a signed-in user; a job token is rejected, so the
     // in-app agent never sees tools it cannot call.
@@ -1088,6 +1101,29 @@ export async function callTool(
           }),
         },
       );
+    }
+    case "read_chat": {
+      const chatId = expectString(args, "chatId");
+      const { session } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/ai-chat/sessions/${encodeURIComponent(chatId)}`,
+      )) as { session: StoredAIChatSession };
+      const messages = session.messages as Array<{
+        role: string;
+        content: string;
+        timestamp: number;
+      }>;
+      return {
+        id: session.id,
+        title: session.title,
+        messages: messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: m.role,
+            content: m.content,
+            at: new Date(m.timestamp).toISOString(),
+          })),
+      };
     }
     case "list_extensions": {
       const { extensions } = (await apiRequest(

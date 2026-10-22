@@ -1,4 +1,4 @@
-import { verifyAccess } from "#acl/guards.ts";
+import { requireChatSessionOwner, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   jsonResponse,
@@ -16,23 +16,20 @@ import type { Platform } from "#platform/platform.ts";
  * Read one AI chat session
  *
  * @tag AI
+ * @jobToken
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const sessionId = requireParam(context.var.params, "sessionId");
-
-    await verifyAccess(
+    const userId = await requireChatSessionOwner(
       context.var.platform,
+      context.var.credentials,
       spaceId,
-      { type: ResourceType.SPACE, id: spaceId },
-      user.id,
-      Permission.VIEWER,
     );
 
     const store = await openSpaceStore(context.var.platform, spaceId);
-    const session = await getAIChatSession(store, sessionId, user.id);
+    const session = await getAIChatSession(store, sessionId, userId);
     if (!session) {
       throw notFoundResponse("AI chat session");
     }
