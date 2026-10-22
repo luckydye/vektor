@@ -545,7 +545,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
       inputSchema: {
         type: "object",
         properties: {
-          chatId: { type: "string", description: "Chat ID from the user profile" },
+          chatId: { type: "string", description: "Chat ID from a chat:<id> link" },
         },
         required: ["chatId"],
       },
