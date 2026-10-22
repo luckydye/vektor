@@ -5,10 +5,7 @@
  * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
  */
 
-import type {
-  AIChatSessionSummary,
-  StoredAIChatSession,
-} from "#db/space/aiChatSessions.ts";
+import type { StoredAIChatSession } from "#db/space/aiChatSessions.ts";
 import type { JobDefinition } from "#extensions/manifest.ts";
 import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 
@@ -542,20 +539,13 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
       inputSchema: { type: "object", properties: {} },
     },
     {
-      name: "list_chats",
-      description:
-        "List the user's AI chats in the current space, most recently active first: id, title, source, updatedAt and whether a reply is still running. " +
-        "The chat you are in is listed too. Use read_chat to see what was said in one.",
-      inputSchema: { type: "object", properties: {} },
-    },
-    {
       name: "read_chat",
       description:
         "Read the user and assistant messages of one of the user's AI chats, oldest first. Tool calls are left out.",
       inputSchema: {
         type: "object",
         properties: {
-          chatId: { type: "string", description: "Chat ID from list_chats" },
+          chatId: { type: "string", description: "Chat ID from the user profile" },
         },
         required: ["chatId"],
       },
@@ -1111,21 +1101,6 @@ export async function callTool(
           }),
         },
       );
-    }
-    case "list_chats": {
-      const { sessions } = (await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/ai-chat/sessions`,
-      )) as { sessions: AIChatSessionSummary[] };
-      return {
-        chats: sessions.map((session) => ({
-          id: session.id,
-          title: session.title,
-          source: session.source,
-          updatedAt: new Date(session.updatedAt).toISOString(),
-          running: session.lastMessageRole === "user",
-        })),
-      };
     }
     case "read_chat": {
       const chatId = expectString(args, "chatId");

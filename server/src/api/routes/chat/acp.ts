@@ -739,7 +739,7 @@ function startChatTurn(
       scheduleProfileUpdate(platform, {
         spaceId: options.spaceId,
         userId: options.userId,
-        sessionMessages: updatedSession.messages as unknown[],
+        session: updatedSession,
       });
     }
   })()
