@@ -79,8 +79,7 @@ async function runProfileUpdate(
     `- Capture: what they're building, stack/tools, communication style, preferred answer format/length/tone\n` +
     `- Replace stale info with newer signals; drop anything no longer relevant\n` +
     `- Be specific — only include signals that concretely help personalize future responses\n` +
-    `- End with a "### Chats" section: one line per chat worth coming back to, as \`- <id>: <topic and outcome in a few words>\`. ` +
-    `Update this session's line, keep at most 8 lines, drop the least relevant\n` +
+    `- Cite the chat a fact came from inline, as a markdown link \`[few words on what was discussed](chat:<id>)\`; keep existing citations of facts you keep\n` +
     `- Return only the updated profile markdown, no commentary or wrapper text`;
 
   const { message } = await callModel({
