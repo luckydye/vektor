@@ -76,7 +76,7 @@ describe("parseWorkflowInputFields", () => {
       namesOf(`
         // const old = input.legacy;
         /* input.alsoGone */
-        const result = await runJob(platform, 'x', 'y', { file: "https://a.example", key: input.key });
+        const result = await runJob('x', 'y', { file: "https://a.example", key: input.key });
       `),
     ).toEqual([{ name: "key", required: true }]);
   });

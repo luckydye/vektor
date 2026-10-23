@@ -1,9 +1,9 @@
 import { fireEvent, getByRole, getByText } from "@testing-library/dom";
 import type { JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentTree } from "#components/DocumentTree.tsx";
 import { FileDrop } from "#components/FileDrop.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 const disposers: Array<() => void> = [];
 
@@ -16,7 +16,7 @@ afterEach(() => {
 function mount(ui: () => JSX.Element): HTMLElement {
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(ui, container);
+  const unmount = renderWithLocale(ui, container);
   disposers.push(() => {
     unmount();
     container.remove();

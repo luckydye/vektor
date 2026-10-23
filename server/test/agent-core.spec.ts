@@ -570,9 +570,9 @@ describe("agent model loop", () => {
                 documents: [
                   {
                     id: "doc-1",
-                    title: "Doc",
                     type: "document",
                     updatedAt: "2026-10-01T00:00:00.000Z",
+                    properties: { title: "Doc" },
                   },
                 ],
                 nextCursor: null,
@@ -720,7 +720,7 @@ describe("agent model loop", () => {
     });
   });
 
-  it("does not register removed vektor or ai shell commands", async () => {
+  it("does not register the removed ai shell command", async () => {
     const bash = createAgentShell({
       current: {
         apiUrl: "http://unused.invalid",
@@ -729,11 +729,7 @@ describe("agent model loop", () => {
       },
     }, platform.fetch);
 
-    const vektorResult = await bash.exec("vektor list");
-    const aiResult = await bash.exec("ai hello");
-
-    expect(vektorResult.exitCode).toBe(127);
-    expect(aiResult.exitCode).toBe(127);
+    expect((await bash.exec("ai hello")).exitCode).toBe(127);
   });
 
   it("keeps uploads available through the shell command", async () => {

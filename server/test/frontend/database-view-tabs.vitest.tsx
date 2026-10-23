@@ -1,10 +1,10 @@
 import { createSignal } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DatabaseDocumentView,
   type DatabaseExtensionView,
 } from "#components/DatabaseDocumentView.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The open tab is client-only state, so it has to survive a reload without the
@@ -45,8 +45,13 @@ let host: HTMLElement | undefined;
 
 function mount(views: () => DatabaseExtensionView[]) {
   host = document.createElement("div");
+  // The tabs portal into the page toolbar, which `DocumentPageView` provides in the app.
+  const toolbarSlot = document.createElement("div");
+  toolbarSlot.id = "document-toolbar-slot";
+  const app = document.createElement("div");
+  host.append(toolbarSlot, app);
   document.body.append(host);
-  dispose = render(
+  dispose = renderWithLocale(
     () => (
       <DatabaseDocumentView
         databaseDocumentId={DOCUMENT_ID}
@@ -55,7 +60,7 @@ function mount(views: () => DatabaseExtensionView[]) {
         viewConfig={JSON.stringify({ viewIds: [BOARD_VIEW_ID] })}
       />
     ),
-    host,
+    app,
   );
   return host;
 }

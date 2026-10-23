@@ -1,6 +1,6 @@
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataTable } from "#components/DataTable.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The Excel export chain, which nothing else covers.
@@ -27,7 +27,7 @@ function mount() {
   const container = document.createElement("div");
   document.body.append(container);
   open.push(
-    render(() => <DataTable data={ROWS} exportFileName="runs.xlsx" />, container),
+    renderWithLocale(() => <DataTable data={ROWS} exportFileName="runs.xlsx" />, container),
   );
   return container;
 }

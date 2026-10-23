@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, setFallbackQueryClient } from "#composeables/query.ts";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * What the search view says while it is working. The interesting case is the
@@ -86,7 +86,7 @@ function mount(): HTMLElement {
   // A fresh cache per spec: these share query keys, and a warm entry would
   // answer a search that this test wants to catch in flight.
   setFallbackQueryClient(new QueryClient());
-  disposers.push(render(() => <Search spaceId="space_1" />, container));
+  disposers.push(renderWithLocale(() => <Search spaceId="space_1" />, container));
   disposers.push(() => container.remove());
   return container;
 }

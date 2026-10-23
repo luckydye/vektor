@@ -266,7 +266,11 @@ beforeAll(async () => {
 
   const spaceResponse = await apiRequest("/api/v1/spaces", {
     method: "POST",
-    body: JSON.stringify({ name: "Realtime Test Space", slug: "realtime-test" }),
+    body: JSON.stringify({
+      name: "Realtime Test Space",
+      slug: "realtime-test",
+      preferences: { workflowCreationEnabled: "true" },
+    }),
   });
   expect(spaceResponse.status).toBe(201);
   testSpaceId = (await spaceResponse.json()).space.id;

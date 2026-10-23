@@ -63,7 +63,7 @@ const settle = async () => {
 describe("useDatabaseRows", () => {
   it("refetches when the database document changes", async () => {
     const [databaseId, setDatabaseId] = createSignal("db_1");
-    const database = inRoot(() => useDatabaseRows(databaseId));
+    const database = inRoot(() => useDatabaseRows(databaseId, () => null));
     await settle();
 
     expect(database.rows().map((row) => row.id)).toEqual(["row_a"]);
@@ -83,7 +83,7 @@ describe("useDatabaseRows", () => {
     const [databaseId, setDatabaseId] = createSignal("db_1");
     rowsByParent.db_3 = [{ id: "row_c", properties: { title: "Third", status: "open" } }];
 
-    const database = inRoot(() => useDatabaseRows(databaseId));
+    const database = inRoot(() => useDatabaseRows(databaseId, () => null));
     await settle();
     expect(database.derivedColumns()).toEqual([]);
 

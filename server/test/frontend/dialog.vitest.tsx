@@ -1,11 +1,11 @@
 import { getByRole, queryByRole, queryByText } from "@testing-library/dom";
 import { createComponent, createSignal, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContextMenu } from "#components/ContextMenu.tsx";
 import { Dialog } from "#components/Dialog.tsx";
 import { DialogFooter } from "#components/DialogFooter.tsx";
 import { SelectItem } from "#components/SelectItem.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 const disposers: Array<() => void> = [];
 
@@ -29,7 +29,7 @@ function mount(Component: unknown, props: Props = {}) {
   // `render`'s own disposer, not an outer `createRoot`: a `Portal` in the tree
   // attaches to `document.body`, and disposing an outer root leaves that
   // content behind for the next spec to find.
-  const unmount = render(
+  const unmount = renderWithLocale(
     () => createComponent(Component as (props: Props) => JSX.Element, props),
     container,
   );

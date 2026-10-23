@@ -34,9 +34,9 @@ const CHOKE_POINT = "src/db/client/query.ts";
 const FORBIDDEN = [
   { pattern: /\.get\(\)/g, use: "one()" },
   { pattern: /\.all\(\)/g, use: "many()" },
-  { pattern: /\.run\(/g, use: "exec()" },
   // The raw forms take an argument, so they are matched by the `sql` that can
-  // only be a statement — a bare `.get(` is `Map.prototype.get` more often.
+  // only be a statement — a bare `.get(` or `.run(` is a Map or AsyncLocalStorage more often.
+  { pattern: /\.run\(\s*(sql|\))/g, use: "exec()" },
   { pattern: /\.(get|all)\(\s*sql/g, use: "many(db, statement)" },
 ];
 

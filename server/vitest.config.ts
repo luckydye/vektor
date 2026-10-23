@@ -68,6 +68,10 @@ export default defineConfig({
         test: {
           name: "frontend",
           environment: "happy-dom",
+          // An iframe would otherwise fetch its src for real, past the `fetch` stub.
+          environmentOptions: {
+            happyDOM: { settings: { navigation: { disableChildFrameNavigation: true } } },
+          },
           // Order matters: env.ts installs the runtime env script and network
           // stubs that the element registrations in setup.ts depend on.
           setupFiles: ["./test/frontend/env.ts", "./test/frontend/setup.ts"],

@@ -1,8 +1,8 @@
 import { queryByText } from "@testing-library/dom";
 import { createComponent, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreateSpaceDialog } from "#components/CreateSpaceDialog.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The dialog only learns that a create failed by awaiting `onCreate` — the
@@ -22,7 +22,7 @@ type Props = Record<string, unknown>;
 function mount(props: Props) {
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(
+  const unmount = renderWithLocale(
     () => createComponent(CreateSpaceDialog as (props: Props) => JSX.Element, props),
     container,
   );

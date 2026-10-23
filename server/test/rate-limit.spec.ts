@@ -256,8 +256,10 @@ describe("checkRateLimit", () => {
       userId: "user-1",
     };
 
+    const { max } = ruleForRoute(run.pattern, run.method, false, true);
+
     // The regression: an unvalidated credential used to key a window of its own.
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < max; i++) {
       expect(checkRateLimit({ ...run, jobToken: `junk-${i}` }, limiter)?.allowed).toBe(
         true,
       );

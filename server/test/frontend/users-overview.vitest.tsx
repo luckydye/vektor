@@ -1,8 +1,8 @@
 import { queryByText } from "@testing-library/dom";
 import { createComponent, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it } from "vitest";
 import { type OverviewUser, UsersOverview } from "#components/UsersOverview.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The register is the only page that prints an account the viewer shares no
@@ -21,7 +21,7 @@ type Props = Record<string, unknown>;
 function mount(props: Props) {
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(
+  const unmount = renderWithLocale(
     () => createComponent(UsersOverview as (props: Props) => JSX.Element, props),
     container,
   );

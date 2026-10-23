@@ -19,7 +19,7 @@ vi.mock("#composeables/useSpace.ts", () => ({
 vi.mock("@solidjs/router", () => ({ useNavigate: () => () => {} }));
 vi.mock("#composeables/useSync.ts", () => ({ useSync: () => {} }));
 vi.mock("#composeables/useProperties.ts", () => ({
-  useProperties: () => ({ updateProperty: () => propertyPatch() }),
+  usePropertyMutations: () => ({ updateProperty: () => propertyPatch() }),
 }));
 
 const documentPut = vi.fn();

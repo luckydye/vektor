@@ -1,7 +1,10 @@
 import { createSignal } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DocumentShareDialog } from "#components/DocumentShareDialog.tsx";
+import {
+  DocumentSharePopover,
+  type SharePopoverTrigger,
+} from "#components/DocumentSharePopover.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 vi.mock("#composeables/useSpace.ts", () => ({
   useSpace: () => ({
@@ -29,27 +32,46 @@ vi.mock("#api/client.ts", () => ({
 
 let dispose: (() => void) | undefined;
 let host: HTMLElement | undefined;
+let trigger: SharePopoverTrigger | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   dispose?.();
   host?.remove();
   dispose = undefined;
   host = undefined;
+  trigger = undefined;
+  // The popover removes its body-level portal 150ms after it is hidden.
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  if (document.querySelector("a-popover-portal")) throw new Error("Popover portal leaked");
 });
 
-function mount() {
-  host = document.createElement("div");
-  document.body.append(host);
-  dispose = render(() => <DocumentShareDialog show={true} documentId="doc_1" />, host);
-}
-
-function mountControlled(documentId: string) {
-  const [show, setShow] = createSignal(true);
+/** Mounted and opened, the way `DocumentActions` opens it through the trigger ref. */
+function mount(documentId = "doc_1") {
   const [id, setId] = createSignal(documentId);
   host = document.createElement("div");
   document.body.append(host);
-  dispose = render(() => <DocumentShareDialog show={show()} documentId={id()} />, host);
-  return { setShow, setId };
+  dispose = renderWithLocale(
+    () => (
+      <DocumentSharePopover
+        documentId={id()}
+        canManageLinks={true}
+        ref={(element) => {
+          trigger = element;
+        }}
+      />
+    ),
+    host,
+  );
+  trigger?.show();
+  return { setId };
+}
+
+function openLinkTab() {
+  const tab = [...document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+    (button) => button.textContent?.trim() === "Share a link",
+  );
+  if (!tab) throw new Error("Share a link tab is missing");
+  tab.click();
 }
 
 async function settle() {
@@ -62,13 +84,13 @@ function bodyText() {
   return document.body.textContent ?? "";
 }
 
-describe("DocumentShareDialog", () => {
+describe("DocumentSharePopover", () => {
   it("shows the failure instead of the empty state when a request rejects", async () => {
     documentAccessGet.mockRejectedValue(new Error("Forbidden"));
     mount();
     await settle();
 
-    expect(bodyText()).not.toContain("No one has access to this page yet.");
+    expect(bodyText()).not.toContain("No one has access to this document yet.");
     expect(bodyText()).toContain("Forbidden");
     expect(document.body.querySelector('[role="alert"]')).toBeTruthy();
   });
@@ -87,7 +109,7 @@ describe("DocumentShareDialog", () => {
     await settle();
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
-    expect(bodyText()).toContain("No one has access to this page yet.");
+    expect(bodyText()).toContain("No one has access to this document yet.");
   });
 
   it("still shows the empty state when the load succeeds with no grants", async () => {
@@ -96,7 +118,7 @@ describe("DocumentShareDialog", () => {
     await settle();
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
-    expect(bodyText()).toContain("No one has access to this page yet.");
+    expect(bodyText()).toContain("No one has access to this document yet.");
   });
 
   it("counts neither expired nor revoked links among the active ones", async () => {
@@ -122,6 +144,7 @@ describe("DocumentShareDialog", () => {
 
     mount();
     await settle();
+    openLinkTab();
 
     expect(bodyText()).toContain("1 active link");
   });
@@ -132,11 +155,12 @@ describe("DocumentShareDialog", () => {
       links: [{ id: "share_first", resourceType: "document", hasPassword: false }],
     });
 
-    const { setShow, setId } = mountControlled("doc_1");
+    const { setId } = mount("doc_1");
     await settle();
+    openLinkTab();
     expect(bodyText()).toContain("1 active link");
 
-    setShow(false);
+    trigger?.hide();
     let release: (() => void) | undefined;
     shareLinksGet.mockImplementation(
       () =>
@@ -145,8 +169,9 @@ describe("DocumentShareDialog", () => {
         }),
     );
     setId("doc_2");
-    setShow(true);
+    trigger?.show();
     await settle();
+    openLinkTab();
 
     expect(bodyText()).not.toContain("active link");
     release?.();

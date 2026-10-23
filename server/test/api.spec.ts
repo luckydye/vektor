@@ -43,6 +43,7 @@ describe("API Tests - Spaces", () => {
         slug: "test-space",
         preferences: {
           brandColor: "#ff5733",
+          workflowCreationEnabled: "true",
         },
       }),
     });

@@ -1,7 +1,7 @@
-import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastContainer } from "#components/ToastContainer.tsx";
 import { useToast } from "#composeables/useToast.ts";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The one behavioural test the toast transitions need.
@@ -34,7 +34,7 @@ beforeEach(async () => {
   // `render`'s own disposer, not an outer `createRoot`: the container teleports
   // to the body, and disposing an outer root leaves that content behind for the
   // next spec to find.
-  const unmount = render(() => <ToastContainer />, host);
+  const unmount = renderWithLocale(() => <ToastContainer />, host);
   dispose = () => {
     unmount();
     host.remove();

@@ -1,8 +1,8 @@
 import { queryByText } from "@testing-library/dom";
 import { createComponent, createSignal, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeleteSpaceDialog } from "#components/DeleteSpaceDialog.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * One dialog behind both the space's own settings and the spaces overview. The
@@ -23,7 +23,7 @@ const SPACE = { id: "s1", name: "Engineering", slug: "engineering" };
 function mount(props: Props) {
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(
+  const unmount = renderWithLocale(
     () => createComponent(DeleteSpaceDialog as (props: Props) => JSX.Element, props),
     container,
   );

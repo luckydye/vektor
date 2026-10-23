@@ -1,6 +1,6 @@
 import { createSignal, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * Opening a revision from a link. The panel reads the query once, but the space
@@ -67,7 +67,7 @@ function mountWith(search: string) {
   window.history.replaceState({}, "", `/space/doc${search}`);
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(
+  const unmount = renderWithLocale(
     () => (<RevisionsSidebar documentId="doc_1" />) as JSX.Element,
     container,
   );

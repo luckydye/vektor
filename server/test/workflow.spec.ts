@@ -34,14 +34,14 @@ const EXTENSION_ZIP = join(
 
 const WORKFLOW_SCRIPT = `\
 // Download pages listed in the sitemap at the given URL
-const sitemapResult = await runJob(platform, 'workflow-builder', 'sitemap-download', { 
+const sitemapResult = await runJob('workflow-builder', 'sitemap-download', { 
   urlKey: 'URL', 
   limit: '2', 
   file: "https://greentrails.de/de/"
 });
 
 // Convert each downloaded HTML page to markdown
-const mdFiles = await runJob(platform, 'workflow-builder', 'for-each-file', {
+const mdFiles = await runJob('workflow-builder', 'for-each-file', {
   subJobId: 'convert',
   inputKey: 'content',
   selector: 'body',
@@ -180,7 +180,11 @@ beforeAll(async () => {
   // Create the test space
   const spaceRes = await apiJson<{ space: { id: string } }>("/api/v1/spaces", {
     method: "POST",
-    body: JSON.stringify({ name: "Workflow Test Space", slug: "workflow-test" }),
+    body: JSON.stringify({
+      name: "Workflow Test Space",
+      slug: "workflow-test",
+      preferences: { workflowCreationEnabled: "true" },
+    }),
   });
   spaceId = spaceRes.space.id;
 

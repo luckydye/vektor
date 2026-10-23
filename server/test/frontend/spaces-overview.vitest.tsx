@@ -1,8 +1,8 @@
 import { queryByText } from "@testing-library/dom";
 import { createComponent, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type OverviewSpace, SpacesOverview } from "#components/SpacesOverview.tsx";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The overview lists spaces an instance admin does not belong to, so two things
@@ -21,7 +21,7 @@ type Props = Record<string, unknown>;
 function mount(props: Props) {
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(
+  const unmount = renderWithLocale(
     () => createComponent(SpacesOverview as (props: Props) => JSX.Element, props),
     container,
   );

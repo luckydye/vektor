@@ -1,7 +1,7 @@
 import { fireEvent } from "@testing-library/dom";
 import { createSignal, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * The palette's "create with title" row: the query that matches nothing is
@@ -19,6 +19,7 @@ vi.mock("#composeables/useSpace.ts", () => ({
     currentSpace: () => ({ id: "space_1", slug: "first", name: "First" }),
   }),
 }));
+vi.mock("#composeables/useIntegrationAIModel.ts", () => ({ useAgentAvailable: () => () => false }));
 vi.mock("#utils/history.ts", () => ({
   history: { getAll: async () => [], log: async () => {} },
 }));
@@ -39,7 +40,7 @@ afterEach(() => {
 function mountPalette(): HTMLElement {
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(() => (<CommandPalatte />) as JSX.Element, container);
+  const unmount = renderWithLocale(() => (<CommandPalatte />) as JSX.Element, container);
   disposers.push(() => {
     unmount();
     container.remove();
@@ -97,7 +98,7 @@ describe("command palette create-with-title", () => {
     await type(container, "Q3 / roadmap");
     await clickRow(container, "Create Document");
 
-    expect(navigate).toHaveBeenCalledWith("/new?title=Q3%20%2F%20roadmap");
+    expect(navigate).toHaveBeenCalledWith("/new?title=Q3+%2F+roadmap");
   });
 
   it("keeps the row last so a matching document still wins Enter", async () => {
@@ -200,7 +201,7 @@ describe("command palette list size", () => {
 
     const container = document.createElement("div");
     document.body.append(container);
-    const unmount = render(() => (<CommandPalatte />) as JSX.Element, container);
+    const unmount = renderWithLocale(() => (<CommandPalatte />) as JSX.Element, container);
     disposers.push(() => {
       unmount();
       container.remove();

@@ -14,7 +14,6 @@ const apiRequest = createSessionApiRequest(BASE_URL);
 
 const PROTECTED_SECRET_NAME = "DEPLOY_TOKEN";
 const PROTECTED_SECRET_VALUE = "owner-only-value";
-const AI_API_KEY = "sk-test-internal-secret";
 
 let serverProcess: TestServerProcess;
 let spaceId: string;
@@ -91,22 +90,6 @@ beforeAll(async () => {
   });
   if (!secretResponse.ok) {
     throw new Error(`Failed to create protected secret (${secretResponse.status})`);
-  }
-
-  const aiResponse = await apiRequest(
-    `/api/v1/spaces/${spaceId}/settings/ai-provider`,
-    ownerToken,
-    {
-      method: "PUT",
-      body: JSON.stringify({
-        provider: "anthropic",
-        model: "claude-sonnet-4-6",
-        apiKey: AI_API_KEY,
-      }),
-    },
-  );
-  if (!aiResponse.ok) {
-    throw new Error(`Failed to configure AI provider (${aiResponse.status})`);
   }
 });
 
@@ -200,17 +183,7 @@ describe("space secret access", () => {
         method,
       });
       expect(response.status).toBe(404);
-      expect(await response.text()).not.toContain(AI_API_KEY);
     }
-
-    const settingsResponse = await apiRequest(
-      `/api/v1/spaces/${spaceId}/settings/ai-provider`,
-      ownerToken,
-    );
-    expect(settingsResponse.status).toBe(200);
-    expect(await settingsResponse.json()).toMatchObject({
-      aiProvider: { configured: true, hasApiKey: true },
-    });
   });
 
   it("reserves the former internal-secret naming convention", async () => {

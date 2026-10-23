@@ -1,5 +1,5 @@
-import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
  * Renders the real `WorkflowView` against a poisoned `result.json` and asserts on
@@ -104,7 +104,7 @@ afterEach(() => {
 async function mount() {
   host = document.createElement("div");
   document.body.append(host);
-  dispose = render(() => <WorkflowView documentId="doc_1" spaceId="space_1" />, host);
+  dispose = renderWithLocale(() => <WorkflowView documentId="doc_1" spaceId="space_1" />, host);
   // List query, run detail and artifact fetch each resolve on their own tick.
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 }

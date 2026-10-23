@@ -55,6 +55,7 @@ beforeAll(async () => {
     body: JSON.stringify({
       name: "Workflow Schedules Test Space",
       slug: `workflow-schedules-test-${Date.now()}`,
+      preferences: { workflowCreationEnabled: "true" },
     }),
   });
   const spaceData = await spaceResponse.json();

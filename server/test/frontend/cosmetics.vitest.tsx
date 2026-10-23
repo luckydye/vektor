@@ -1,10 +1,10 @@
 import { fireEvent, getAllByRole, getByRole, queryByRole } from "@testing-library/dom";
 import { createComponent, createSignal, type JSX } from "solid-js";
-import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CosmeticsPanel } from "#components/CosmeticsPanel.tsx";
 import { appearanceFromLoadout, listCosmeticAssets } from "#cosmetics/assetRegistry.ts";
 import type { CosmeticLoadout, CosmeticSlot } from "#cosmetics/types.ts";
+import { renderWithLocale } from "./renderWithLocale.tsx";
 
 const disposers: Array<() => void> = [];
 
@@ -29,7 +29,7 @@ function mountPanel(initial: CosmeticLoadout = {}) {
 
   const container = document.createElement("div");
   document.body.append(container);
-  const unmount = render(
+  const unmount = renderWithLocale(
     () =>
       createComponent(CosmeticsPanel as (props: Record<string, unknown>) => JSX.Element, {
         inventory,

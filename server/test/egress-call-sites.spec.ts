@@ -41,6 +41,11 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   },
   "src/api/provider/anthropic.ts": { calls: 2, why: "the Anthropic API" },
   "src/platform/bun/s3BlobStore.ts": { calls: 1, why: "the configured S3 endpoint" },
+  "src/agent/webSearch.ts": { calls: 1, why: "the fixed Exa MCP endpoint" },
+  "src/integrations/discordBot.ts": {
+    calls: 1,
+    why: "the fixed Discord API; attachment downloads use platform.fetch",
+  },
 
   // This instance's own API, which is the point of the call.
   "src/agent/core.ts": {

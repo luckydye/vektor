@@ -35,6 +35,7 @@
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | DELETE | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | GET | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]/context` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/audit-logs` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories` | POST | 401 | 403 | 403 | 400 | 400 |  |
@@ -55,16 +56,17 @@
 | `/api/v1/spaces/[spaceId]/documents/[documentId]` | PUT | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/access` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs` | GET | 404 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/documents/[documentId]/columns/rename` | POST | 404 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/contributors` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/diff` | GET | 404 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/edit` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/git` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | POST | 401 | 403 | 403 | 400 | 400 |  |
-| `/api/v1/spaces/[spaceId]/extensions` | GET | 401 | 403 | 403 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/extensions` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/extensions` | POST | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]` | DELETE | 401 | 403 | 403 | 403 | 404 |  |
-| `/api/v1/spaces/[spaceId]/extensions/[extensionId]` | GET | 401 | 403 | 403 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/extensions/[extensionId]` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]` | PATCH | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]/assets/[...path]` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]/package` | GET | 401 | 403 | 403 | 403 | 404 |  |
@@ -72,6 +74,7 @@
 | `/api/v1/spaces/[spaceId]/integrations` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]` | DELETE | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]` | GET | 401 | 403 | 400 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/integrations/[provider]` | PATCH | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/callback` | GET | 401 | 403 | 302 | 302 | 302 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/connect` | POST | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/proxy` | POST | 401 | 403 | 400 | 400 | 400 |  |
@@ -84,6 +87,7 @@
 | `/api/v1/spaces/[spaceId]/permissions` | POST | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/permissions/me` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/properties` | GET | 404 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/properties/values` | GET | 404 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/search` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/search/rebuild` | POST | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/secrets` | GET | 401 | 403 | 403 | 403 | 200 |  |

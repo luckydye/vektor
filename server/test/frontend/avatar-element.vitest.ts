@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
-import avatarZero from "#assets/avatars/zero.svg?raw";
 import "#components/AvatarElement.ts";
 
 const robotFace = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
-const neutralFace = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 
 /**
  * Who gets a robot face, and who gets no face at all.
@@ -22,6 +20,11 @@ function mountAvatar(attributes: Record<string, string>): HTMLElement {
   }
   document.body.append(element);
   return element;
+}
+
+/** The neutral face is an empty placeholder circle with no image. */
+function isNeutral(element: HTMLElement): boolean {
+  return !!element.shadowRoot?.querySelector(".avatar-placeholder");
 }
 
 function renderedSource(element: HTMLElement): string {
@@ -46,7 +49,7 @@ describe("<vektor-avatar> faces", () => {
 
     for (const element of [person, shaped]) {
       expect(renderedSource(element)).not.toBe(robotFace);
-      expect(renderedSource(element)).not.toBe(neutralFace);
+      expect(isNeutral(element)).toBe(false);
     }
   });
 
@@ -54,7 +57,7 @@ describe("<vektor-avatar> faces", () => {
     // A caller that knows the id is an account is believed, so a profile the
     // server cannot serve does not downgrade the face to neutral.
     const element = mountAvatar({ "user-id": "u_gone", kind: "person" });
-    expect(renderedSource(element)).not.toBe(neutralFace);
+    expect(isNeutral(element)).toBe(false);
     expect(renderedSource(element)).not.toBe(robotFace);
   });
 
