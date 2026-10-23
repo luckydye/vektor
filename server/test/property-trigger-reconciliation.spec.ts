@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { property, workflowSchedule } from "#db/schema/space.ts";
+import { createId } from "#db/ids.ts";
+import { storeDocumentContent } from "#db/space/documentContent.ts";
 import { createDocument } from "#db/space/documents.ts";
 import { syncPropertyTriggers } from "#db/space/propertyTriggers.ts";
 import { createSpace, deleteSpace } from "#db/space/spaces.ts";
@@ -19,7 +21,7 @@ beforeAll(async () => {
     `triggers-${Date.now()}`,
   );
   store = await openSpaceStore(platform, space.id);
-  const workflow = await createDocument(store, "alice", "workflow", "", {
+  const workflow = await createDocument(store, "alice", "workflow", await emptyContent(), {
     type: "workflow",
   });
   workflowId = workflow.id;
@@ -29,8 +31,12 @@ afterAll(async () => {
   if (store) await deleteSpace(platform, store.spaceId, { purge: true });
 });
 
+function emptyContent() {
+  return storeDocumentContent(store, createId("document"), "");
+}
+
 async function scheduledDocument(anchor: Date, offsetMinutes: number) {
-  return createDocument(store, "alice", "scheduled", "", {
+  return createDocument(store, "alice", "scheduled", await emptyContent(), {
     properties: {
       eventStart: { value: anchor.toISOString(), type: "date" },
       reminder: {
