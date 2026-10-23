@@ -16,6 +16,8 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { createId } from "#db/ids.ts";
+import { deleteSpilledContent, storeDocumentContent } from "#db/space/documentContent.ts";
 import {
   createDocument,
   findDocumentByProperty,
@@ -377,6 +379,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw error;
     });
 
+    const stored = await storeDocumentContent(store, createId("document"), content);
     const created = await store
       .tx(async (tx) => {
         // Held back from the create so a refusal rolls the document back.
@@ -386,7 +389,7 @@ export const POST: ApiRouteHandler = (context) =>
             )
           : properties;
 
-        const document = await createDocument(tx, userId, slugBase, content, {
+        const document = await createDocument(tx, userId, slugBase, stored, {
           properties: withheld,
           parentId,
           type,
@@ -413,7 +416,9 @@ export const POST: ApiRouteHandler = (context) =>
           },
         };
       })
-      .catch((error) => {
+      .catch(async (error) => {
+        // The row never landed, so nothing else will remove its blob.
+        if (stored.contentKey) await deleteSpilledContent(store, stored.contentKey);
         if (
           error instanceof InvalidDocumentParentError ||
           error instanceof InvalidDocumentPropertyPatchError ||

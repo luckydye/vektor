@@ -10,6 +10,11 @@ import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, spaceMetadata } from "#db/schema/space.ts";
+import {
+  contentColumns,
+  deleteSpilledContent,
+  type StoredDocumentContent,
+} from "./documentContent.ts";
 
 export type DocumentWriteResult = { ok: true; changeSeq: number } | { ok: false };
 
@@ -23,8 +28,11 @@ export type DocumentWriteValues = Omit<
   {
     [K in keyof typeof document.$inferInsert]?: (typeof document.$inferInsert)[K] | SQL;
   },
-  "id" | "changeSeq"
->;
+  "id" | "changeSeq" | "content" | "contentKey"
+> & {
+  /** From `storeDocumentContent`, before the transaction, since spilling it is external I/O. */
+  content?: StoredDocumentContent;
+};
 
 /**
  * Take the next value from the space's counter, in the caller's transaction.
@@ -57,16 +65,39 @@ export async function touchDocument(
   expected?: number[],
   guard?: SQL,
 ): Promise<DocumentWriteResult> {
+  const { content, ...columns } = values;
+  if (content && content.documentId !== id) {
+    throw new Error(
+      `Content stored for ${content.documentId} cannot be written to ${id}`,
+    );
+  }
   return s.tx(async (tx) => {
     const changeSeq = await nextChangeSeq(tx);
+    const replaced =
+      content &&
+      (await one(
+        tx.db
+          .select({ contentKey: document.contentKey })
+          .from(document)
+          .where(eq(document.id, id)),
+      ));
     const rows = await many(
       tx.db
         .update(document)
-        .set({ ...values, changeSeq })
+        .set({
+          ...columns,
+          ...(content && contentColumns(content)),
+          changeSeq,
+        })
         .where(documentCondition(id, expected, guard))
         .returning({ id: document.id }),
     );
-    return rows.length > 0 ? { ok: true, changeSeq } : { ok: false };
+    const written = rows.length > 0;
+    // A write that throws leaves its blob under the document's prefix, removed with the document.
+    const unreferenced = written ? replaced?.contentKey : content?.contentKey;
+    if (unreferenced)
+      tx.afterCommit((store) => void deleteSpilledContent(store, unreferenced));
+    return written ? { ok: true, changeSeq } : { ok: false };
   });
 }
 
@@ -79,7 +110,7 @@ export async function touchDocument(
 export async function touchDocuments(
   s: SpaceStore,
   ids: string[],
-  values: DocumentWriteValues,
+  values: Omit<DocumentWriteValues, "content">,
 ): Promise<void> {
   if (ids.length === 0) return;
   await s.tx(async (tx) => {

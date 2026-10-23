@@ -36,6 +36,7 @@ import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { touchDocument } from "#db/space/changeSeq.ts";
+import { storeDocumentContent } from "#db/space/documentContent.ts";
 import {
   archiveDocument,
   type DocumentMeta,
@@ -193,6 +194,10 @@ async function handlePublishedRevisionPatch(
   if (revToPublish !== null && revisionContent === null) {
     throw notFoundResponse("Revision");
   }
+  const storedContent =
+    revisionContent === null
+      ? null
+      : await storeDocumentContent(store, documentId, revisionContent);
 
   const published = await store.tx(async (tx) => {
     // Publishing changes which body a plain read returns.
@@ -219,11 +224,11 @@ async function handlePublishedRevisionPatch(
       },
     });
 
-    if (revisionContent !== null) {
+    if (storedContent !== null) {
       // Publishing a revision also loads it into the draft, so the editor
       // reflects the revision that is now published. Conditioned on the write
       // above, not the caller's condition, which that write already consumed.
-      const second = await touchDocument(tx, documentId, { content: revisionContent }, [
+      const second = await touchDocument(tx, documentId, { content: storedContent }, [
         changeSeq,
       ]);
       if (!second.ok) return null;

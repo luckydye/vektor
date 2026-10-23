@@ -122,6 +122,8 @@ async function main(): Promise<void> {
     "#db/space/documents.ts"
   );
   const { patchDocumentProperties } = await import("#db/space/properties.ts");
+  const { storeDocumentContent } = await import("#db/space/documentContent.ts");
+  const { createId } = await import("#db/ids.ts");
   const authSchema = await import("#db/schema/auth.ts");
   const { createBunPlatform } = await import("#platform/bun/index.ts");
 
@@ -135,16 +137,30 @@ async function main(): Promise<void> {
   const slug = `db-rows-bench-${Date.now()}`;
   const created = await createSpace(platform, LOCAL_USER_ID, "Database Rows Bench", slug);
   const store = await openSpaceStore(platform, created.id);
+  const newContent = (content: string) =>
+    storeDocumentContent(store, createId("document"), content);
   console.log(`Space:   ${created.id} (/${created.slug})`);
 
-  const databaseA = await createDocument(store, LOCAL_USER_ID, "database-a", "", {
-    type: "database",
-    properties: { title: "Database A" },
-  });
-  const databaseB = await createDocument(store, LOCAL_USER_ID, "database-b", "", {
-    type: "database",
-    properties: { title: "Database B" },
-  });
+  const databaseA = await createDocument(
+    store,
+    LOCAL_USER_ID,
+    "database-a",
+    await newContent(""),
+    {
+      type: "database",
+      properties: { title: "Database A" },
+    },
+  );
+  const databaseB = await createDocument(
+    store,
+    LOCAL_USER_ID,
+    "database-b",
+    await newContent(""),
+    {
+      type: "database",
+      properties: { title: "Database B" },
+    },
+  );
   console.log(`Database A: ${databaseA.id}   Database B: ${databaseB.id}\n`);
 
   // --- row creation, database A --------------------------------------------
@@ -160,10 +176,16 @@ async function main(): Promise<void> {
 
   for (let i = 0; i < options.rows; i++) {
     const t0 = performance.now();
-    const row = await createDocument(store, LOCAL_USER_ID, "untitled", "<p></p>", {
-      parentId: databaseA.id,
-      type: "record",
-    });
+    const row = await createDocument(
+      store,
+      LOCAL_USER_ID,
+      "untitled",
+      await newContent("<p></p>"),
+      {
+        parentId: databaseA.id,
+        type: "record",
+      },
+    );
     createBatch.push(performance.now() - t0);
     rowIds.push(row.id);
 
@@ -188,7 +210,7 @@ async function main(): Promise<void> {
   const crossTimes: number[] = [];
   for (let i = 0; i < 20; i++) {
     const t0 = performance.now();
-    await createDocument(store, LOCAL_USER_ID, "untitled", "<p></p>", {
+    await createDocument(store, LOCAL_USER_ID, "untitled", await newContent("<p></p>"), {
       parentId: databaseB.id,
       type: "record",
     });

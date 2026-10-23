@@ -221,6 +221,10 @@ async function aiChatSessionSource(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
 }
 
+async function documentContentKey(db: Database): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.document.contentKey);
+}
+
 async function oneShotWorkflowSchedules(db: Database): Promise<void> {
   // Rebuild to allow NULL cron_expression for one-shot schedules.
   const create = generateCreateTableSQL(spaceSchema.workflowSchedule).replace(
@@ -244,9 +248,12 @@ async function oneShotWorkflowSchedules(db: Database): Promise<void> {
 
 /** @deprecated Only migrates databases opened by the branch's former migration 11. */
 async function migrateDeprecatedPropertyTriggers(db: Database): Promise<void> {
-  const oldTable = await one<{ name: string }>(db, sql`
+  const oldTable = await one<{ name: string }>(
+    db,
+    sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'property_trigger'
-  `);
+  `,
+  );
   if (!oldTable) return;
   await run(db, [
     `INSERT INTO workflow_schedule (
@@ -279,4 +286,5 @@ export const spaceMigrations: Migration[] = [
   { id: 10, name: "ai-chat-session-source", up: aiChatSessionSource },
   // 11 was the superseded property-trigger table; 12 also upgrades those databases.
   { id: 12, name: "one-shot-workflow-schedules", up: oneShotWorkflowSchedules },
+  { id: 13, name: "document-content-key", up: documentContentKey },
 ];

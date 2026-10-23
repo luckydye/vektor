@@ -19,7 +19,12 @@ import {
 } from "#documents/properties.ts";
 import { embedSearchQuery } from "#search/embedding.ts";
 import { rankKeywordMatch, rankSearchCandidates } from "#search/ranking.ts";
-import type { DocumentWithProperties } from "./documents.ts";
+import { readDocumentContent } from "./documentContent.ts";
+import {
+  type DocumentMeta,
+  type DocumentMetaRow,
+  documentMetaColumns,
+} from "./documents.ts";
 
 // ---------------------------------------------------------------------------
 // SQL helpers shared with documents.ts
@@ -44,7 +49,7 @@ export function nonArchivedColumnCondition(column: string) {
 }
 
 // ---------------------------------------------------------------------------
-export type SearchResult = DocumentWithProperties & {
+export type SearchResult = DocumentMeta & {
   rank: number;
   snippet: string;
 };
@@ -102,12 +107,11 @@ function storedSecondsToDate(value: string | number): Date {
 
 export type FileRow = typeof fileTable.$inferSelect;
 
-export function fileRowToDocument(f: FileRow): DocumentWithProperties {
+export function fileRowToDocument(f: FileRow): DocumentMeta {
   return {
     id: f.path,
     slug: f.path,
     type: "file",
-    content: "",
     currentRev: 0,
     publishedRev: null,
     changeSeq: 0,
@@ -171,6 +175,7 @@ export async function readDocumentIndexSource(
     s.db
       .select({
         content: options.includeContent ? document.content : sql<string>`''`,
+        contentKey: options.includeContent ? document.contentKey : sql<null>`NULL`,
       })
       .from(document)
       .where(eq(document.id, documentId)),
@@ -181,7 +186,7 @@ export async function readDocumentIndexSource(
   }
 
   return {
-    content: doc.content,
+    content: await readDocumentContent(s, doc),
     properties: await many(
       s.db.select().from(property).where(eq(property.documentId, documentId)),
     ),
@@ -294,12 +299,12 @@ async function readProperties(
 async function readDocuments(
   s: SpaceStore,
   documentIds: string[],
-): Promise<Map<string, typeof document.$inferSelect>> {
-  const byId = new Map<string, typeof document.$inferSelect>();
+): Promise<Map<string, DocumentMetaRow>> {
+  const byId = new Map<string, DocumentMetaRow>();
 
   for (const ids of batches(documentIds)) {
     const rows = await many(
-      s.db.select().from(document).where(inArray(document.id, ids)),
+      s.db.select(documentMetaColumns).from(document).where(inArray(document.id, ids)),
     );
     for (const row of rows) byId.set(row.id, row);
   }
@@ -681,9 +686,6 @@ export async function searchDocuments(
       id: row.id,
       slug: doc?.slug || "",
       type: doc?.type,
-      // A result is a pointer plus its snippet: bodies run to megabytes, and
-      // shipping the page's would put that in the response.
-      content: "",
       currentRev: doc?.currentRev || 0,
       changeSeq: doc?.changeSeq ?? 0,
       publishedRev: doc?.publishedRev || null,

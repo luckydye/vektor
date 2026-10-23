@@ -9,7 +9,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getDocumentBySlug } from "#db/space/documents.ts";
+import { getDocumentBySlug, getDocumentContent } from "#db/space/documents.ts";
 import { getSpaceBySlug } from "#db/space/spaces.ts";
 import { createVektorDocumentAddress } from "#documents/address.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -509,10 +509,8 @@ export const GET: ApiRouteHandler = (context) =>
           throw badRequestResponse("Space not found");
         }
 
-        const doc = await getDocumentBySlug(
-          await openSpaceStore(context.var.platform, space.id),
-          internalPath.documentSlug,
-        );
+        const store = await openSpaceStore(context.var.platform, space.id);
+        const doc = await getDocumentBySlug(store, internalPath.documentSlug);
         if (!doc) {
           throw badRequestResponse("Document not found");
         }
@@ -530,12 +528,13 @@ export const GET: ApiRouteHandler = (context) =>
           throw badRequestResponse("Access denied");
         }
 
+        const content = await getDocumentContent(store, doc.id);
         const metadata: LinkMetadata = {
           url,
           title: doc.properties?.title
             ? propertyValueToText(doc.properties.title)
             : doc.slug,
-          description: doc.content ? extractDescriptionFromContent(doc.content) : null,
+          description: content ? extractDescriptionFromContent(content) : null,
           image: null,
           video: null,
           siteName: space.name,

@@ -49,6 +49,13 @@ import {
   touchDocument,
   touchDocuments,
 } from "./changeSeq.ts";
+import {
+  contentColumns,
+  deleteDocumentContents,
+  readDocumentContent,
+  type StoredDocumentContent,
+  storeDocumentContent,
+} from "./documentContent.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
 import { syncPropertyTriggers } from "./propertyTriggers.ts";
@@ -175,7 +182,7 @@ export async function createDocument(
   s: SpaceStore,
   createdBy: string,
   slug: string,
-  content: string,
+  stored: StoredDocumentContent,
   options: CreateDocumentOptions = {},
 ): Promise<DocumentWithProperties> {
   const { properties: initialProperties, parentId, type, readonly = false } = options;
@@ -186,7 +193,7 @@ export async function createDocument(
   for (const key of Object.keys(initialProperties ?? {})) {
     assertWritableDocumentPropertyKey(storedPropertyKey(key));
   }
-  const id = createId("document");
+  const { documentId: id, content } = stored;
   const now = new Date();
   const documentCreatedAt = options.createdAt || now;
   const documentUpdatedAt = options.updatedAt || now;
@@ -200,7 +207,7 @@ export async function createDocument(
       id,
       slug: uniqueSlug,
       type: type || null,
-      content,
+      ...contentColumns(stored),
       currentRev: 0,
       publishedRev: null,
       changeSeq: allocated,
@@ -277,38 +284,44 @@ export async function createDocument(
   };
 }
 
-/** Document fields excluding the (potentially very large) `content` column. */
+/** Document fields excluding its content. */
 export type DocumentMeta = Omit<DocumentWithProperties, "content">;
 
-/**
- * Loads a document's metadata WITHOUT its `content` column. `content` can be
- * tens of MB (large canvases), so the default read is metadata-only; callers
- * that actually need the body call `getDocumentContent` separately. This keeps
- * the hot paths (auth, save bookkeeping, listings) from pulling the whole
- * column into memory.
- */
+/** The columns every metadata read selects: everything but the content and the search index. */
+export const documentMetaColumns = {
+  id: document.id,
+  slug: document.slug,
+  type: document.type,
+  currentRev: document.currentRev,
+  publishedRev: document.publishedRev,
+  changeSeq: document.changeSeq,
+  parentId: document.parentId,
+  createdAt: document.createdAt,
+  updatedAt: document.updatedAt,
+  createdBy: document.createdBy,
+  readonly: document.readonly,
+  archived: document.archived,
+};
+
+export type DocumentMetaRow = Pick<
+  typeof document.$inferSelect,
+  keyof typeof documentMetaColumns
+>;
+
+function toDocumentMeta(
+  row: DocumentMetaRow,
+  properties: DocumentProperties,
+): DocumentMeta {
+  return { ...row, parentId: row.parentId || null, properties };
+}
+
+/** Loads a document's metadata; callers that need the body call `getDocumentContent`. */
 export async function getDocument(
   s: SpaceStore,
   id: string,
 ): Promise<DocumentMeta | null> {
   const doc = await one(
-    s.db
-      .select({
-        id: document.id,
-        slug: document.slug,
-        type: document.type,
-        currentRev: document.currentRev,
-        publishedRev: document.publishedRev,
-        changeSeq: document.changeSeq,
-        parentId: document.parentId,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-        createdBy: document.createdBy,
-        readonly: document.readonly,
-        archived: document.archived,
-      })
-      .from(document)
-      .where(eq(document.id, id)),
+    s.db.select(documentMetaColumns).from(document).where(eq(document.id, id)),
   );
 
   if (!doc) {
@@ -318,12 +331,9 @@ export async function getDocument(
   const props = await many(
     s.db.select().from(property).where(eq(property.documentId, id)),
   );
-  const properties = toDocumentProperties(props);
 
   return {
-    ...doc,
-    parentId: doc.parentId || null,
-    properties,
+    ...toDocumentMeta(doc, toDocumentProperties(props)),
     propertyTypes: Object.fromEntries(props.map((row) => [row.key, row.type])),
   };
 }
@@ -358,23 +368,7 @@ export async function getDocumentsByIds(
   if (unique.length === 0) return byId;
   const [docs, props] = await Promise.all([
     many(
-      s.db
-        .select({
-          id: document.id,
-          slug: document.slug,
-          type: document.type,
-          currentRev: document.currentRev,
-          publishedRev: document.publishedRev,
-          changeSeq: document.changeSeq,
-          parentId: document.parentId,
-          createdAt: document.createdAt,
-          updatedAt: document.updatedAt,
-          createdBy: document.createdBy,
-          readonly: document.readonly,
-          archived: document.archived,
-        })
-        .from(document)
-        .where(inArray(document.id, unique)),
+      s.db.select(documentMetaColumns).from(document).where(inArray(document.id, unique)),
     ),
     many(s.db.select().from(property).where(inArray(property.documentId, unique))),
   ]);
@@ -382,28 +376,24 @@ export async function getDocumentsByIds(
   const propertiesByDocument = toDocumentPropertiesByDocument(props);
 
   for (const doc of docs) {
-    byId.set(doc.id, {
-      ...doc,
-      parentId: doc.parentId || null,
-      properties: propertiesByDocument.get(doc.id) ?? {},
-    });
+    byId.set(doc.id, toDocumentMeta(doc, propertiesByDocument.get(doc.id) ?? {}));
   }
 
   return byId;
 }
 
-/**
- * Loads only a document's `content` column. Pair with `getDocument` when both
- * metadata and body are needed.
- */
+/** Loads only a document's content. Pair with `getDocument` when both metadata and body are needed. */
 export async function getDocumentContent(
   s: SpaceStore,
   id: string,
 ): Promise<string | null> {
   const row = await one(
-    s.db.select({ content: document.content }).from(document).where(eq(document.id, id)),
+    s.db
+      .select({ content: document.content, contentKey: document.contentKey })
+      .from(document)
+      .where(eq(document.id, id)),
   );
-  return row?.content ?? null;
+  return row ? readDocumentContent(s, row) : null;
 }
 
 /**
@@ -444,39 +434,15 @@ export async function documentIsReadonlyById(
   return row ? documentIsReadonly(row) : true;
 }
 
+/** `getDocument` by slug: metadata only, like it. */
 export async function getDocumentBySlug(
   s: SpaceStore,
   slug: string,
-): Promise<DocumentWithProperties | null> {
-  const doc = await one(s.db.select().from(document).where(eq(document.slug, slug)));
-
-  if (!doc) {
-    return null;
-  }
-
-  const props = await many(
-    s.db.select().from(property).where(eq(property.documentId, doc.id)),
+): Promise<DocumentMeta | null> {
+  const row = await one(
+    s.db.select({ id: document.id }).from(document).where(eq(document.slug, slug)),
   );
-
-  const properties = toDocumentProperties(props);
-
-  return {
-    id: doc.id,
-    slug: doc.slug,
-    type: doc.type,
-    content: doc.content,
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    changeSeq: doc.changeSeq,
-    properties,
-    propertyTypes: Object.fromEntries(props.map((row) => [row.key, row.type])),
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
-  };
+  return row ? getDocument(s, row.id) : null;
 }
 
 export async function updateDocument(
@@ -501,7 +467,11 @@ export async function updateDocument(
   const written = await touchDocument(
     s,
     id,
-    { content, updatedAt: now, type: nextType },
+    {
+      content: await storeDocumentContent(s, id, content),
+      updatedAt: now,
+      type: nextType,
+    },
     expected,
   );
   if (!written.ok) {
@@ -664,6 +634,13 @@ export async function deleteDocument(
   await deleteDocumentSeriesObjects(s.platform, s.spaceId, seriesIds);
   await deleteRevisionSnapshots(s, id).catch((error) => {
     appLogger.warn("Failed to delete revision snapshots", {
+      error,
+      spaceId: s.spaceId,
+      documentId: id,
+    });
+  });
+  await deleteDocumentContents(s, id).catch((error) => {
+    appLogger.warn("Failed to delete document content", {
       error,
       spaceId: s.spaceId,
       documentId: id,
@@ -936,7 +913,7 @@ export async function listDocuments(
     includeFiles?: boolean;
   },
 ): Promise<{
-  documents: DocumentWithProperties[];
+  documents: DocumentMeta[];
   total: number;
   nextCursor: string | null;
 }> {
@@ -945,40 +922,7 @@ export async function listDocuments(
     ? and(nonArchivedDocumentCondition, eq(document.type, type))
     : nonArchivedDocumentCondition;
 
-  const selectFields = {
-    id: document.id,
-    createdAt: document.createdAt,
-    updatedAt: document.updatedAt,
-    parentId: document.parentId,
-    publishedRev: document.publishedRev,
-    slug: document.slug,
-    type: document.type,
-    currentRev: document.currentRev,
-    changeSeq: document.changeSeq,
-    createdBy: document.createdBy,
-    readonly: document.readonly,
-    archived: document.archived,
-  };
-
-  type DocRow =
-    typeof selectFields extends Record<string, infer _>
-      ? {
-          id: string;
-          createdAt: Date;
-          updatedAt: Date;
-          parentId: string | null;
-          publishedRev: number | null;
-          slug: string;
-          type: string | null;
-          currentRev: number;
-          changeSeq: number;
-          createdBy: string;
-          readonly: boolean;
-          archived: boolean;
-        }
-      : never;
-
-  let docs: DocRow[];
+  let docs: DocumentMetaRow[];
   let total = 0;
   let nextCursor: string | null = null;
 
@@ -989,12 +933,12 @@ export async function listDocuments(
     docs = page.ids.length
       ? inIdOrder(
           page.ids,
-          (await many(
+          await many(
             s.db
-              .select(selectFields)
+              .select(documentMetaColumns)
               .from(document)
               .where(inArray(document.id, page.ids)),
-          )) as DocRow[],
+          ),
         )
       : [];
   } else {
@@ -1011,14 +955,14 @@ export async function listDocuments(
       : baseCondition;
 
     const fetchLimit = (limit ?? 50) + 1;
-    const rows = (await many(
+    const rows = await many(
       s.db
-        .select(selectFields)
+        .select(documentMetaColumns)
         .from(document)
         .where(seekCondition)
         .orderBy(desc(document.updatedAt), desc(document.id))
         .limit(fetchLimit),
-    )) as DocRow[];
+    );
 
     if (rows.length === fetchLimit) {
       docs = rows.slice(0, -1);
@@ -1043,21 +987,9 @@ export async function listDocuments(
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   // Build results
-  const results: DocumentWithProperties[] = docs.map((doc) => ({
-    id: doc.id,
-    slug: doc.slug,
+  const results: DocumentMeta[] = docs.map((doc) => ({
+    ...toDocumentMeta(doc, propsByDocId.get(doc.id) || {}),
     type: doc.type || "document",
-    content: "", // Empty content for list view - fetch separately when viewing
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    changeSeq: doc.changeSeq,
-    properties: propsByDocId.get(doc.id) || {},
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
   }));
 
   if (type === "file" || (includeFiles && !type)) {
@@ -1091,23 +1023,10 @@ export async function listArchivedDocuments(
   s: SpaceStore,
   viewer: AclViewer | null,
   options?: { limit?: number; cursor?: string },
-): Promise<{ documents: DocumentWithProperties[]; nextCursor: string | null }> {
+): Promise<{ documents: DocumentMeta[]; nextCursor: string | null }> {
   let docs = await many(
     s.db
-      .select({
-        id: document.id,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-        parentId: document.parentId,
-        publishedRev: document.publishedRev,
-        slug: document.slug,
-        type: document.type,
-        currentRev: document.currentRev,
-        changeSeq: document.changeSeq,
-        createdBy: document.createdBy,
-        readonly: document.readonly,
-        archived: document.archived,
-      })
+      .select(documentMetaColumns)
       .from(document)
       .where(archivedDocumentCondition)
       .orderBy(desc(document.updatedAt), desc(document.id)),
@@ -1137,22 +1056,7 @@ export async function listArchivedDocuments(
 
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
-  const results: DocumentWithProperties[] = docs.map((doc) => ({
-    id: doc.id,
-    slug: doc.slug,
-    type: doc.type,
-    content: "",
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    changeSeq: doc.changeSeq,
-    properties: propsByDocId.get(doc.id) || {},
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
-  }));
+  const results = docs.map((doc) => toDocumentMeta(doc, propsByDocId.get(doc.id) || {}));
 
   const limit = options?.limit ?? 50;
   let start = 0;
@@ -1185,7 +1089,7 @@ export async function listArchivedDocuments(
 export async function listPinnedDocuments(
   s: SpaceStore,
   viewer: AclViewer | null,
-): Promise<DocumentWithProperties[]> {
+): Promise<DocumentMeta[]> {
   const pinnedRows = await many(
     s.db
       .select({ documentId: property.documentId })
@@ -1211,7 +1115,7 @@ export async function listPinnedDocuments(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  return docs.map((doc) => ({ ...doc, content: "" }));
+  return docs;
 }
 
 /**
@@ -1298,7 +1202,7 @@ export async function listAllDocumentsByCategories(
   categorySlugs: string[],
   viewer: AclViewer | null,
   userEmail?: string,
-): Promise<Map<string, DocumentWithProperties[]>> {
+): Promise<Map<string, DocumentMeta[]>> {
   const uniqueSlugs = Array.from(new Set(categorySlugs.filter(Boolean)));
   if (uniqueSlugs.length === 0) {
     return new Map();
@@ -1394,20 +1298,7 @@ export async function listAllDocumentsByCategories(
     resultIdList.length > 0
       ? await many(
           s.db
-            .select({
-              id: document.id,
-              createdAt: document.createdAt,
-              updatedAt: document.updatedAt,
-              parentId: document.parentId,
-              publishedRev: document.publishedRev,
-              slug: document.slug,
-              type: document.type,
-              currentRev: document.currentRev,
-              changeSeq: document.changeSeq,
-              createdBy: document.createdBy,
-              readonly: document.readonly,
-              archived: document.archived,
-            })
+            .select(documentMetaColumns)
             .from(document)
             .where(inArray(document.id, resultIdList))
             .orderBy(desc(document.updatedAt), desc(document.id)),
@@ -1421,21 +1312,9 @@ export async function listAllDocumentsByCategories(
       : [];
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
-  const results: DocumentWithProperties[] = docs.map((doc) => ({
-    id: doc.id,
-    slug: doc.slug,
+  const results: DocumentMeta[] = docs.map((doc) => ({
+    ...toDocumentMeta(doc, propsByDocId.get(doc.id) || {}),
     type: doc.type || "document",
-    content: "",
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    changeSeq: doc.changeSeq,
-    properties: propsByDocId.get(doc.id) || {},
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
     locked: !readableIds.has(doc.id),
   }));
 
@@ -1451,7 +1330,7 @@ export async function listAllDocumentsByCategories(
     );
   }
 
-  const result = new Map<string, DocumentWithProperties[]>();
+  const result = new Map<string, DocumentMeta[]>();
 
   for (const slug of uniqueSlugs) {
     const ids = docIdsBySlug.get(slug) || new Set<string>();
@@ -1552,7 +1431,7 @@ export async function getDocumentChildren(
   viewer: AclViewer | null,
   options: { limit?: number; cursor?: string; sort?: DocumentSort } = {},
 ): Promise<{
-  documents: DocumentWithProperties[];
+  documents: DocumentMeta[];
   total: number;
   nextCursor: string | null;
 }> {
@@ -1562,7 +1441,7 @@ export async function getDocumentChildren(
     nonArchivedDocumentCondition,
   );
 
-  let docs: (typeof document.$inferSelect)[];
+  let docs: DocumentMetaRow[];
   let total: number;
   let nextCursor: string | null = null;
 
@@ -1578,7 +1457,12 @@ export async function getDocumentChildren(
     docs = page.ids.length
       ? inIdOrder(
           page.ids,
-          await many(s.db.select().from(document).where(inArray(document.id, page.ids))),
+          await many(
+            s.db
+              .select(documentMetaColumns)
+              .from(document)
+              .where(inArray(document.id, page.ids)),
+          ),
         )
       : [];
   } else {
@@ -1599,7 +1483,7 @@ export async function getDocumentChildren(
     const fetchLimit = (limit ?? 50) + 1;
     const rows = await many(
       s.db
-        .select()
+        .select(documentMetaColumns)
         .from(document)
         .where(seekCondition)
         .orderBy(desc(document.updatedAt), desc(document.id))
@@ -1629,22 +1513,9 @@ export async function getDocumentChildren(
 
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
-  const documents = docs.map((doc) => ({
-    id: doc.id,
-    slug: doc.slug,
-    type: doc.type,
-    content: "",
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    changeSeq: doc.changeSeq,
-    properties: propsByDocId.get(doc.id) ?? {},
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
-  }));
+  const documents = docs.map((doc) =>
+    toDocumentMeta(doc, propsByDocId.get(doc.id) ?? {}),
+  );
 
   return { documents, total, nextCursor };
 }

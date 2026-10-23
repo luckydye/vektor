@@ -65,6 +65,8 @@ export const document = sqliteTable("document", {
   archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
   readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
   content: text("content").notNull(),
+  /** Blob store key of content too large to inline, which leaves `content` empty; see `#db/space/documentContent.ts`. */
+  contentKey: text("content_key"),
   searchText: text("search_text"),
   searchEmbedding: text("search_embedding"),
   searchEmbeddingModel: text("search_embedding_model"),
@@ -325,8 +327,9 @@ export const workflowSchedule = sqliteTable(
     /** Null for a one-shot schedule; otherwise a standard 5-field cron expression. */
     cronExpression: text("cron_expression"),
     /** Document property that owns a one-shot schedule. */
-    sourceDocumentId: text("source_document_id")
-      .references(() => document.id, { onDelete: "cascade" }),
+    sourceDocumentId: text("source_document_id").references(() => document.id, {
+      onDelete: "cascade",
+    }),
     propertyKey: text("property_key"),
     /** IANA timezone for evaluating the expression (defaults to server time) */
     timezone: text("timezone"),
