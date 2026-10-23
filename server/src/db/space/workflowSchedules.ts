@@ -463,7 +463,7 @@ export async function claimDueWorkflowSchedules(
           and(eq(workflowSchedule.id, schedule.id), isNull(workflowSchedule.nextRunAt)),
         );
     } catch {
-      // Invalid stored expression — leave it dormant rather than failing the tick.
+      // Invalid stored expression — leave it dormant rather than failing the pass.
     }
   }
 
@@ -486,7 +486,7 @@ export async function claimDueWorkflowSchedules(
       try {
         nextRunAt = computeNextRunAt(schedule.cronExpression, schedule.timezone, now);
       } catch {
-        // Invalid expression: park the schedule instead of re-firing every tick.
+        // Invalid expression: park the schedule instead of re-firing every pass.
         nextRunAt = null;
       }
     }

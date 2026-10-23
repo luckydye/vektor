@@ -318,7 +318,7 @@ export const workflowSchedule = sqliteTable(
   "workflow_schedule",
   {
     id: text("id").primaryKey(),
-    /** Workflow document id this schedule runs on each tick */
+    /** Workflow document id this schedule runs */
     documentId: text("document_id")
       .notNull()
       .references(() => document.id, { onDelete: "cascade" }),
