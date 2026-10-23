@@ -10,7 +10,7 @@
 import type { SpaceStore } from "#db/client/store.ts";
 import { getDocumentBySlug } from "#db/space/documents.ts";
 import { repositoryDocumentType } from "#documents/types.ts";
-import type { BlobStore } from "#files/storage.ts";
+import { type BlobStore, deletePrefix } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { repoPrefix } from "./state.ts";
@@ -59,17 +59,7 @@ export async function deleteRepositoryObjects(
   spaceId: string,
   documentId: string,
 ): Promise<number> {
-  const prefix = `${repoPrefix(documentId)}/`;
-  let removed = 0;
-  let cursor: string | undefined;
-  do {
-    const page = await storage.list(spaceId, { prefix, cursor });
-    for (const file of page.files) {
-      await storage.delete(spaceId, file.key);
-      removed++;
-    }
-    cursor = page.cursor;
-  } while (cursor);
+  const removed = await deletePrefix(storage, spaceId, `${repoPrefix(documentId)}/`);
 
   await platform.git?.forget(spaceId, documentId);
   if (removed > 0) {

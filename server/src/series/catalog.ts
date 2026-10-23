@@ -8,6 +8,7 @@ import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { type SeriesRow, series, seriesDirtyWindow } from "#db/schema/space.ts";
+import { deletePrefix } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { SERIES_CLAIM_TTL_MS, SeriesInputError, seriesLimits } from "./limits.ts";
@@ -152,15 +153,7 @@ export async function deleteSeriesObjects(
   spaceId: string,
   ids: string[],
 ): Promise<void> {
-  const storage = platform.blobStore;
-  for (const id of ids) {
-    let cursor: string | undefined;
-    do {
-      const page = await storage.list(spaceId, { prefix: seriesPrefix(id), cursor });
-      for (const file of page.files) await storage.delete(spaceId, file.key);
-      cursor = page.cursor;
-    } while (cursor);
-  }
+  for (const id of ids) await deletePrefix(platform.blobStore, spaceId, seriesPrefix(id));
 }
 
 /** Remove the row, then its objects: nothing deletes objects because a row is missing. */

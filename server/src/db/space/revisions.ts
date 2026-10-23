@@ -10,6 +10,7 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, revision } from "#db/schema/space.ts";
+import { deletePrefix } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { touchDocument } from "./changeSeq.ts";
@@ -59,7 +60,7 @@ async function compressRevisionContent(content: string): Promise<Buffer> {
   });
 }
 
-export function decompressRevisionContent(compressed: Buffer): string {
+function decompressRevisionContent(compressed: Buffer): string {
   try {
     const decompressed = brotliDecompressSync(compressed);
     return decompressed.toString("utf-8");
@@ -67,6 +68,76 @@ export function decompressRevisionContent(compressed: Buffer): string {
     appLogger.error("Failed to decompress revision content", { error });
     throw new Error("Failed to decompress revision content");
   }
+}
+
+/** A compressed snapshot over this size lives in the blob store, and the row's `snapshot` is empty. */
+const INLINE_SNAPSHOT_BYTES = 1024 * 1024;
+
+function revisionSnapshotPrefix(documentId: string): string {
+  return `revisions/${documentId}/`;
+}
+
+/** Keyed by revision id, which an overwrite replaces, so a key is written once and never reused. */
+function revisionSnapshotKey(documentId: string, revisionId: string): string {
+  return `${revisionSnapshotPrefix(documentId)}${revisionId}`;
+}
+
+/** The row's `snapshot` for `compressed`, which is spilled to the blob store first when too large to inline. */
+async function storeSnapshot(
+  s: SpaceStore,
+  documentId: string,
+  revisionId: string,
+  compressed: Buffer,
+): Promise<Buffer> {
+  if (compressed.byteLength <= INLINE_SNAPSHOT_BYTES) return compressed;
+  await s.platform.blobStore.put(
+    s.spaceId,
+    revisionSnapshotKey(documentId, revisionId),
+    compressed,
+  );
+  return Buffer.alloc(0);
+}
+
+/** Run the row write that makes a spilled snapshot reachable, removing the blob again when it fails. */
+async function commitSnapshot<T>(
+  s: SpaceStore,
+  documentId: string,
+  revisionId: string,
+  snapshot: Buffer,
+  write: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await write();
+  } catch (error) {
+    if (snapshot.byteLength === 0) {
+      await s.platform.blobStore.delete(
+        s.spaceId,
+        revisionSnapshotKey(documentId, revisionId),
+      );
+    }
+    throw error;
+  }
+}
+
+async function readSnapshot(
+  s: SpaceStore,
+  row: { id: string; documentId: string; snapshot: Buffer },
+): Promise<Buffer> {
+  if (row.snapshot.byteLength > 0) return row.snapshot;
+  const stored = await s.platform.blobStore.read(
+    s.spaceId,
+    revisionSnapshotKey(row.documentId, row.id),
+  );
+  if (!stored) throw new Error(`Snapshot of revision ${row.id} is missing from storage`);
+  return stored;
+}
+
+/** Remove the spilled snapshots of a document whose rows are gone. */
+export async function deleteRevisionSnapshots(
+  s: SpaceStore,
+  documentId: string,
+): Promise<void> {
+  await deletePrefix(s.platform.blobStore, s.spaceId, revisionSnapshotPrefix(documentId));
 }
 
 function calculateChecksum(content: string): string {
@@ -197,10 +268,50 @@ export async function createRevision(
   if (lastRevision && lastIsRecent && !lastIsPublished && coalescesWithPrevious(kind)) {
     const compressed = await compressRevisionContent(content);
     const updatedMessage = options.message ?? lastRevision.message;
-    await s.db
-      .update(revision)
-      .set({ snapshot: compressed, checksum, message: updatedMessage })
-      .where(eq(revision.id, lastRevision.id));
+    // The overwrite takes a fresh id, so the new snapshot lands under its own key
+    // and the row swap below is the single point where it replaces the old one.
+    const id = createId("revision");
+    const snapshot = await storeSnapshot(s, documentId, id, compressed);
+    const replaced = await commitSnapshot(s, documentId, id, snapshot, () =>
+      s.tx(async (tx) => {
+        // Re-read inside the transaction: a concurrent overwrite may have swapped the id already.
+        const current = await one(
+          tx.db
+            .select({
+              id: revision.id,
+              inlineBytes: sql<number>`length(${revision.snapshot})`,
+            })
+            .from(revision)
+            .where(
+              and(
+                eq(revision.documentId, documentId),
+                eq(revision.rev, lastRevision.rev),
+              ),
+            ),
+        );
+        if (!current) {
+          throw new Error(
+            `Revision ${lastRevision.rev} of document ${documentId} is gone`,
+          );
+        }
+        await tx.db
+          .update(revision)
+          .set({ id, snapshot, checksum, message: updatedMessage })
+          .where(eq(revision.id, current.id));
+        return current;
+      }),
+    );
+    if (replaced.inlineBytes === 0) {
+      await s.platform.blobStore
+        .delete(s.spaceId, revisionSnapshotKey(documentId, replaced.id))
+        .catch((error) => {
+          appLogger.warn("Failed to delete replaced revision snapshot", {
+            error,
+            spaceId: s.spaceId,
+            documentId,
+          });
+        });
+    }
 
     await createAuditLog(s, {
       spaceId: s.spaceId,
@@ -213,7 +324,8 @@ export async function createRevision(
 
     return {
       ...rowToRevisionMetadata(lastRevision),
-      snapshot: compressed,
+      id,
+      snapshot,
       checksum,
       message: updatedMessage,
     };
@@ -223,18 +335,21 @@ export async function createRevision(
   const id = createId("revision");
   const now = new Date();
   const slug = await getDocumentSlug(s, documentId);
+  const snapshot = await storeSnapshot(s, documentId, id, compressed);
 
-  const created = await insertRevision(s, {
-    id,
-    documentId,
-    slug,
-    snapshot: compressed,
-    checksum,
-    parentRev,
-    message: options.message || null,
-    createdAt: now,
-    createdBy: userId,
-  });
+  const created = await commitSnapshot(s, documentId, id, snapshot, () =>
+    insertRevision(s, {
+      id,
+      documentId,
+      slug,
+      snapshot,
+      checksum,
+      parentRev,
+      message: options.message || null,
+      createdAt: now,
+      createdBy: userId,
+    }),
+  );
 
   // Never backwards: a save that landed while this one compressed has already
   // moved the pointer past the revision written here.
@@ -261,7 +376,7 @@ export async function createRevision(
     documentId,
     rev: created.rev,
     slug,
-    snapshot: compressed,
+    snapshot,
     checksum,
     parentRev: created.parentRev,
     message: options.message || null,
@@ -317,8 +432,9 @@ export async function getRevisionContent(
   if (!revisionRecord) {
     return null;
   }
+  const snapshot = await readSnapshot(s, revisionRecord);
   try {
-    return decompressRevisionContent(revisionRecord.snapshot);
+    return decompressRevisionContent(snapshot);
   } catch (error) {
     appLogger.error(`Failed to decompress revision ${rev} for document ${documentId}`, {
       error,

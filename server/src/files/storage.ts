@@ -226,3 +226,20 @@ export async function listAllFiles(
   } while (cursor);
   return files;
 }
+
+/** Delete every object under `prefix`; returns how many there were. */
+export async function deletePrefix(
+  storage: BlobStore,
+  spaceId: string,
+  prefix: string,
+): Promise<number> {
+  let removed = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await storage.list(spaceId, { prefix, cursor });
+    for (const file of page.files) await storage.delete(spaceId, file.key);
+    removed += page.files.length;
+    cursor = page.cursor;
+  } while (cursor);
+  return removed;
+}

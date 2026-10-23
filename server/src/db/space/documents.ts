@@ -5,13 +5,7 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { createId } from "#db/ids.ts";
-import {
-  comment,
-  document,
-  file as fileTable,
-  property,
-  revision,
-} from "#db/schema/space.ts";
+import { comment, document, file as fileTable, property } from "#db/schema/space.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   assertWritableDocumentPropertyKey,
@@ -58,7 +52,7 @@ import {
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
 import { syncPropertyTriggers } from "./propertyTriggers.ts";
-import { decompressRevisionContent } from "./revisions.ts";
+import { deleteRevisionSnapshots, getRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
 export interface DocumentWithProperties {
@@ -668,6 +662,13 @@ export async function deleteDocument(
   if (storedFiles === null) return false;
 
   await deleteDocumentSeriesObjects(s.platform, s.spaceId, seriesIds);
+  await deleteRevisionSnapshots(s, id).catch((error) => {
+    appLogger.warn("Failed to delete revision snapshots", {
+      error,
+      spaceId: s.spaceId,
+      documentId: id,
+    });
+  });
   const storage = s.platform.blobStore;
   if (wasRepository) {
     await deleteRepositoryObjects(s.platform, storage, s.spaceId, id).catch((error) => {
@@ -1264,23 +1265,12 @@ async function countMentionsForUser(
     return cached;
   }
 
-  const rev = await one(
-    s.db
-      .select({
-        snapshot: revision.snapshot,
-      })
-      .from(revision)
-      .where(
-        and(eq(revision.documentId, documentId), eq(revision.rev, doc.publishedRev)),
-      ),
-  );
-
-  if (!rev?.snapshot) {
+  const html = await getRevisionContent(s, documentId, doc.publishedRev);
+  if (html === null) {
     return 0;
   }
 
   try {
-    const html = decompressRevisionContent(rev.snapshot);
     const mentions = extractMentionsFromHtml(html);
     const count = mentions.filter((m) => m.email === userEmail).length;
 
