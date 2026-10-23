@@ -1,0 +1,4 @@
+# rustc strips macOS dylibs with llvm-objcopy, which leaves the LINKEDIT string pool misaligned and dyld refuses to load it.
+# Let ld64 drop local and debug symbols at link time instead.
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "strip=none", "-C", "link-arg=-Wl,-x,-S"]
