@@ -364,12 +364,14 @@ export const POST: ApiRouteHandler = (context) =>
         !Array.isArray(init) &&
         init.type === TRIGGER_PROPERTY_TYPE,
     );
-    await authorizeTriggerWrites(
-      store,
-      null,
-      normalizeDocumentPropertyPatch(Object.fromEntries(triggers)),
-      userId,
-    ).catch((error) => {
+    try {
+      await authorizeTriggerWrites(
+        store,
+        null,
+        normalizeDocumentPropertyPatch(Object.fromEntries(triggers)),
+        userId,
+      );
+    } catch (error) {
       if (
         error instanceof InvalidDocumentPropertyPatchError ||
         error instanceof ReservedDocumentPropertyKeyError
@@ -377,7 +379,7 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse(error.message);
       }
       throw error;
-    });
+    }
 
     const stored = await storeDocumentContent(store, createId("document"), content);
     const created = await store
