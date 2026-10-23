@@ -100,12 +100,15 @@ function imageAttachments(message: DiscordMessage) {
 }
 
 /** Downloads the images of `message`, when it is recent enough for its links to still work. */
-async function messageImages(message: DiscordMessage): Promise<ChatImage[]> {
+async function messageImages(
+  platform: Platform,
+  message: DiscordMessage,
+): Promise<ChatImage[]> {
   const sentAt = Number((BigInt(message.id) >> 22n) + DISCORD_EPOCH);
   if (Date.now() - sentAt > MAX_IMAGE_AGE_MS) return [];
   return await Promise.all(
     imageAttachments(message).map(async (attachment) => {
-      const res = await fetch(attachment.url);
+      const res = await platform.fetch(attachment.url, { method: "GET" });
       if (!res.ok) throw new Error(`Discord image download failed (${res.status})`);
       return {
         mediaType: attachment.content_type as ChatImage["mediaType"],
@@ -235,7 +238,7 @@ export function connectDiscordBot(
     message: DiscordMessage,
     line: string,
   ): Promise<ChatMessage> {
-    const images = await messageImages(message);
+    const images = await messageImages(platform, message);
     return { role: "user", content: line, ...(images.length > 0 ? { images } : {}) };
   }
 
