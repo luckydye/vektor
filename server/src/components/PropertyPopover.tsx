@@ -10,11 +10,11 @@ import {
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { Button } from "./Button.tsx";
-import { SheetPage } from "./SheetPage.tsx";
 import { SelectMenu, type SelectMenuItem, useSelectMenuKeys } from "./SelectMenu.tsx";
+import { SheetPage } from "./SheetPage.tsx";
 import "@atrium-ui/elements/blur";
-import type { Property, SpaceProperty } from "#documents/properties.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
+import type { Property, SpaceProperty } from "#documents/properties.ts";
 
 interface Props {
   property?: Property | null;
@@ -128,12 +128,10 @@ export function PropertyPopover(props: Props) {
   onMount(() => {
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Element | null;
-      const outside = props.sheet
-        ? !sheetElement?.contains(target)
-        : !target?.closest("a-blur");
-      if (outside && props.isOpen === true) {
-        handleExit();
-      }
+      if (props.isOpen !== true) return;
+      if (props.sheet ? sheetElement?.contains(target) : target?.closest("a-blur"))
+        return;
+      handleExit();
     };
     window.addEventListener("pointerdown", onPointerDown);
     onCleanup(() => window.removeEventListener("pointerdown", onPointerDown));

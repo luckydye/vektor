@@ -24,8 +24,7 @@ function toLocalInputValue(iso: string): string {
 export function TriggerPropertyEditor(props: Props) {
   const t = useTranslation();
 
-  // solid-reactivity-ok: the editor is a draft seeded once from the stored spec
-  const initial = props.spec;
+  const initial = props.spec; // solid-reactivity-ok: a draft seeded once from the stored spec
   const [workflow, setWorkflow] = createSignal(initial?.workflow ?? "");
   const [mode, setMode] = createSignal<"at" | "from">(
     initial && "from" in initial ? "from" : "at",

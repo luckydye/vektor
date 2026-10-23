@@ -74,36 +74,39 @@ export function PropertyChip(props: Props) {
   const valueLabels = createMemo(() => props.valueLabels ?? []);
 
   const handleClick = async () => {
-    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
-    if (props.readonly || !property) return;
+    if (props.readonly || !props.property) return;
 
     // A sheet page slides in whole; options arriving mid-slide would reflow it.
-    if (props.sheet && property.type !== "date") {
-      setValueOptions((await props.propertyValues?.(property)) ?? []);
+    if (props.sheet && props.property.type !== "date") {
+      setValueOptions((await props.propertyValues?.(props.property)) ?? []);
     }
 
     setIsEditPopoverOpen(!isEditPopoverOpen());
-    setPropertyName(property.name);
-    setSelectedValue(property.value);
+    setPropertyName(props.property.name);
+    setSelectedValue(props.property.value);
 
     // Free text is edited in place, so the field opens holding the current value.
-    if (property.type === "text" && typeof property.value === "string") {
-      setSearchInput(property.value);
+    if (props.property.type === "text" && typeof props.property.value === "string") {
+      setSearchInput(props.property.value);
     }
 
-    if (property.type === "date" && property.value && !Array.isArray(property.value)) {
-      setDateValue(property.value);
+    if (
+      props.property.type === "date" &&
+      props.property.value &&
+      !Array.isArray(props.property.value)
+    ) {
+      setDateValue(props.property.value);
     }
 
     if (props.sheet) return;
 
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    if (property.type !== "date" && !props.trigger) {
+    if (props.property.type !== "date" && !props.trigger) {
       inputElement?.focus();
       inputElement?.setSelectionRange(searchInput().length, searchInput().length);
 
-      props.propertyValues?.(property).then(setValueOptions);
+      props.propertyValues?.(props.property).then(setValueOptions);
     }
   };
 
@@ -133,8 +136,7 @@ export function PropertyChip(props: Props) {
   };
 
   const handleValueSelect = (item: SelectMenuItem) => {
-    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
-    if (!property) return;
+    if (!props.property) return;
 
     const itemValue = item.id === "__new__" ? searchInput().trim() : item.id;
     if (!itemValue) return;
@@ -146,7 +148,7 @@ export function PropertyChip(props: Props) {
 
       setSelectedValue(nextValue);
       props.onUpdate?.({
-        ...property,
+        ...props.property,
         name: propertyName(),
         value: nextValue,
         search: searchInput(),
@@ -155,12 +157,12 @@ export function PropertyChip(props: Props) {
       return;
     }
 
-    // Picking the value the property already has is a no-op, not an edit: it
+    // Picking the value the props.property already has is a no-op, not an edit: it
     // would patch the document and bump its revision for nothing.
     if (itemValue !== selectedValue()) {
       setSelectedValue(itemValue);
       props.onUpdate?.({
-        ...property,
+        ...props.property,
         name: propertyName(),
         value: itemValue,
         search: searchInput(),
@@ -174,10 +176,9 @@ export function PropertyChip(props: Props) {
 
   const handleDateChange = (event: Event) => {
     const target = event.target as HTMLInputElement;
-    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
-    if (!property) return;
+    if (!props.property) return;
     props.onUpdate?.({
-      ...property,
+      ...props.property,
       name: propertyName(),
       value: target.value,
       search: "",
@@ -186,10 +187,9 @@ export function PropertyChip(props: Props) {
   };
 
   const handleTriggerSave = (spec: TriggerSpec) => {
-    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
-    if (!property) return;
+    if (!props.property) return;
     props.onUpdate?.({
-      ...property,
+      ...props.property,
       name: propertyName(),
       value: JSON.stringify(spec),
       search: "",
@@ -198,21 +198,23 @@ export function PropertyChip(props: Props) {
   };
 
   const handleDelete = () => {
-    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
-    if (!property) return;
-    props.onDelete?.(property);
+    if (!props.property) return;
+    props.onDelete?.(props.property);
     handleExit();
   };
 
   onMount(() => {
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Element | null;
-      const outside = props.sheet
-        ? !rootElement?.contains(target) && !pageElement?.contains(target)
-        : !target?.closest("a-blur");
-      if (outside && isEditPopoverOpen()) {
-        handleExit();
+      if (!isEditPopoverOpen()) return;
+      if (
+        props.sheet
+          ? rootElement?.contains(target) || pageElement?.contains(target)
+          : target?.closest("a-blur")
+      ) {
+        return;
       }
+      handleExit();
     };
     window.addEventListener("pointerdown", onPointerDown);
     onCleanup(() => window.removeEventListener("pointerdown", onPointerDown));

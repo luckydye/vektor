@@ -255,8 +255,7 @@ export function RevisionsSidebar(props: Props) {
     const open = isOpen();
     const spaceId = currentSpaceId();
     // Tracked so switching documents while the panel is open refetches.
-    const documentId = props.documentId;
-    if (open && spaceId && documentId) void refresh();
+    if (open && spaceId && props.documentId) void refresh();
     if (open !== previousOpen) {
       previousOpen = open;
       dispatchWindowEvent(
