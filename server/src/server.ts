@@ -21,12 +21,9 @@ import { listActiveSpaceIds } from "./db/auth/spaceIndex.ts";
 import { initializeDatabases } from "./db/client/db.ts";
 import { openSpaceStore } from "./db/client/store.ts";
 import { failInterruptedAIChatTurns } from "./db/space/aiChatSessions.ts";
+import { purgeExpiredSpaces } from "./db/space/spaces.ts";
 import { startDiscordBots, stopDiscordBots } from "./integrations/discordBot.ts";
-import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
-import {
-  startEmailNotificationWorker,
-  stopEmailNotificationWorker,
-} from "./notifications/worker.ts";
+import { isEmailDeliveryAvailable } from "./notifications/email.ts";
 import { appLogger } from "./observability/logger.ts";
 import {
   METRICS_CONTENT_TYPE,
@@ -36,6 +33,7 @@ import {
 } from "./observability/metrics.ts";
 import { startYRoomSweep } from "./realtime/yjsRooms.ts";
 import { APP_CSP } from "./utils/csp.ts";
+import { every } from "./utils/every.ts";
 
 type AstroMiddleware = (
   req: IncomingMessage,
@@ -92,6 +90,57 @@ function createHonoRequest(req: IncomingMessage): Request {
   }
 
   return new Request(requestUrl(req), init);
+}
+
+/**
+ * How often deleted spaces past their retention window are reclaimed. A space
+ * that waited 30 days can wait another hour.
+ */
+const SPACE_RETENTION_SWEEP_MS = 60 * 60 * 1000;
+
+function purgeExpiredSpacesLogged(platform: Platform): void {
+  void purgeExpiredSpaces(platform, new Date()).then(
+    (purged) => {
+      if (purged.length > 0) {
+        appLogger.info("Reclaimed deleted spaces", { spaces: purged.length });
+      }
+    },
+    (error) => appLogger.error("Space retention sweep failed", { error }),
+  );
+}
+
+/** Log `req` now and its response once it finishes or the client drops it. */
+function logRequest(req: IncomingMessage, res: ServerResponse): void {
+  const startTime = Date.now();
+  const request = {
+    method: req.method,
+    host: req.headers.host,
+    path: new URL(req.url ?? "/", "http://localhost").pathname,
+  };
+  recordHttpRequest();
+  appLogger.info("HTTP request", { ...request, time: new Date(startTime).toString() });
+
+  res.on("finish", () => {
+    const attributes = {
+      ...request,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startTime,
+    };
+    if (res.statusCode >= 500) {
+      appLogger.error("HTTP response", attributes);
+      return;
+    }
+    if (res.statusCode >= 400) {
+      appLogger.warn("HTTP response", attributes);
+      return;
+    }
+    appLogger.info("HTTP response", attributes);
+  });
+
+  res.on("close", () => {
+    if (res.writableEnded) return;
+    appLogger.warn("HTTP connection closed before response completed", request);
+  });
 }
 
 function shouldRunAstroFallback(
@@ -177,62 +226,6 @@ export async function startServer(platform: Platform): Promise<void> {
     await generateOpenApiModule();
   }
 
-  app.use("*", async (c, next) => {
-    const res = c.env.outgoing;
-    if (!res.headersSent && !res.hasHeader("Content-Security-Policy")) {
-      res.setHeader("Content-Security-Policy", APP_CSP);
-    }
-    await next();
-  });
-
-  // Logging
-  app.use("*", async (c, next) => {
-    const req = c.env.incoming as IncomingMessage & { time?: string };
-    const res = c.env.outgoing;
-    const startTime = Date.now();
-    req.time = new Date(startTime).toString();
-    recordHttpRequest();
-    appLogger.info("HTTP request", {
-      method: req.method,
-      host: c.req.header("host") ?? req.headers.host,
-      path: c.req.path,
-      time: req.time,
-    });
-
-    res.on("finish", () => {
-      const durationMs = Date.now() - startTime;
-      const attributes = {
-        method: req.method,
-        host: c.req.header("host") ?? req.headers.host,
-        path: c.req.path,
-        statusCode: res.statusCode,
-        durationMs,
-      };
-      if (res.statusCode >= 500) {
-        appLogger.error("HTTP response", attributes);
-        return;
-      }
-      if (res.statusCode >= 400) {
-        appLogger.warn("HTTP response", attributes);
-        return;
-      }
-      appLogger.info("HTTP response", attributes);
-    });
-
-    res.on("close", () => {
-      if (res.writableEnded) {
-        return;
-      }
-      appLogger.warn("HTTP connection closed before response completed", {
-        method: req.method,
-        host: c.req.header("host") ?? req.headers.host,
-        path: c.req.path,
-      });
-    });
-
-    await next();
-  });
-
   // Operational metrics in Prometheus exposition format. Kept outside the API
   // router so it is reachable even in API-only deployments and without auth.
   app.get("/metrics", async (c) =>
@@ -309,10 +302,11 @@ export async function startServer(platform: Platform): Promise<void> {
   const port = Number.parseInt(portArg ?? "8080", 10);
   const host = config().SERVER_HOST ?? "0.0.0.0";
   const server = createServer(async (req, res) => {
+    res.setHeader("Content-Security-Policy", APP_CSP);
+    logRequest(req, res);
     try {
       const response = await app.fetch(createHonoRequest(req), {
-        incoming: req,
-        outgoing: res,
+        clientAddress: req.socket.remoteAddress ?? null,
       });
 
       if (astroHandler && shouldRunAstroFallback(astroHandler, response, req, res)) {
@@ -347,11 +341,22 @@ export async function startServer(platform: Platform): Promise<void> {
     appLogger.info("Server listening", { host, port });
   });
 
-  startCronScheduler(platform);
+  // Each space's pass arms its own next wake from what it finds due.
+  for (const spaceId of await listActiveSpaceIds(platform)) {
+    platform.spaceHost.at(spaceId, new Date());
+  }
+  if (!isEmailDeliveryAvailable(platform)) {
+    appLogger.warn(
+      "Email notification delivery is disabled; configure VEKTOR_EMAIL_FROM and VEKTOR_SMTP_HOST",
+    );
+  }
   startDiscordBots(platform);
-  startEmailNotificationWorker(platform);
-  const stopMetricsMonitor = startMetricsMonitor(platform);
-  const stopYRoomSweep = startYRoomSweep(platform);
+  const stopMetricsMonitor = startMetricsMonitor();
+  const stopYRoomSweep = startYRoomSweep();
+  purgeExpiredSpacesLogged(platform);
+  const stopRetentionSweep = every(SPACE_RETENTION_SWEEP_MS, () =>
+    purgeExpiredSpacesLogged(platform),
+  );
 
   let isShuttingDown = false;
   let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -364,11 +369,10 @@ export async function startServer(platform: Platform): Promise<void> {
 
     appLogger.info("Shutdown initiated", { reason, exitCode });
 
-    stopCronScheduler();
     stopMetricsMonitor();
     stopYRoomSweep();
+    stopRetentionSweep();
     stopDiscordBots();
-    stopEmailNotificationWorker();
     stopSerializationPool();
     stopAgentWorker(platform);
 

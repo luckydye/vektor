@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
-import type { SpaceStore } from "#db/client/store.ts";
+import { type SpaceStore, wakeSpaceAfterCommit } from "#db/client/store.ts";
 import { type SeriesRow, series, seriesDirtyWindow } from "#db/schema/space.ts";
 import { deletePrefix } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -220,6 +220,7 @@ export async function recordAppend(
       oldestWindow: sql`MIN(COALESCE(${series.oldestWindow}, ${oldest}), ${oldest})`,
     })
     .where(eq(series.id, seriesId));
+  wakeSpaceAfterCommit(store);
 }
 
 /** Take the single-writer compaction claim, returning its stamp, or null when held. */

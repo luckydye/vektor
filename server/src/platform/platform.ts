@@ -135,10 +135,11 @@ export interface Mailer {
 
 /** Where spaces live: one process hosting all of them, or one Durable Object each. */
 export interface SpaceHost {
-  /** The spaces background work runs for. */
-  spaceIds(): Promise<string[]>;
-  /** Run `task` every `intervalMs` without keeping the host alive; returns what stops it. */
-  every(intervalMs: number, task: () => void): () => void;
+  /**
+   * Run the space's background pass (`runSpaceWork`) at `time`, or sooner when
+   * an earlier wake is already pending. The pass reports when it is next due.
+   */
+  at(spaceId: string, time: Date): void;
 }
 
 /** Git over HTTP and the repository views, which need a git binary and local disk. */

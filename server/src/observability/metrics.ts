@@ -14,6 +14,7 @@ import { spaceIndex, user } from "#db/schema/auth.ts";
 import { activeRuns } from "#jobs/runStore.ts";
 import { getJobQueueStats } from "#jobs/scheduler.ts";
 import type { Platform } from "#platform/platform.ts";
+import { every } from "#utils/every.ts";
 import { getOpStats } from "./trace.ts";
 
 /** Rolling window, in seconds, used to compute the HTTP request rate. */
@@ -123,10 +124,10 @@ function sampleMonitor(): void {
 }
 
 /** Sample the event loop on a background timer; returns what stops it. */
-export function startMetricsMonitor(platform: Platform): () => void {
+export function startMetricsMonitor(): () => void {
   lastSampleWallMs = performance.now();
   lastCpu = process.cpuUsage();
-  return platform.spaceHost.every(MONITOR_INTERVAL_MS, sampleMonitor);
+  return every(MONITOR_INTERVAL_MS, sampleMonitor);
 }
 
 /** Peak event-loop delay, in seconds, over the rolling window. */

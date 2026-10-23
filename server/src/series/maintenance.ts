@@ -7,6 +7,7 @@ import type { SpaceStore } from "#db/client/store.ts";
 import type { SeriesRow } from "#db/schema/space.ts";
 import { listAllFiles } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import type { SpaceWork } from "#platform/spaceWork.ts";
 import {
   advanceOldestWindow,
   claimCompaction,
@@ -195,15 +196,16 @@ export async function pruneSeries(
   await advanceOldestWindow(store, row.id, window);
 }
 
-function isCompactable(
+/** When the window may be compacted, in ms, or null while it has nothing to compact. */
+function compactableAt(
   row: SeriesRow,
   window: number,
   segments: number,
   now: number,
-): boolean {
-  if (segments <= 0) return false;
-  const closed = window + windowMs(row) + SERIES_SETTLE_MS <= now;
-  return closed || segments >= row.compactAfterSegments;
+): number | null {
+  if (segments <= 0) return null;
+  if (segments >= row.compactAfterSegments) return now;
+  return window + windowMs(row) + SERIES_SETTLE_MS;
 }
 
 /** One maintenance pass over a space: compact, collect, and hourly prune. */
@@ -214,7 +216,8 @@ export async function maintainSpaceSeries(store: SpaceStore, now: Date): Promise
       if (dirty.collectAt !== null && dirty.collectAt <= at) {
         await collectWindow(store, dirty.series, dirty.window);
       }
-      if (isCompactable(dirty.series, dirty.window, dirty.segments, at)) {
+      const compactAt = compactableAt(dirty.series, dirty.window, dirty.segments, at);
+      if (compactAt !== null && compactAt <= at) {
         await compactWindow(store, dirty.series, dirty.window);
       }
     } catch (error) {
@@ -241,3 +244,31 @@ export async function maintainSpaceSeries(store: SpaceStore, now: Date): Promise
     }
   }
 }
+
+/** When a dirty window can next be collected or compacted, or the space's series are next pruned. */
+async function nextSeriesMaintenanceAt(
+  store: SpaceStore,
+  now: Date,
+): Promise<Date | null> {
+  const times: number[] = [];
+  for (const dirty of await listDirtyWindows(store)) {
+    if (dirty.collectAt !== null) times.push(dirty.collectAt);
+    const compactAt = compactableAt(
+      dirty.series,
+      dirty.window,
+      dirty.segments,
+      now.getTime(),
+    );
+    if (compactAt !== null) times.push(compactAt);
+  }
+  if ((await listSeries(store)).length > 0) {
+    times.push((lastPruneAt.get(store.spaceId) ?? 0) + PRUNE_INTERVAL_MS);
+  }
+  return times.length > 0 ? new Date(Math.min(...times)) : null;
+}
+
+export const seriesMaintenanceWork: SpaceWork = {
+  name: "series maintenance",
+  run: maintainSpaceSeries,
+  nextAt: nextSeriesMaintenanceAt,
+};

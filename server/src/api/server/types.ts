@@ -1,12 +1,11 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Context } from "hono";
 import type { CallerCredentials } from "#acl/guards.ts";
 import type { Platform } from "#platform/platform.ts";
 
 export type ApiBindings = {
   Bindings: {
-    incoming: IncomingMessage;
-    outgoing: ServerResponse;
+    /** The connection's peer address, which the entry point reads from its transport. */
+    clientAddress: string | null;
   };
   Variables: {
     /** What a guard may authenticate this request with; see `hydrateRequestContext`. */

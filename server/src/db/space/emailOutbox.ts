@@ -1,6 +1,6 @@
-import { and, eq, lte, or } from "drizzle-orm";
+import { and, asc, eq, lte, or } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
-import type { SpaceStore } from "#db/client/store.ts";
+import { type SpaceStore, wakeSpaceAfterCommit } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { emailNotificationOutbox } from "#db/schema/space.ts";
 
@@ -53,7 +53,34 @@ export async function insertEmailNotifications(
     )
     .onConflictDoNothing()
     .returning({ id: emailNotificationOutbox.id });
+  if (inserted.length > 0) wakeSpaceAfterCommit(s);
   return inserted.length;
+}
+
+/** After this long a `sending` row is presumed abandoned by a crashed delivery and claimed again. */
+const SENDING_STALE_MS = 5 * 60 * 1000;
+
+/** When the next row becomes claimable, or null when none will. */
+export async function nextEmailNotificationAt(s: SpaceStore): Promise<Date | null> {
+  const pending = await one(
+    s.db
+      .select({ at: emailNotificationOutbox.availableAt })
+      .from(emailNotificationOutbox)
+      .where(eq(emailNotificationOutbox.status, "pending"))
+      .orderBy(asc(emailNotificationOutbox.availableAt))
+      .limit(1),
+  );
+  const sending = await one(
+    s.db
+      .select({ at: emailNotificationOutbox.updatedAt })
+      .from(emailNotificationOutbox)
+      .where(eq(emailNotificationOutbox.status, "sending"))
+      .orderBy(asc(emailNotificationOutbox.updatedAt))
+      .limit(1),
+  );
+  const stale = sending && new Date(sending.at.getTime() + SENDING_STALE_MS);
+  if (!pending) return stale ?? null;
+  return stale && stale < pending.at ? stale : pending.at;
 }
 
 export async function claimDueEmailNotifications(
@@ -61,7 +88,7 @@ export async function claimDueEmailNotifications(
   limit = 50,
 ): Promise<(typeof emailNotificationOutbox.$inferSelect)[]> {
   const now = new Date();
-  const staleAt = new Date(now.getTime() - 5 * 60 * 1000);
+  const staleAt = new Date(now.getTime() - SENDING_STALE_MS);
   const due = await many(
     s.db
       .select()

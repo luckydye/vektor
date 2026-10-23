@@ -95,6 +95,11 @@ function createStore(
   return store;
 }
 
+/** Wake the space's background pass once this write commits, so the work it queued is picked up. */
+export function wakeSpaceAfterCommit(s: SpaceStore): void {
+  s.afterCommit((store) => store.platform.spaceHost.at(store.spaceId, new Date()));
+}
+
 export async function openSpaceStore(
   platform: Platform,
   spaceId: string,

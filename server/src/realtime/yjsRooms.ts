@@ -20,6 +20,7 @@ import { documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced, tracedSync } from "#observability/trace.ts";
 import type { Platform } from "#platform/platform.ts";
+import { every } from "#utils/every.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
@@ -451,8 +452,8 @@ export function sweepIdleYRooms(now = Date.now()): number {
 }
 
 /** Sweep idle rooms on a background timer; returns what stops it. */
-export function startYRoomSweep(platform: Platform): () => void {
-  return platform.spaceHost.every(ROOM_SWEEP_INTERVAL_MS, () => sweepIdleYRooms());
+export function startYRoomSweep(): () => void {
+  return every(ROOM_SWEEP_INTERVAL_MS, () => sweepIdleYRooms());
 }
 
 export function retireYRoom(platform: Platform, key: string): void {

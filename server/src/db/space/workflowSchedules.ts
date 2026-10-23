@@ -1,7 +1,7 @@
 import { parseCronExpression } from "cron-schedule";
-import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
-import type { SpaceStore } from "#db/client/store.ts";
+import { type SpaceStore, wakeSpaceAfterCommit } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import {
   type WorkflowSchedule,
@@ -128,6 +128,7 @@ export async function syncPropertyWorkflowSchedules(
         .insert(workflowSchedule)
         .values({ id: createId("workflowSchedule"), createdAt: now, ...values });
     }
+    wakeSpaceAfterCommit(s);
   }
 }
 
@@ -323,6 +324,7 @@ export async function createWorkflowSchedule(
     throw new Error("Failed to create workflow schedule");
   }
 
+  wakeSpaceAfterCommit(s);
   return result[0];
 }
 
@@ -400,7 +402,23 @@ export async function updateWorkflowSchedule(
     throw new Error("Workflow schedule not found");
   }
 
+  wakeSpaceAfterCommit(s);
   return result[0];
+}
+
+/** The earliest time an enabled schedule is due, or null when none is. */
+export async function nextWorkflowScheduleAt(s: SpaceStore): Promise<Date | null> {
+  const next = await one(
+    s.db
+      .select({ nextRunAt: workflowSchedule.nextRunAt })
+      .from(workflowSchedule)
+      .where(
+        and(eq(workflowSchedule.enabled, true), isNotNull(workflowSchedule.nextRunAt)),
+      )
+      .orderBy(asc(workflowSchedule.nextRunAt))
+      .limit(1),
+  );
+  return next?.nextRunAt ?? null;
 }
 
 export async function deleteWorkflowSchedule(s: SpaceStore, id: string): Promise<void> {

@@ -2,7 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gitRoutes } from "#api/gitRoutes.ts";
 import { config } from "#config";
-import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { createPlatformState } from "#db/client/db.ts";
 import type { BlobStore } from "#files/storage.ts";
 import { invalidateCache } from "#git/cache.ts";
@@ -18,6 +17,7 @@ import { getNativeEmbedding, getNativeImage } from "./native.ts";
 import { createS3BlobStore } from "./s3BlobStore.ts";
 import { poolDocSerializer } from "./serializationPool.ts";
 import { createLibsqlSpaceDatabase } from "./spaceDatabase.ts";
+import { createTimerSpaceHost } from "./spaceHost.ts";
 
 /** S3-compatible object storage when a bucket is set, and `data/uploads` otherwise. */
 function configuredBlobStore(): BlobStore {
@@ -111,14 +111,7 @@ export function createBunPlatform(): Platform {
 
     mailer: smtpMailer,
 
-    spaceHost: {
-      spaceIds: () => listActiveSpaceIds(platform),
-      every(intervalMs, task) {
-        const timer = setInterval(task, intervalMs);
-        timer.unref?.();
-        return () => clearInterval(timer);
-      },
-    },
+    spaceHost: createTimerSpaceHost(() => platform),
 
     fetch: createBunFetch(),
 

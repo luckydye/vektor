@@ -55,10 +55,7 @@ function isCrossSiteForgery(c: ApiContext, method: string): boolean {
 }
 
 function clientIp(c: ApiContext): string {
-  return resolveClientIp(
-    c.env.incoming.socket?.remoteAddress,
-    c.req.header("x-forwarded-for"),
-  );
+  return resolveClientIp(c.env.clientAddress, c.req.header("x-forwarded-for"));
 }
 
 async function hydrateRequestContext(c: ApiContext): Promise<void> {

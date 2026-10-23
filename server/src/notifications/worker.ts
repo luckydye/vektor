@@ -14,6 +14,7 @@ import {
   claimDueEmailNotifications,
   markEmailNotificationSent,
   markEmailNotificationSkipped,
+  nextEmailNotificationAt,
   retryEmailNotification,
 } from "#db/space/emailOutbox.ts";
 import { getRevisionContent } from "#db/space/revisions.ts";
@@ -22,13 +23,9 @@ import { propertyValueToText } from "#documents/properties.ts";
 import { isSerializedDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import type { SpaceWork } from "#platform/spaceWork.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
 import { renderNotificationEmail } from "./render.ts";
-
-const TICK_INTERVAL_MS = 15_000;
-
-let stopTicking: (() => void) | null = null;
-let tickInProgress = false;
 
 function documentUrl(spaceSlug: string, documentSlug: string): string {
   const origin = config().SITE_URL || config().API_URL || getLocalOrigin();
@@ -149,56 +146,27 @@ async function deliver(
   await markEmailNotificationSent(store, notification.id);
 }
 
-async function tick(platform: Platform): Promise<void> {
-  if (tickInProgress) return;
-  tickInProgress = true;
-  try {
-    for (const spaceId of await platform.spaceHost.spaceIds()) {
-      const store = await openSpaceStore(platform, spaceId);
+/** Deliver the space's due outbox rows; idle while delivery is not configured. */
+export const emailNotificationWork: SpaceWork = {
+  name: "email notifications",
+  async run(store) {
+    if (!isEmailDeliveryAvailable(store.platform)) return;
+    for (const notification of await claimDueEmailNotifications(store)) {
       try {
-        const due = await claimDueEmailNotifications(store);
-        for (const notification of due) {
-          try {
-            await deliver(platform, spaceId, notification);
-          } catch (error) {
-            await retryEmailNotification(store, notification, error);
-            appLogger.warn("Email notification delivery failed", {
-              error,
-              spaceId,
-              notificationId: notification.id,
-              attempts: notification.attempts + 1,
-            });
-          }
-        }
+        await deliver(store.platform, store.spaceId, notification);
       } catch (error) {
-        appLogger.error("Email notification tick failed for space", { error, spaceId });
+        await retryEmailNotification(store, notification, error);
+        appLogger.warn("Email notification delivery failed", {
+          error,
+          spaceId: store.spaceId,
+          notificationId: notification.id,
+          attempts: notification.attempts + 1,
+        });
       }
     }
-  } catch (error) {
-    appLogger.error("Email notification tick failed", { error });
-  } finally {
-    tickInProgress = false;
-  }
-}
-
-export function startEmailNotificationWorker(platform: Platform): void {
-  if (stopTicking) return;
-  if (!isEmailDeliveryAvailable(platform)) {
-    appLogger.warn(
-      "Email notification delivery is disabled; configure VEKTOR_EMAIL_FROM and VEKTOR_SMTP_HOST",
-    );
-    return;
-  }
-
-  void tick(platform);
-  stopTicking = platform.spaceHost.every(TICK_INTERVAL_MS, () => void tick(platform));
-  appLogger.info("Email notification worker started", {
-    tickIntervalMs: TICK_INTERVAL_MS,
-  });
-}
-
-export function stopEmailNotificationWorker(): void {
-  if (!stopTicking) return;
-  stopTicking();
-  stopTicking = null;
-}
+  },
+  nextAt: async (store) =>
+    isEmailDeliveryAvailable(store.platform)
+      ? await nextEmailNotificationAt(store)
+      : null,
+};
