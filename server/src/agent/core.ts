@@ -2,6 +2,7 @@ import { Bash } from "just-bash";
 import {
   type AgentSpace,
   callTool as callVektorTool,
+  uploadFile,
   listTools as listVektorTools,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
@@ -19,6 +20,7 @@ import { uploadCommand } from "./commands/upload.ts";
 import { vektorCommand } from "./commands/vektor.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
+import { generateImage, generateImageTool } from "./imageGeneration.ts";
 import { callModel, type SettleAITokens } from "./model.ts";
 import type { AgentNodeHost } from "./nodes/protocol.ts";
 import { runRemoteSubagent } from "./nodes/remoteSubagent.ts";
@@ -578,7 +580,12 @@ export async function runAgentPrompt(options: {
     integrationSurface: options.integrationSurface ?? { instructions: [], commands: [] },
     subagentTools: link.tools,
   });
-  const { turnContext, tools, mcpConfig, integrationSurface, vektorToolNames } = prepared;
+  const { turnContext, mcpConfig, integrationSurface, vektorToolNames } = prepared;
+  const imageProvider =
+    provider.provider === "integration" && provider.integration === "chatgpt"
+      ? provider
+      : undefined;
+  const tools = imageProvider ? [...prepared.tools, generateImageTool] : prepared.tools;
   const systemPrompt = options.systemPrompt ?? prepared.systemPrompt;
   options.onSetup?.({ model: provider.model, systemPrompt, tools });
   const bash =
@@ -741,6 +748,13 @@ export async function runAgentPrompt(options: {
             result = await link.call(toolCall.function.name, record);
           } else if (toolCall.function.name === "web_search") {
             result = await webSearch(record);
+          } else if (toolCall.function.name === "generate_image" && imageProvider) {
+            const contentBase64 = await generateImage(imageProvider, record, signal);
+            result = await uploadFile(mcpConfig, {
+              filename: `generated-${Date.now()}.png`,
+              contentBase64,
+              contentType: "image/png",
+            });
           } else if (vektorToolNames.has(toolCall.function.name)) {
             result = await callVektorTool(mcpConfig, toolCall.function.name, record);
           } else {
