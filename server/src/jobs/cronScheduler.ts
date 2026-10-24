@@ -97,7 +97,7 @@ async function runScheduledWorkflow(
     appLogger.error("Scheduled workflow failed", {
       spaceId,
       scheduleId: schedule.id,
-      documentId,
+      documentId: schedule.documentId,
       error: error instanceof Error ? error.message : String(error),
     });
   }
