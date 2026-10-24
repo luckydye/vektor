@@ -101,6 +101,17 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
       usePlural: false,
     }),
 
+    // The IdP owns credentials and the session row is only a revocation handle,
+    // so serve reads from an encrypted cookie and hit the database at most once
+    // per `maxAge`. A revoked session or changed group stays visible that long.
+    session: {
+      cookieCache: {
+        enabled: true,
+        strategy: "jwe",
+        maxAge: 5 * 60,
+      },
+    },
+
     user: {
       additionalFields: {
         groups: {
