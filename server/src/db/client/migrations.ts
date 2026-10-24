@@ -269,6 +269,24 @@ async function migrateDeprecatedPropertyTriggers(db: Database): Promise<void> {
   ]);
 }
 
+async function agentSchedules(db: Database): Promise<void> {
+  // Rebuild to allow NULL document_id and add prompt for agent schedules.
+  const create = generateCreateTableSQL(spaceSchema.workflowSchedule).replace(
+    "CREATE TABLE IF NOT EXISTS workflow_schedule",
+    "CREATE TABLE workflow_schedule_new",
+  );
+  const columns =
+    "id, document_id, cron_expression, source_document_id, property_key, timezone, inputs, enabled, next_run_at, last_run_at, created_at, updated_at, created_by";
+  await run(db, [
+    create,
+    `INSERT INTO workflow_schedule_new (${columns}) SELECT ${columns} FROM workflow_schedule`,
+    "DROP TABLE workflow_schedule",
+    "ALTER TABLE workflow_schedule_new RENAME TO workflow_schedule",
+    "CREATE UNIQUE INDEX workflow_schedule_source_property_unique ON workflow_schedule (source_document_id, property_key)",
+    "CREATE INDEX workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
+  ]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -287,4 +305,5 @@ export const spaceMigrations: Migration[] = [
   // 11 was the superseded property-trigger table; 12 also upgrades those databases.
   { id: 12, name: "one-shot-workflow-schedules", up: oneShotWorkflowSchedules },
   { id: 13, name: "document-content-key", up: documentContentKey },
+  { id: 14, name: "agent-schedules", up: agentSchedules },
 ];

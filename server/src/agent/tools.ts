@@ -539,6 +539,52 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     // The schedule routes need a signed-in user; a job token is rejected, so the
     // in-app agent never sees tools it cannot call.
+    {
+      name: "create_agent_trigger",
+      description:
+        "Have the agent run a prompt later, as a new chat session of the current user: " +
+        'reminders ("remind me on 24 Dec to call mom") and recurring tasks. ' +
+        "Give runAt for a one-time trigger or cronExpression for a recurring one. " +
+        "Write the prompt as an instruction to the agent that fires, with all the context it will need, " +
+        "since it starts with none of this conversation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prompt: {
+            type: "string",
+            description: 'What the agent is told, e.g. "Remind the user to call mom."',
+          },
+          runAt: {
+            type: "string",
+            description:
+              "ISO 8601 date-time with offset, e.g. 2026-12-24T09:00:00+01:00. Must be in the future.",
+          },
+          cronExpression: {
+            type: "string",
+            description: 'Standard 5-field cron expression, e.g. "0 9 * * 1".',
+          },
+          timezone: {
+            type: "string",
+            description: 'IANA timezone for cronExpression, e.g. "Europe/Berlin".',
+          },
+        },
+        required: ["prompt"],
+      },
+    },
+    {
+      name: "list_agent_triggers",
+      description: "List the current user's agent triggers with their next due time.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "delete_agent_trigger",
+      description: "Delete an agent trigger.",
+      inputSchema: {
+        type: "object",
+        properties: { triggerId: { type: "string" } },
+        required: ["triggerId"],
+      },
+    },
     ...(config.jobToken
       ? []
       : ([
@@ -1134,6 +1180,29 @@ export async function callTool(
           },
           body: JSON.stringify(body),
         },
+      );
+    }
+    case "create_agent_trigger": {
+      const body: Record<string, unknown> = { prompt: expectString(args, "prompt") };
+      for (const key of ["runAt", "cronExpression", "timezone"]) {
+        const value = expectString(args, key, { optional: true });
+        if (value) body[key] = value;
+      }
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/agent-triggers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+    case "list_agent_triggers": {
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/agent-triggers`);
+    }
+    case "delete_agent_trigger": {
+      const triggerId = expectString(args, "triggerId");
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/agent-triggers/${encodeURIComponent(triggerId)}`,
+        { method: "DELETE" },
       );
     }
     case "list_workflow_schedules": {

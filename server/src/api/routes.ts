@@ -64,6 +64,8 @@ import * as uploadFile from "./routes/spaces/upload-file.ts";
 import * as uploads from "./routes/spaces/uploads.ts";
 import * as workflowRun from "./routes/spaces/workflow-run.ts";
 import * as workflowRuns from "./routes/spaces/workflow-runs.ts";
+import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
+import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
 import * as workflowSchedule from "./routes/spaces/workflow-schedule.ts";
 import * as workflowSchedules from "./routes/spaces/workflow-schedules.ts";
 import * as urlMetadata from "./routes/url-metadata.ts";
@@ -221,6 +223,9 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/uploads", module: uploads },
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },
+
+  { pattern: "/api/v1/spaces/[spaceId]/agent-triggers", module: agentTriggers },
+  { pattern: "/api/v1/spaces/[spaceId]/agent-triggers/[triggerId]", module: agentTrigger },
 
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs", module: workflowRuns },
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs/[runId]", module: workflowRun },

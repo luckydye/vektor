@@ -298,7 +298,7 @@ export async function createWorkflowSchedule(
     enabled?: boolean;
     createdBy: string;
   },
-): Promise<WorkflowSchedule> {
+): Promise<WorkflowDocumentSchedule> {
   const now = new Date();
   const enabled = params.enabled ?? true;
 
@@ -325,26 +325,42 @@ export async function createWorkflowSchedule(
   }
 
   wakeSpaceAfterCommit(s);
-  return result[0];
+  return { ...result[0], documentId: params.documentId };
 }
+
+/** A schedule that runs a workflow document, as opposed to an agent prompt. */
+export type WorkflowDocumentSchedule = WorkflowSchedule & { documentId: string };
 
 export async function getWorkflowSchedule(
   s: SpaceStore,
   id: string,
-): Promise<(WorkflowSchedule & { cronExpression: string }) | null> {
+): Promise<(WorkflowDocumentSchedule & { cronExpression: string }) | null> {
   const result = await one(
     s.db.select().from(workflowSchedule).where(eq(workflowSchedule.id, id)),
   );
 
   // Property-owned one-shot schedules are edited through their property.
-  return result?.cronExpression != null
-    ? { ...result, cronExpression: result.cronExpression }
+  return result?.cronExpression != null && result.documentId !== null
+    ? { ...result, cronExpression: result.cronExpression, documentId: result.documentId }
     : null;
 }
 
-export async function listWorkflowSchedules(s: SpaceStore): Promise<WorkflowSchedule[]> {
-  return many(
-    s.db.select().from(workflowSchedule).where(isNotNull(workflowSchedule.cronExpression)),
+export async function listWorkflowSchedules(
+  s: SpaceStore,
+): Promise<WorkflowDocumentSchedule[]> {
+  const schedules = await many(
+    s.db
+      .select()
+      .from(workflowSchedule)
+      .where(
+        and(
+          isNotNull(workflowSchedule.cronExpression),
+          isNotNull(workflowSchedule.documentId),
+        ),
+      ),
+  );
+  return schedules.filter((schedule): schedule is WorkflowDocumentSchedule =>
+    schedule.documentId !== null,
   );
 }
 
@@ -357,7 +373,7 @@ export async function updateWorkflowSchedule(
     inputs?: Record<string, unknown> | null;
     enabled?: boolean;
   },
-): Promise<WorkflowSchedule> {
+): Promise<WorkflowDocumentSchedule> {
   const existing = await getWorkflowSchedule(s, id);
   if (!existing) {
     throw new Error("Workflow schedule not found");
@@ -403,7 +419,7 @@ export async function updateWorkflowSchedule(
   }
 
   wakeSpaceAfterCommit(s);
-  return result[0];
+  return { ...result[0], documentId: existing.documentId };
 }
 
 /** The earliest time an enabled schedule is due, or null when none is. */
@@ -423,7 +439,11 @@ export async function nextWorkflowScheduleAt(s: SpaceStore): Promise<Date | null
 
 export async function deleteWorkflowSchedule(s: SpaceStore, id: string): Promise<void> {
   await s.db.delete(workflowSchedule).where(
-    and(eq(workflowSchedule.id, id), isNotNull(workflowSchedule.cronExpression)),
+    and(
+      eq(workflowSchedule.id, id),
+      isNotNull(workflowSchedule.cronExpression),
+      isNotNull(workflowSchedule.documentId),
+    ),
   );
 }
 
@@ -544,7 +564,7 @@ export function parseWorkflowScheduleInputs(
   }
 }
 
-export function toWorkflowScheduleDto(schedule: WorkflowSchedule) {
+export function toWorkflowScheduleDto(schedule: WorkflowDocumentSchedule) {
   return {
     id: schedule.id,
     documentId: schedule.documentId,

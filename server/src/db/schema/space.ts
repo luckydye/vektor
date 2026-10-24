@@ -90,9 +90,14 @@ export const revision = sqliteTable(
   "revision",
   {
     id: text("id").primaryKey(),
-    documentId: text("document_id")
-      .notNull()
-      .references(() => document.id, { onDelete: "cascade" }),
+    documentId: text("document_id").references(() => document.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * What the agent is told when the schedule fires, as a new chat session of
+     * `createdBy`. Set instead of `documentId` for an agent schedule.
+     */
+    prompt: text("prompt"),
     rev: integer("rev").notNull(),
     slug: text("slug").notNull(),
     snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
@@ -320,7 +325,7 @@ export const workflowSchedule = sqliteTable(
   "workflow_schedule",
   {
     id: text("id").primaryKey(),
-    /** Workflow document id this schedule runs */
+    /** Workflow document id this schedule runs; null for an agent schedule. */
     documentId: text("document_id")
       .notNull()
       .references(() => document.id, { onDelete: "cascade" }),

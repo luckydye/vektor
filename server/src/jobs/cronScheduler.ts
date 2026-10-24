@@ -2,6 +2,9 @@ import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
+import { getLocalOrigin } from "#config";
+import { createJobToken } from "#jobs/jobToken.ts";
+import { agentPrompt } from "#jobs/runtime/agentCapability.ts";
 import { assertTriggersEnabled } from "#db/space/propertyTriggers.ts";
 import {
   claimDueWorkflowSchedules,
@@ -38,12 +41,21 @@ async function runScheduledWorkflow(
   });
 
   try {
+    if (schedule.prompt !== null) {
+      await runAgentSchedule(store, schedule.prompt, schedule.createdBy);
+      return;
+    }
+    const { documentId } = schedule;
+    if (documentId === null) {
+      throw new Error("Schedule has neither a workflow nor a prompt");
+    }
+
     // Overlap guard: a slow-running workflow shouldn't stack concurrent runs
     // from later ticks — skip this fire if the last run hasn't finished.
     const latestRunId =
       schedule.cronExpression === null
         ? null
-        : await getLatestRunIdForDoc(store, schedule.documentId);
+        : await getLatestRunIdForDoc(store, documentId);
     if (latestRunId) {
       const latestRun = await getRunForRead(store, latestRunId);
       if (
@@ -55,7 +67,7 @@ async function runScheduledWorkflow(
           {
             spaceId,
             scheduleId: schedule.id,
-            documentId: schedule.documentId,
+            documentId,
             runId: latestRunId,
           },
         );
@@ -68,13 +80,13 @@ async function runScheduledWorkflow(
       await verifyAccess(
         store.platform,
         spaceId,
-        { type: ResourceType.DOCUMENT, id: schedule.documentId },
+        { type: ResourceType.DOCUMENT, id: documentId },
         schedule.createdBy,
         Permission.EDITOR,
       );
     }
 
-    await startWorkflowRun(store, schedule.documentId, {
+    await startWorkflowRun(store, documentId, {
       initiatedByUserId: schedule.createdBy,
       sourceExtensionId: null,
       runtimeInputs: parseWorkflowScheduleInputs(schedule),
@@ -85,8 +97,23 @@ async function runScheduledWorkflow(
     appLogger.error("Scheduled workflow failed", {
       spaceId,
       scheduleId: schedule.id,
-      documentId: schedule.documentId,
+      documentId,
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+/** Gives the agent `prompt` as a new chat session of `userId`. */
+async function runAgentSchedule(
+  store: SpaceStore,
+  prompt: string,
+  userId: string,
+): Promise<void> {
+  const { spaceId } = store;
+  await agentPrompt(prompt, {
+    origin: getLocalOrigin(),
+    spaceId,
+    token: createJobToken(spaceId, Date.now().toString(), userId, { app: "agent" }),
+    onLog: () => {},
+  });
 }
