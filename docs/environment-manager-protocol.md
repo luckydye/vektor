@@ -23,9 +23,18 @@ vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inne
 
 ## What the environment must provide
 
-- `env` and `pwd` on its PATH. The task's variables are set with `exec <id> -- env K=V... <agent command>`.
+- `env` and `pwd` on its PATH, plus `sh`, `mkdir`, `dirname` and `cat` when `--copy-file` is used. The task's variables are set with `exec <id> -- env K=V... <agent command>`.
 - The agent command (`--inner`, default `opencode acp`) and the `vektor` binary, whose `vektor mcp` gives the agent Vektor's tools and messaging.
 - A network route to `<address>:<port>`, the node's proxy to the Vektor server. It forwards only `/api/v1/` and carries the task's short-lived job token, never the node's login.
+
+## Logins for the agent
+
+The node's host is responsible for the agent's own login; the server never sends one. Two flags put it in the environment, both read on the node anew for each task, so a refreshed login is picked up:
+
+- `--env NAME[=value]`: sets a variable for the agent. A bare `NAME` passes the node's own value, e.g. `--env ANTHROPIC_API_KEY`.
+- `--copy-file <path>[:<path-in-env>]`: copies a file in before the agent starts, with mode 0600 (`~/` is the environment's home on the far side). E.g. `--copy-file ~/.codex/auth.json` for Codex's subscription login.
+
+Both repeat. The values are the host's to choose and live only as long as the environment; note that `--env` values appear in the node's process list while `exec` runs, so prefer `--copy-file` for long-lived secrets.
 
 ## Policy
 

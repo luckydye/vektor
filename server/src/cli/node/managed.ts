@@ -1,4 +1,5 @@
-import { networkInterfaces } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
+import { join } from "node:path";
 import { openAcpSession, spawnTransport } from "./acpClient.ts";
 import type { Adapter } from "./types.ts";
 
@@ -22,6 +23,10 @@ export type ManagedOptions = {
   manager: string[];
   /** Extra arguments for `run`, e.g. `["--mount", ".:work"]`. */
   runArgs: string[];
+  /** Variables set for the agent, e.g. an API key. */
+  env: Record<string, string>;
+  /** Files copied into the environment before the agent starts, e.g. its login. */
+  files: Array<{ from: string; to: string }>;
   /** The agent started in the environment, e.g. `["opencode", "acp"]`. */
   inner: string[];
   /** The Vektor server the proxy forwards to. */
@@ -32,8 +37,12 @@ export type ManagedOptions = {
   cwd?: string;
 };
 
-async function run(argv: string[]): Promise<string> {
-  const proc = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe" });
+async function run(argv: string[], stdin?: string): Promise<string> {
+  const proc = Bun.spawn(argv, {
+    stdin: stdin === undefined ? "ignore" : new Blob([stdin]),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -46,6 +55,13 @@ async function run(argv: string[]): Promise<string> {
   }
   return stdout.trim();
 }
+
+/** Writes stdin to `$1`, a path in the environment where `~/` is its home. */
+const WRITE_FILE =
+  'p=$1; case "$p" in "~/"*) p="$HOME/${p#"~/"}";; esac; umask 077; mkdir -p "$(dirname "$p")" && cat > "$p"';
+
+const localPath = (path: string) =>
+  path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
 
 function localAddress(): string {
   for (const addresses of Object.values(networkInterfaces())) {
@@ -100,8 +116,20 @@ export function managedAdapter(options: ManagedOptions): Adapter {
           (await run([...manager, "address", id]).catch(() => "")) ||
           options.gateway ||
           localAddress();
+        // The agents' own logins are the node host's to supply, and are read
+        // anew for each task so a refreshed login is picked up.
+        for (const file of options.files) {
+          const source = Bun.file(localPath(file.from));
+          if (!(await source.exists()))
+            throw new Error(`--copy-file: ${file.from} does not exist.`);
+          await run(
+            [...manager, "exec", id, "--", "sh", "-c", WRITE_FILE, "sh", file.to],
+            await source.text(),
+          );
+        }
         const cwd = options.cwd ?? (await run([...manager, "exec", id, "--", "pwd"]));
         const env = {
+          ...options.env,
           VEKTOR_HOST: `http://${address}:${proxy.port}`,
           VEKTOR_SPACE_ID: init.spaceId,
           VEKTOR_JOB_TOKEN: init.jobToken,

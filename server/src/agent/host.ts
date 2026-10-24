@@ -19,7 +19,14 @@ function textOutput(outputs: Record<string, unknown>, key: string): string {
 /** The agent's access to the space databases and the job scheduler, on the main thread. */
 export function createAgentHost(platform: Platform): AgentHost {
   return {
-    nodes: nodeRegistry,
+    nodes: {
+      listNodes: (request) => nodeRegistry.listNodes(request),
+      startRemoteTask: (request) => nodeRegistry.startRemoteTask(request),
+      pollRemoteTask: (taskId, waitMs) => nodeRegistry.pollRemoteTask(taskId, waitMs),
+      sendRemoteTask: (taskId, from, text) =>
+        nodeRegistry.sendRemoteTask(taskId, from, text),
+      cancelRemoteTask: (taskId) => nodeRegistry.cancelRemoteTask(taskId),
+    },
 
     async reserveAITokens(spaceId, inputTokens) {
       return reserveAITokens(await openSpaceStore(platform, spaceId), inputTokens);

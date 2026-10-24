@@ -2,12 +2,7 @@ import type { AgentSpace } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
-import {
-  type AgentEvent,
-  type AgentHost,
-  type AgentResult,
-  type AgentTurnSetup,
-} from "./core.ts";
+import type { AgentEvent, AgentHost, AgentResult, AgentTurnSetup } from "./core.ts";
 import { createAgentHost } from "./host.ts";
 import { getIntegrationAgentSurface } from "./integrations.ts";
 import type { SettleAITokens } from "./model.ts";
