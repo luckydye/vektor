@@ -20,6 +20,7 @@ import { vektorCommand } from "./commands/vektor.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 import { callModel, type SettleAITokens } from "./model.ts";
+import { type AgentLink, createSubagentHub } from "./subagents.ts";
 import { AgentTurnError } from "./turnError.ts";
 import { webSearch, webSearchTool } from "./webSearch.ts";
 
@@ -295,6 +296,8 @@ async function prepareAgentTurn(options: {
   jobToken: string;
   spaces?: AgentSpace[];
   integrationSurface: IntegrationAgentSurface;
+  /** Tools for managing sub-agents; unset when the turn cannot start any. */
+  subagentTools?: object[];
 }) {
   const {
     apiUrl,
@@ -447,6 +450,7 @@ async function prepareAgentTurn(options: {
       },
     },
     webSearchTool,
+    ...(options.subagentTools ?? []),
     ...vektorTools.map((tool) => ({
       type: "function",
       function: {
@@ -512,6 +516,8 @@ export async function runAgentPrompt(options: {
   provider?: AIProvider;
   /** Receives the turn's setup before its first model call, for the persisted history. */
   onSetup?: (setup: AgentTurnSetup) => void;
+  /** Set on a sub-agent's run: its messaging tools and inbox, and no way to start sub-agents. */
+  link?: AgentLink;
 }): Promise<AgentResult> {
   const { messages, spaceId, bash: providedBash, signal, onChunk, onEvent } = options;
 
@@ -530,9 +536,27 @@ export async function runAgentPrompt(options: {
       });
     });
 
+  const hub = options.link
+    ? undefined
+    : createSubagentHub((task, subagentSignal, subagentLink) =>
+        runAgentPrompt({
+          ...options,
+          messages: [{ role: "user", content: task }],
+          systemPrompt: undefined,
+          bash: undefined,
+          onChunk: undefined,
+          onEvent: undefined,
+          onSetup: undefined,
+          signal: subagentSignal,
+          link: subagentLink,
+        }).then((result) => result.content),
+      );
+  const link = (options.link ?? hub?.parent) as AgentLink;
+
   const prepared = await prepareAgentTurn({
     ...options,
     integrationSurface: options.integrationSurface ?? { instructions: [], commands: [] },
+    subagentTools: link.tools,
   });
   const { turnContext, tools, mcpConfig, integrationSurface, vektorToolNames } = prepared;
   const systemPrompt = options.systemPrompt ?? prepared.systemPrompt;
@@ -562,6 +586,8 @@ export async function runAgentPrompt(options: {
 
   try {
     while (true) {
+      const incoming = link.drain();
+      if (incoming) agentMessages.push({ role: "user", content: incoming });
       const { message, finishReason } = await modelCaller({
         spaceId,
         provider,
@@ -691,6 +717,8 @@ export async function runAgentPrompt(options: {
               throw new Error('recipes "search" must be a string.');
             }
             result = queryRecipes({ name, search });
+          } else if (link.handles(toolCall.function.name)) {
+            result = await link.call(toolCall.function.name, record);
           } else if (toolCall.function.name === "web_search") {
             result = await webSearch(record);
           } else if (vektorToolNames.has(toolCall.function.name)) {
@@ -749,6 +777,8 @@ export async function runAgentPrompt(options: {
       error instanceof Error ? error.message : String(error),
       turnMessages(),
     );
+  } finally {
+    hub?.cancelAll();
   }
 }
 
