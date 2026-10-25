@@ -8,6 +8,7 @@
 
 import type { BlobStore } from "#files/storage.ts";
 import { ensureCache } from "./cache.ts";
+import { MAX_LFS_POINTER_BYTES, parseLfsPointer, readLfsObject } from "./lfs.ts";
 import { git, gitBytes } from "./run.ts";
 
 /** Field separator for `--format`; a byte no ref, path or subject contains. */
@@ -179,6 +180,8 @@ export interface Blob {
   /** Null when the bytes are not text; the browser offers a clone instead. */
   text: string | null;
   size: number;
+  /** Set when the file is a Git LFS pointer; `size` is then the real object's. */
+  lfs?: { oid: string; available: boolean };
 }
 
 /** How much of a file the browser will render before giving up on it. */
@@ -205,6 +208,16 @@ export async function blob(
     () => null,
   );
   if (content === null) return null;
+  const pointer = size <= MAX_LFS_POINTER_BYTES ? parseLfsPointer(content) : null;
+  if (pointer) {
+    const stored = await readLfsObject(storage, spaceId, documentId, pointer.oid);
+    void stored?.body.cancel();
+    return {
+      text: null,
+      size: pointer.size,
+      lfs: { oid: pointer.oid, available: stored !== null },
+    };
+  }
   // A NUL byte is git's own test for "binary", and the one that matters here:
   // it is what cannot be shown as text.
   return { text: content.includes("\0") ? null : content, size };
@@ -224,8 +237,15 @@ export async function raw(
   defaultBranch: string,
   rev: string,
   path: string,
-): Promise<Buffer | null> {
+): Promise<{ body: Buffer | ReadableStream<Uint8Array>; size: number } | null> {
   const dir = await repoDir(storage, spaceId, documentId, defaultBranch);
   if (!dir) return null;
-  return gitBytes(dir, ["cat-file", "blob", `${rev}:${path}`]);
+  const bytes = await gitBytes(dir, ["cat-file", "blob", `${rev}:${path}`]);
+  if (!bytes) return null;
+  const pointer =
+    bytes.byteLength <= MAX_LFS_POINTER_BYTES
+      ? parseLfsPointer(bytes.toString("utf8"))
+      : null;
+  if (!pointer) return { body: bytes, size: bytes.byteLength };
+  return readLfsObject(storage, spaceId, documentId, pointer.oid);
 }

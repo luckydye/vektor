@@ -1935,11 +1935,15 @@ export class ApiClient {
       ),
 
     blob: (spaceId: string, documentId: string, rev: string, path: string) =>
-      this.apiGet<{ text: string | null; size: number }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
-        { view: "blob", rev, path },
-      ),
+      this.apiGet<{
+        text: string | null;
+        size: number;
+        lfs?: { oid: string; available: boolean };
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}/git`, {
+        view: "blob",
+        rev,
+        path,
+      }),
 
     log: (spaceId: string, documentId: string, rev: string, limit = 30) =>
       this.apiGet<{ commits: GitCommit[] }>(

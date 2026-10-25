@@ -22,6 +22,41 @@ export interface LfsBatchRequest {
   objects: LfsPointer[];
 }
 
+const POINTER_VERSION = "version https://git-lfs.github.com/spec/v1";
+
+/** A pointer is a few lines of text; anything larger is real content. */
+export const MAX_LFS_POINTER_BYTES = 1024;
+
+/** The object a pointer file names, or null when `content` is not a pointer. */
+export function parseLfsPointer(content: string): LfsPointer | null {
+  if (content.length > MAX_LFS_POINTER_BYTES) return null;
+  const lines = content.split("\n");
+  if (lines[0]?.trim() !== POINTER_VERSION) return null;
+  const oid = lines
+    .find((line) => line.startsWith("oid sha256:"))
+    ?.slice(11)
+    .trim();
+  const size = lines
+    .find((line) => line.startsWith("size "))
+    ?.slice(5)
+    .trim();
+  if (!oid || !isLfsOid(oid) || !size || !/^\d+$/.test(size)) return null;
+  return { oid, size: Number(size) };
+}
+
+/** A stored object's bytes, or null when it was never uploaded. */
+export async function readLfsObject(
+  storage: BlobStore,
+  spaceId: string,
+  documentId: string,
+  oid: string,
+): Promise<{ body: ReadableStream<Uint8Array>; size: number } | null> {
+  const key = lfsObjectPath(documentId, oid);
+  const stored = await storage.stat(spaceId, key);
+  const body = stored && (await storage.readStream(spaceId, key));
+  return stored && body ? { body, size: stored.size } : null;
+}
+
 export function isLfsOid(oid: string): boolean {
   return /^[0-9a-f]{64}$/.test(oid);
 }

@@ -377,9 +377,8 @@ export function RepositoryView(props: Props) {
     const update = () => {
       if (!panes) return;
       const top = panes.getBoundingClientRect().top;
-      // Leaves room for the page's own bottom padding, so a view that already
-      // reaches the fold does not add a scrollbar for empty space.
-      setPanesHeight(`${Math.max(320, window.innerHeight - top - 42)}px`);
+      // A small margin below, so the border is not flush with the window edge.
+      setPanesHeight(`${Math.max(320, window.innerHeight - top - 8)}px`);
     };
     update();
     if (window.innerWidth < 768) setTreeOpen(false);
@@ -533,11 +532,15 @@ export function RepositoryView(props: Props) {
                     when={blob().text !== null}
                     fallback={
                       <Show
-                        when={isImage(openPath())}
+                        when={isImage(openPath()) && blob().lfs?.available !== false}
                         fallback={
                           <p class="px-4 py-16 text-center text-neutral-500 text-size-small">
-                            {formatSize(blob().size)} — not text, or too large to show.
-                            Clone the repository to read it.
+                            {formatSize(blob().size)}
+                            {blob().lfs
+                              ? blob().lfs?.available
+                                ? " — stored in Git LFS. Clone the repository to read it."
+                                : " — stored in Git LFS, but the object was never uploaded."
+                              : " — not text, or too large to show. Clone the repository to read it."}
                           </p>
                         }
                       >

@@ -81,22 +81,27 @@ export const GET: ApiRouteHandler = (context) =>
       }
       case "raw": {
         if (path === "") throw badRequestResponse("A file needs a path");
-        const bytes = await raw(storage, spaceId, documentId, branch, rev, path);
-        if (!bytes) throw notFoundResponse("File");
+        const content = await raw(storage, spaceId, documentId, branch, rev, path);
+        if (!content) throw notFoundResponse("File");
 
         const name = path.split("/").pop() ?? "";
         const extension = name.includes(".") ? name.split(".").pop() : undefined;
         // The same hardening uploads get: repository content is written by
         // whoever can push, so an SVG or HTML file must not be able to run as
         // a document on this origin.
-        return new Response(new Uint8Array(bytes), {
-          headers: {
-            "Content-Type": mimeTypeForExtension(extension),
-            "Content-Length": String(bytes.byteLength),
-            "Cache-Control": "private, max-age=300",
-            ...servedFileSecurityHeaders(extension, name),
+        return new Response(
+          content.body instanceof ReadableStream
+            ? content.body
+            : new Uint8Array(content.body),
+          {
+            headers: {
+              "Content-Type": mimeTypeForExtension(extension),
+              "Content-Length": String(content.size),
+              "Cache-Control": "private, max-age=300",
+              ...servedFileSecurityHeaders(extension, name),
+            },
           },
-        });
+        );
       }
       case "log": {
         const requested = Number(query.get("limit") ?? "30");
