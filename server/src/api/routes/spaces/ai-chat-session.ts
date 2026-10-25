@@ -1,5 +1,6 @@
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { nodeRegistry } from "#agent/nodes/registry.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -66,5 +67,6 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     await deleteAIChatSession(store, sessionId, user.id);
+    nodeRegistry.closeChat({ spaceId, userId: user.id, chatId: sessionId });
     return jsonResponse({ success: true });
   }, "Failed to delete AI chat session");

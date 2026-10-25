@@ -2,10 +2,13 @@ import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
   type AgentEvent,
+  type AgentResult,
   type AgentTurnSetup,
   type ChatMessage,
   runAgentInWorker,
 } from "#agent/agent.ts";
+import { nodeRegistry } from "#agent/nodes/registry.ts";
+import { runChatOnNode } from "#agent/nodes/remoteChat.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import { AgentTurnError } from "#agent/turnError.ts";
 import {
@@ -16,7 +19,7 @@ import {
   parseJsonBody,
   withApiErrorHandling,
 } from "#api/http.ts";
-import type { AIProvider, ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
+import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -608,8 +611,8 @@ function createStreamingResponse(
  * turn and the registration happen without an await between them, so two
  * prompts on one session cannot both start.
  *
- * The agent worker is started without the HTTP request's AbortSignal so that
- * a client disconnect does not kill the agent.
+ * The agent is started without the HTTP request's AbortSignal so that a
+ * client disconnect does not kill it.
  */
 function startChatTurn(
   platform: Platform,
@@ -617,25 +620,19 @@ function startChatTurn(
     key: string;
     userId: string;
     sessionId: string;
-    /** The conversation as the model gets it, with images hydrated. */
-    messages: ChatMessage[];
-    /** The same conversation as persisted: image references, not bytes. */
+    spaceId: string;
+    /** The conversation as persisted: image references, not bytes. */
     sessionMessages: ChatMessage[];
     /** The text the user sent, for the display log. */
     userText: string;
     /** Attachment display metadata persisted with the current user message. */
     userAttachments: ChatAttachment[];
-    userProfile?: string;
-    timeZone?: string;
-    /** The session's stored system prompt; unset on its first turn. */
-    systemPrompt?: string;
-    connectedProviders: string[];
-    provider: AIProvider;
-    apiUrl: string;
-    spaceId: string;
-    documentId?: string;
-    jobToken: string;
-    shellSnapshot: string | null;
+    /** Runs the agent: in the server's worker, or on the chat's node. */
+    run: (turn: {
+      signal: AbortSignal;
+      onEvent: (event: AgentEvent) => void;
+      onSetup: (setup: AgentTurnSetup) => void;
+    }) => Promise<AgentResult>;
   },
 ): ActiveChatTurn {
   if (activeChatTurns.get(options.key)?.done === false) {
@@ -669,22 +666,9 @@ function startChatTurn(
       userAttachments: options.userAttachments,
     });
 
-    let result: Awaited<ReturnType<typeof runAgentInWorker>>;
+    let result: AgentResult;
     try {
-      result = await runAgentInWorker(platform, {
-        chatId: options.sessionId,
-        messages: options.messages,
-        userProfile: options.userProfile,
-        timeZone: options.timeZone,
-        systemPrompt: options.systemPrompt,
-        connectedProviders: options.connectedProviders,
-        provider: options.provider,
-        userId: options.userId,
-        apiUrl: options.apiUrl,
-        spaceId: options.spaceId,
-        documentId: options.documentId,
-        jobToken: options.jobToken,
-        shellSnapshot: options.shellSnapshot,
+      result = await options.run({
         signal: turnAbortController.signal,
         onEvent: (event) => {
           emitTurnEvent(turn, event);
@@ -826,14 +810,23 @@ export const POST: ApiRouteHandler = (context) =>
       if (body.method === "session/new") {
         const title = requireStringParam(params, "title").trim();
         if (!title) return badRequestResponse("params.title is required");
+        const node = params.node ?? null;
+        if (node !== null && typeof node !== "string") {
+          return badRequestResponse("params.node must be a string");
+        }
         const { userId, source } = await authenticateAgentCaller(context, spaceId);
+        if (
+          node !== null &&
+          !(await nodeRegistry.listNodes({ spaceId, userId })).some(
+            (n) => n.name === node,
+          )
+        ) {
+          return badRequestResponse(`No node "${node}" is connected for you`);
+        }
         const session = await createAIChatSession(
           await openSpaceStore(context.var.platform, spaceId),
           userId,
-          {
-            title,
-            source,
-          },
+          { title, source, node },
         );
         return Response.json({
           jsonrpc: "2.0",
@@ -893,6 +886,49 @@ export const POST: ApiRouteHandler = (context) =>
         const session = await getAIChatSession(store, sessionId, userId);
         if (!session) throw notFoundResponse("AI chat session");
 
+        const { node } = session;
+        if (node) {
+          if (imageAttachments.length) {
+            return badRequestResponse("Chats on a node take no image attachments");
+          }
+          const history = session.conversationHistory as ChatMessage[];
+          const sessionMessages: ChatMessage[] = [
+            ...history,
+            { role: "user", content: userText },
+          ];
+          const text = [
+            userText,
+            additionalContext,
+            typeof documentId === "string"
+              ? `The user has document ${documentId} open.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+          const turn = startChatTurn(context.var.platform, {
+            key,
+            userId,
+            sessionId,
+            spaceId,
+            sessionMessages,
+            userText,
+            userAttachments: chatAttachments,
+            run: ({ signal, onEvent }) =>
+              runChatOnNode({
+                spaceId,
+                userId,
+                chatId: sessionId,
+                node,
+                jobToken,
+                text,
+                resumed: history.length > 0,
+                signal,
+                onEvent,
+              }),
+          });
+          return createStreamingResponse(turn, requestId, sessionId);
+        }
+
         // The system message is fixed for the session: every turn resends the stored one.
         const storedHistory = session.conversationHistory as ChatMessage[];
         const storedSystem = storedHistory.filter((message) => message.role === "system");
@@ -938,20 +974,29 @@ export const POST: ApiRouteHandler = (context) =>
           key,
           userId,
           sessionId,
-          messages: modelMessages,
+          spaceId,
           sessionMessages: agentMessages,
           userText,
-          systemPrompt: storedSystem[0]?.content ?? undefined,
           userAttachments: chatAttachments,
-          userProfile: userProfile ?? undefined,
-          timeZone,
-          connectedProviders: oauthIntegrations.map((i) => i.provider),
-          provider,
-          apiUrl: getLocalOrigin(),
-          spaceId,
-          documentId: typeof documentId === "string" ? documentId : undefined,
-          jobToken,
-          shellSnapshot: session.shellSnapshot,
+          run: ({ signal, onEvent, onSetup }) =>
+            runAgentInWorker(context.var.platform, {
+              chatId: sessionId,
+              messages: modelMessages,
+              userProfile: userProfile ?? undefined,
+              timeZone,
+              systemPrompt: storedSystem[0]?.content ?? undefined,
+              connectedProviders: oauthIntegrations.map((i) => i.provider),
+              provider,
+              userId,
+              apiUrl: getLocalOrigin(),
+              spaceId,
+              documentId: typeof documentId === "string" ? documentId : undefined,
+              jobToken,
+              shellSnapshot: session.shellSnapshot,
+              signal,
+              onEvent,
+              onSetup,
+            }),
         });
 
         return createStreamingResponse(turn, requestId, sessionId);

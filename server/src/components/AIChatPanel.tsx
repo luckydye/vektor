@@ -1,6 +1,10 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import { createStore } from "solid-js/store";
-import { type AIChatMessage, type AIChatSessionListEntry, isUploadAborted } from "#api/client.ts";
+import {
+  type AIChatMessage,
+  type AIChatSessionListEntry,
+  isUploadAborted,
+} from "#api/client.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
@@ -9,6 +13,7 @@ import {
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
+import { useNodes } from "#composeables/useNodes.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
@@ -17,6 +22,7 @@ import { mentionsToText } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
 import { useTranslation } from "#composeables/useTranslation.ts";
+import { AgentNodePicker } from "./AgentNodePicker.tsx";
 import { AIChatMessages, type AIChatMessagesHandle } from "./AIChatMessages.tsx";
 import { AIChatSessions } from "./AIChatSessions.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
@@ -93,6 +99,8 @@ export function AIChatPanel(props: Props) {
     showSessionPicker,
     setShowSessionPicker,
     sessionStartedAt,
+    chatNode,
+    setChatNode,
     refreshCurrentSession,
     getSessionStatus,
     startNewChat,
@@ -111,6 +119,14 @@ export function AIChatPanel(props: Props) {
   });
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
+  // Where a chat runs is chosen before its first message, then fixed.
+  const nodes = useNodes(createMemo(() => isOpen() && !currentSessionId()));
+  const agentNodes = createMemo(() =>
+    nodes()?.flatMap((node) => (node.online ? [node.name] : [])),
+  );
+  const showNodePicker = createMemo(() =>
+    currentSessionId() ? !!chatNode() : !!agentNodes()?.length,
+  );
 
   const {
     buildDocumentReferenceContext,
@@ -142,7 +158,10 @@ export function AIChatPanel(props: Props) {
 
     if (!currentSessionId()) {
       await createSession(
-        (mentionsToText(message) || attachmentsToUpload[0]?.name || "New chat").slice(0, 60),
+        (mentionsToText(message) || attachmentsToUpload[0]?.name || "New chat").slice(
+          0,
+          60,
+        ),
       );
     }
 
@@ -371,33 +390,42 @@ export function AIChatPanel(props: Props) {
               uploadError={uploadError()}
               onSubmit={() => void sendMessage()}
               actions={
-                <Show
-                  when={isGenerating()}
-                  fallback={
+                <div class="flex min-w-0 items-center gap-1">
+                  <Show when={showNodePicker()}>
+                    <AgentNodePicker
+                      nodes={agentNodes() ?? []}
+                      value={chatNode()}
+                      onChange={currentSessionId() ? undefined : setChatNode}
+                    />
+                  </Show>
+                  <Show
+                    when={isGenerating()}
+                    fallback={
+                      <button
+                        type="button"
+                        onClick={() => void sendMessage()}
+                        disabled={
+                          !canSend() ||
+                          (!messageInput().trim() &&
+                            !messageInputEl()?.pendingAttachments().length)
+                        }
+                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:opacity-30"
+                        title="Send (↵)"
+                      >
+                        <Icon class="h-3.5 w-3.5" name="send-message" />
+                      </button>
+                    }
+                  >
                     <button
                       type="button"
-                      onClick={() => void sendMessage()}
-                      disabled={
-                        !canSend() ||
-                        (!messageInput().trim() &&
-                          !messageInputEl()?.pendingAttachments().length)
-                      }
-                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:opacity-30"
-                      title="Send (↵)"
+                      onClick={cancelGeneration}
+                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-neutral-800 text-neutral-10 transition-colors hover:bg-neutral-900"
+                      title="Stop generating"
                     >
-                      <Icon class="h-3.5 w-3.5" name="send-message" />
+                      <Icon class="h-3 w-3" name="stop" />
                     </button>
-                  }
-                >
-                  <button
-                    type="button"
-                    onClick={cancelGeneration}
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-neutral-800 text-neutral-10 transition-colors hover:bg-neutral-900"
-                    title="Stop generating"
-                  >
-                    <Icon class="h-3 w-3" name="stop" />
-                  </button>
-                </Show>
+                  </Show>
+                </div>
               }
             />
           </div>

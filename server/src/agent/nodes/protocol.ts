@@ -37,6 +37,8 @@ export type ServerToNodeFrame =
     }
   | { type: "session.prompt"; taskId: string; text: string }
   | { type: "session.cancel"; taskId: string }
+  /** Ends the session and whatever its adapter started. */
+  | { type: "session.close"; taskId: string }
   /** A viewer opened the task's screen; its media comes back as binary messages tagged with `screenId`. */
   | { type: "screen.open"; taskId: string; screenId: string }
   | { type: "screen.input"; screenId: string; events: ScreenInputEvent[] }
@@ -44,6 +46,8 @@ export type ServerToNodeFrame =
   | { type: "ping" };
 
 export type SessionStopReason = "end_turn" | "cancelled" | "error";
+
+export type PromptResult = { stopReason: SessionStopReason; error?: string };
 
 export type NodeToServerFrame =
   | NodeHelloFrame
@@ -135,7 +139,8 @@ export type NodeSummary = {
   online: boolean;
 };
 
-export type RemoteTaskStatus = "running" | "done" | "failed" | "cancelled";
+/** `idle` is a chat's session between prompts. */
+export type RemoteTaskStatus = "running" | "idle" | "done" | "failed" | "cancelled";
 
 /** What a poll of a remote task reports. */
 export type RemoteTaskPoll = {

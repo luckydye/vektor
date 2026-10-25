@@ -1,4 +1,4 @@
-import type { ScreenInputEvent, SessionStopReason } from "#agent/nodes/protocol.ts";
+import type { PromptResult, ScreenInputEvent } from "#agent/nodes/protocol.ts";
 
 /** How an agent's MCP client starts the Vektor MCP server for one task. */
 export type McpLaunch = {
@@ -40,8 +40,6 @@ export interface ScreenSession {
   input(events: ScreenInputEvent[]): void;
   close(): void;
 }
-
-export type PromptResult = { stopReason: SessionStopReason; error?: string };
 
 /** One task's conversation with an agent. */
 export interface AdapterSession {

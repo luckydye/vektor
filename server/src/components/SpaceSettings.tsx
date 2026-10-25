@@ -1,17 +1,21 @@
-import { Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { Permission } from "#acl/permissions.ts";
+import { useNodes } from "#composeables/useNodes.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
 import { ExtensionSettings } from "./ExtensionSettings.tsx";
 import { JobsSettings } from "./JobsSettings.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
+import { SpaceAIUsage } from "./SpaceAIUsage.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
+import { SpaceNodes } from "./SpaceNodes.tsx";
 import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
 
 const tabs = [
   { id: "general", label: "General" },
   { id: "integrations", label: "Integrations" },
+  { id: "ai", label: "AI" },
   { id: "jobs", label: "Workflows" },
   { id: "archive", label: "Archive" },
 ] as const;
@@ -31,6 +35,8 @@ function setTab(id: string) {
 
 export function SpaceSettings() {
   const { currentSpace } = useSpace();
+  const isOwner = createMemo(() => currentSpace()?.userRole === Permission.OWNER);
+  const nodes = useNodes(isOwner);
 
   return (
     <SettingsLayout
@@ -51,6 +57,24 @@ export function SpaceSettings() {
               <SpaceSecretsSettings />
             </Show>
           </>
+        ),
+        ai: () => (
+          <Show
+            when={isOwner()}
+            fallback={
+              <p class="text-neutral-500 text-size-small">
+                Only space owners manage AI usage and nodes.
+              </p>
+            }
+          >
+            <SpaceAIUsage />
+            <SettingsSection
+              title="Nodes"
+              description="Your devices that agents and chats can run on. Only space owners can connect one."
+            >
+              <SpaceNodes nodes={nodes()} />
+            </SettingsSection>
+          </Show>
         ),
         jobs: () => <JobsSettings />,
         archive: () => (

@@ -1,5 +1,6 @@
+import type { PromptResult } from "#agent/nodes/protocol.ts";
 import { answerPermission } from "./policy.ts";
-import type { AdapterSession, PromptResult, SessionInit } from "./types.ts";
+import type { AdapterSession, SessionInit } from "./types.ts";
 
 /**
  * A client of an ACP agent over a line-delimited JSON-RPC pipe: an agent

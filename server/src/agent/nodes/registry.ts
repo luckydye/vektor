@@ -5,6 +5,7 @@ import {
   type NodeHelloFrame,
   type NodeSummary,
   type NodeToServerFrame,
+  type PromptResult,
   type RemoteTaskPoll,
   type RemoteTaskStatus,
   type ScreenInputEvent,
@@ -23,6 +24,8 @@ const RECONNECT_GRACE_MS = 30_000;
 const FINISHED_TASK_RETENTION_MS = 10 * 60_000;
 const MAX_OUTPUT_CHARS = 200_000;
 const MAX_MAILBOX = 100;
+/** How long a chat's session may sit between prompts before it is closed. */
+const CHAT_IDLE_MS = 30 * 60_000;
 
 export interface NodeTransport {
   send(frame: ServerToNodeFrame): void;
@@ -53,6 +56,17 @@ type RemoteTask = {
   outbox: Array<{ to: string; text: string }>;
   wake: Set<() => void>;
   screen: boolean;
+  /** The chat whose session this is, kept open between prompts; null for a sub-agent's one-answer task. */
+  chat: string | null;
+  /** A chat's prompt in flight. */
+  turn?: ChatTurn;
+  idleTimer?: ReturnType<typeof setTimeout>;
+};
+
+type ChatTurn = {
+  onUpdate(update: Record<string, unknown>): void;
+  onScreen(taskId: string): void;
+  done(result: PromptResult): void;
 };
 
 type ConnectedNode = {
@@ -67,10 +81,14 @@ type ConnectedNode = {
 const nodeKey = (spaceId: string, userId: string, name: string) =>
   `${spaceId}\0${userId}\0${name}`;
 
+const isOpen = (task: RemoteTask) => task.status === "running" || task.status === "idle";
+
 export class NodeRegistry implements AgentNodeHost {
   private nodes = new Map<string, ConnectedNode>();
   private tasks = new Map<string, RemoteTask>();
   private screens = new Map<string, OpenScreen>();
+  /** A chat's session, by `nodeKey`-style chat key. */
+  private chats = new Map<string, string>();
 
   /** Registers a node's connection; the returned handle takes its frames and its disconnect. */
   connect(
@@ -91,7 +109,7 @@ export class NodeRegistry implements AgentNodeHost {
     // Tasks the node no longer runs died with its previous process.
     const alive = new Set(hello.sessions);
     for (const task of this.tasks.values()) {
-      if (task.nodeKey === key && task.status === "running" && !alive.has(task.id)) {
+      if (task.nodeKey === key && isOpen(task) && !alive.has(task.id)) {
         this.settle(task, "failed", `Node "${hello.name}" restarted and lost this task.`);
       }
     }
@@ -112,7 +130,7 @@ export class NodeRegistry implements AgentNodeHost {
     node.graceTimer = setTimeout(() => {
       if (this.nodes.get(node.key) === node) this.nodes.delete(node.key);
       for (const task of this.tasks.values()) {
-        if (task.nodeKey === node.key && task.status === "running") {
+        if (task.nodeKey === node.key && isOpen(task)) {
           this.settle(task, "failed", `Node "${node.hello.name}" went offline.`);
         }
       }
@@ -137,10 +155,14 @@ export class NodeRegistry implements AgentNodeHost {
     }
     // Only a node's own tasks answer to it.
     const task = this.tasks.get(frame.taskId);
-    if (!task || task.nodeKey !== node.key || task.status !== "running") return;
+    if (!task || task.nodeKey !== node.key || !isOpen(task)) return;
 
     if (frame.type === "session.update") {
       const update = frame.update;
+      if (task.turn) {
+        task.turn.onUpdate(update);
+        return;
+      }
       const content = update.content as { type?: string; text?: unknown } | undefined;
       if (
         update.sessionUpdate === "agent_message_chunk" &&
@@ -152,6 +174,7 @@ export class NodeRegistry implements AgentNodeHost {
       }
     } else if (frame.type === "session.screen") {
       task.screen = true;
+      task.turn?.onScreen(task.id);
       this.notify(task);
     } else if (frame.type === "message") {
       if (task.outbox.length < MAX_MAILBOX) {
@@ -159,18 +182,47 @@ export class NodeRegistry implements AgentNodeHost {
         this.notify(task);
       }
     } else if (frame.type === "session.result") {
-      if (frame.stopReason === "end_turn") this.settle(task, "done", task.output);
+      if (task.chat) this.endTurn(task, frame);
+      else if (frame.stopReason === "end_turn") this.settle(task, "done", task.output);
       else if (frame.stopReason === "cancelled")
         this.settle(task, "cancelled", "Cancelled.");
       else this.settle(task, "failed", frame.error ?? "The remote agent failed.");
     }
   }
 
+  /** A chat's prompt ended; its session waits for the next unless the agent failed. */
+  private endTurn(task: RemoteTask, result: PromptResult) {
+    if (result.stopReason === "error") {
+      this.settle(task, "failed", result.error ?? "The remote agent failed.");
+      return;
+    }
+    const turn = task.turn;
+    task.turn = undefined;
+    task.status = "idle";
+    task.idleTimer = setTimeout(
+      () => this.settle(task, "cancelled", "Closed after being idle."),
+      CHAT_IDLE_MS,
+    );
+    task.idleTimer.unref?.();
+    turn?.done(result);
+  }
+
   private settle(task: RemoteTask, status: RemoteTaskStatus, output: string) {
-    if (task.status !== "running") return;
+    if (!isOpen(task)) return;
     task.status = status;
     if (status === "done") task.output = output;
     else task.error = output;
+    clearTimeout(task.idleTimer);
+    if (task.chat && this.chats.get(task.chat) === task.id) this.chats.delete(task.chat);
+    this.nodes
+      .get(task.nodeKey)
+      ?.transport?.send({ type: "session.close", taskId: task.id });
+    const turn = task.turn;
+    task.turn = undefined;
+    turn?.done({
+      stopReason: status === "cancelled" ? "cancelled" : "error",
+      error: output,
+    });
     this.notify(task);
     for (const [screenId, screen] of this.screens) {
       if (screen.taskId === task.id) this.closeScreen(screenId);
@@ -192,10 +244,11 @@ export class NodeRegistry implements AgentNodeHost {
     );
   }
 
+  /** Sessions open on `node`, idle chats' included: each holds an agent there. */
   private runningOn(node: ConnectedNode) {
     let count = 0;
     for (const task of this.tasks.values()) {
-      if (task.nodeKey === node.key && task.status === "running") count++;
+      if (task.nodeKey === node.key && isOpen(task)) count++;
     }
     return count;
   }
@@ -219,7 +272,24 @@ export class NodeRegistry implements AgentNodeHost {
   }
 
   async startRemoteTask(request: Parameters<AgentNodeHost["startRemoteTask"]>[0]) {
-    const { spaceId, userId, jobToken, task: prompt } = request;
+    const { task, node } = this.open(request, null);
+    task.status = "running";
+    node.transport?.send({ type: "session.prompt", taskId: task.id, text: request.task });
+    return { taskId: task.id, node: node.hello.name };
+  }
+
+  /** Starts a session on one of the user's online nodes; it is idle until prompted. */
+  private open(
+    request: {
+      spaceId: string;
+      userId: string;
+      jobToken: string;
+      node?: string;
+      adapter?: string;
+    },
+    chat: string | null,
+  ) {
+    const { spaceId, userId, jobToken } = request;
     const candidates = this.ownNodes(spaceId, userId).filter((n) => n.transport);
     const node = request.node
       ? candidates.find((n) => n.hello.name === request.node)
@@ -247,27 +317,83 @@ export class NodeRegistry implements AgentNodeHost {
       );
     }
 
-    const taskId = `rt-${randomUUID()}`;
-    this.tasks.set(taskId, {
-      id: taskId,
+    const task: RemoteTask = {
+      id: `rt-${randomUUID()}`,
       spaceId,
       userId,
       nodeKey: node.key,
-      status: "running",
+      status: "idle",
       output: "",
       inbox: [],
       outbox: [],
       wake: new Set(),
       screen: false,
-    });
+      chat,
+    };
+    this.tasks.set(task.id, task);
+    if (chat) this.chats.set(chat, task.id);
     node.transport.send({
       type: "session.new",
-      taskId,
+      taskId: task.id,
       adapter,
       access: { spaceId, jobToken },
     });
-    node.transport.send({ type: "session.prompt", taskId, text: prompt });
-    return { taskId, node: node.hello.name };
+    return { task, node };
+  }
+
+  /**
+   * Starts one prompt of a chat on its session at `node`, opening one when the
+   * chat has none: on its first prompt, or after the session ended. `fresh`
+   * says a session was opened, so it remembers no earlier prompt.
+   */
+  promptChat(
+    request: {
+      spaceId: string;
+      userId: string;
+      chatId: string;
+      node: string;
+      jobToken: string;
+      text: string;
+    } & Omit<ChatTurn, "done">,
+  ): { fresh: boolean; result: Promise<PromptResult> } {
+    const existing = this.chatTask(request);
+    const fresh = !existing;
+    const task =
+      existing ??
+      this.open(request, nodeKey(request.spaceId, request.userId, request.chatId)).task;
+    if (task.status !== "idle")
+      throw new Error("A prompt is already running in this chat.");
+    const transport = this.nodes.get(task.nodeKey)?.transport;
+    if (!transport) throw new Error(`Node "${request.node}" is offline.`);
+    clearTimeout(task.idleTimer);
+    task.status = "running";
+    const result = new Promise<PromptResult>((done) => {
+      task.turn = { onUpdate: request.onUpdate, onScreen: request.onScreen, done };
+    });
+    if (task.screen) request.onScreen(task.id);
+    transport.send({ type: "session.prompt", taskId: task.id, text: request.text });
+    return { fresh, result };
+  }
+
+  private chatTask(scope: { spaceId: string; userId: string; chatId: string }) {
+    return this.tasks.get(
+      this.chats.get(nodeKey(scope.spaceId, scope.userId, scope.chatId)) ?? "",
+    );
+  }
+
+  /** Stops a chat's prompt in flight; its session stays open. */
+  cancelChat(scope: { spaceId: string; userId: string; chatId: string }) {
+    const task = this.chatTask(scope);
+    if (task?.status !== "running") return;
+    this.nodes
+      .get(task.nodeKey)
+      ?.transport?.send({ type: "session.cancel", taskId: task.id });
+  }
+
+  /** Ends a chat's session, if it has one. */
+  closeChat(scope: { spaceId: string; userId: string; chatId: string }) {
+    const task = this.chatTask(scope);
+    if (task) this.settle(task, "cancelled", "The chat was closed.");
   }
 
   private task(taskId: string) {
@@ -309,7 +435,7 @@ export class NodeRegistry implements AgentNodeHost {
 
   async cancelRemoteTask(taskId: string) {
     const task = this.tasks.get(taskId);
-    if (!task || task.status !== "running") return;
+    if (!task || !isOpen(task)) return;
     this.nodes.get(task.nodeKey)?.transport?.send({ type: "session.cancel", taskId });
     this.settle(task, "cancelled", "Cancelled.");
   }
@@ -336,7 +462,7 @@ export class NodeRegistry implements AgentNodeHost {
     this.endScreen(screenId, error);
   }
 
-  /** Opens a running task's screen for its own user. */
+  /** Opens an open task's screen for its own user. */
   openScreen(
     { spaceId, userId, taskId }: { spaceId: string; userId: string; taskId: string },
     viewer: ScreenViewer,
@@ -347,7 +473,7 @@ export class NodeRegistry implements AgentNodeHost {
       !task ||
       task.spaceId !== spaceId ||
       task.userId !== userId ||
-      task.status !== "running" ||
+      !isOpen(task) ||
       !task.screen
     ) {
       throw new Error(`No screen for remote task "${taskId}".`);
@@ -379,6 +505,8 @@ export class NodeRegistry implements AgentNodeHost {
     return {
       readMessages: () => task.inbox.splice(0),
       sendMessage: (to: string, text: string) => {
+        if (task.chat)
+          throw new Error("This agent runs a chat; there is no other agent.");
         if (task.status !== "running") throw new Error("This task is no longer running.");
         if (task.outbox.length >= MAX_MAILBOX)
           throw new Error("Too many unread messages.");

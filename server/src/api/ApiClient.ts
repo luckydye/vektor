@@ -1,5 +1,6 @@
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector, Doc as YDoc } from "yjs";
 import type { Attribution } from "#acl/apps.ts";
+import type { NodeSummary } from "#agent/nodes/protocol.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
 import {
@@ -679,6 +680,8 @@ export interface AIChatSession {
   title: string;
   spaceId: string;
   source: AIChatSessionSource;
+  /** The node the agent runs on; null runs it on the server. */
+  node: string | null;
   createdAt: number;
   updatedAt: number;
   messages: AIChatMessage[];
@@ -2800,6 +2803,18 @@ export class ApiClient {
     },
   };
 
+  nodes = {
+    /** The caller's nodes, which a new chat can run on. */
+    list: async (spaceId: string): Promise<NodeSummary[]> => {
+      const { nodes } = await this.apiFetch<{ nodes: NodeSummary[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/nodes`,
+        { credentials: "same-origin" },
+      );
+      return nodes;
+    },
+  };
+
   aiChatSessions = {
     list: async (spaceId: string): Promise<AIChatSessionListEntry[]> => {
       const { sessions } = await this.apiFetch<{ sessions: AIChatSessionListEntry[] }>(
@@ -2824,8 +2839,12 @@ export class ApiClient {
       return session;
     },
 
-    /** Open a session on the server; it picks the id. */
-    create: async (spaceId: string, title: string): Promise<string> => {
+    /** Open a session on the server; it picks the id. A `node` runs its agent there. */
+    create: async (
+      spaceId: string,
+      title: string,
+      node: string | null,
+    ): Promise<string> => {
       const { result } = await this.apiFetch<{ result: { sessionId: string } }>(
         this.baseUrl,
         "/api/v1/chat/acp",
@@ -2837,7 +2856,7 @@ export class ApiClient {
             jsonrpc: "2.0",
             id: crypto.randomUUID(),
             method: "session/new",
-            params: { spaceId, title },
+            params: { spaceId, title, node },
           }),
         },
       );

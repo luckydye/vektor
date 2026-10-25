@@ -152,8 +152,15 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     stopReason: "end_turn" | "cancelled" | "error",
     error?: string,
   ) {
-    running.delete(taskId);
     send({ type: "session.result", taskId, stopReason, ...(error ? { error } : {}) });
+  }
+
+  /** Sessions stay open between prompts until the server closes them. */
+  function closeSession(taskId: string) {
+    const entry = running.get(taskId);
+    if (!entry) return;
+    running.delete(taskId);
+    void entry.opening.then((session) => session.close()).catch(() => {});
   }
 
   function startSession(frame: Extract<ServerToNodeFrame, { type: "session.new" }>) {
@@ -181,11 +188,10 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     });
     const entry: Running = { opening, cancelled: false };
     running.set(taskId, entry);
-    // The prompt follows at once; a failed start is reported when it arrives.
-    opening.then(
+    // A failed start is reported when the prompt that follows arrives.
+    void opening.then(
       (session) => session.screen && send({ type: "session.screen", taskId }),
-      (error: unknown) =>
-        finish(taskId, "error", error instanceof Error ? error.message : String(error)),
+      () => {},
     );
   }
 
@@ -223,29 +229,34 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
 
   async function prompt(taskId: string, text: string) {
     const entry = running.get(taskId);
-    if (!entry) return;
+    if (!entry) {
+      finish(taskId, "error", "This node has no such session; it may have restarted.");
+      return;
+    }
     let session: AdapterSession;
     try {
       session = await entry.opening;
-    } catch {
+    } catch (error) {
+      finish(taskId, "error", error instanceof Error ? error.message : String(error));
       return;
     }
     if (entry.cancelled) {
+      entry.cancelled = false;
       finish(taskId, "cancelled");
-      await session.close();
       return;
     }
     const result = await session.prompt(text, (update) =>
       send({ type: "session.update", taskId, update }),
     );
+    entry.cancelled = false;
     finish(taskId, result.stopReason, result.error);
-    await session.close().catch(() => {});
   }
 
   function handle(frame: ServerToNodeFrame) {
     if (frame.type === "ping") return;
     if (frame.type === "session.new") startSession(frame);
     else if (frame.type === "session.prompt") void prompt(frame.taskId, frame.text);
+    else if (frame.type === "session.close") closeSession(frame.taskId);
     else if (frame.type === "screen.open") void openScreen(frame.taskId, frame.screenId);
     else if (frame.type === "screen.input")
       screens.get(frame.screenId)?.input(frame.events);

@@ -36,6 +36,7 @@ JSON frames over the WebSocket, wrapping ACP messages:
 |---|---|---|
 | `hello` | node → server | name, OS, workdir, adapters, `maxSessions` |
 | `session.new` / `session.prompt` / `session.cancel` | server → node | ACP requests, with a server-chosen `taskId` |
+| `session.close` | server → node | ends the session; a chat's stays open between prompts until then |
 | `session.update` / `session.result` | node → server | ACP `session/update` notifications and the final `stopReason` |
 | `message` | both | `send_message` between the parent and the sub-agent |
 | `ping` | both | heartbeat; the server marks a node offline after missed beats |

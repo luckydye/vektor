@@ -221,6 +221,10 @@ async function aiChatSessionSource(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
 }
 
+async function aiChatSessionNode(db: Database): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.aiChatSession.node);
+}
+
 async function documentContentKey(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.document.contentKey);
 }
@@ -306,4 +310,5 @@ export const spaceMigrations: Migration[] = [
   { id: 12, name: "one-shot-workflow-schedules", up: oneShotWorkflowSchedules },
   { id: 13, name: "document-content-key", up: documentContentKey },
   { id: 14, name: "agent-schedules", up: agentSchedules },
+  { id: 15, name: "ai-chat-session-node", up: aiChatSessionNode },
 ];

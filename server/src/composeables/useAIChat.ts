@@ -1,9 +1,9 @@
 import type { Accessor } from "solid-js";
 import type { SetStoreFunction } from "solid-js/store";
 import { produce } from "solid-js/store";
+import type { AgentEvent } from "#agent/core.ts";
 import { type AIChatMessage, api } from "#api/client.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
-import type { ChatStreamEvent } from "./ai-chat/types.ts";
 
 type MessageIndex = { value: number | null };
 
@@ -93,7 +93,7 @@ export function useAIChat(options: {
   }
 
   function appendToolEventMessage(
-    event: Extract<ChatStreamEvent, { type: "tool_call" | "tool_result" }>,
+    event: Extract<AgentEvent, { type: "tool_call" | "tool_result" }>,
   ) {
     pushMessage({
       role: "tool",
@@ -142,7 +142,7 @@ export function useAIChat(options: {
   }
 
   function applyStreamEvent(
-    event: ChatStreamEvent,
+    event: AgentEvent,
     assistantMessageIndex: MessageIndex,
     thinkingMessageIndex: MessageIndex,
     responseStartIndex: number,
@@ -165,7 +165,7 @@ export function useAIChat(options: {
           node: event.node,
         },
       });
-    } else if (event.type !== "tool_progress") {
+    } else {
       removeThinkingMessages(responseStartIndex);
       assistantMessageIndex.value = null;
       thinkingMessageIndex.value = null;

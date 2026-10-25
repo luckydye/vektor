@@ -74,8 +74,12 @@ export function useChatSessionHandling(options: {
 }) {
   const queryClient = useQueryClient();
   const invalidateSessionList = () =>
-    queryClient.invalidateQueries({ queryKey: chatSessionsQueryKey(options.currentSpaceId()) });
+    queryClient.invalidateQueries({
+      queryKey: chatSessionsQueryKey(options.currentSpaceId()),
+    });
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
+  /** The node the current chat's agent runs on, or a new chat will; null is the server. */
+  const [chatNode, setChatNode] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<AIChatSessionListEntry[]>([]);
   const [showSessionPicker, setShowSessionPicker] = createSignal(false);
   /** Sessions opened by jobs, such as workflow runs, are listed only on request. */
@@ -146,6 +150,7 @@ export function useChatSessionHandling(options: {
 
   function startNewChat() {
     setCurrentSessionId(null);
+    setChatNode(null);
     options.setMessages([]);
     options.resetDraft();
     setShowSessionPicker(false);
@@ -159,6 +164,7 @@ export function useChatSessionHandling(options: {
     if (!session) return;
 
     setCurrentSessionId(session.id);
+    setChatNode(session.node);
     options.resetDraft();
     options.setMessages((session.messages as AIChatMessage[]).map(normalizeSavedMessage));
     setShowSessionPicker(false);
@@ -174,7 +180,7 @@ export function useChatSessionHandling(options: {
     const spaceId = options.currentSpaceId();
     if (!spaceId) throw new Error("No active space selected");
 
-    const id = await api.aiChatSessions.create(spaceId, title);
+    const id = await api.aiChatSessions.create(spaceId, title, chatNode());
     const now = Date.now();
     setSessions((list) => [
       {
@@ -236,6 +242,8 @@ export function useChatSessionHandling(options: {
     loadSessions,
     refreshCurrentSession,
     getSessionStatus,
+    chatNode,
+    setChatNode,
     startNewChat,
     resumeSession,
     createSession,

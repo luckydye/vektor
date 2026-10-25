@@ -378,6 +378,8 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
   source: text("source", { enum: ["chat", "job"] })
     .notNull()
     .default("chat"),
+  /** The node the agent runs on, by name; null runs it on the server. */
+  node: text("node"),
 });
 
 /** Estimated AI tokens charged to a space for a UTC week (Monday to Monday). */

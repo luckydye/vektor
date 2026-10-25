@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { isNoAuthMode } from "#config";
 import { authClient } from "#composeables/auth-client.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
@@ -11,7 +11,11 @@ import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
 import { useTranslation } from "#composeables/useTranslation.ts";
 import { Icon } from "./Icon.tsx";
-import { UserPreferencesPanel } from "./UserPreferencesPanel.tsx";
+import {
+  type PreferencesSection,
+  preferenceSections,
+  UserPreferencesPanel,
+} from "./UserPreferencesPanel.tsx";
 import { useToast } from "#composeables/useToast.ts";
 
 export function UserProfile() {
@@ -26,10 +30,14 @@ export function UserProfile() {
     return resolved ? { ...resolved, appearance: appearance() } : undefined;
   });
 
-  const [isPreferencesOpen, setPreferencesOpen] = createSignal(false);
-  const [hasOpenedPreferences, setHasOpenedPreferences] = createSignal(false);
+  /** The open preferences section; null shows the menu. */
+  const [openSection, setOpenSection] = createSignal<PreferencesSection | null>(null);
+  const isPreferencesOpen = () => openSection() !== null;
+  // Kept once shown, so returning to the menu does not drop loaded state.
+  const [shownSection, setShownSection] = createSignal<PreferencesSection | null>(null);
   createEffect(() => {
-    if (isPreferencesOpen()) setHasOpenedPreferences(true);
+    const section = openSection();
+    if (section) setShownSection(section);
   });
   const width = () =>
     isPreferencesOpen()
@@ -52,7 +60,7 @@ export function UserProfile() {
 
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("integration") && params.get("status")) setPreferencesOpen(true);
+    if (params.get("integration") && params.get("status")) setOpenSection("integrations");
   });
 
   return (
@@ -68,7 +76,7 @@ export function UserProfile() {
       <a-popover
         class="group"
         placements="top-start"
-        on:exit={() => setPreferencesOpen(false)}
+        on:exit={() => setOpenSection(null)}
       >
         <div
           class={`overflow-hidden rounded-lg border border-neutral-100 bg-background opacity-0 shadow-large transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 ${width()}`}
@@ -91,14 +99,18 @@ export function UserProfile() {
               </div>
 
               <div class="space-y-5xs p-[4px]">
-                <button
-                  type="button"
-                  onClick={() => setPreferencesOpen(true)}
-                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
-                >
-                  <Icon class="h-4 w-4" name="preferences" />
-                  <span class="text-interactive">{t("Preferences")}</span>
-                </button>
+                <For each={preferenceSections}>
+                  {(section) => (
+                    <button
+                      type="button"
+                      onClick={() => setOpenSection(section.id)}
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
+                    >
+                      <Icon class="h-4 w-4" name={section.icon} />
+                      <span class="text-interactive">{t(section.label)}</span>
+                    </button>
+                  )}
+                </For>
                 <a
                   href="https://github.com/luckydye/vektor"
                   class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
@@ -108,14 +120,14 @@ export function UserProfile() {
                 </a>
                 {/* No-auth mode signs every request in as the local user, so there is no session to end. */}
                 <Show when={!isNoAuthMode()}>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-red-600 text-size-small transition-colors hover:bg-red-500 hover:text-white"
-                >
-                  <Icon class="h-4 w-4" name="sign-out" />
-                  <span class="text-interactive">{t("Sign Out")}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-red-600 text-size-small transition-colors hover:bg-red-500 hover:text-white"
+                  >
+                    <Icon class="h-4 w-4" name="sign-out" />
+                    <span class="text-interactive">{t("Sign Out")}</span>
+                  </button>
                 </Show>
               </div>
             </Show>
@@ -124,8 +136,13 @@ export function UserProfile() {
               hidden={!isPreferencesOpen()}
               class="preferences-panel w-[620px] max-w-[calc(100vw-2rem)]"
             >
-              <Show when={hasOpenedPreferences()}>
-                <UserPreferencesPanel onClose={() => setPreferencesOpen(false)} />
+              <Show when={shownSection()}>
+                {(section) => (
+                  <UserPreferencesPanel
+                    section={section()}
+                    onClose={() => setOpenSection(null)}
+                  />
+                )}
               </Show>
             </div>
           </div>

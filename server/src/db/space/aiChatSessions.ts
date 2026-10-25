@@ -11,6 +11,8 @@ export type StoredAIChatSession = {
   title: string;
   spaceId: string;
   source: AIChatSessionSource;
+  /** The node the agent runs on; null runs it on the server. */
+  node: string | null;
   createdAt: number;
   updatedAt: number;
   messages: unknown[];
@@ -36,7 +38,7 @@ export type AIChatSessionSummary = {
   lastMessageRole: string | null;
 };
 
-/** A session's transcript after a turn; title, owner and source never change. */
+/** A session's transcript after a turn; title, owner, source and node never change. */
 export type AIChatSessionUpdate = {
   messages: unknown[];
   conversationHistory: unknown[];
@@ -68,6 +70,7 @@ function toStoredAIChatSession(
     title: mentionsToText(row.title),
     spaceId: s.spaceId,
     source: row.source,
+    node: row.node ?? null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     messages: parseJsonArray(row.messages, "messages"),
@@ -124,7 +127,7 @@ export async function getAIChatSession(
 export async function createAIChatSession(
   s: SpaceStore,
   userId: string,
-  session: { title: string; source: AIChatSessionSource },
+  session: { title: string; source: AIChatSessionSource; node: string | null },
 ): Promise<StoredAIChatSession> {
   const now = new Date();
   const [created] = await s.db
@@ -133,6 +136,7 @@ export async function createAIChatSession(
       id: createId("chatSession"),
       title: session.title,
       source: session.source,
+      node: session.node,
       createdBy: userId,
       createdAt: now,
       updatedAt: now,

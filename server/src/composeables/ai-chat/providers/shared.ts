@@ -1,4 +1,5 @@
-import type { ChatStreamEvent } from "#composeables/ai-chat/types.ts";
+import { parseAcpUpdate } from "#agent/acpUpdates.ts";
+import type { AgentEvent } from "#agent/core.ts";
 
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
@@ -37,7 +38,7 @@ export async function* parseSSEStream(
 
 /**
  * Sends a streaming JSON-RPC request to the ACP endpoint and maps the
- * `session/update` notifications it streams back to `ChatStreamEvent`s.
+ * `session/update` notifications it streams back to agent events.
  *
  * `session/prompt` starts a turn in a server-side session and streams it;
  * `session/load` attaches to the session's running turn, replaying it so far.
@@ -47,7 +48,7 @@ export async function fetchStreamingCompletion(options: {
   url: string;
   method: "session/prompt" | "session/load";
   params: { sessionId: string; spaceId: string } & Record<string, unknown>;
-  onEvent?: (event: ChatStreamEvent) => void;
+  onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
 }): Promise<{ stopReason: string }> {
   const requestId = crypto.randomUUID();
@@ -71,6 +72,7 @@ export async function fetchStreamingCompletion(options: {
   if (!response.body) throw new Error("No response body");
 
   let stopReason = "end_turn";
+  const toolNames = new Map<string, string>();
 
   for await (const chunk of parseSSEStream(response.body)) {
     // JSON-RPC error
@@ -94,82 +96,8 @@ export async function fetchStreamingCompletion(options: {
     const update = params?.update as Record<string, unknown> | undefined;
     if (!update) continue;
 
-    const kind = update.sessionUpdate as string;
-
-    if (kind === "agent_message_chunk") {
-      const content = update.content as Record<string, unknown> | undefined;
-      if (content?.type === "text" && typeof content.text === "string") {
-        options.onEvent?.({ type: "text", text: content.text });
-      }
-      continue;
-    }
-
-    if (kind === "generic") {
-      const generic = update.generic as Record<string, unknown> | undefined;
-      if (generic?.type === "thinking" && typeof generic.text === "string") {
-        options.onEvent?.({ type: "thinking", text: generic.text });
-      }
-      if (generic?.type === "screen") {
-        options.onEvent?.({
-          type: "screen",
-          taskId: String(generic.taskId),
-          node: String(generic.node),
-          task: String(generic.task),
-        });
-      }
-      continue;
-    }
-
-    if (kind === "plan") {
-      const entries = update.entries as Array<Record<string, unknown>> | undefined;
-      const first = entries?.[0];
-      if (typeof first?.content === "string") {
-        options.onEvent?.({ type: "status", text: first.content });
-      }
-      continue;
-    }
-
-    if (kind === "tool_call") {
-      const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
-      const toolName = typeof update.title === "string" ? update.title : "";
-      const toolKind = typeof update.kind === "string" ? update.kind : "other";
-      const input = update.input;
-      const toolArguments =
-        input !== undefined && input !== null ? JSON.stringify(input) : "{}";
-      options.onEvent?.({
-        type: "tool_call",
-        toolCallId,
-        toolName,
-        toolArguments,
-        kind: toolKind as import("../types.ts").ToolCallKind,
-      });
-      continue;
-    }
-
-    if (kind === "tool_call_update") {
-      const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
-      const toolName = typeof update.toolName === "string" ? update.toolName : "";
-      const status = update.status as string;
-
-      if (status === "in_progress") {
-        options.onEvent?.({ type: "tool_progress", toolCallId, toolName });
-        continue;
-      }
-
-      if (status === "completed" || status === "failed") {
-        const contentArr = update.content as Array<Record<string, unknown>> | undefined;
-        const first = contentArr?.[0];
-        const innerContent = first?.content as Record<string, unknown> | undefined;
-        const text = typeof innerContent?.text === "string" ? innerContent.text : "";
-        options.onEvent?.({
-          type: "tool_result",
-          toolCallId,
-          toolName,
-          content: text,
-          isError: status === "failed",
-        });
-      }
-    }
+    const event = parseAcpUpdate(update, toolNames);
+    if (event) options.onEvent?.(event);
   }
 
   return { stopReason };
