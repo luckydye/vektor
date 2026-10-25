@@ -4,6 +4,34 @@ Gap analysis from reading the code; nothing was built or run. Cloudflare limits 
 
 No Cloudflare code exists yet. The only traces are comments in `platform.ts`, `transactionScope.ts` and `connection.ts` that already assume "one Durable Object per space". What is missing is a second `Platform` implementation, a Workers entry point, and a few features that need a different design.
 
+## Target infrastructure
+
+One Worker is the whole Vektor instance. Each space is a Durable Object with its own SQLite; everything else is a binding.
+
+```
+ Browser / CLI / API clients
+          │  HTTPS + WebSocket
+          ▼
+ ┌─────────────────────────────────────────────┐
+ │ Worker  (the vektor instance)               │
+ │  Astro SSR + static assets, auth, routing   │
+ │  routes each space request to its SpaceDO   │
+ └───────┬──────────────┬───────────────┬──────┘
+         │              │               │
+         ▼              ▼               ▼
+ ┌──────────────┐ ┌────────────┐ ┌────────────────┐
+ │ SpaceDO      │ │ D1         │ │ R2             │
+ │ one per space│ │ users,     │ │ uploads,       │
+ │ space API,   │ │ sessions,  │ │ caches         │
+ │ SQLite, WS,  │ │ space_index│ └────────────────┘
+ │ alarms       │ └────────────┘  optional: Workers AI, Images, email
+ └──────────────┘
+```
+
+The Worker authenticates against D1, resolves the space, and hands the request to that space's DO. The space-scoped Hono API, SQLite, realtime and background work all run inside the DO. Cross-space reads (space list, cross-space search) use the index in D1 rather than fanning out to every DO.
+
+Out of scope for a first cut, each needing its own design (see Gaps §5–6): the job VM / `exec`, the agent worker, the Discord bot, and git hosting.
+
 ## Already in place
 
 - **`Platform` interface** (`server/src/platform/platform.ts`) puts every host-specific concern behind one interface per concern. Only `platform/bun/*` implements it.
@@ -19,7 +47,7 @@ No Cloudflare code exists yet. The only traces are comments in `platform.ts`, `t
 
 - Implement `SpaceDatabase` over a DO namespace binding (`idFromName(spaceId)` plus RPC). Inside the DO, use drizzle's `durable-sqlite` driver.
 - That driver is synchronous and DO SQLite forbids `BEGIN`. `store.tx()` needs a `transactionSync`-style implementation. This works only if transaction bodies await nothing but DB calls. Audit the 9 `transaction(` call sites.
-- `openSpaceStore` currently runs on the caller's side, in the request path. On Workers the repository code must run inside the DO, otherwise every query is an RPC. Practical shape: a thin front Worker routes by space ID, and the Hono API for that space runs in the DO.
+- `openSpaceStore` currently runs on the caller's side, in the request path. On Workers the repository code must run inside the DO, otherwise every query is an RPC. This matches the diagram: the Worker handles assets, auth and routing by space ID, and space-scoped API handlers run in the DO.
 - Pragmas: `local: false` already skips WAL and `synchronous`; `foreign_keys` is on by default. `VACUUM` in purge is unsupported, so purge becomes `deleteAll()`.
 - Run the migrator on DO start inside `blockConcurrencyWhile`. The "already migrated" cache is irrelevant there.
 - `space_index.location` and the encrypted per-database token columns do not apply to DOs.
@@ -75,6 +103,7 @@ No Cloudflare code exists yet. The only traces are comments in `platform.ts`, `t
 1. Spike the DO `SpaceDatabase` with `transactionSync` and run the existing server test suite against it.
 2. Write the Worker + DO entry (HTTP routed per space, auth on D1), swapping in R2 and no-op image/embedding.
 3. Port realtime to hibernating WebSockets plus alarms.
-4. Add the cross-space index, then replace `jobVm`/`exec`, mailer and hasher.
+4. Add the cross-space index in D1, then the mailer and password hasher.
+5. Later, each needing its own design: job VM / `exec`, agent worker, Discord bot, git hosting.
 
-Biggest risks: the realtime port, the cross-space fan-out, and the job VM.
+Biggest risks for the first cut: the realtime port and the cross-space fan-out. The job VM is the biggest risk after it.
