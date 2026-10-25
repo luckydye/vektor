@@ -23,7 +23,7 @@ vektor agent serve   (on any device, logged in)
   ├─ adapter: opencode  `opencode acp` as stdio subprocess
   ├─ adapter: claude    ACP adapter subprocess
   ├─ adapter: <cmd>     any stdio ACP command
-  └─ adapter: varmint   boot a VM, run an adapter inside it
+  └─ adapter: managed   create an environment through a CLI, run an adapter inside it
 ```
 
 The node is a bridge, not an agent. It holds one outbound WebSocket (no inbound ports, works behind NAT), spawns the chosen agent as a stdio ACP subprocess, and relays JSON-RPC frames both ways.
@@ -46,11 +46,11 @@ A reconnecting node re-announces its running sessions; the server resumes stream
 
 `cli/mcp.ts` is passed in `mcpServers` on `session/new`, authenticated with a short-lived job token for the task's user. Foreign agents then get the Vektor tool surface. Add two MCP tools, `send_message` and `read_messages`, backed by the server hub, so parent ↔ sub-agent and sub-agent ↔ sub-agent messaging works for any adapter. Cancel maps to `session/cancel`.
 
-## Varmint VM adapter
+## Managed environment adapter (see environment-manager-protocol.md)
 
-`--agent varmint --image <name> --inner opencode`:
+`--manager <name>=<cli> --run-args <args> --inner "opencode acp"`, for any CLI implementing the environment manager protocol:
 
-1. On `session.new`, boot a VM (`varmint` CLI, interface to confirm).
+1. On `session.new`, create an environment (`<cli> create`).
 2. Run `<inner agent> acp` in the VM; its stdio is the ACP pipe.
 3. Relay frames as for any adapter. The VM lives as long as the session, so follow-up prompts and messages hit the same machine.
 4. On cancel or completion, destroy the VM, or snapshot it when the task asks to keep it.
@@ -73,7 +73,7 @@ Because the VM is disposable, auto-approving permissions is safe there.
 2. **Hub integration.** `start_subagent` gets `node` and `agent`. The hub's `run` sends `session.*` frames and maps `session.update` to events and the final result. Cancel and `send_message` over frames.
 3. **Adapters.** `vektor` (local `runAgentPrompt`), then `opencode`, then a generic `<cmd>` adapter, then Claude once its ACP route is confirmed.
 4. **MCP for foreign agents.** Pass `cli/mcp.ts` in `mcpServers`; add `send_message` and `read_messages` MCP tools.
-5. **Varmint adapter.** Boot, exec, relay, destroy; image selection; `maxSessions`.
+5. **Managed adapter.** Boot, exec, relay, destroy; image selection; `maxSessions`.
 6. **Triggers.** Schedules and chat can name a node (and adapter), so "every morning, run X on the home server" works.
 
 ## Open questions

@@ -1,4 +1,5 @@
 import type { AgentHost } from "#agent/core.ts";
+import { nodeRegistry } from "#agent/nodes/registry.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { reserveAITokens } from "#db/space/aiUsage.ts";
 import { getExtensionPackage } from "#db/space/extensions.ts";
@@ -18,6 +19,8 @@ function textOutput(outputs: Record<string, unknown>, key: string): string {
 /** The agent's access to the space databases and the job scheduler, on the main thread. */
 export function createAgentHost(platform: Platform): AgentHost {
   return {
+    nodes: nodeRegistry,
+
     async reserveAITokens(spaceId, inputTokens) {
       return reserveAITokens(await openSpaceStore(platform, spaceId), inputTokens);
     },

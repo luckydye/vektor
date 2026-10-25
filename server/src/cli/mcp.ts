@@ -5,6 +5,7 @@ import {
   listTools,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
+import { config } from "#config";
 import { resolveConfig } from "./resolve.ts";
 
 /**
@@ -348,6 +349,8 @@ export async function commandMcp(): Promise<void> {
     apiUrl: host,
     spaceId,
     accessToken: token,
+    ...(config().CLI_JOB_TOKEN ? { jobToken: config().CLI_JOB_TOKEN } : {}),
+    ...(config().CLI_TASK_ID ? { remoteTaskId: config().CLI_TASK_ID } : {}),
     connectedProviders: [],
   };
 

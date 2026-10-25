@@ -20,6 +20,8 @@ import { vektorCommand } from "./commands/vektor.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 import { callModel, type SettleAITokens } from "./model.ts";
+import type { AgentNodeHost } from "./nodes/protocol.ts";
+import { runRemoteSubagent } from "./nodes/remoteSubagent.ts";
 import { type AgentLink, createSubagentHub } from "./subagents.ts";
 import { AgentTurnError } from "./turnError.ts";
 import { webSearch, webSearchTool } from "./webSearch.ts";
@@ -51,6 +53,8 @@ export interface AgentHost {
     userId: string | null;
     args: string[];
   }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  /** Where sub-agents can run besides here; unset when this host has no nodes. */
+  nodes?: AgentNodeHost;
 }
 
 export type AgentShellBootstrap = {
@@ -523,6 +527,7 @@ export async function runAgentPrompt(options: {
 
   const provider = options.provider ?? getAIProvider();
   const { host, fetch } = options;
+  const nodes = host?.nodes;
   const modelCaller =
     options.modelCaller ??
     ((
@@ -538,18 +543,33 @@ export async function runAgentPrompt(options: {
 
   const hub = options.link
     ? undefined
-    : createSubagentHub((task, subagentSignal, subagentLink) =>
-        runAgentPrompt({
-          ...options,
-          messages: [{ role: "user", content: task }],
-          systemPrompt: undefined,
-          bash: undefined,
-          onChunk: undefined,
-          onEvent: undefined,
-          onSetup: undefined,
-          signal: subagentSignal,
-          link: subagentLink,
-        }).then((result) => result.content),
+    : createSubagentHub(
+        (task, subagentSignal, subagentLink, target) =>
+          target && nodes && options.userId
+            ? runRemoteSubagent({
+                nodes,
+                spaceId,
+                userId: options.userId,
+                jobToken: options.jobToken,
+                task,
+                target,
+                signal: subagentSignal,
+                link: subagentLink,
+              })
+            : runAgentPrompt({
+                ...options,
+                messages: [{ role: "user", content: task }],
+                systemPrompt: undefined,
+                bash: undefined,
+                onChunk: undefined,
+                onEvent: undefined,
+                onSetup: undefined,
+                signal: subagentSignal,
+                link: subagentLink,
+              }).then((result) => result.content),
+        nodes && options.userId
+          ? () => nodes.listNodes({ spaceId, userId: options.userId as string })
+          : undefined,
       );
   const link = (options.link ?? hub?.parent) as AgentLink;
 

@@ -28,6 +28,8 @@ export type VektorMcpConfig = {
   accessToken?: string;
   documentId?: string;
   connectedProviders?: string[];
+  /** Set when the agent runs as a remote task, which gives it a mailbox through `send_message` and `read_messages`. */
+  remoteTaskId?: string;
   /** Every space the agent works in, `spaceId` included; set only when there are several. */
   spaces?: AgentSpace[];
 };
@@ -168,6 +170,11 @@ async function apiRequest(
   }
 
   return text;
+}
+
+function remoteTaskMessagesPath(config: VektorMcpConfig): string {
+  if (!config.remoteTaskId) throw new Error("This agent has no mailbox.");
+  return `/api/v1/spaces/${config.spaceId}/nodes/tasks/${encodeURIComponent(config.remoteTaskId)}/messages`;
 }
 
 export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
@@ -571,6 +578,27 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["prompt"],
       },
     },
+    ...(config.remoteTaskId
+      ? [
+          {
+            name: "send_message",
+            description:
+              'Send a message to another agent in this task: "parent" or a sub-agent id. ' +
+              "It arrives before the recipient's next step; the recipient may be busy, so do not expect an instant reply.",
+            inputSchema: {
+              type: "object" as const,
+              properties: { to: { type: "string" }, message: { type: "string" } },
+              required: ["to", "message"],
+            },
+          },
+          {
+            name: "read_messages",
+            description:
+              "Take the messages other agents sent you since the last call. Check now and then during long work.",
+            inputSchema: { type: "object" as const, properties: {} },
+          },
+        ]
+      : []),
     {
       name: "list_agent_triggers",
       description: "List the current user's agent triggers with their next due time.",
@@ -761,7 +789,9 @@ function summarizeDocument(
   doc: Record<string, unknown>,
   request: { parentId?: string; hasQuery: boolean; properties?: string[] },
 ) {
-  const wanted = new Set(["title", ...(request.properties ?? [])].map((key) => key.toLowerCase()));
+  const wanted = new Set(
+    ["title", ...(request.properties ?? [])].map((key) => key.toLowerCase()),
+  );
   return {
     id: doc.id,
     type: doc.type ?? "document",
@@ -1192,6 +1222,19 @@ export async function callTool(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+      });
+    }
+    case "read_messages": {
+      return await apiRequest(config, remoteTaskMessagesPath(config));
+    }
+    case "send_message": {
+      return await apiRequest(config, remoteTaskMessagesPath(config), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: expectString(args, "to"),
+          message: expectString(args, "message"),
+        }),
       });
     }
     case "list_agent_triggers": {

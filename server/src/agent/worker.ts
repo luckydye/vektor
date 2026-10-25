@@ -17,6 +17,7 @@ import {
   runAgentPrompt,
 } from "./core.ts";
 import type { IntegrationAgentSurface } from "./integrations.ts";
+import type { AgentNodeHost } from "./nodes/protocol.ts";
 import { AgentTurnError } from "./turnError.ts";
 
 /**
@@ -61,7 +62,13 @@ export type AgentHostCall =
       method: "runIntegrationCommand";
       args: [Parameters<AgentHost["runIntegrationCommand"]>[0]];
     }
-  | { method: "integrationAccessToken"; args: [turnId: number] };
+  | { method: "integrationAccessToken"; args: [turnId: number] }
+  | {
+      [Method in keyof AgentNodeHost]: {
+        method: `nodes.${Method}`;
+        args: Parameters<AgentNodeHost[Method]>;
+      };
+    }[keyof AgentNodeHost];
 
 export type AgentWorkerRequest =
   | { type: "run"; turnId: number; request: AgentTurnRequest }
@@ -299,6 +306,13 @@ const workerHost: AgentHost = {
   },
   runIntegrationCommand(request) {
     return callHost({ method: "runIntegrationCommand", args: [request] });
+  },
+  nodes: {
+    listNodes: (...args) => callHost({ method: "nodes.listNodes", args }),
+    startRemoteTask: (...args) => callHost({ method: "nodes.startRemoteTask", args }),
+    pollRemoteTask: (...args) => callHost({ method: "nodes.pollRemoteTask", args }),
+    sendRemoteTask: (...args) => callHost({ method: "nodes.sendRemoteTask", args }),
+    cancelRemoteTask: (...args) => callHost({ method: "nodes.cancelRemoteTask", args }),
   },
 };
 

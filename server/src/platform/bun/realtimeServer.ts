@@ -5,6 +5,7 @@ import {
   decrementWebSocketConnections,
   incrementWebSocketConnections,
 } from "#observability/metrics.ts";
+import { isNodeUpgradePath } from "#platform/bun/nodeServer.ts";
 import type { Platform } from "#platform/platform.ts";
 import {
   acceptRealtimeConnection,
@@ -50,7 +51,8 @@ export function attachRealtimeWebSocketServer(
     const url = new URL(request.url ?? "/", "http://localhost");
     const match = url.pathname.match(/^\/events\/([^/]+)$/);
     if (!match) {
-      socket.destroy();
+      // The node endpoint listens on the same event and handles its own path.
+      if (!isNodeUpgradePath(url.pathname)) socket.destroy();
       return;
     }
 

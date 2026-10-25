@@ -13,6 +13,8 @@ import * as proxyMedia from "./routes/proxy-media.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
 import * as accessTokens from "./routes/spaces/access-tokens.ts";
+import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
+import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
 import * as aiChatSession from "./routes/spaces/ai-chat-session.ts";
 import * as aiChatSessionContext from "./routes/spaces/ai-chat-session-context.ts";
 import * as aiChatSessions from "./routes/spaces/ai-chat-sessions.ts";
@@ -42,6 +44,7 @@ import * as integrations from "./routes/spaces/integrations.ts";
 import * as jobBlob from "./routes/spaces/job-blob.ts";
 import * as jobsRun from "./routes/spaces/jobs-run.ts";
 import * as members from "./routes/spaces/members.ts";
+import * as nodeTaskMessages from "./routes/spaces/node-task-messages.ts";
 import * as spaceNotificationPreference from "./routes/spaces/notification-preference.ts";
 import * as permissions from "./routes/spaces/permissions.ts";
 import * as permissionsMe from "./routes/spaces/permissions-me.ts";
@@ -64,8 +67,6 @@ import * as uploadFile from "./routes/spaces/upload-file.ts";
 import * as uploads from "./routes/spaces/uploads.ts";
 import * as workflowRun from "./routes/spaces/workflow-run.ts";
 import * as workflowRuns from "./routes/spaces/workflow-runs.ts";
-import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
-import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
 import * as workflowSchedule from "./routes/spaces/workflow-schedule.ts";
 import * as workflowSchedules from "./routes/spaces/workflow-schedules.ts";
 import * as urlMetadata from "./routes/url-metadata.ts";
@@ -224,8 +225,16 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/uploads", module: uploads },
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },
 
+  {
+    pattern: "/api/v1/spaces/[spaceId]/nodes/tasks/[taskId]/messages",
+    module: nodeTaskMessages,
+  },
+
   { pattern: "/api/v1/spaces/[spaceId]/agent-triggers", module: agentTriggers },
-  { pattern: "/api/v1/spaces/[spaceId]/agent-triggers/[triggerId]", module: agentTrigger },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/agent-triggers/[triggerId]",
+    module: agentTrigger,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs", module: workflowRuns },
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs/[runId]", module: workflowRun },

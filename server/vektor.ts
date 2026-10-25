@@ -9,6 +9,7 @@
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
  *   vektor mcp
  *   vektor agent [prompt...] [--doc <slug|id>] [--once]
+ *   vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--gateway <ip>] [--env-workdir <dir>]
  *   vektor workflow run <docId> [--input key=value ...] [--json]
  *   vektor workflow logs <runId>
  *   vektor extension create <id>
@@ -57,6 +58,7 @@ import {
 } from "./src/cli/extension.ts";
 import { commandLogin, commandLogout } from "./src/cli/login.ts";
 import { commandMcp } from "./src/cli/mcp.ts";
+import { commandAgentServe, type ServeOptions } from "./src/cli/node/serve.ts";
 import { configPath, resolveConfig } from "./src/cli/resolve.ts";
 import {
   commandSpaceAttach,
@@ -109,6 +111,63 @@ function stripFlag(
   return { argv: result, value };
 }
 
+const SERVE_BOOLEAN_FLAGS = new Set(["readonly", "auto-approve", "allow-shell"]);
+
+function parseServeArgs(args: string[]): ServeOptions {
+  const flags = new Map<string, string[]>();
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("--")) throw new Error(`Unexpected argument: ${arg}`);
+    const key = arg.slice(2);
+    if (SERVE_BOOLEAN_FLAGS.has(key)) {
+      flags.set(key, ["true"]);
+      continue;
+    }
+    const value = args[++i];
+    if (value === undefined) throw new Error(`--${key} needs a value`);
+    flags.set(key, [...(flags.get(key) ?? []), value]);
+  }
+  const one = (key: string) => flags.get(key)?.at(-1);
+
+  const namedCommands = (flag: string) => {
+    const commands: Record<string, string[]> = {};
+    for (const spec of flags.get(flag) ?? []) {
+      const separator = spec.indexOf("=");
+      const name = spec.slice(0, separator).trim();
+      const command = spec
+        .slice(separator + 1)
+        .trim()
+        .split(/\s+/);
+      if (separator < 1 || !command[0]) {
+        throw new Error(`--${flag} expects name="command args", got: ${spec}`);
+      }
+      commands[name] = command;
+    }
+    return commands;
+  };
+  const maxSessions = Number(one("max-sessions") ?? 2);
+  if (!Number.isInteger(maxSessions) || maxSessions < 1) {
+    throw new Error("--max-sessions must be a positive integer");
+  }
+  return {
+    name: one("name"),
+    workdir: one("workdir") ?? process.cwd(),
+    maxSessions,
+    adapters: one("adapters")?.split(","),
+    commands: namedCommands("cmd"),
+    managers: namedCommands("manager"),
+    readonly: flags.has("readonly"),
+    autoApprove: flags.has("auto-approve"),
+    allowShell: flags.has("allow-shell"),
+    managed: {
+      runArgs: one("run-args")?.split(/\s+/).filter(Boolean) ?? [],
+      inner: (one("inner") ?? "opencode acp").split(/\s+/),
+      gateway: one("gateway"),
+      cwd: one("env-workdir"),
+    },
+  };
+}
+
 function printUsage(): void {
   console.log(`
 Usage:
@@ -120,6 +179,7 @@ Commands:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor mcp
   vektor agent [prompt...] [--doc <slug|id>] [--once]
+  vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--manager <name=command>]... [--run-args <args>] [--inner <command>]
   vektor workflow run <docId> [--input key=value ...] [--json]
   vektor workflow logs <runId>
   vektor extension create <id>
@@ -226,6 +286,11 @@ async function main(): Promise<void> {
 
   if (command === "mcp") {
     await commandMcp();
+    return;
+  }
+
+  if (command === "agent" && rest[0] === "serve") {
+    await commandAgentServe(parseServeArgs(rest.slice(1)));
     return;
   }
 

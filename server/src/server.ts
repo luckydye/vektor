@@ -8,6 +8,7 @@ import {
   createFileSystemClientAssetMiddleware,
 } from "#platform/bun/clientAssets.ts";
 import { createBunPlatform } from "#platform/bun/index.ts";
+import { attachNodeWebSocketServer } from "#platform/bun/nodeServer.ts";
 import { attachRealtimeWebSocketServer } from "#platform/bun/realtimeServer.ts";
 import { stopSerializationPool } from "#platform/bun/serializationPool.ts";
 import type { Platform } from "#platform/platform.ts";
@@ -336,6 +337,7 @@ export async function startServer(platform: Platform): Promise<void> {
   });
 
   const realtimeWebSocketServer = attachRealtimeWebSocketServer(platform, server);
+  const nodeWebSocketServer = attachNodeWebSocketServer(platform, server);
 
   server.listen(port, host, () => {
     appLogger.info("Server listening", { host, port });
@@ -388,6 +390,7 @@ export async function startServer(platform: Platform): Promise<void> {
 
     try {
       realtimeWebSocketServer.close();
+      nodeWebSocketServer.close();
 
       await new Promise<void>((resolve, reject) => {
         server.close((error: unknown) => {

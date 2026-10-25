@@ -173,7 +173,7 @@ export async function streamAcpPrompt(
 }
 
 /** Sends a non-streaming ACP request and returns its JSON-RPC result. */
-async function acpCall<T>(
+export async function acpCall<T>(
   host: string,
   authHeaders: Record<string, string>,
   method: string,

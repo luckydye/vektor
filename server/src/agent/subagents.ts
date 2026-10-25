@@ -6,6 +6,9 @@
  * The parent and its sub-agents also message each other with `send_message`.
  * A message reaches its recipient before the recipient's next model call, or
  * ends the parent's `wait_subagents` early.
+ *
+ * A sub-agent can also run on a node, another device with its own agent; the
+ * hub only starts it through `run`, which says where it runs.
  */
 
 const PARENT = "parent";
@@ -19,6 +22,16 @@ export type AgentLink = {
   drain: () => string | undefined;
 };
 
+/** Where a sub-agent runs when not in this process. */
+export type SubagentTarget = { node?: string; agent?: string };
+
+export type SubagentRun = (
+  task: string,
+  signal: AbortSignal,
+  link: AgentLink,
+  target?: SubagentTarget,
+) => Promise<string>;
+
 const MAX_RUNNING = 5;
 const DEFAULT_WAIT_SECONDS = 300;
 const MAX_WAIT_SECONDS = 600;
@@ -26,13 +39,19 @@ const MAX_WAIT_SECONDS = 600;
 type SubagentState = {
   id: string;
   task: string;
+  node?: string;
   status: "running" | "done" | "failed" | "cancelled";
   output?: string;
   controller: AbortController;
   settled: Promise<void>;
 };
 
-function tool(name: string, description: string, properties: object, required: string[] = []) {
+function tool(
+  name: string,
+  description: string,
+  properties: object,
+  required: string[] = [],
+) {
   return {
     type: "function",
     function: {
@@ -51,16 +70,38 @@ const sendMessageTool = tool(
   ["to", "message"],
 );
 
-const managerTools = [
+const nodeProperties = {
+  node: {
+    type: "string",
+    description:
+      "Run it on this node (see list_nodes) instead of here: another device, with its own files, tools and agent.",
+  },
+  agent: {
+    type: "string",
+    description: "Which agent the node runs it with; default is the node's first.",
+  },
+};
+
+const listNodesTool = tool(
+  "list_nodes",
+  "List the nodes you can run sub-agents on, with their agents and how many sessions are free.",
+  {},
+);
+
+const managerTools = (withNodes: boolean) => [
   tool(
     "start_subagent",
     "Start a sub-agent on a self-contained task and return its id at once; it works in the background. " +
       "It has the same tools but a fresh context and none of this conversation, so the task must carry everything it needs. " +
       `Start several to work in parallel (at most ${MAX_RUNNING} running at a time), then collect them with wait_subagents. ` +
       "Sub-agents cannot start sub-agents.",
-    { task: { type: "string", description: "Complete instructions for the sub-agent." } },
+    {
+      task: { type: "string", description: "Complete instructions for the sub-agent." },
+      ...(withNodes ? nodeProperties : {}),
+    },
     ["task"],
   ),
+  ...(withNodes ? [listNodesTool] : []),
   tool("list_subagents", "List the sub-agents started this turn with their status.", {}),
   tool(
     "wait_subagents",
@@ -74,16 +115,15 @@ const managerTools = [
       },
     },
   ),
-  tool(
-    "cancel_subagent",
-    "Stop a running sub-agent.",
-    { id: { type: "string" } },
-    ["id"],
-  ),
+  tool("cancel_subagent", "Stop a running sub-agent.", { id: { type: "string" } }, [
+    "id",
+  ]),
 ];
 
 export function createSubagentHub(
-  run: (task: string, signal: AbortSignal, link: AgentLink) => Promise<string>,
+  run: SubagentRun,
+  /** Set when sub-agents can run on nodes; lists the ones available. */
+  listNodes?: () => Promise<unknown>,
 ) {
   const subagents = new Map<string, SubagentState>();
   const inboxes = new Map<string, Array<{ from: string; text: string }>>([[PARENT, []]]);
@@ -93,6 +133,7 @@ export function createSubagentHub(
   const report = (state: SubagentState) => ({
     id: state.id,
     task: state.task,
+    ...(state.node ? { node: state.node } : {}),
     status: state.status,
     ...(state.output === undefined
       ? {}
@@ -147,10 +188,26 @@ export function createSubagentHub(
     };
   }
 
-  function start(task: unknown) {
+  function start(args: Record<string, unknown>) {
+    const { task } = args;
     if (typeof task !== "string" || !task.trim()) {
       throw new Error('start_subagent requires a non-empty "task".');
     }
+    for (const key of ["node", "agent"]) {
+      if (args[key] !== undefined && (typeof args[key] !== "string" || !args[key])) {
+        throw new Error(`"${key}" must be a non-empty string.`);
+      }
+    }
+    if ((args.node !== undefined || args.agent !== undefined) && !listNodes) {
+      throw new Error("Sub-agents cannot run on nodes here.");
+    }
+    const target: SubagentTarget | undefined =
+      args.node !== undefined || args.agent !== undefined
+        ? {
+            node: args.node as string | undefined,
+            agent: args.agent as string | undefined,
+          }
+        : undefined;
     if (running().length >= MAX_RUNNING) {
       throw new Error(
         `${MAX_RUNNING} sub-agents are already running; wait for or cancel one first.`,
@@ -160,6 +217,7 @@ export function createSubagentHub(
     const state: SubagentState = {
       id: `sub-${subagents.size + 1}`,
       task,
+      node: target?.node,
       status: "running",
       controller,
       settled: Promise.resolve(),
@@ -172,7 +230,7 @@ export function createSubagentHub(
       state.output = output;
       wakeParent?.();
     };
-    state.settled = run(task, controller.signal, linkFor(state.id, {}, [])).then(
+    state.settled = run(task, controller.signal, linkFor(state.id, {}, []), target).then(
       (output) => finish("done", output || "(no output)"),
       (error) => finish("failed", error instanceof Error ? error.message : String(error)),
     );
@@ -218,12 +276,13 @@ export function createSubagentHub(
     parent: linkFor(
       PARENT,
       {
-        start_subagent: (args) => start(args.task),
+        start_subagent: start,
+        ...(listNodes ? { list_nodes: listNodes } : {}),
         list_subagents: () => [...subagents.values()].map(report),
         wait_subagents: (args) => wait(args.ids, args.timeout_seconds),
         cancel_subagent: (args) => cancel(args.id),
       },
-      managerTools,
+      managerTools(listNodes !== undefined),
     ),
     cancelAll() {
       for (const state of running()) cancel(state.id);

@@ -157,6 +157,16 @@ async function callHost(host: AgentHost, call: AgentHostCall): Promise<unknown> 
     }
     case "runIntegrationCommand":
       return host.runIntegrationCommand(...call.args);
+    case "nodes.listNodes":
+      return host.nodes?.listNodes(...call.args);
+    case "nodes.startRemoteTask":
+      return host.nodes?.startRemoteTask(...call.args);
+    case "nodes.pollRemoteTask":
+      return host.nodes?.pollRemoteTask(...call.args);
+    case "nodes.sendRemoteTask":
+      return host.nodes?.sendRemoteTask(...call.args);
+    case "nodes.cancelRemoteTask":
+      return host.nodes?.cancelRemoteTask(...call.args);
     case "integrationAccessToken": {
       const provider = turns.get(call.args[0])?.provider;
       if (provider?.provider !== "integration") {
