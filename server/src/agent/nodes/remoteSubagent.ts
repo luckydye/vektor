@@ -19,9 +19,11 @@ export async function runRemoteSubagent(options: {
   target: SubagentTarget;
   signal: AbortSignal;
   link: AgentLink;
+  /** Called once the remote agent's environment has a screen the user can open. */
+  onScreen?: (screen: { taskId: string; node: string }) => void;
 }): Promise<string> {
   const { nodes, signal, link } = options;
-  const { taskId } = await nodes.startRemoteTask({
+  const { taskId, node } = await nodes.startRemoteTask({
     spaceId: options.spaceId,
     userId: options.userId,
     jobToken: options.jobToken,
@@ -33,12 +35,17 @@ export async function runRemoteSubagent(options: {
   if (signal.aborted) cancel();
   signal.addEventListener("abort", cancel, { once: true });
 
+  let screen = false;
   try {
     while (!signal.aborted) {
       const incoming = link.drain();
       if (incoming)
         await nodes.sendRemoteTask(taskId, "vektor", incoming).catch(() => {});
       const poll = await nodes.pollRemoteTask(taskId, POLL_MS);
+      if (poll.screen && !screen) {
+        screen = true;
+        options.onScreen?.({ taskId, node });
+      }
       for (const message of poll.messages) {
         // A recipient that has finished cannot be told; the remote agent is not blocked on it.
         await link

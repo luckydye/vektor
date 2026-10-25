@@ -15,6 +15,7 @@ import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
+import { RemoteScreen } from "./RemoteScreen.tsx";
 
 export interface AIChatMessagesHandle {
   scrollToBottom: () => void;
@@ -367,7 +368,7 @@ export function AIChatMessages(props: Props) {
     return (
       <button
         type="button"
-        class="flex min-w-0 max-w-full items-center gap-1.5 py-0.5 pointer-coarse:py-2 text-left text-size-small transition-colors"
+        class="flex min-w-0 max-w-full items-center gap-1.5 pointer-coarse:py-2 py-0.5 text-left text-size-small transition-colors"
         classList={{
           "text-red-600 hover:text-red-700": isError,
           "text-neutral-500 hover:text-neutral-800": !isError,
@@ -599,9 +600,9 @@ export function AIChatMessages(props: Props) {
                     class="markdown-content text-neutral-800 text-size-medium leading-relaxed"
                     innerHTML={renderMessageMarkdown(message.content)}
                   />
-                  <div class="mt-1 -ml-1.5 flex items-center gap-1 text-neutral-400 text-size-extra-small transition-opacity pointer-fine:opacity-0 pointer-fine:focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
+                  <div class="mt-1 -ml-1.5 flex items-center gap-1 text-neutral-400 text-size-extra-small pointer-fine:opacity-0 transition-opacity pointer-fine:focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
                     <IconButton
-                      class="h-6 w-6 pointer-coarse:h-9 pointer-coarse:w-9 [&_.svg-icon]:h-3.5 [&_.svg-icon]:w-3.5"
+                      class="h-6 pointer-coarse:h-9 pointer-coarse:w-9 w-6 [&_.svg-icon]:h-3.5 [&_.svg-icon]:w-3.5"
                       icon={
                         copiedAssistantMessageTimestamp() === message.timestamp
                           ? "confirmation"
@@ -617,6 +618,10 @@ export function AIChatMessages(props: Props) {
                     {formatTime(message.timestamp, lang)}
                   </div>
                 </div>
+              </Show>
+
+              <Show when={message.role === "screen" && message.screen}>
+                {(screen) => <RemoteScreen screen={screen()} task={message.content} />}
               </Show>
 
               <Show when={message.role === "tool" && toolRuns().get(message)}>

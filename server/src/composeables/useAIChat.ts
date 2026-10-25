@@ -154,6 +154,17 @@ export function useAIChat(options: {
       appendThinkingMessageChunk(event.text, thinkingMessageIndex);
     } else if (event.type === "status") {
       appendStatusMessage(event.text);
+    } else if (event.type === "screen") {
+      pushMessage({
+        role: "screen",
+        content: event.task,
+        timestamp: Date.now(),
+        screen: {
+          spaceId: options.currentSpaceId() as string,
+          taskId: event.taskId,
+          node: event.node,
+        },
+      });
     } else if (event.type !== "tool_progress") {
       removeThinkingMessages(responseStartIndex);
       assistantMessageIndex.value = null;

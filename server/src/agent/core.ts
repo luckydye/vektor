@@ -2,8 +2,8 @@ import { Bash } from "just-bash";
 import {
   type AgentSpace,
   callTool as callVektorTool,
-  uploadFile,
   listTools as listVektorTools,
+  uploadFile,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
@@ -19,8 +19,8 @@ import { createSandboxFetch } from "./commands/sandboxFetch.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { vektorCommand } from "./commands/vektor.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
-import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 import { generateImage, generateImageTool } from "./imageGeneration.ts";
+import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 import { callModel, type SettleAITokens } from "./model.ts";
 import type { AgentNodeHost } from "./nodes/protocol.ts";
 import { runRemoteSubagent } from "./nodes/remoteSubagent.ts";
@@ -86,7 +86,9 @@ export type AgentEvent =
       toolName: string;
       content: string;
       isError: boolean;
-    };
+    }
+  /** A remote sub-agent's screen the user can watch and drive. */
+  | { type: "screen"; taskId: string; node: string; task: string };
 
 function describeNow(timeZone: string): string {
   const now = new Date();
@@ -557,6 +559,7 @@ export async function runAgentPrompt(options: {
                 target,
                 signal: subagentSignal,
                 link: subagentLink,
+                onScreen: (screen) => void onEvent?.({ type: "screen", ...screen, task }),
               })
             : runAgentPrompt({
                 ...options,

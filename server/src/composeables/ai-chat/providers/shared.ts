@@ -109,6 +109,14 @@ export async function fetchStreamingCompletion(options: {
       if (generic?.type === "thinking" && typeof generic.text === "string") {
         options.onEvent?.({ type: "thinking", text: generic.text });
       }
+      if (generic?.type === "screen") {
+        options.onEvent?.({
+          type: "screen",
+          taskId: String(generic.taskId),
+          node: String(generic.node),
+          task: String(generic.task),
+        });
+      }
       continue;
     }
 

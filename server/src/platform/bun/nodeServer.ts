@@ -5,6 +5,7 @@ import { authenticateWithToken, isAccessDenied, verifyAccess } from "#acl/guards
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import {
+  isScreenInputEvent,
   NODE_OFFLINE_AFTER_MS,
   NODE_PING_INTERVAL_MS,
   type NodeHelloFrame,
@@ -18,13 +19,17 @@ import type { Platform } from "#platform/platform.ts";
 
 /** The URL path nodes dial: `/nodes/<spaceId>`. */
 const NODE_PATH = /^\/nodes\/([^/]+)$/;
+/** The URL path a browser watches a remote task's screen at: `/screens/<spaceId>/<taskId>`. */
+const SCREEN_PATH = /^\/screens\/([^/]+)\/([^/]+)$/;
+/** Media a slow viewer may have queued before its screen is closed rather than lag further. */
+const MAX_VIEWER_BUFFER_BYTES = 8 * 1024 * 1024;
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 const WS_CLOSE_UNAUTHORIZED = 4401;
 const WS_CLOSE_FORBIDDEN = 4403;
 
 export function isNodeUpgradePath(pathname: string): boolean {
-  return NODE_PATH.test(pathname);
+  return NODE_PATH.test(pathname) || SCREEN_PATH.test(pathname);
 }
 
 /**
@@ -103,6 +108,26 @@ export function attachNodeWebSocketServer(platform: Platform, server: Server) {
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
+    const screen = url.pathname.match(SCREEN_PATH);
+    if (screen) {
+      websocketServer.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
+        lastSeenAt.set(websocket, Date.now());
+        void acceptScreenViewer(
+          platform,
+          websocket,
+          request.headers,
+          {
+            spaceId: decodeURIComponent(screen[1]),
+            taskId: decodeURIComponent(screen[2]),
+          },
+          () => lastSeenAt.set(websocket, Date.now()),
+        ).catch((error: unknown) => {
+          appLogger.warn("Could not accept a screen viewer", { error });
+          websocket.close();
+        });
+      });
+      return;
+    }
     const match = url.pathname.match(NODE_PATH);
     if (!match) return;
     const spaceId = decodeURIComponent(match[1]);
@@ -135,16 +160,18 @@ async function acceptNode(
   spaceId: string,
   hooks: { touch: () => void; setRecheck: (recheck: () => Promise<boolean>) => void },
 ) {
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(rawHeaders)) {
-    if (typeof value === "string") headers.set(name, value);
-  }
+  const headers = headersOf(rawHeaders);
   // Frames that arrive while authenticating are held, not dropped: the hello
   // is usually already on its way.
   const early: string[] = [];
   let handler: ((raw: string) => void) | null = null;
-  websocket.on("message", (data: Buffer) => {
+  let media: ((message: Uint8Array) => void) | null = null;
+  websocket.on("message", (data: Buffer, isBinary: boolean) => {
     hooks.touch();
+    if (isBinary) {
+      media?.(data);
+      return;
+    }
     const raw = data.toString();
     if (handler) handler(raw);
     else early.push(raw);
@@ -190,10 +217,86 @@ async function acceptNode(
         close: () => websocket.close(),
       });
       disconnect = connection.disconnect;
+      media = connection.media;
       if (closed) disconnect();
       return;
     }
     connection.handle(frame);
   };
   for (const raw of early.splice(0)) handler(raw);
+}
+
+function headersOf(rawHeaders: IncomingHttpHeaders) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(rawHeaders)) {
+    if (typeof value === "string") headers.set(name, value);
+  }
+  return headers;
+}
+
+/**
+ * A browser watching and driving a remote task's screen: media goes out as
+ * binary messages, input comes in as JSON arrays of `ScreenInputEvent`s. Only
+ * the task's own user may open it.
+ */
+async function acceptScreenViewer(
+  platform: Platform,
+  websocket: WebSocket,
+  rawHeaders: IncomingHttpHeaders,
+  scope: { spaceId: string; taskId: string },
+  touch: () => void,
+) {
+  let closed = false;
+  let screen: ReturnType<typeof nodeRegistry.openScreen> | null = null;
+  websocket.on("close", () => {
+    closed = true;
+    screen?.close();
+  });
+  websocket.on("message", (data: Buffer, isBinary: boolean) => {
+    touch();
+    if (isBinary || !screen) return;
+    const events = parseFrame<{ type: "input"; events: unknown }>(
+      data.toString(),
+    )?.events;
+    if (Array.isArray(events) && events.every(isScreenInputEvent)) screen.input(events);
+  });
+
+  const { user } = await resolveRequestIdentity(platform, headersOf(rawHeaders));
+  if (!user) {
+    websocket.close(WS_CLOSE_UNAUTHORIZED, "Unauthorized");
+    return;
+  }
+  if (!isNoAuthMode()) {
+    try {
+      await verifyAccess(
+        platform,
+        scope.spaceId,
+        { type: ResourceType.SPACE, id: scope.spaceId },
+        user.id,
+        Permission.VIEWER,
+      );
+    } catch {
+      websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
+      return;
+    }
+  }
+  if (closed) return;
+  try {
+    screen = nodeRegistry.openScreen(
+      { ...scope, userId: user.id },
+      {
+        send(bytes) {
+          if (websocket.bufferedAmount > MAX_VIEWER_BUFFER_BYTES) {
+            screen?.close("The connection is too slow for the screen.");
+            return;
+          }
+          websocket.send(bytes);
+        },
+        // Close reasons are limited to 123 bytes.
+        close: (error) => websocket.close(error ? 4000 : 1000, error?.slice(0, 120)),
+      },
+    );
+  } catch (error) {
+    websocket.close(4404, error instanceof Error ? error.message.slice(0, 120) : "");
+  }
 }

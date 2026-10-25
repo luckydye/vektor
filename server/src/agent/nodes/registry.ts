@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AgentNodeHost,
-  NodeHelloFrame,
-  NodeSummary,
-  NodeToServerFrame,
-  RemoteTaskPoll,
-  RemoteTaskStatus,
-  ServerToNodeFrame,
+import {
+  type AgentNodeHost,
+  decodeScreenMedia,
+  type NodeHelloFrame,
+  type NodeSummary,
+  type NodeToServerFrame,
+  type RemoteTaskPoll,
+  type RemoteTaskStatus,
+  type ScreenInputEvent,
+  type ServerToNodeFrame,
 } from "./protocol.ts";
 
 /**
@@ -29,6 +31,14 @@ export interface NodeTransport {
 
 type Message = { from: string; text: string };
 
+/** Where a screen's media goes: the browser watching it. */
+export interface ScreenViewer {
+  send(bytes: Uint8Array): void;
+  close(error?: string): void;
+}
+
+type OpenScreen = { taskId: string; nodeKey: string; viewer: ScreenViewer };
+
 type RemoteTask = {
   id: string;
   spaceId: string;
@@ -42,6 +52,7 @@ type RemoteTask = {
   /** From the remote agent to others in the turn; the hub drains it by polling. */
   outbox: Array<{ to: string; text: string }>;
   wake: Set<() => void>;
+  screen: boolean;
 };
 
 type ConnectedNode = {
@@ -59,6 +70,7 @@ const nodeKey = (spaceId: string, userId: string, name: string) =>
 export class NodeRegistry implements AgentNodeHost {
   private nodes = new Map<string, ConnectedNode>();
   private tasks = new Map<string, RemoteTask>();
+  private screens = new Map<string, OpenScreen>();
 
   /** Registers a node's connection; the returned handle takes its frames and its disconnect. */
   connect(
@@ -86,6 +98,7 @@ export class NodeRegistry implements AgentNodeHost {
 
     return {
       handle: (frame: NodeToServerFrame) => this.handleFrame(node, frame),
+      media: (message: Uint8Array) => this.media(node, message),
       disconnect: () => this.disconnect(node, transport),
     };
   }
@@ -93,6 +106,9 @@ export class NodeRegistry implements AgentNodeHost {
   private disconnect(node: ConnectedNode, transport: NodeTransport) {
     if (node.transport !== transport) return;
     node.transport = null;
+    for (const [screenId, screen] of this.screens) {
+      if (screen.nodeKey === node.key) this.endScreen(screenId, "The node went away.");
+    }
     node.graceTimer = setTimeout(() => {
       if (this.nodes.get(node.key) === node) this.nodes.delete(node.key);
       for (const task of this.tasks.values()) {
@@ -113,6 +129,12 @@ export class NodeRegistry implements AgentNodeHost {
       node.transport?.send({ type: "ping" });
       return;
     }
+    if (frame.type === "screen.end") {
+      if (this.screens.get(frame.screenId)?.nodeKey === node.key) {
+        this.endScreen(frame.screenId, frame.error);
+      }
+      return;
+    }
     // Only a node's own tasks answer to it.
     const task = this.tasks.get(frame.taskId);
     if (!task || task.nodeKey !== node.key || task.status !== "running") return;
@@ -128,6 +150,9 @@ export class NodeRegistry implements AgentNodeHost {
       ) {
         task.output += content.text;
       }
+    } else if (frame.type === "session.screen") {
+      task.screen = true;
+      this.notify(task);
     } else if (frame.type === "message") {
       if (task.outbox.length < MAX_MAILBOX) {
         task.outbox.push({ to: frame.to, text: frame.text });
@@ -147,6 +172,9 @@ export class NodeRegistry implements AgentNodeHost {
     if (status === "done") task.output = output;
     else task.error = output;
     this.notify(task);
+    for (const [screenId, screen] of this.screens) {
+      if (screen.taskId === task.id) this.closeScreen(screenId);
+    }
     const timer = setTimeout(
       () => this.tasks.delete(task.id),
       FINISHED_TASK_RETENTION_MS,
@@ -230,6 +258,7 @@ export class NodeRegistry implements AgentNodeHost {
       inbox: [],
       outbox: [],
       wake: new Set(),
+      screen: false,
     });
     node.transport.send({
       type: "session.new",
@@ -238,7 +267,7 @@ export class NodeRegistry implements AgentNodeHost {
       access: { spaceId, jobToken },
     });
     node.transport.send({ type: "session.prompt", taskId, text: prompt });
-    return { taskId };
+    return { taskId, node: node.hello.name };
   }
 
   private task(taskId: string) {
@@ -262,6 +291,7 @@ export class NodeRegistry implements AgentNodeHost {
     }
     return {
       status: task.status,
+      screen: task.screen,
       ...(task.status === "running"
         ? {}
         : { output: task.status === "done" ? task.output : (task.error ?? "") }),
@@ -282,6 +312,59 @@ export class NodeRegistry implements AgentNodeHost {
     if (!task || task.status !== "running") return;
     this.nodes.get(task.nodeKey)?.transport?.send({ type: "session.cancel", taskId });
     this.settle(task, "cancelled", "Cancelled.");
+  }
+
+  private media(node: ConnectedNode, message: Uint8Array) {
+    const { screenId, bytes } = decodeScreenMedia(message);
+    const screen = this.screens.get(screenId);
+    if (screen?.nodeKey === node.key) screen.viewer.send(bytes);
+  }
+
+  /** Ends a screen from the node's side. */
+  private endScreen(screenId: string, error?: string) {
+    const screen = this.screens.get(screenId);
+    if (!screen) return;
+    this.screens.delete(screenId);
+    screen.viewer.close(error);
+  }
+
+  /** Ends a screen from the server's side, telling the node to stop streaming. */
+  private closeScreen(screenId: string, error?: string) {
+    const screen = this.screens.get(screenId);
+    if (!screen) return;
+    this.nodes.get(screen.nodeKey)?.transport?.send({ type: "screen.close", screenId });
+    this.endScreen(screenId, error);
+  }
+
+  /** Opens a running task's screen for its own user. */
+  openScreen(
+    { spaceId, userId, taskId }: { spaceId: string; userId: string; taskId: string },
+    viewer: ScreenViewer,
+  ) {
+    const task = this.tasks.get(taskId);
+    const transport = task && this.nodes.get(task.nodeKey)?.transport;
+    if (
+      !task ||
+      task.spaceId !== spaceId ||
+      task.userId !== userId ||
+      task.status !== "running" ||
+      !task.screen
+    ) {
+      throw new Error(`No screen for remote task "${taskId}".`);
+    }
+    if (!transport) throw new Error("The node is offline.");
+    const screenId = randomUUID();
+    this.screens.set(screenId, { taskId, nodeKey: task.nodeKey, viewer });
+    transport.send({ type: "screen.open", taskId, screenId });
+    return {
+      input: (events: ScreenInputEvent[]) => {
+        if (!this.screens.has(screenId)) return;
+        this.nodes
+          .get(task.nodeKey)
+          ?.transport?.send({ type: "screen.input", screenId, events });
+      },
+      close: (error?: string) => this.closeScreen(screenId, error),
+    };
   }
 
   /**

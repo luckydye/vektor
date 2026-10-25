@@ -484,6 +484,11 @@ function createStreamingResponse(
               sessionUpdate: "plan",
               entries: [{ content: event.text, status: "in_progress" }],
             });
+          } else if (event.type === "screen") {
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "generic",
+              generic: event,
+            });
           } else if (event.type === "tool_call") {
             sendUpdate(send, sessionId, {
               sessionUpdate: "tool_call",

@@ -54,4 +54,6 @@ export type ChatStreamEvent =
       toolName: string;
       content: string;
       isError: boolean;
-    };
+    }
+  /** A remote sub-agent's screen the user can watch and drive. */
+  | { type: "screen"; taskId: string; node: string; task: string };

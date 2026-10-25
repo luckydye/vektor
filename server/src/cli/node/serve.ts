@@ -1,6 +1,7 @@
 import { hostname, platform } from "node:os";
 import { resolve } from "node:path";
 import {
+  encodeScreenMedia,
   NODE_OFFLINE_AFTER_MS,
   NODE_PING_INTERVAL_MS,
   type NodeToServerFrame,
@@ -11,7 +12,13 @@ import { resolveConfig } from "#cli/resolve.ts";
 import { commandAdapter, echoAdapter, vektorAdapter } from "./adapters.ts";
 import { type ManagedOptions, managedAdapter } from "./managed.ts";
 import { terminalConfirm } from "./policy.ts";
-import type { Adapter, AdapterSession, McpLaunch, Policy } from "./types.ts";
+import type {
+  Adapter,
+  AdapterSession,
+  McpLaunch,
+  Policy,
+  ScreenSession,
+} from "./types.ts";
 
 /**
  * `vektor agent serve` — makes this device a node: it dials the server, then
@@ -25,6 +32,8 @@ const MIN_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 /** Frames kept for a server that is away; the oldest go first. */
 const MAX_OUTBOX = 10_000;
+/** Media a slow server may have queued before a screen is ended rather than lag further. */
+const MAX_SCREEN_BUFFER_BYTES = 8 * 1024 * 1024;
 
 export type ServeOptions = {
   name?: string;
@@ -124,6 +133,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   const running = new Map<string, Running>();
   /** Frames that could not be sent because the server was away. */
   const outbox: NodeToServerFrame[] = [];
+  const screens = new Map<string, ScreenSession>();
   let socket: WebSocket | null = null;
 
   function send(frame: NodeToServerFrame) {
@@ -172,9 +182,43 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     const entry: Running = { opening, cancelled: false };
     running.set(taskId, entry);
     // The prompt follows at once; a failed start is reported when it arrives.
-    opening.catch((error: unknown) =>
-      finish(taskId, "error", error instanceof Error ? error.message : String(error)),
+    opening.then(
+      (session) => session.screen && send({ type: "session.screen", taskId }),
+      (error: unknown) =>
+        finish(taskId, "error", error instanceof Error ? error.message : String(error)),
     );
+  }
+
+  /** Relays one viewer's screen until either side ends it. */
+  async function openScreen(taskId: string, screenId: string) {
+    const session = await running.get(taskId)?.opening.catch(() => undefined);
+    if (!session?.screen) {
+      send({ type: "screen.end", screenId, error: "This task has no screen." });
+      return;
+    }
+    const screen = session.screen();
+    screens.set(screenId, screen);
+    try {
+      for await (const chunk of screen.media) {
+        if (socket?.readyState !== WebSocket.OPEN)
+          throw new Error("The server went away.");
+        if (socket.bufferedAmount > MAX_SCREEN_BUFFER_BYTES) {
+          throw new Error("The connection is too slow for the screen.");
+        }
+        socket.send(encodeScreenMedia(screenId, chunk));
+      }
+      await screen.ended;
+      send({ type: "screen.end", screenId });
+    } catch (error) {
+      send({
+        type: "screen.end",
+        screenId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      screens.delete(screenId);
+      screen.close();
+    }
   }
 
   async function prompt(taskId: string, text: string) {
@@ -202,6 +246,10 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     if (frame.type === "ping") return;
     if (frame.type === "session.new") startSession(frame);
     else if (frame.type === "session.prompt") void prompt(frame.taskId, frame.text);
+    else if (frame.type === "screen.open") void openScreen(frame.taskId, frame.screenId);
+    else if (frame.type === "screen.input")
+      screens.get(frame.screenId)?.input(frame.events);
+    else if (frame.type === "screen.close") screens.get(frame.screenId)?.close();
     else if (frame.type === "session.cancel") {
       const entry = running.get(frame.taskId);
       if (!entry) return;

@@ -1,4 +1,4 @@
-import type { SessionStopReason } from "#agent/nodes/protocol.ts";
+import type { ScreenInputEvent, SessionStopReason } from "#agent/nodes/protocol.ts";
 
 /** How an agent's MCP client starts the Vektor MCP server for one task. */
 export type McpLaunch = {
@@ -31,6 +31,16 @@ export type SessionInit = {
   jobToken: string;
 };
 
+/** One viewer's live view of a session's display. */
+export interface ScreenSession {
+  /** The manager's `stream` output, as docs/environment-manager-protocol.md frames it. */
+  media: ReadableStream<Uint8Array>;
+  /** Settles when the stream ends, rejecting with why it failed. */
+  ended: Promise<void>;
+  input(events: ScreenInputEvent[]): void;
+  close(): void;
+}
+
 export type PromptResult = { stopReason: SessionStopReason; error?: string };
 
 /** One task's conversation with an agent. */
@@ -41,6 +51,8 @@ export interface AdapterSession {
     onUpdate: (update: Record<string, unknown>) => void,
   ): Promise<PromptResult>;
   cancel(): void;
+  /** Set when the session's environment has a display viewers can open. */
+  screen?(): ScreenSession;
   /** Ends the session and whatever it started. */
   close(): Promise<void>;
 }

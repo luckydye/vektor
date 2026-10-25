@@ -652,9 +652,11 @@ export interface Comment {
 }
 
 export interface AIChatMessage {
-  role: "user" | "assistant" | "system" | "tool" | "status" | "thinking";
+  role: "user" | "assistant" | "system" | "tool" | "status" | "thinking" | "screen";
   content: string;
   timestamp: number;
+  /** A remote sub-agent's screen, on a `screen` message; live only during its turn. */
+  screen?: { spaceId: string; taskId: string; node: string };
   toolName?: string;
   toolCallId?: string;
   toolPhase?: "call" | "result";

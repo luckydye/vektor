@@ -1,7 +1,7 @@
 import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { openAcpSession, spawnTransport } from "./acpClient.ts";
-import type { Adapter } from "./types.ts";
+import type { Adapter, ScreenSession } from "./types.ts";
 
 /**
  * Runs each task's agent in its own environment (a VM, a container, a remote
@@ -12,6 +12,8 @@ import type { Adapter } from "./types.ts";
  *   <manager> exec <id> -- <argv...>
  *   <manager> stop <id>
  *   <manager> address <id>                   optional
+ *   <manager> stream <id>                    optional, the screen as H.264 and Opus
+ *   <manager> input <id>                     optional, mouse and keyboard as JSON lines
  *
  * `exec`'s stdio is the ACP pipe. The environment lives as long as the task's
  * session and is stopped when it ends. It reaches the Vektor server only
@@ -54,6 +56,46 @@ async function run(argv: string[], stdin?: string): Promise<string> {
     );
   }
   return stdout.trim();
+}
+
+/** One viewer's `stream` and, once it sends input, `input` process. */
+function openScreen(manager: string[], id: string): ScreenSession {
+  const stream = Bun.spawn([...manager, "stream", id], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  let input: Bun.Subprocess<"pipe", "ignore", "ignore"> | undefined;
+  let closed = false;
+  const ended = (async () => {
+    const [stderr, code] = await Promise.all([
+      new Response(stream.stderr).text(),
+      stream.exited,
+    ]);
+    if (code !== 0 && !closed) {
+      throw new Error(
+        `${manager[0]} stream failed (${code}): ${stderr.trim() || "no output"}`,
+      );
+    }
+  })();
+  return {
+    media: stream.stdout,
+    ended,
+    input(events) {
+      input ??= Bun.spawn([...manager, "input", id], {
+        stdin: "pipe",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      for (const event of events) input.stdin.write(`${JSON.stringify(event)}\n`);
+      void input.stdin.flush();
+    },
+    close() {
+      closed = true;
+      stream.kill();
+      input?.kill();
+    },
+  };
 }
 
 /** Writes stdin to `$1`, a path in the environment where `~/` is its home. */
@@ -156,6 +198,7 @@ export function managedAdapter(options: ManagedOptions): Adapter {
         );
         return {
           ...session,
+          screen: () => openScreen(manager, id),
           async close() {
             await session.close();
             await stop();
