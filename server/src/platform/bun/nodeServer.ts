@@ -33,8 +33,8 @@ export function isNodeUpgradePath(pathname: string): boolean {
 }
 
 /**
- * Who a node dials in as: the user behind its access token (its creator, since a
- * token is a delegation), or the session user in no-auth mode. Null once refused.
+ * Who a node dials in as: the space owner behind its access token (its creator,
+ * since a token is a delegation), or the session user in no-auth mode. Null once refused.
  */
 async function authenticateNode(
   platform: Platform,
@@ -50,12 +50,14 @@ async function authenticateNode(
   const check = async () => {
     const result = await authenticateWithToken(platform, { authorization }, spaceId);
     if (!result) return null;
+    // Tasks hand the node a job token with its creator's full access, so only a
+    // space-owner token (capped at its creator's grants) may dial in.
     await verifyAccess(
       platform,
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       result.tokenId,
-      Permission.VIEWER,
+      Permission.OWNER,
     );
     return result.token.createdBy;
   };
