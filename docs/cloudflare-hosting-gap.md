@@ -20,15 +20,16 @@ One Worker is the whole Vektor instance. Each space is a Durable Object with its
          │              │               │
          ▼              ▼               ▼
  ┌──────────────┐ ┌────────────┐ ┌────────────────┐
- │ SpaceDO      │ │ D1         │ │ R2             │
- │ one per space│ │ users,     │ │ uploads,       │
- │ space API,   │ │ sessions,  │ │ caches         │
- │ SQLite, WS,  │ │ space_index│ └────────────────┘
- │ alarms       │ └────────────┘  optional: Workers AI, Images, email
- └──────────────┘
+ │ SpaceDO      │ │ InstanceDO │ │ R2             │
+ │ one per space│ │ one per    │ │ uploads,       │
+ │ space API,   │ │ instance:  │ │ caches         │
+ │ SQLite, WS,  │ │ users,     │ └────────────────┘
+ │ alarms       │ │ sessions,  │  optional: Workers AI,
+ └──────────────┘ │ space_index│  Images, email
+                  └────────────┘
 ```
 
-The Worker authenticates against D1, resolves the space, and hands the request to that space's DO. The space-scoped Hono API, SQLite, realtime and background work all run inside the DO. Cross-space reads (space list, cross-space search) use the index in D1 rather than fanning out to every DO.
+The Worker authenticates against the InstanceDO, resolves the space, and hands the request to that space's DO. The space-scoped Hono API, SQLite, realtime and background work all run inside the DO. Cross-space reads (space list, cross-space search) use the index in the InstanceDO rather than fanning out to every DO.
 
 Out of scope for a first cut, each needing its own design (see Gaps §5–6): the job VM / `exec`, the agent worker, the Discord bot, and git hosting.
 
@@ -38,7 +39,7 @@ Out of scope for a first cut, each needing its own design (see Gaps §5–6): th
 - **`SpaceDatabase`** is addressed by space ID, with `open/allocate/archive/purge`. `transaction` is documented as "as atomic as this storage allows".
 - **`SpaceHost.at(spaceId, time)`** is documented as "one process, or one DO each". On Workers it maps to `ctx.storage.setAlarm`. `runSpaceWork` is already a single pass that reports when it is next due.
 - **`SpaceStore`** is the only data-layer entry point. `assertOutsideTransaction` already enforces that no external I/O runs inside a transaction.
-- **`getAuthDb`** treats the global database as a separate object from the space.
+- **`getAuthDb`** treats the global database as a separate object from the space, and refuses to run inside a space transaction. That already fits the InstanceDO.
 - **Repositories** go through `one`/`many`/`exec`, so they are driver-agnostic.
 
 ## Gaps
@@ -52,11 +53,14 @@ Out of scope for a first cut, each needing its own design (see Gaps §5–6): th
 - Run the migrator on DO start inside `blockConcurrencyWhile`. The "already migrated" cache is irrelevant there.
 - `space_index.location` and the encrypted per-database token columns do not apply to DOs.
 
-### 2. Global / auth database
+### 2. Global / auth database (InstanceDO)
 
-- Users, sessions, `space_index`, OAuth tables and better-auth live in one global database. Use D1 or a single directory DO. Both drizzle dialects are async, so `GlobalDatabase.open()` is a small change.
-- `prepareAuthDb` generates `CREATE TABLE` on every boot via `generateCreateTableSQL`. On D1 this should become real migrations.
-- Several features read across spaces: `listActiveSpaceIds`, `listIndexedSpaces`, `search/crossSpace.ts`, `db/space/spaces.ts:283`, `discordBot`, the startup sweeps in `server.ts` (~216, ~345) and `api/ReplicaDb.ts`. Each opens N spaces in one process. On DOs that is N RPCs, a fan-out, or a denormalized index in the global DB. `IndexedSpaceMetadata` is the natural place to extend.
+- Users, sessions, accounts, OAuth tables, `jwks` and `space_index` move to a single `InstanceDO` with its own SQLite, using the same drizzle `durable-sqlite` driver as the spaces. `GlobalDatabase.open()` returns that. No second SQL dialect or storage service.
+- Users cannot move into the space databases: they are instance-wide and belong to many spaces, and login happens before any space is known. Memberships (`acl`) are already per space.
+- better-auth's `drizzleAdapter` needs an in-process database. Run the auth routes inside the InstanceDO (forwarded by the Worker). A drizzle `sqlite-proxy` over RPC is the alternative, but transactions are awkward there.
+- Every request checks a session, so all traffic would funnel through one single-threaded object. Mitigate with better-auth's cookie cache or signed session cookies, and cache slug-to-space lookups in the Worker.
+- `prepareAuthDb` generates `CREATE TABLE` on every boot via `generateCreateTableSQL`. In the InstanceDO this should become real migrations run under `blockConcurrencyWhile`, like the space migrator.
+- Several features read across spaces: `listActiveSpaceIds`, `listIndexedSpaces`, `search/crossSpace.ts`, `db/space/spaces.ts:283`, `discordBot`, the startup sweeps in `server.ts` (~216, ~345) and `api/ReplicaDb.ts`. Each opens N spaces in one process. On DOs that is N RPCs, a fan-out, or a denormalized index in the InstanceDO. `IndexedSpaceMetadata` is the natural place to extend.
 
 ### 3. Realtime (largest piece)
 
@@ -101,9 +105,9 @@ Out of scope for a first cut, each needing its own design (see Gaps §5–6): th
 ## Suggested order
 
 1. Spike the DO `SpaceDatabase` with `transactionSync` and run the existing server test suite against it.
-2. Write the Worker + DO entry (HTTP routed per space, auth on D1), swapping in R2 and no-op image/embedding.
+2. Write the Worker + DO entry (HTTP routed per space, auth in the InstanceDO), swapping in R2 and no-op image/embedding.
 3. Port realtime to hibernating WebSockets plus alarms.
-4. Add the cross-space index in D1, then the mailer and password hasher.
+4. Add the cross-space index in the InstanceDO, then the mailer and password hasher.
 5. Later, each needing its own design: job VM / `exec`, agent worker, Discord bot, git hosting.
 
 Biggest risks for the first cut: the realtime port and the cross-space fan-out. The job VM is the biggest risk after it.
