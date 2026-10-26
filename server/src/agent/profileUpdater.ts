@@ -20,14 +20,14 @@ function pendingKey(spaceId: string, userId: string): string {
  * within IDLE_DELAY_MS the timer is reset, so the update only fires once the
  * user has been idle for a full idle window.
  *
- * @param sessionMessages - The full display messages array from the just-completed session.
+ * @param session - The just-completed session, with its full display messages.
  */
 export function scheduleProfileUpdate(
   platform: Platform,
   options: {
     spaceId: string;
     userId: string;
-    sessionMessages: unknown[];
+    session: { id: string; title: string; messages: unknown[] };
   },
 ): void {
   const key = pendingKey(options.spaceId, options.userId);
@@ -53,7 +53,7 @@ async function runProfileUpdate(
   options: {
     spaceId: string;
     userId: string;
-    sessionMessages: unknown[];
+    session: { id: string; title: string; messages: unknown[] };
   },
 ): Promise<void> {
   const store = await openSpaceStore(platform, options.spaceId);
@@ -61,7 +61,7 @@ async function runProfileUpdate(
   const currentProfile = await getUserProfile(store, options.userId);
 
   type DisplayMsg = { role: string; content?: string | null };
-  const transcript = (options.sessionMessages as DisplayMsg[])
+  const transcript = (options.session.messages as DisplayMsg[])
     .filter((m) => m.role === "user" || m.role === "assistant")
     .slice(-20)
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content ?? ""}`)
@@ -73,12 +73,13 @@ async function runProfileUpdate(
   const prompt =
     `You maintain a compact user profile used to personalize AI assistant responses.\n\n` +
     `Current profile:\n${currentProfile ?? "None"}\n\n` +
-    `Recent chat session:\n${transcript}\n\n` +
+    `Recent chat session (id ${options.session.id}, title "${options.session.title}"):\n${transcript}\n\n` +
     `Update the profile. Rules:\n` +
-    `- Max 150 words\n` +
+    `- Max 250 words\n` +
     `- Capture: what they're building, stack/tools, communication style, preferred answer format/length/tone\n` +
     `- Replace stale info with newer signals; drop anything no longer relevant\n` +
     `- Be specific — only include signals that concretely help personalize future responses\n` +
+    `- Cite the chat a fact came from inline, as a markdown link \`[few words on what was discussed](chat:<id>)\`; keep existing citations of facts you keep\n` +
     `- Return only the updated profile markdown, no commentary or wrapper text`;
 
   const { message } = await callModel({
