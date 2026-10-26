@@ -1,5 +1,5 @@
 import { For } from "solid-js";
-import { SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
+import { SHAPE_LIBRARY } from "#canvas/extensions/geo.ts";
 import "@atrium-ui/elements/popover";
 import { type CanvasChrome, swallowPointer } from "#canvas/ui/Canvas.tsx";
 import { Icon } from "#components/Icon.tsx";
@@ -101,6 +101,15 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
         onClick={() => run((canvas) => canvas.fitView())}
       >
         <Icon class="canvas-tool-icon" name="fit-view-to-elements" />
+      </button>
+      <button
+        type="button"
+        class="canvas-tool"
+        aria-label={t("Present")}
+        data-tooltip={`${t("Present")} · ⌘↵`}
+        onClick={() => run((canvas) => canvas.startPresenting())}
+      >
+        <Icon class="canvas-tool-icon" name="presentation" />
       </button>
     </div>
   );

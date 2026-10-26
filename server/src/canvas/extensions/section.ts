@@ -58,6 +58,10 @@ function sectionFrame(shape: CanvasShape, helpers: CanvasPaintHelpers) {
 function paintSection(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
   if (shape.frame.width <= 0 || shape.frame.height <= 0) return;
   const { quad, transparent, fade } = sectionFrame(shape, helpers);
+  // A slide's background is opaque; the accent colour only tints.
+  if (typeof shape.data.background === "string") {
+    drawRoundedRect(gpu, quad, { fill: parseColor(shape.data.background) });
+  }
   if (!transparent) drawRoundedRect(gpu, quad, { fill: fade(0.06) });
 }
 

@@ -5,6 +5,7 @@
  * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
  */
 
+import { CANVAS_OPERATION_SCHEMA } from "#canvas/agent/schema.ts";
 import type { JobDefinition } from "#extensions/manifest.ts";
 import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 
@@ -17,6 +18,23 @@ type McpTool = {
     required?: string[];
   };
 };
+
+/** A tool result the model looks at rather than reads, kept as an upload. */
+export type ToolImage = {
+  kind: "image";
+  mediaType: "image/png";
+  /** Base64; for the current request only. */
+  data: string;
+  /** The upload holding it, so a stored conversation can reload it. */
+  key: string;
+  description: string;
+};
+
+export function isToolImage(value: unknown): value is ToolImage {
+  return (
+    typeof value === "object" && value !== null && (value as { kind?: unknown }).kind === "image"
+  );
+}
 
 /** A space the agent may work in, with the token for acting there. */
 export type AgentSpace = { id: string; name: string; jobToken: string };
@@ -134,6 +152,26 @@ async function apiRequest(
   path: string,
   init: RequestInit = {},
 ): Promise<unknown> {
+  const response = await apiResponse(config, path, init);
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/json")) {
+    return JSON.parse(text);
+  }
+
+  return text;
+}
+
+/** The raw response of an API call, thrown when it failed. */
+async function apiResponse(
+  config: VektorMcpConfig,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const headers = new Headers(init.headers);
   if (config.jobToken) {
     headers.set("X-Job-Token", config.jobToken);
@@ -154,22 +192,13 @@ async function apiRequest(
     headers,
   });
 
-  const text = await response.text();
   if (!response.ok) {
+    const text = await response.text();
     throw new Error(
       `Vektor API ${response.status} ${response.statusText}: ${text || "empty response"}`,
     );
   }
-  if (!text) {
-    return null;
-  }
-
-  const contentType = response.headers.get("Content-Type") ?? "";
-  if (contentType.includes("application/json")) {
-    return JSON.parse(text);
-  }
-
-  return text;
+  return response;
 }
 
 function remoteTaskMessagesPath(config: VektorMcpConfig): string {
@@ -362,6 +391,50 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
           },
         },
         required: ["documentId", "operations"],
+      },
+    },
+    {
+      name: "read_canvas",
+      description:
+        "Read a canvas document as elements: {elements, bounds}. Each element has an id, a type and its geometry; " +
+        "x and y are relative to the frame or slide named by `in`. Use the ids with edit_canvas.",
+      inputSchema: {
+        type: "object",
+        properties: { documentId: { type: "string" } },
+        required: ["documentId"],
+      },
+    },
+    {
+      name: "edit_canvas",
+      description:
+        "Edit a canvas document by element id: add shapes, text, notes, arrows, frames and slides, or lay out a diagram or chart. " +
+        "Operations run in order and a failing one rejects the batch. Returns {created, warnings, frames, placed}: fix every warning, then look with view_canvas.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string" },
+          operations: { type: "array", items: CANVAS_OPERATION_SCHEMA },
+        },
+        required: ["documentId", "operations"],
+      },
+    },
+    {
+      name: "view_canvas",
+      description:
+        "Look at a canvas: renders one frame or slide (`frame`), a world region (`x, y, w, h`), or the whole canvas as an image you can see. " +
+        "`ids: true` tags every element with its id. Use it after editing to check the result.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string" },
+          frame: { type: "string", description: "Id of a frame or slide to show." },
+          x: { type: "number" },
+          y: { type: "number" },
+          w: { type: "number" },
+          h: { type: "number" },
+          ids: { type: "boolean" },
+        },
+        required: ["documentId"],
       },
     },
     {
@@ -976,6 +1049,54 @@ export async function callTool(
             columns: await databaseColumns(config, response.document),
           }
         : visible;
+    }
+    case "read_canvas":
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(expectString(args, "documentId"))}/canvas`,
+      );
+    case "edit_canvas": {
+      const documentId = expectString(args, "documentId");
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/canvas`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operations: args.operations }),
+        },
+      );
+    }
+    case "view_canvas": {
+      const documentId = expectString(args, "documentId");
+      const query = buildQuery({
+        frame: expectString(args, "frame", { optional: true }),
+        x: expectNumber(args, "x", { optional: true }),
+        y: expectNumber(args, "y", { optional: true }),
+        w: expectNumber(args, "w", { optional: true }),
+        h: expectNumber(args, "h", { optional: true }),
+        ids: args.ids === true ? "true" : undefined,
+      });
+      const response = await apiResponse(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/canvas/render${query}`,
+        { headers: { Accept: "image/png" } },
+      );
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const upload = (await uploadFile(config, {
+        filename: `canvas-view-${Date.now()}.png`,
+        contentBase64: bytes.toString("base64"),
+        contentType: "image/png",
+      })) as { key: string };
+      const region = response.headers.get("X-Canvas-Region");
+      const scale = response.headers.get("X-Canvas-Scale");
+      return {
+        kind: "image",
+        mediaType: "image/png",
+        data: bytes.toString("base64"),
+        key: upload.key,
+        description: `Rendered world region x,y,w,h = ${region} at scale ${scale}.`,
+      } satisfies ToolImage;
     }
     case "get_current_document":
       if (!config.documentId) {

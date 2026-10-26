@@ -11,13 +11,14 @@ import { CanvasDocumentLink } from "#canvas/extensions/documentLink.ts";
 import { DrawTool } from "#canvas/extensions/drawTool.ts";
 import { figmaPasteInput } from "#canvas/extensions/figma.ts";
 import { CanvasFile } from "#canvas/extensions/files.ts";
+import { CanvasGeo } from "#canvas/extensions/geo.ts";
 import { canvasClipboardInput } from "#canvas/extensions/inputs.ts";
+import { CanvasLine, LineTool } from "#canvas/extensions/line.ts";
 import { CanvasLink } from "#canvas/extensions/link.ts";
 import { CanvasAudio, CanvasImage, CanvasVideo } from "#canvas/extensions/media.ts";
 import { CanvasModel } from "#canvas/extensions/model.ts";
 import { Note } from "#canvas/extensions/note.ts";
 import { CanvasSection } from "#canvas/extensions/section.ts";
-import { ShapeTool } from "#canvas/extensions/shape.ts";
 import { CanvasText } from "#canvas/extensions/text.ts";
 import type {
   CanvasElementExtension,
@@ -43,6 +44,8 @@ export const builtInElements = [
   CanvasDocumentLink,
   CanvasLink,
   CanvasSection,
+  CanvasGeo,
+  CanvasLine,
 ] satisfies readonly CanvasElementExtension[];
 
 /**
@@ -53,7 +56,7 @@ export const builtInElements = [
  */
 export const builtInTools = [
   DrawTool,
-  ShapeTool,
+  LineTool,
 ] satisfies readonly CanvasToolExtension[];
 
 /** Paste and drop handlers. Highest priority wins; see `CanvasInputHandler`. */

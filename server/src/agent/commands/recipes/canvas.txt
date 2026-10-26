@@ -1,27 +1,47 @@
 ---
-title: Add or edit notes/shapes on a canvas document
-keywords: canvas, note, shape, sticky, stroke, board
+title: Build diagrams, charts, visual boards and slide presentations on a canvas
+keywords: canvas, whiteboard, board, diagram, flowchart, chart, graph, slides, presentation, deck, shape, arrow, connector, note, sticky, frame
 ---
 
-Canvas documents are JSON snapshots:
-{"version":1,"shapes":[...],"strokes":[...]}.
+Use read_canvas, edit_canvas and view_canvas; never edit canvas JSON with
+edit_document. A new canvas: write_document {"type":"canvas","title":"…","content":"{}"}.
 
-Every shape uses this structure:
-{"id":"shape-...","type":"note","frame":{"x":0,"y":0,"width":240,"height":150,"rotation":0},"style":{"color":"#fef3c7"},"data":{"text":"Note"},"updatedAt":1718000000000}
+1. read_canvas to learn the ids and frames already there.
+2. edit_canvas. Give elements short ids ("s2-chart"); use `in` so x, y are
+   relative to a slide or frame. Fields are listed in edit_canvas's schema.
+3. Fix every warning it returns, in the next edit_canvas call.
+4. view_canvas {"frame": "<id>"} for each frame you changed, fix what looks
+   wrong, and look again. Report done only after looking.
 
-Common types include `note`, `text`, `section`, `image`, `video`, `audio`,
-`link`, `document`, and `file`. Type-specific values belong in `data`.
+A slide (one call):
+{"documentId":"…","operations":[
+ {"op":"add","type":"slide","id":"s2","title":"Revenue grew 18%","background":"#f8fafc"},
+ {"op":"add","type":"text","id":"s2-sub","in":"s2","x":120,"y":200,"w":1680,
+  "text":"Every region grew; the US led.","fontSize":36,"textColor":"#475569"},
+ {"op":"chart","id":"s2-chart","in":"s2","x":120,"y":320,"w":1100,"h":660,
+  "kind":"column","fontSize":28,"prefix":"$","suffix":"M",
+  "data":[{"label":"EU","value":4.2},{"label":"US","value":6.8},{"label":"APAC","value":3.1}]},
+ {"op":"add","type":"rect","id":"s2-note","in":"s2","x":1300,"y":320,"w":500,
+  "text":"**Takeaway**\n\nUS growth came from enterprise renewals.",
+  "fontSize":32,"fill":"#dbeafe","strokeWidth":0,"radius":16,"padding":32,
+  "align":"start","valign":"top"}]}
 
-1. Read the live canvas with `get_current_document` or `read_document`. Choose a
-   free position and note the current array indexes.
-2. Add a note with a unique ID and current millisecond timestamp:
-   {"documentId":"<id>","operations":[{"op":"push","path":".shapes","value":{"id":"shape-note-1718000000000","type":"note","frame":{"x":300,"y":100,"width":240,"height":150,"rotation":0},"style":{"color":"#fef3c7"},"data":{"text":"Hello"},"updatedAt":1718000000000}}]}
-3. Edit fields through their nested paths and bump `updatedAt` in the same call:
-   {"documentId":"<id>","operations":[{"op":"set","path":".shapes[2].data.text","value":"Updated text"},{"op":"set","path":".shapes[2].updatedAt","value":1718000001000}]}
-4. Remove a shape by its current array index:
-   {"documentId":"<id>","operations":[{"op":"unset","path":".shapes[2]"}]}
-5. Re-read after every mutation because indexes can change concurrently.
+A diagram, laid out for you and centred in its slide:
+{"op":"diagram","id":"s3-flow","in":"s3","direction":"right",
+ "style":{"fill":"#dbeafe","radius":10,"fontSize":28},
+ "nodes":[{"id":"user","text":"User"},{"id":"api","text":"**API**\nHono"},
+          {"id":"db","text":"Database","type":"cylinder","fill":"#fef3c7"}],
+ "edges":[{"from":"user","to":"api","label":"HTTPS"},{"from":"api","to":"db"}]}
+Run it again with the same id to replace it. For a hand-placed diagram, add
+shapes, then arrows with "from"/"to" ids; anchor them to sides
+({"id":"a","anchor":"right"}) so they do not cut through shapes.
 
-Note colors: `#fef3c7` yellow, `#dcfce7` green, `#dbeafe` blue,
-`#fae8ff` purple, and `#fee2e2` red. Changes are applied through Yjs and appear
-live to users viewing the canvas.
+Presentations: one slide per idea, added in order. Margins of 120 inside the
+slide; fill it, content should not huddle at the top. On a slide, sizes default
+for reading (title 64 from the slide's title, text 32, shapes 28, labels 24);
+nothing under 24. At most 5 short bullets. One accent colour plus neutrals, the
+same on every slide. Title and closing slides: no slide title, a centred text box
+(align center, w 1680, fontSize 96) at about y 380 with a subtitle under it.
+
+Boards: frames 80–120 apart in a row or grid, a heading text in each
+(fontSize 36–48), body 20–26. View one frame at a time to read text.

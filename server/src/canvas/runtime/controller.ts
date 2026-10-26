@@ -14,7 +14,7 @@ import {
   activeShapeId,
   type CanvasShapeLibraryItem,
   setActiveShapeId,
-} from "#canvas/extensions/shape.ts";
+} from "#canvas/extensions/geo.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
 import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
@@ -277,7 +277,7 @@ export function createCanvasController(
         // Every shape and stroke that moves with this drag (the grabbed shape,
         // anything else in the selection, and the contents of any dragged
         // section), captured at their starting positions.
-        shapes: { id: string; x: number; y: number }[];
+        shapes: { id: string; x: number; y: number; original: CanvasShape }[];
         strokes: { id: string; points: FreehandPoint[] }[];
       }
     | {
@@ -303,6 +303,7 @@ export function createCanvasController(
           frame: CanvasFrame;
           resizeMode: "box" | "font";
           fontScale: number;
+          original: CanvasShape;
         }>;
         strokes: Array<{ id: string; points: FreehandPoint[] }>;
       }
@@ -402,6 +403,10 @@ export function createCanvasController(
     hoverRegion: null as { shapeId: string; region: string } | null,
     // The box a drag-to-create tool is sizing, in world units.
     draftRect: null as Rect | null,
+    // A shape a gesture would attach to, such as a connector end's target.
+    targetHighlight: null as string | null,
+    // The frame shown full screen while presenting, by its place in `slides()`.
+    presenting: null as { index: number } | null,
     // An extension's pointer handling for one shape, such as a healing brush.
     editMode: null as {
       shapeId: string;
@@ -589,6 +594,30 @@ export function createCanvasController(
       renderScene();
     },
     resizeShape: (id, size) => resizeShape(id, size),
+    updateShape: (id, patch) =>
+      ydoc.transact(() => {
+        const shape = shapesById().get(id);
+        if (!shape || !canMoveShape(shape)) return;
+        if (patch.frame) updateShapeFrame(id, patch.frame);
+        if (patch.data) updateShapeData(id, patch.data);
+      }),
+    shapeAt: (point, except) => {
+      for (let i = state.shapes.length - 1; i >= 0; i--) {
+        const shape = state.shapes[i];
+        const behavior = extensionManager.get(shape.type).behavior;
+        // Connectors and frames are not things to point at; a frame's inside is open space.
+        if (shape.id === except || behavior.reshape || behavior.container) continue;
+        if (pointInRotatedShape(point, shapeBounds(shape))) return shape;
+      }
+      return null;
+    },
+    shape: (id) => shapesById().get(id),
+    setTargetHighlight: (id) => {
+      if (state.targetHighlight === id) return;
+      state.targetHighlight = id;
+      renderOverlay();
+    },
+    beginEditMode: (shapeId, mode) => beginEditMode(shapeId, mode),
   });
 
   /** One undoable resize, kept above the type's minimum; locked shapes are left alone. */
@@ -666,7 +695,7 @@ export function createCanvasController(
         bounds: shapeAabb(shape),
         rotation: shape.frame.rotation,
         transform: extensionManager.get(shape.type).behavior.transform,
-        handles: true,
+        handles: extensionManager.get(shape.type).behavior.transform.handles !== "none",
       };
     }
     const stored = strokesById().get(id);
@@ -893,7 +922,9 @@ export function createCanvasController(
   // Shapes WebGL draws: everything not mounted as live DOM.
   const canvasShapes = () =>
     state.shapes.filter(
-      (shape) => !extensionManager.rendersInDom(shape) && !isEditing(shape),
+      (shape) =>
+        !extensionManager.rendersInDom(shape) &&
+        (!isEditing(shape) || extensionManager.get(shape.type).render.editorOverlay),
     );
 
   function elementChromePosition(shape: CanvasShape) {
@@ -1077,17 +1108,19 @@ export function createCanvasController(
       }
     }
 
-    state.shapes = [...yShapes.entries()]
-      .map(([id, value]) => toShape(id, value))
-      .filter((shape): shape is CanvasShape =>
-        Boolean(shape && extensionManager.isValid(shape)),
-      )
-      .sort(
-        (a, b) =>
-          extensionManager.zOrder(a.type) - extensionManager.zOrder(b.type) ||
-          a.updatedAt - b.updatedAt ||
-          a.id.localeCompare(b.id),
-      );
+    state.shapes = resolveShapes(
+      [...yShapes.entries()]
+        .map(([id, value]) => toShape(id, value))
+        .filter((shape): shape is CanvasShape =>
+          Boolean(shape && extensionManager.isValid(shape)),
+        )
+        .sort(
+          (a, b) =>
+            extensionManager.zOrder(a.type) - extensionManager.zOrder(b.type) ||
+            (a.z ?? 0) - (b.z ?? 0) ||
+            a.id.localeCompare(b.id),
+        ),
+    );
 
     pruneSelection();
     if (removedInvalid) {
@@ -1110,6 +1143,23 @@ export function createCanvasController(
       }
       if (changed) state.intrinsicShapeSizes = next;
     }
+  }
+
+  /**
+   * Runs each type's `behavior.resolve` against the shapes as measured, so a
+   * connector's route follows what it joins. Derived shapes may join derived
+   * shapes, so a resolve sees only the unresolved ones.
+   */
+  function resolveShapes(shapes: CanvasShape[]): CanvasShape[] {
+    const byId = new Map(shapes.map((shape) => [shape.id, shape]));
+    const lookup = (id: string) => {
+      const shape = byId.get(id);
+      return shape && { ...shape, frame: shapeBounds(shape) };
+    };
+    return shapes.map((shape) => {
+      const resolve = extensionManager.get(shape.type).behavior.resolve;
+      return resolve ? resolve(shape, lookup) : shape;
+    });
   }
 
   function syncStrokesFromY() {
@@ -1255,6 +1305,77 @@ export function createCanvasController(
       centerY: bounds.y + bounds.height / 2,
     };
     invalidate();
+  }
+
+  // --- presenting --------------------------------------------------------------
+
+  /** Frames in reading order: rows top to bottom, each left to right. */
+  function slides(): CanvasShape[] {
+    const frames = state.shapes.filter((shape) => extensionManager.get(shape.type).behavior.container);
+    return frames.sort((a, b) => {
+      const sameRow = Math.abs(a.frame.y - b.frame.y) < Math.min(a.frame.height, b.frame.height) / 2;
+      return sameRow ? a.frame.x - b.frame.x : a.frame.y - b.frame.y;
+    });
+  }
+
+  function showSlide(index: number) {
+    const frames = slides();
+    const frame = frames[Math.max(0, Math.min(frames.length - 1, index))];
+    if (!frame) return stopPresenting();
+    state.presenting = { index: frames.indexOf(frame) };
+    const baseScale = Math.min(
+      state.screen.width / FIT_REFERENCE.width,
+      state.screen.height / FIT_REFERENCE.height,
+    );
+    const scale = Math.min(state.screen.width / frame.frame.width, state.screen.height / frame.frame.height);
+    state.camera = {
+      centerX: frame.frame.x + frame.frame.width / 2,
+      centerY: frame.frame.y + frame.frame.height / 2,
+      zoom: scale / baseScale,
+    };
+    invalidate();
+  }
+
+  function startPresenting() {
+    if (slides().length === 0) {
+      host.error(t("Add a frame or slide to present"));
+      return;
+    }
+    stopActiveEdit();
+    exitEditMode();
+    clearSelection();
+    // Starts at the frame under the pointer, else the first.
+    const pointer = localPointer;
+    const selected = pointer
+      ? slides().findIndex((frame) => pointInRotatedShape(pointer, frame.frame))
+      : -1;
+    void dom.viewport?.requestFullscreen().then(() => showSlide(Math.max(0, selected)));
+  }
+
+  function stopPresenting() {
+    if (!state.presenting) return;
+    state.presenting = null;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    fitView();
+  }
+
+  function handlePresentingKey(event: KeyboardEvent) {
+    const presenting = state.presenting;
+    if (!presenting) return false;
+    if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(event.key)) {
+      showSlide(presenting.index + 1);
+    } else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(event.key)) {
+      showSlide(presenting.index - 1);
+    } else if (event.key === "Home" || event.key === "End") {
+      showSlide(event.key === "Home" ? 0 : slides().length - 1);
+    } else if (event.key === "Escape") {
+      stopPresenting();
+    } else {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
   }
 
   function fitView(maxZoom = 5) {
@@ -1549,31 +1670,38 @@ export function createCanvasController(
     const now = Date.now();
     const pastedShapeIds = new Set<string>();
     const pastedStrokeIds = new Set<string>();
+    const copies = new Map(payload.shapes.map((shape) => [shape.id, `shape-${crypto.randomUUID()}`]));
 
     ydoc.transact(() => {
-      for (const shape of payload.shapes) {
-        const id = `shape-${crypto.randomUUID()}`;
+      payload.shapes.forEach((shape, index) => {
+        const id = copies.get(shape.id) as string;
         pastedShapeIds.add(id);
+        const behavior = extensionManager.get(shape.type).behavior;
+        const rebound = { ...shape, data: { ...shape.data, ...behavior.rebind?.(shape as CanvasShape, copies) } } as CanvasShape;
+        const moved = behavior.reshape?.(rebound, (point) => ({ x: point.x + dx, y: point.y + dy }));
         yShapes.set(
           id,
           shapeToYMap(
             {
-              ...shape,
+              ...rebound,
               id,
               frame: {
                 ...shape.frame,
                 x: Math.round(shape.frame.x + dx),
                 y: Math.round(shape.frame.y + dy),
               },
+              data: { ...rebound.data, ...moved },
               // A pasted personal element belongs to the person who pasted it,
               // never the author of the source clipboard item.
               authorId: shape.authorId ? host.currentUserId : undefined,
               updatedAt: now,
+              // On top of everything, in the order they were copied.
+              z: now + index,
             },
             extensionManager,
           ),
         );
-      }
+      });
       for (const stroke of payload.strokes) {
         const id = `stroke-${crypto.randomUUID()}`;
         pastedStrokeIds.add(id);
@@ -1748,7 +1876,11 @@ export function createCanvasController(
       selectionBounds: selectedGroupBounds() ?? undefined,
       selectedShapeBounds: [...state.selectedIds]
         .map((id) => shapesById().get(id))
-        .filter((shape) => shape != null)
+        .filter(
+          (shape): shape is CanvasShape =>
+            shape != null &&
+            extensionManager.get(shape.type).behavior.transform.handles !== "none",
+        )
         .map(shapeBounds),
       remoteSelectedShapeBounds: remoteCanvasSelections().map((selection) => ({
         x: selection.bounds.x,
@@ -1787,7 +1919,7 @@ export function createCanvasController(
     const visible = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 64);
     renderContent(target, helpers, visible, renderScene);
     // After the content, so a shape overlapping a section never covers its title row.
-    for (const shape of canvasShapes()) {
+    for (const shape of state.presenting ? [] : canvasShapes()) {
       const chrome = extensionManager.get(shape.type).render.chrome;
       if (chrome && rectsIntersect(visible, shapeAabb(shape)))
         chrome.paint(target, shape, helpers);
@@ -1900,6 +2032,7 @@ export function createCanvasController(
       !foundShape &&
       !state.draftRect &&
       !state.marqueeRect &&
+      !state.targetHighlight &&
       !state.editMode?.overlay.length;
     if (empty) {
       if (overlayPainted)
@@ -1916,6 +2049,7 @@ export function createCanvasController(
     drawSnapGuides(target, activeSnapGuides, "#2563eb");
     drawCanvasSelections(target, selection);
     drawFoundShape(target);
+    drawPointHandles(target);
     if (state.editMode) drawEditOverlay(target, state.editMode);
     if (state.draftRect) drawDraft(target, state.draftRect);
     const marquee = state.marqueeRect;
@@ -1932,6 +2066,44 @@ export function createCanvasController(
       );
     }
     presentPass(target, canvas);
+  }
+
+  /** The lone selected shape's own grab points, and what a gesture would attach to. */
+  function drawPointHandles(target: CanvasGpu) {
+    const accent = parseColor("#2563eb");
+    const highlighted = state.targetHighlight && shapesById().get(state.targetHighlight);
+    if (highlighted) {
+      const bounds = shapeBounds(highlighted);
+      const { scale } = transform();
+      const center = worldToScreen({
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+      });
+      const width = bounds.width * scale + 8;
+      const height = bounds.height * scale + 8;
+      drawRoundedRect(
+        target,
+        rectQuad(
+          center.x - width / 2,
+          center.y - height / 2,
+          width,
+          height,
+          (bounds.rotation * Math.PI) / 180,
+        ),
+        { radius: 6, stroke: accent, strokeWidth: 2 },
+      );
+    }
+    const shape = selectedShape();
+    if (state.editMode || !shape || shape.locked) return;
+    for (const point of extensionManager.get(shape.type).render.handles?.(shape) ?? []) {
+      const at = worldToScreen(point);
+      drawRoundedRect(target, rectQuad(at.x - 5, at.y - 5, 10, 10), {
+        radius: 5,
+        fill: [1, 1, 1, 1],
+        stroke: accent,
+        strokeWidth: 1.5,
+      });
+    }
   }
 
   /** A drag-to-create box: dashed, with its size in a pill above the end corner. */
@@ -1990,7 +2162,7 @@ export function createCanvasController(
   }
 
   function renderGrid(target: CanvasGpu) {
-    if (state.gridType === "clean") return;
+    if (state.gridType === "clean" || state.presenting) return;
 
     if (state.gridType === "dots") {
       drawWorldDots(target, {
@@ -2063,6 +2235,7 @@ export function createCanvasController(
           : null,
       chromePosition: elementChromePosition,
       chromeSize: elementChromeSize,
+      editing: (id) => state.activeEditSession?.shapeId === id,
     };
   }
 
@@ -2218,6 +2391,11 @@ export function createCanvasController(
     insertStroke: insertCanvasStroke,
     selectStroke: selectOnly,
     createElement: (type, at, size) => addShape(type, at, size),
+    insertShape: (shape) => {
+      yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
+      selectOnly(shape.id);
+    },
+    host: extHost,
     setDraftRect: (rect) => {
       state.draftRect = rect;
       renderOverlay();
@@ -2365,7 +2543,12 @@ export function createCanvasController(
             (includeImmovable || canMoveShape(shape)) &&
             extension.behavior.container?.containsBounds(container, shapeAabb(shape)),
         )
-        .map((shape) => ({ id: shape.id, x: shape.frame.x, y: shape.frame.y })),
+        .map((shape) => ({
+          id: shape.id,
+          x: shape.frame.x,
+          y: shape.frame.y,
+          original: shape,
+        })),
       strokes: state.strokes
         .filter(
           (stroke) =>
@@ -2653,17 +2836,33 @@ export function createCanvasController(
     if (shape) {
       if (isContainerShape(shape)) {
         const contents = getContainerContents(shape);
-        for (const item of contents.shapes)
-          updateShapeFrame(item.id, { x: item.x + dx, y: item.y + dy });
+        for (const item of contents.shapes) translateShape(item.original, dx, dy);
         for (const item of contents.strokes)
           translateStroke(item.id, item.points, dx, dy);
       }
-      updateShapeFrame(id, { x: shape.frame.x + dx, y: shape.frame.y + dy });
+      translateShape(shape, dx, dy);
       return;
     }
     const stroke = strokesById().get(id);
     if (!stroke) throw new Error(`Cannot move unknown canvas element ${id}`);
     translateStroke(id, stroke.points, dx, dy);
+  }
+
+  /** Moves a shape from where `original` had it; data-shaped geometry goes through `reshape`. */
+  function translateShape(original: CanvasShape, dx: number, dy: number) {
+    const reshape = extensionManager.get(original.type).behavior.reshape;
+    if (!reshape) {
+      updateShapeFrame(original.id, {
+        x: Math.round(original.frame.x + dx),
+        y: Math.round(original.frame.y + dy),
+      });
+      return;
+    }
+    if (!canMoveShape(original)) return;
+    updateShapeData(
+      original.id,
+      reshape(original, (point) => ({ x: point.x + dx, y: point.y + dy })),
+    );
   }
 
   /** Rearranges the selection into non-overlapping rows. */
@@ -2696,13 +2895,21 @@ export function createCanvasController(
   function buildElementDragState(
     event: PointerEvent,
   ): Extract<DragState, { type: "shape" }> {
-    const moveShapes = new Map<string, { id: string; x: number; y: number }>();
+    const moveShapes = new Map<
+      string,
+      { id: string; x: number; y: number; original: CanvasShape }
+    >();
     const moveStrokes = new Map<string, { id: string; points: FreehandPoint[] }>();
 
     for (const id of state.selectedIds) {
       const shape = shapesById().get(id);
       if (!shape || !canMoveShape(shape)) continue;
-      moveShapes.set(shape.id, { id: shape.id, x: shape.frame.x, y: shape.frame.y });
+      moveShapes.set(shape.id, {
+        id: shape.id,
+        x: shape.frame.x,
+        y: shape.frame.y,
+        original: shape,
+      });
       if (isContainerShape(shape)) {
         const contents = getContainerContents(shape);
         for (const s of contents.shapes)
@@ -2844,7 +3051,9 @@ export function createCanvasController(
 
     let minimumScale = 0.05;
     for (const shape of shapes) {
-      const transform = extensionManager.get(shape.type).behavior.transform;
+      const behavior = extensionManager.get(shape.type).behavior;
+      const transform = behavior.transform;
+      if (behavior.reshape) continue;
       if (transform.resize === "font") {
         minimumScale = Math.max(
           minimumScale,
@@ -2876,6 +3085,7 @@ export function createCanvasController(
           | "box"
           | "font",
         fontScale: Number(shape.data.fontScale) || 1,
+        original: shape,
       })),
       strokes: strokes.map((stroke) => ({
         id: stroke.id,
@@ -3100,7 +3310,7 @@ export function createCanvasController(
     if (press === "grab" && grab && !shape.locked && !event.shiftKey) {
       event.preventDefault();
       if (!state.selectedIds.has(shape.id)) selectOnly(shape.id);
-      const handlers = grab(shape, extHost);
+      const handlers = grab(shape, extHost, region);
       beginPointerGesture(event, {
         ...handlers,
         onMove: (input, ctx) => {
@@ -3478,6 +3688,12 @@ export function createCanvasController(
 
   function handleViewportPointerDown(event: PointerEvent) {
     if (event.pointerType === "touch" && !event.isPrimary) return;
+    // A click while presenting advances, like a clicker; nothing is editable.
+    if (state.presenting) {
+      if (event.button === 0) showSlide(state.presenting.index + 1);
+      event.preventDefault();
+      return;
+    }
 
     // Dismiss context menu on any tap outside of it (the menu itself stops
     // propagation with @pointerdown.stop so taps inside it don't reach here).
@@ -3579,10 +3795,15 @@ export function createCanvasController(
     const point = screenPoint(event);
     const worldPoint = screenToWorld(point);
     const hit = hitTestShape(worldPoint);
-    const editChrome = hit && extensionManager.get(hit.shape.type).events?.editChrome;
-    if (hit?.region === "title" && editChrome) {
+    const events = hit && extensionManager.get(hit.shape.type).events;
+    if (hit?.region === "title" && events?.editChrome) {
       event.preventDefault();
-      editChrome(hit.shape, extHost);
+      events.editChrome(hit.shape, extHost);
+      return;
+    }
+    if (hit && events?.doubleClick && !hit.shape.locked && host.canEdit) {
+      event.preventDefault();
+      events.doubleClick(hit.shape, extHost);
       return;
     }
 
@@ -3824,10 +4045,7 @@ export function createCanvasController(
           for (const moved of drag.shapes) {
             const shape = shapesById().get(moved.id);
             if (!shape || !canMoveShape(shape)) continue;
-            updateShapeFrame(moved.id, {
-              x: Math.round(moved.x + dx),
-              y: Math.round(moved.y + dy),
-            });
+            translateShape(moved.original, dx, dy);
           }
         });
         offsetStrokeTransformInteraction(dx, dy);
@@ -3957,6 +4175,18 @@ export function createCanvasController(
         const scale = resized.width / drag.startBounds.width;
         ydoc.transact(() => {
           for (const shape of drag.shapes) {
+            const reshape = extensionManager.get(shape.original.type).behavior.reshape;
+            if (reshape) {
+              updateShapeData(
+                shape.id,
+                reshape(shape.original, (point) => ({
+                  x: drag.origin.x + (point.x - drag.origin.x) * scale,
+                  y: drag.origin.y + (point.y - drag.origin.y) * scale,
+                })),
+                { transform: true },
+              );
+              continue;
+            }
             const nextFrame = {
               x: drag.origin.x + (shape.frame.x - drag.origin.x) * scale,
               y: drag.origin.y + (shape.frame.y - drag.origin.y) * scale,
@@ -3994,6 +4224,13 @@ export function createCanvasController(
       revert(drag) {
         ydoc.transact(() => {
           for (const shape of drag.shapes) {
+            const reshape = extensionManager.get(shape.original.type).behavior.reshape;
+            if (reshape) {
+              updateShapeData(shape.id, reshape(shape.original, (point) => point), {
+                transform: true,
+              });
+              continue;
+            }
             updateShapeFrame(shape.id, shape.frame);
             if (shape.resizeMode === "font") {
               updateShapeData(
@@ -4255,6 +4492,7 @@ export function createCanvasController(
     // document-view hosts the embedded document editor; shadow-DOM events
     // retarget to the host element, so closest() must match the host itself.
     if (target?.closest("textarea, input, select, document-view")) return;
+    if (handlePresentingKey(event)) return;
     const editing = state.editMode;
     if (editing && event.key === "Escape") {
       exitEditMode();
@@ -4464,6 +4702,13 @@ export function createCanvasController(
     registerAction("canvas:fit", t("Fit view"), t("Frame all content"), () => fitView(), [
       "f",
     ]);
+    registerAction(
+      "canvas:present",
+      t("Present"),
+      t("Show the frames full screen, one after another"),
+      startPresenting,
+      ["mod-enter"],
+    );
 
     // Select is the engine's default rather than a registered tool, so its key is
     // contributed here alongside the ones extensions declare.
@@ -4649,10 +4894,8 @@ export function createCanvasController(
     selectedShape,
     shapeById: (id: string) => shapesById().get(id) ?? null,
     selectedElementProperties,
-    elementPropertyValue: (property: CanvasElementProperty) => {
-      const value = selectedShape()?.data[property.id];
-      return typeof value === "boolean" ? value : property.default;
-    },
+    elementPropertyValue: (property: CanvasElementProperty) =>
+      selectedShape()?.data[property.id] ?? property.default,
     selectedInspectors,
     selectedStrokeColor,
     selectedTransformElement,
@@ -4692,6 +4935,7 @@ export function createCanvasController(
       ydoc.transact(() => hostContext.updateData(id, patch)),
     resizeShape,
     pickShapeLibraryItem,
+    startPresenting,
     contextMenuEntries,
     closeMenu: () => {
       state.menu = null;

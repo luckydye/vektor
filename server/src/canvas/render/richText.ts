@@ -40,6 +40,9 @@ export interface RichTextTheme {
   preserveWhitespace?: boolean;
   /** Style overrides for elements carrying a class, e.g. a status pill. */
   classes?: Record<string, Partial<TextStyle>>;
+  align?: "start" | "center" | "end";
+  /** Space above a paragraph that follows another block, in em; a blank line in markdown. */
+  paragraphGap?: number;
 }
 
 interface InlineState {
@@ -265,6 +268,10 @@ export function richTextBlocks(html: string, theme: RichTextTheme): TextBlock[] 
         margin: theme.blockMargin,
         lineHeight: theme.lineHeight,
       });
+      const pushed = blocks[blocks.length - 1];
+      if (theme.paragraphGap && !context.item) {
+        pushed.spacing = { ...pushed.spacing, marginTop: theme.paragraphGap * state.style.size };
+      }
       return;
     }
     if (tag === "HR") {
@@ -443,6 +450,7 @@ export function richTextLayout(
   if (!fonts) return null;
   const layout = layoutText(blocks, fonts, {
     width,
+    align: theme.align,
     imageAspect: (src) => {
       const image = loadedImage(src, () => {
         imageRevision++;

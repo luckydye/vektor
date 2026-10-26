@@ -28,6 +28,8 @@ import * as documentBreadcrumbs from "./routes/spaces/document-breadcrumbs.ts";
 import * as documentColumnRename from "./routes/spaces/document-column-rename.ts";
 import * as documentContributors from "./routes/spaces/document-contributors.ts";
 import * as documentDiff from "./routes/spaces/document-diff.ts";
+import * as documentCanvas from "./routes/spaces/document-canvas.ts";
+import * as documentCanvasRender from "./routes/spaces/document-canvas-render.ts";
 import * as documentEdit from "./routes/spaces/document-edit.ts";
 import * as documentRevisions from "./routes/spaces/document-revisions.ts";
 import * as documents from "./routes/spaces/documents.ts";
@@ -159,6 +161,14 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",
     module: documentEdit,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/canvas",
+    module: documentCanvas,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/canvas/render",
+    module: documentCanvasRender,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions",

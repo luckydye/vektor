@@ -152,11 +152,12 @@ export function setYRoomWriteBlocked(
  * ignored. Must run inside a transaction.
  */
 function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): void {
+  // One level of maps (`frame`, `style`, `data`), as `shapeToYMap` writes them;
+  // values inside are plain JSON, such as a connector's `start`.
   const toYValue = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(toYValue);
-    if (!value || typeof value !== "object") return value;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
     const map = new Y.Map<unknown>();
-    for (const [key, child] of Object.entries(value)) map.set(key, toYValue(child));
+    for (const [key, child] of Object.entries(value)) map.set(key, child);
     return map;
   };
   const comparable = (value: unknown) =>

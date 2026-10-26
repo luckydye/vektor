@@ -1,5 +1,5 @@
 import { defineCommand } from "just-bash";
-import { callTool, listTools, type VektorMcpConfig } from "#agent/tools.ts";
+import { callTool, isToolImage, listTools, type VektorMcpConfig } from "#agent/tools.ts";
 
 const usage =
   "usage: vektor <tool> [json-arguments]   (arguments are read from stdin when omitted)\n" +
@@ -30,7 +30,11 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
     const json = (rawArguments ?? ctx.stdin).trim() || "{}";
     try {
       const result = await callTool(mcpConfigRef.current, name, JSON.parse(json));
-      return { stdout: `${JSON.stringify(result)}\n`, stderr: "", exitCode: 0 };
+      // The shell cannot show an image; it stays an upload the agent can share.
+      const printed = isToolImage(result)
+        ? { description: result.description, key: result.key }
+        : result;
+      return { stdout: `${JSON.stringify(printed)}\n`, stderr: "", exitCode: 0 };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { stdout: "", stderr: `vektor ${name}: ${message}\n`, exitCode: 1 };

@@ -2,6 +2,7 @@ import { Bash } from "just-bash";
 import {
   type AgentSpace,
   callTool as callVektorTool,
+  isToolImage,
   listTools as listVektorTools,
   uploadFile,
   type VektorMcpConfig,
@@ -609,10 +610,12 @@ export async function runAgentPrompt(options: {
   const maxEmptyResponseRetries = 2;
 
   // Empty retries are dropped: providers reject assistant turns with no content.
+  // Image bytes stay out of stored history; their uploads are reloaded instead.
   const turnMessages = () =>
     agentMessages
       .slice(1 + messages.length)
-      .filter((m) => m.role !== "assistant" || m.content?.trim() || m.tool_calls?.length);
+      .filter((m) => m.role !== "assistant" || m.content?.trim() || m.tool_calls?.length)
+      .map(({ images, ...m }) => (m.imageAttachments ? m : { ...m, images }));
 
   try {
     while (true) {
@@ -664,6 +667,8 @@ export async function runAgentPrompt(options: {
 
       emptyResponseRetries = 0;
 
+      // Images a tool produced; the model sees them in one message after the results.
+      const images: ChatMessage[] = [];
       for (const toolCall of message.tool_calls) {
         await onEvent?.({
           type: "tool_call",
@@ -770,6 +775,15 @@ export async function runAgentPrompt(options: {
           result = error instanceof Error ? error.message : String(error);
         }
 
+        if (isToolImage(result)) {
+          images.push({
+            role: "user",
+            content: `The image from ${toolCall.function.name} (${toolCall.id}): ${result.description}`,
+            images: [{ mediaType: result.mediaType, data: result.data }],
+            imageAttachments: [{ key: result.key, mediaType: result.mediaType }],
+          });
+          result = `${result.description} The image follows the tool results.`;
+        }
         const content = typeof result === "string" ? result : JSON.stringify(result);
 
         // Full content goes to the client for display.
@@ -807,6 +821,7 @@ export async function runAgentPrompt(options: {
           content: modelContent,
         });
       }
+      agentMessages.push(...images);
     }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;

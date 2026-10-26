@@ -469,6 +469,8 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
  * markup only asks what the element can be transformed into.
  */
 function transformControls(view: CanvasView) {
+  // A shape being edited point by point is reshaped by its points, not its box.
+  if (view.state.editMode) return nothing;
   const transformElement = view.selectedTransformElement();
   const resizeElement = view.selectedResizeOnlyElement();
   const scalable = view.selectedScalableSelection();

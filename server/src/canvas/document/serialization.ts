@@ -52,6 +52,7 @@ export function shapeFromSource(
   const defaultSize = extension.defaults.size;
   const minSize = extension.defaults.minSize;
   const frameValue = read("frame");
+  const updatedAt = toNumber(read("updatedAt"), Date.now());
   const styleValue = read("style");
   const dataValue = read("data");
 
@@ -92,7 +93,9 @@ export function shapeFromSource(
       }) ?? rawData,
     authorId: typeof read("authorId") === "string" ? String(read("authorId")) : undefined,
     locked: read("locked") === true || undefined,
-    updatedAt: toNumber(read("updatedAt"), Date.now()),
+    updatedAt,
+    // @deprecated Shapes stored before `z` existed stack by their last edit.
+    z: toNumber(read("z"), updatedAt),
   };
 }
 
@@ -134,5 +137,6 @@ export function shapeToYMap(
   if (shape.authorId) map.set("authorId", shape.authorId);
   if (shape.locked) map.set("locked", true);
   map.set("updatedAt", shape.updatedAt);
+  map.set("z", shape.z ?? shape.updatedAt);
   return map;
 }

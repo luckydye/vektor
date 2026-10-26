@@ -1,6 +1,7 @@
 import {
   assertObject,
   callTool,
+  isToolImage,
   expectString,
   listTools,
   type VektorMcpConfig,
@@ -80,6 +81,14 @@ function createError(
 }
 
 function formatToolResult(result: unknown) {
+  if (isToolImage(result)) {
+    return {
+      content: [
+        { type: "text", text: result.description },
+        { type: "image", data: result.data, mimeType: result.mediaType },
+      ],
+    };
+  }
   return {
     content: [
       {

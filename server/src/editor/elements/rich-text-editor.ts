@@ -75,6 +75,7 @@ const SHADOW_STYLES = `
   }
 
   .tiptap p { margin: 0; }
+  .tiptap * + p { margin-top: var(--editor-paragraph-gap, 0); }
   .tiptap h1, .tiptap h2, .tiptap h3, .tiptap h4 {
     margin: 0;
     font-weight: 700;

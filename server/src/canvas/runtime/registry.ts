@@ -218,7 +218,7 @@ export class CanvasExtensionManager {
     );
     // An element's tool is synthesised into #tools without toolbar metadata, so
     // the two lists never overlap.
-    return [...fromTools, ...this.elementTools()];
+    return [...fromTools, ...this.elementTools().filter((tool) => tool.button !== false)];
   }
 
   /** Controls the given tool contributes to the tool-properties bar. */
@@ -364,6 +364,11 @@ type CanvasExtensionRuntimeOptions = {
   updateData: CanvasExtensionHost["updateData"];
   editText: CanvasExtensionHost["editText"];
   resizeShape: CanvasExtensionHost["resizeShape"];
+  updateShape: CanvasExtensionHost["updateShape"];
+  shapeAt: CanvasExtensionHost["shapeAt"];
+  shape: CanvasExtensionHost["shape"];
+  setTargetHighlight: CanvasExtensionHost["setTargetHighlight"];
+  beginEditMode: CanvasExtensionHost["beginEditMode"];
 };
 
 function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
@@ -406,6 +411,11 @@ function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
     updateData: options.updateData,
     editText: options.editText,
     resizeShape: options.resizeShape,
+    updateShape: options.updateShape,
+    shapeAt: options.shapeAt,
+    shape: options.shape,
+    setTargetHighlight: options.setTargetHighlight,
+    beginEditMode: options.beginEditMode,
     service: <T>(key: symbol) => {
       if (!services.has(key))
         throw new Error("Canvas extension service is not registered");

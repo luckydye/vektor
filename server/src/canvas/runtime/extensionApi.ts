@@ -13,6 +13,7 @@ import type {
 } from "#canvas/render/freehand.ts";
 import type { CanvasTile, CanvasTileClip, CanvasTileView } from "#canvas/render/tiles.ts";
 import type { CanvasGpu } from "#canvas/render/webgl.ts";
+import type { CanvasEditMode, CanvasEditModeSession } from "#canvas/runtime/plugins.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,10 @@ export type CanvasShape = {
   authorId?: string;
   locked?: boolean;
   updatedAt: number;
+  /** Paint order within the type's layer, higher on top; new shapes take their insertion time. */
+  z?: number;
+  /** Computed by `behavior.resolve` on every sync and never stored, e.g. a connector's route. */
+  derived?: Record<string, unknown>;
 };
 
 export type CanvasFrame = {
@@ -67,8 +72,10 @@ export type CanvasStrokeSnapshot = {
   id: string;
   points: FreehandPoint[];
   style: FreehandStrokeStyle;
-  // Stamped library primitives retain this marker so they can expose shape
-  // transform controls without changing freehand drawing behavior.
+  /**
+   * @deprecated Shapes stamped as ink before the `geo` element; nothing makes
+   * them now, they only keep their rotate and resize handles.
+   */
   kind?: "shape";
   rotation?: number;
   // See CanvasShape.authorId. Strokes use the same internal-only scope.
@@ -79,6 +86,7 @@ export type CanvasStrokeSnapshot = {
 
 export type CanvasStroke = FreehandStroke & {
   id: string;
+  /** @deprecated See `CanvasStrokeSnapshot.kind`. */
   kind?: "shape";
   rotation?: number;
   // See CanvasShape.authorId. Strokes use the same internal-only scope.
@@ -115,8 +123,11 @@ export type CanvasElementTransform = {
   rotate: boolean;
   // Locks width/height ratio while resizing (image/video).
   aspectLocked?: boolean;
-  /** "edges": eight handles on the border, like a design-tool frame, instead of one corner grip. */
-  handles?: "edges";
+  /**
+   * "edges": eight handles on the border, like a design-tool frame, instead of
+   * one corner grip; "none": no box handles, for elements edited by their points.
+   */
+  handles?: "edges" | "none";
 };
 
 // How a shape enters edit mode after creation: its own element's editor, or a
@@ -130,6 +141,8 @@ export type CanvasElementTool = {
   label: TranslationKey;
   shortcut: string;
   icon: string;
+  /** False for a tool reached from elsewhere, such as the shape picker, rather than its own button. */
+  button?: false;
 };
 
 // Pointer gestures are owned by the host after a tool starts one. This keeps
@@ -185,6 +198,10 @@ export interface CanvasToolContext {
   selectStroke: (id: string) => void;
   /** Places a new shape at `at`; with `size`, that is its top-left and box. */
   createElement: (type: CanvasShapeType, at: CanvasPoint, size?: CanvasSize) => void;
+  /** Stores a shape the tool built itself and selects it. */
+  insertShape: (shape: CanvasShape) => void;
+  /** The services elements get, for tools that keep shaping what they inserted. */
+  host: CanvasExtensionHost;
   /** The dashed box a drag-to-create shows; null hides it. World units. */
   setDraftRect: (rect: CanvasRect | null) => void;
   setActiveTool: (tool: CanvasToolId) => void;
@@ -231,12 +248,23 @@ export type CanvasToolProperty =
     };
 
 /** A control an element contributes to the properties panel; its value lives in `shape.data[id]`. */
-export type CanvasElementProperty = {
-  kind: "toggle";
-  id: string;
-  label: TranslationKey;
-  default: boolean;
-};
+export type CanvasElementProperty =
+  | { kind: "toggle"; id: string; label: TranslationKey; default: boolean }
+  | {
+      kind: "swatches";
+      id: string;
+      label: TranslationKey;
+      options: readonly string[];
+      default: string;
+    }
+  | {
+      // A segmented row of labelled options.
+      kind: "select";
+      id: string;
+      label: TranslationKey;
+      options: readonly { value: string | number; label: TranslationKey }[];
+      default: string | number;
+    };
 
 // A canvas tool (draw, shape, …). The host dispatches an empty-canvas pointerdown
 // for the active non-select tool to onPointerDown. `select` stays the engine
@@ -374,8 +402,24 @@ export interface CanvasExtensionHost {
   editText: (edit: CanvasTextEdit) => void;
   /** One undoable resize, kept above the type's minimum; locked shapes are left alone. */
   resizeShape: (id: string, size: CanvasSize) => void;
+  /** The topmost shape under a world point that something can attach to, other than `except`. */
+  shapeAt: (point: CanvasPoint, except: string) => CanvasShape | null;
+  /** A shape by id as currently resolved, or undefined once it is gone. */
+  shape: (id: string) => CanvasShape | undefined;
+  /** Highlights the shape a gesture would attach to; null clears it. */
+  setTargetHighlight: (id: string | null) => void;
+  /**
+   * Hands pointer input over the shape to `mode` until it exits (Escape, a
+   * selection change, the shape's deletion). Null when the shape is locked.
+   */
+  beginEditMode: (shapeId: string, mode: CanvasEditMode) => CanvasEditModeSession | null;
   /** One undoable edit of a shape's data; locked shapes are left alone. */
   updateData: (id: string, patch: Record<string, unknown>) => void;
+  /** One undoable edit of a shape's frame and data together; locked shapes are left alone. */
+  updateShape: (
+    id: string,
+    patch: { frame?: Partial<CanvasFrame>; data?: Record<string, unknown> },
+  ) => void;
   /** Pixels a registered processor made for this image tier, or null to paint the source. */
   processedImage: (
     shape: CanvasShape,
@@ -412,6 +456,8 @@ export interface CanvasPaintHelpers {
   hoveredRegion: (shapeId: string) => string | null;
   chromePosition: (shape: CanvasShape) => CanvasPoint;
   chromeSize: (shape: CanvasShape) => CanvasSize;
+  /** Whether the shape's live editor is mounted over it; see `render.editorOverlay`. */
+  editing: (shapeId: string) => boolean;
 }
 
 // Which part of a shape a point hit, named by its extension: "body" for the
@@ -459,6 +505,13 @@ export interface CanvasElementExtension {
     tag?: string;
     /** The live DOM editor mounted while the shape is edited in place. */
     editor?: (shape: CanvasShape, at: CanvasClientPoint | null) => CanvasEditSession;
+    /**
+     * Keeps painting the shape under its live editor, which only covers the
+     * text; the painter leaves that out while `helpers.editing` says so.
+     */
+    editorOverlay?: boolean;
+    /** World points drawn as grab handles while the shape is the only one selected. */
+    handles?: (shape: CanvasShape) => readonly CanvasPoint[];
     /** The hover cursor for a region: "move" when omitted, the canvas's own cursor for null. */
     cursor?: (shape: CanvasShape, region: CanvasHitRegion) => string | null;
     /**
@@ -534,6 +587,27 @@ export interface CanvasElementExtension {
         size: Partial<CanvasSize>,
       ) => Partial<CanvasSize> | null;
     };
+    /**
+     * Derives what stored data cannot hold alone, such as a connector's route and
+     * frame from the shapes it joins. Runs on every sync; the result is never stored.
+     */
+    resolve?: (
+      shape: CanvasShape,
+      lookup: (id: string) => CanvasShape | undefined,
+    ) => CanvasShape;
+    /**
+     * For geometry kept in `data` rather than the frame: the data patch that
+     * moves or scales it by `map`. The engine uses it instead of writing the frame.
+     */
+    reshape?: (
+      shape: CanvasShape,
+      map: (point: CanvasPoint) => CanvasPoint,
+    ) => Record<string, unknown>;
+    /**
+     * For a shape that refers to others by id, the data patch for a copy made
+     * alongside them: references to copied shapes follow `copies` (old id → new).
+     */
+    rebind?: (shape: CanvasShape, copies: ReadonlyMap<string, string>) => Record<string, unknown>;
     container?: {
       containsBounds: (container: CanvasShape, bounds: CanvasRect) => boolean;
       containsPoint: (container: CanvasShape, point: CanvasPoint) => boolean;
@@ -556,8 +630,14 @@ export interface CanvasElementExtension {
       host: CanvasExtensionHost,
       hit: { region: CanvasHitRegion; local: CanvasPoint; event: PointerEvent },
     ) => void;
+    /** A double-click on the shape, such as to edit its label. */
+    doubleClick?: (shape: CanvasShape, host: CanvasExtensionHost) => void;
     /** Handlers for the pointer gesture a "grab" press starts; the host repaints after each move. */
-    grab?: (shape: CanvasShape, host: CanvasExtensionHost) => CanvasPointerGestureHandlers;
+    grab?: (
+      shape: CanvasShape,
+      host: CanvasExtensionHost,
+      region: CanvasHitRegion,
+    ) => CanvasPointerGestureHandlers;
     /**
      * Starts editing what the element paints around itself, such as a section
      * title: on create with `editOnCreate: "chrome"`, and on double-clicking its

@@ -119,25 +119,76 @@ export function CanvasProperties(props: { chrome: CanvasChrome }) {
               </Show>
 
               <For each={elementProperties()}>
-                {(property) => (
-                  <section class="canvas-property-section">
-                    <label class="canvas-property-toggle">
-                      <input
-                        type="checkbox"
-                        checked={view()?.elementPropertyValue(property)}
-                        onChange={(event) => {
-                          const id = selectedId();
-                          const checked = event.currentTarget.checked;
-                          if (id)
-                            run((canvas) =>
-                              canvas.updateShapeData(id, { [property.id]: checked }),
-                            );
-                        }}
-                      />
-                      <span class="canvas-property-label">{t(property.label)}</span>
-                    </label>
-                  </section>
-                )}
+                {(property) => {
+                  const value = frame(() => view()?.elementPropertyValue(property));
+                  const set = (next: unknown) => {
+                    const id = selectedId();
+                    if (id)
+                      run((canvas) => canvas.updateShapeData(id, { [property.id]: next }));
+                  };
+                  return (
+                    <section class="canvas-property-section">
+                      <Show when={property.kind === "toggle"}>
+                        <label class="canvas-property-toggle">
+                          <input
+                            type="checkbox"
+                            checked={value() === true}
+                            onChange={(event) => set(event.currentTarget.checked)}
+                          />
+                          <span class="canvas-property-label">{t(property.label)}</span>
+                        </label>
+                      </Show>
+                      <Show when={property.kind === "swatches" && property}>
+                        {(swatches) => (
+                          <>
+                            <span class="canvas-property-label">{t(swatches().label)}</span>
+                            <div class="canvas-property-colors">
+                              <For each={swatches().options}>
+                                {(color) => (
+                                  <button
+                                    type="button"
+                                    classList={{
+                                      "canvas-color-swatch": true,
+                                      "canvas-color-swatch-none": color === "transparent",
+                                      active: value() === color,
+                                    }}
+                                    style={{ background: color }}
+                                    aria-label={`${t(swatches().label)} ${color}`}
+                                    onClick={() => set(color)}
+                                  />
+                                )}
+                              </For>
+                            </div>
+                          </>
+                        )}
+                      </Show>
+                      <Show when={property.kind === "select" && property}>
+                        {(select) => (
+                          <>
+                            <span class="canvas-property-label">{t(select().label)}</span>
+                            <div class="canvas-property-choices" role="group">
+                              <For each={select().options}>
+                                {(option) => (
+                                  <button
+                                    type="button"
+                                    classList={{
+                                      "canvas-property-choice": true,
+                                      active: value() === option.value,
+                                    }}
+                                    aria-pressed={value() === option.value}
+                                    onClick={() => set(option.value)}
+                                  >
+                                    {t(option.label)}
+                                  </button>
+                                )}
+                              </For>
+                            </div>
+                          </>
+                        )}
+                      </Show>
+                    </section>
+                  );
+                }}
               </For>
             </Show>
 

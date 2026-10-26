@@ -91,6 +91,8 @@ export interface LayoutOptions {
   width: number;
   /** Width over height of a loaded image, or null while it loads. */
   imageAspect: (src: string) => number | null;
+  /** Where lines sit within a finite `width`; "start" when omitted. */
+  align?: "start" | "center" | "end";
 }
 
 interface ShapedChar {
@@ -241,7 +243,10 @@ export function layoutText(
       const { ascent, descent } = lineMetrics(line.chars, fallback, spacing, fonts);
       const baseline = lineTop + ascent;
       if (lineIndex === 0) firstBaseline = baseline;
-      let pen = x;
+      const slack = Number.isFinite(width) ? Math.max(0, width - line.width) : 0;
+      const offset =
+        options.align === "center" ? slack / 2 : options.align === "end" ? slack : 0;
+      let pen = x + offset;
       let segmentStart = pen;
       let segmentStyle: TextStyle | null = null;
       const closeSegment = (end: number) => {
@@ -308,8 +313,8 @@ export function layoutText(
         }
         pen += char.advance;
       }
-      closeSegment(x + line.width);
-      layout.width = Math.max(layout.width, x + line.width);
+      closeSegment(x + offset + line.width);
+      layout.width = Math.max(layout.width, x + offset + line.width);
       lineTop += ascent + descent;
     }
     return { height: lineTop - top, firstBaseline };

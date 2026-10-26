@@ -26,6 +26,7 @@ type RawShape = {
   authorId?: unknown;
   locked?: unknown;
   updatedAt?: unknown;
+  z?: unknown;
 };
 
 type RawStroke = {
@@ -73,6 +74,7 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   if (typeof shape.authorId === "string") map.set("authorId", shape.authorId);
   if (shape.locked === true) map.set("locked", true);
   map.set("updatedAt", typeof shape.updatedAt === "number" ? shape.updatedAt : 0);
+  if (typeof shape.z === "number") map.set("z", shape.z);
   target.set(shape.id, map);
 }
 

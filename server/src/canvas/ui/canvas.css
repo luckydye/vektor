@@ -285,6 +285,27 @@ vektor-canvas {
   color: var(--canvas-tool-active-text);
 }
 
+.canvas-property-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.canvas-property-choice {
+  border: 1px solid var(--canvas-panel-border);
+  border-radius: 6px;
+  background: transparent;
+  padding: 3px 8px;
+  color: var(--canvas-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.canvas-property-choice.active {
+  border-color: #2563eb;
+  background: color-mix(in srgb, var(--canvas-panel-bg), #2563eb 14%);
+}
+
 .canvas-property-toggle {
   display: flex;
   align-items: center;
@@ -986,8 +1007,26 @@ svg.canvas-selection-icon {
   --editor-overflow-wrap: normal;
 }
 
+/* A shape's label editor sits over the painted outline, in its label box. */
+.canvas-shape.geo {
+  border-color: transparent;
+  border-radius: 0;
+  justify-content: var(--canvas-geo-valign, center);
+  padding: var(--canvas-geo-inset, 12px);
+}
+
+.canvas-shape.geo .canvas-shape-textwrap {
+  flex: 0 0 auto;
+  --editor-padding: 0;
+  color: var(--canvas-geo-color);
+  font-size: var(--canvas-geo-font-size, 18px);
+  --editor-paragraph-gap: 0.6em;
+  text-align: var(--canvas-geo-align, center);
+}
+
 .canvas-shape.note .canvas-shape-textwrap {
   --editor-padding: 0.75rem;
+  font-size: var(--canvas-note-font-size, 15px);
   color: #111827;
 }
 

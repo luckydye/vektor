@@ -23,7 +23,11 @@ import { iconMarkup } from "#components/Icon.tsx";
 const BORDER = 1;
 const PADDING = 12;
 const MAX_WIDTH = 360;
-const THEME = editorTheme(15, "#111827");
+
+function noteTheme(shape: CanvasShape) {
+  const size = typeof shape.data.fontSize === "number" ? shape.data.fontSize : 15;
+  return editorTheme(size, "#111827");
+}
 
 function paintNote(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
   const { width, height } = shape.frame;
@@ -37,7 +41,7 @@ function paintNote(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpe
   });
   const inset = BORDER + PADDING;
   const contentWidth = width - inset * 2;
-  const layout = shapeTextLayout(shape, THEME, contentWidth, helpers.invalidate);
+  const layout = shapeTextLayout(shape, noteTheme(shape), contentWidth, helpers.invalidate);
   if (!layout) return;
   drawTextLayout(
     gpu,
@@ -111,6 +115,11 @@ export const Note = CanvasElement.create({
       },
       cursor: () => "move",
       editor: noteEditor,
+      article: {
+        style: (shape: CanvasShape) => ({
+          "--canvas-note-font-size": `${noteTheme(shape).size}px`,
+        }),
+      },
     };
   },
 
@@ -123,7 +132,7 @@ export const Note = CanvasElement.create({
           const { minSize } = this.options;
           const chrome = (BORDER + PADDING) * 2;
           const layoutAt = (width: number) =>
-            shapeTextLayout(shape, THEME, width, () => {});
+            shapeTextLayout(shape, noteTheme(shape), width, () => {});
           const natural = layoutAt(Number.POSITIVE_INFINITY);
           if (!natural) return null;
           const width = Math.min(
