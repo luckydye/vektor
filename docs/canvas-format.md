@@ -71,25 +71,25 @@ Deleting sets `deleted` in the element's doc, so a delete merges like any edit a
 ## File layout
 
 ```
-magic "VCNV" (4 bytes) | version u8 | flags u8
+magic "VCNV" (4 bytes) | version u8
 record*
 record = kind u8 | length varint | payload[length]
 ```
 
 All varints are unsigned LEB128; signed integers are zigzag-encoded. Floats are little-endian. Every record decodes without reading anything after it, so a reader processes records as they arrive and skips unknown kinds by `length`.
 
-Two concatenated streams form a valid stream once the second's preamble (magic, version, flags) is dropped. A file is the log of everything written to it: for any element id, the last record's summary wins and all its updates merge.
+A file is the log of everything written to it: for any element id, the last record's summary wins and all its updates merge.
 
 ### Record kinds
 
 | Kind | Name | Where | Payload |
 |---|---|---|---|
-| `0x01` | `header` | first record of a base | element count u32, document bounds (4×f32), offset and length of `index`, `ids` and `refs` (6×u64) |
+| `0x01` | `header` | first record of a base | element count u32, offset and length of `index`, `ids` and `refs` (6×u64) |
 | `0x02` | `index` | base | packed Hilbert R-tree (below) |
 | `0x03` | `ids` | base | id lookup table (below) |
 | `0x04` | `refs` | base | reverse reference table (below) |
 | `0x10` | `element` | anywhere | id and summary, then a Yjs update (below) |
-| `0x20` | `cursor` | load responses | `epoch` string, `seq` varint: the snapshot the response is consistent to |
+| `0x20` | `cursor` | load responses | `epoch` string: the working set the response was read from |
 
 The header is fixed-width so its offsets do not depend on their own encoded length. All offsets in a base (header, index leaves, `ids`, `refs`) are absolute u64 file offsets of a record's first byte, its `kind`. The format version is the preamble's `version` byte alone.
 
@@ -151,7 +151,7 @@ The manifest replaces the JSON snapshot in `document.content` (a few hundred byt
 ```
 
 - `seq`: the last flushed `seq`.
-- `bounds`: a superset of the document bounds. Flushes grow it; a base rewrite makes it exact again. The header's bounds are only valid for the base.
+- `bounds`: a superset of the document bounds. Flushes grow it; a base rewrite makes it exact again.
 
 The row write is the commit point, as for spilled content today. The working set is the only writer of the manifest: flushes, compaction results and restores are committed one at a time, each as a read-modify-write of the current row.
 
@@ -206,18 +206,7 @@ Clients are not told: their docs already hold everything the new base holds.
 
 ### Memory
 
-The segment map, its reverse refs and the rewrite's element table are typed-array columns indexed by element number, not JS objects: a `Map` entry holding an id string, a bbox object and arrays costs 150–300 bytes. Per element:
-
-| Column | Bytes |
-|---|---|
-| id: offset u32 and length u8 into one UTF-8 arena | 41 for a UUID |
-| hash table slot: element number u32, load ≤ 2/3; a lookup compares the id in the arena | 6 |
-| bbox, 4×f32 | 16 |
-| Hilbert value, u64 | 8 |
-| base offset f64, fold offset u32, record length u32 | 16 |
-| first record location u32, first ref u32 | 8 |
-
-Record locations and refs are linked lists in shared pools: 16 bytes per location (segment, offset, length, next) and 12 per ref (the referenced id's hash u64, next u32; a ref may dangle, so it names no element number). That is about 100 bytes per element: a base rewrite at 100k holds 10 MB of table, one 8 MB fold chunk and one Y.Doc at a time. The working set holds the same columns for the elements in its segments only, which compaction bounds, plus the base's `index` and `ids` as the bytes read (40 bytes per element, 4 MB at 100k).
+The segment map, its reverse refs and the rewrite's element table are typed-array columns indexed by element number, with ids in one UTF-8 arena and record locations and refs in pooled linked lists. A `Map` entry holding an id string, a bbox and arrays costs 150–300 bytes; the columns cost about 100. A base rewrite at 100k elements holds 10 MB of table, one 8 MB fold chunk and one Y.Doc at a time. The working set holds the same columns for the elements in its segments only, which compaction bounds, plus the base's `index` and `ids` as read (4 MB at 100k).
 
 ## Loading
 
@@ -238,7 +227,7 @@ An endpoint reached in step 2 can itself be a connector whose endpoints were not
 
 The server queries the cached index and the segment map. It then streams:
 
-1. A `cursor` record with the working set's `epoch` and current `seq`.
+1. A `cursor` record with the working set's `epoch`.
 2. For each matching element, its base record (if any) from its byte ranges via `readStream`, then its segment records, by range read or from the pending buffer. The client merges them; the server does not.
 
 Responses carry no `header`, `index`, `ids` or `refs`. A base or segment a response is reading stays in the blob store until the response ends: GC deletes a blob only once no manifest, revision or open read references it.
@@ -270,7 +259,7 @@ Every op goes to every room member, on one ordered socket per client. A client a
 - With `full`, the record is the element's whole state, and the client adds it.
 - Without `full`, the update depends on state the client never loaded, and Yjs would hold it back as pending. The client keeps the record, requests the element with `ids=`, and merges the kept records into it when the response delivers it, exactly as during a region load (see Join order). A shape moved into the region by another client arrives this way.
 
-The client keeps the remaining records while requests are outstanding (see Join order). The client keeps no summaries: for an element it holds, it computes bbox, `refs` and `deleted` from the element's state, as the op writer does, so a response that read the segment map after its `cursor` cannot leave an older summary behind. A record's summary is read only to decide whether it brings an element in. Presence entries live in the canvas room, as they live in the Yjs room today (`yRooms` in `#realtime/presence.ts`), so removing the canvas Yjs rooms keeps presence.
+The client keeps the remaining records while requests are outstanding (see Join order). The client keeps no summaries: for an element it holds, it computes bbox, `refs` and `deleted` from the element's state, as the op writer does, so no response can leave an older summary behind. A record's summary is read only to decide whether it brings an element in. Presence entries live in the canvas room, as they live in the Yjs room today (`yRooms` in `#realtime/presence.ts`), so removing the canvas Yjs rooms keeps presence.
 
 ### Walkthrough
 
@@ -280,7 +269,7 @@ Clients P and Q have loaded a region holding shape A and connector C (`refs` [A]
 |---|---|---|---|
 | 1 | P drags A | | only P previews the drag |
 | 2 | Q recolours A mid-drag | Q's update (`style.color`) gets seq 101 | P and Q merge it; P keeps previewing its drag on top |
-| 3 | R starts loading A's area | response cursor 101; it reads A's base record and update 101 | |
+| 3 | R starts loading A's area | it reads A's base record and update 101 | |
 | 4 | P releases: A's doc gets `frame.x`, `frame.y`, the summary the new bbox (outside R's region); C gets a summary-only record with its new bbox | seqs 102–103, broadcast | Q merges: A has P's position and Q's colour |
 | 5 | Op 102–103 reaches R before the response's A | | R does not hold A, a request is outstanding: kept |
 | 6 | The response's A arrives | | R merges the kept 102 into it: A is where P put it, outside R's region |
@@ -375,30 +364,34 @@ The server side (manifest, flush, compaction, query) lives in `#db/space/canvasS
 
 ## Testing
 
-Integration level only:
+Integration level only, with browser clients against the server.
 
-- Round-trip a real canvas through migration → load → edit → compaction → load and compare rendered snapshots.
-- The walkthrough above, scripted with three browser clients, asserting the final docs and summaries.
-- Two browser clients editing different keys, and the same key, of one shape concurrently; both converge as with Yjs today.
-- Panning while another client moves and deletes elements across the edge of the requested region: no element comes back in its old state.
-- Another client moving a shape from off-view into the loaded region: the shape appears at its new position with its full state.
-- Moving a shape whose connector's other end is off-view: the connector is loaded with the shape and its bbox follows.
-- A server restart between broadcast and flush: clients reconnect, reload, resend, and their unflushed edits land.
-- A connection drop while another client edits: on reconnect the client has the other client's edits, and its own frames sent into the dropped socket land.
-- Q recolours a shape and disconnects, P recolours it again, and the server restarts before the flush: after the resend, a client loading the shape gets P's colour.
-- A revision restore while another client is editing: the client reloads the restored state, and its next edit lands.
-- Deleting a shape, undoing after a base rewrite dropped it: the shape comes back with its state.
-- A base rewrite over a shape whose last summary says `deleted` while its merged doc does not: the shape survives the rewrite.
-- A viewport load that asserts only intersecting ids arrive.
-- A large generated board (100k strokes) that checks load time and server memory against today.
-- Zooming that board out to the minimum zoom over its densest area: the response stays under 3 MB.
-- A base rewrite and a migration of the 100k board, asserting the server's peak memory stays within the bounds above.
-- A move and a concurrent resize of one shape: exactly one correction is written, and a `view` query at the merged position returns the shape.
-- Two clients moving the two endpoints of one connector concurrently: one correction is written, and a `view` query over the connector's merged route returns it.
-- Two clients reattaching the two ends of one connector to different shapes concurrently, the later one disconnected before its echo: after the next base rewrite, loading either new endpoint returns the connector.
-- A client that edits a shape, pans until the shape would be evicted before the next flush, pans back and edits it again: every client converges to the same doc.
-- The same with the resizing client disconnected before its echo: after the next base rewrite, a `view` query at the merged position returns the shape.
-- A stroke drawn at the maximum zoom, reloaded: its rendered snapshot matches the original at that zoom.
+**Convergence**
+- The walkthrough above, asserting the final docs and summaries.
+- Two clients editing different keys, and the same key, of one shape concurrently: both converge as with Yjs today.
+- A client that edits a shape, pans until it would be evicted before the next flush, pans back and edits it again: every client converges.
+
+**Summaries**
+- A concurrent move and resize of one shape, once with the resizing client connected and once with it gone before its echo: after its correction or the next base rewrite, a `view` query at the merged position returns the shape.
+- Two clients changing the two ends of one connector concurrently, by moving the endpoints and by reattaching them to other shapes, the later one connected or gone before its echo: after the correction or the next base rewrite, the connector loads with each endpoint and with a `view` over its merged route.
+
+**Loading**
+- A viewport load returns exactly the intersecting elements, the connectors attached to them and their endpoints, and a connector follows when its endpoint moves.
+- Panning while another client moves and deletes elements across the edge of the region: no element comes back in its old state, and a shape moved in from off-view appears at its new position with its full state.
+
+**Durability**
+- A server restart between broadcast and flush, after Q recoloured a shape and left and P recoloured it again: clients reconnect, reload and resend, every connected client's edit lands, and the shape has P's colour.
+- A connection drop while another client edits: on reconnect the client has the other client's edits, and its frames sent into the dropped socket land.
+- A revision restore while another client edits: the client reloads the restored state, and its next edit lands.
+
+**Deletion and compaction**
+- A real canvas through migration → load → edit → compaction → load: rendered snapshots match.
+- Deleting a shape and undoing after a base rewrite dropped it: the shape comes back with its state.
+- A base rewrite over a shape whose last summary says `deleted` while its doc does not: the shape survives.
+
+**Scale**
+- A 100k-stroke board: load time and server memory against today; a viewport at minimum zoom over its densest area stays under 3 MB; a base rewrite and a migration stay within the bounds in Memory.
+- A stroke drawn at the maximum zoom, reloaded: its rendered snapshot matches the original.
 
 ## Open questions
 
