@@ -336,33 +336,15 @@ Values marked *measured* come from the prototype (below); the others are still t
 
 ## Prototype results
 
-A prototype of the format (records, stroke points, Hilbert R-tree, base writer, range-read queries) and of per-element Y.Docs with the project's `yjs`, run on Bun. The board is 100k strokes recorded with the real `createFreehandRecorder` (random pen paths at 120 Hz, 22 points per stroke after simplification) in 200 clusters across 40k × 40k world units, plus 2k notes.
-
-| | JSON snapshot today | `.vcanvas` base, Yjs per element |
-|---|---|---|
-| Size | 178 MB | 39.6 MB (22%); index 2.5 MB, ids 1.6 MB |
-| Update per element | | note 176 B, stroke 190 B (57 B of it points), before `type`, `z`, `updatedAt` and `authorId` |
-| Encode | 2.1 s (`JSON.stringify`) | 3.3 s to build the 102k docs (migration only) |
-
-Viewport queries, 1920×1080 at the given zoom over a cluster, measured with a 1 px size cut this design no longer makes:
-
-| Zoom | Elements | Response | Ranges (exact / 16 KB gaps) |
-|---|---|---|---|
-| 2 | 290 | 0.10 MB | 39 / 4 |
-| 1 | 712 | 0.25 MB | 26 / 4 |
-| 0.25 | 2,705 | 0.95 MB | 35 / 7 |
-
-Yjs per element:
+A Bun prototype of the format and of per-element Y.Docs, on a board of 100k strokes from the real `createFreehandRecorder` (22 points each, 200 clusters over 40k × 40k world units) plus 2k notes.
 
 | | |
 |---|---|
-| Concurrent move, resize and recolour, merged in different orders and with duplicates | converge to the same doc |
-| `Y.mergeUpdates` on a stored element | 0.17 ms |
-| History, 180 committed drags (two keys each) | 176 B → 5.1 KB merged, 1.9 KB re-encoded: about 5 B per overwritten value. Consecutive edits to one key compact fully (180 edits: 37 B) |
-| History, 50 sessions of 21 edits each | 1.1 KB |
-| Client memory | Y.Doc 8.2 KB, encoded state with decoded value 0.4 KB |
-
-With gestures committing once, the history grows per gesture, not per pointer event.
+| Size | 39.6 MB base against 178 MB of JSON today; index 2.5 MB, ids 1.6 MB |
+| Viewport 1920×1080 at zoom 2 / 1 / 0.25 | 290 / 712 / 2,705 elements, 0.10 / 0.25 / 0.95 MB, 4 / 4 / 7 ranges with 16 KB gaps (39 / 26 / 35 exact) |
+| Concurrent move, resize and recolour, merged in any order and with duplicates | converge to the same doc |
+| History of 180 committed drags | 5.1 KB merged, 1.9 KB re-encoded: about 5 B per overwritten value |
+| Client memory per element | Y.Doc 8.2 KB, encoded state with decoded value 0.4 KB |
 
 ## Removed
 
