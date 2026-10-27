@@ -66,7 +66,7 @@ Two writers repair stale summaries, without any client watching another's:
 
 ### Deletion
 
-Deleting sets `deleted` in the element's doc, so a delete merges like any edit and `Y.UndoManager` undoes it. The summary flag mirrors it for the server: deleted elements are left out of loads. A base rewrite drops an element only when its merged doc has `deleted` set, never on the summary flag alone, because a stale summary would otherwise drop a live element for good. Undoing a delete after that sends the element's full state (summary flag `full`), which the client still holds through its undo stack; the server drops records without `full` for ids it no longer has, so stale updates to a long-deleted element vanish.
+Deleting sets `deleted` in the element's doc, so a delete merges like any edit and `Y.UndoManager` undoes it. The summary flag mirrors it for the server: deleted elements are left out of loads. A base rewrite drops an element only when its merged doc has `deleted` set, never on the summary flag alone, because a stale summary would otherwise drop a live element for good. Undoing a delete therefore always sends the element's full state (summary flag `full`), which the client still holds through its undo stack: the client cannot know whether a base rewrite has dropped the element since. The server drops records without `full` for ids it no longer has, so stale updates to a long-deleted element vanish.
 
 ## File layout
 
@@ -163,7 +163,7 @@ The server keeps one working set per open canvas: its `epoch`, the `seq` counter
 
 1. A client sends a `CanvasOps` frame: the `epoch` it holds, an `opId`, and `element` records.
 2. The server checks write access and readonly, drops a frame from another epoch (one sent before the client received a `CanvasReload`; see Other consumers), and checks each summary for well-formedness and size limits. It drops records without `full` for ids that exist in neither the map nor the base.
-3. Each record gets the next `seq`, updates the segment map, is appended to the pending buffer, and the frame is broadcast to the room, the sender included, carrying its `opId`.
+3. Each record gets the next `seq`, updates the segment map, is appended to the pending buffer, and the frame is broadcast to the room, the sender included, carrying its `opId`. A frame whose records were all dropped is still echoed to its sender, with no records. Every frame from the current epoch thus gets an echo, and an echo covers every record of its frame, dropped ones included; a frame from another epoch gets none, because its sender is about to reload (see Other consumers).
 4. A flush (1 s after the oldest pending record, 64 KB pending, the last client leaving, server shutdown, or the working set being evicted) writes the pending records as `seg-<firstSeq>-<epoch>.vcanvas`, updates the manifest (`seq`, `segments`, `bounds`), and then broadcasts `CanvasFlushed` with the flushed `seq`.
 
 Nothing is rejected and the server never reads an update: merging happens where the doc is needed.
@@ -229,6 +229,8 @@ The server queries the cached index and the segment map. It then streams:
 
 1. A `cursor` record with the working set's `epoch`.
 2. For each matching element, its base record (if any) from its byte ranges via `readStream`, then its segment records, by range read or from the pending buffer. The client merges them; the server does not.
+
+The response takes the matching elements' record locations and its references to their pending records when it starts. Records are immutable, so a flush that moves pending records into a segment, or a later merge, does not change the bytes the response holds. Records that arrive after it starts reach the client live (see Join order).
 
 Responses carry no `header`, `index`, `ids` or `refs`. A base or segment a response is reading stays in the blob store until the response ends: GC deletes a blob only once no manifest, revision or open read references it.
 
