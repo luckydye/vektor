@@ -6,7 +6,7 @@
 
 import { type Attribution, appPrincipal } from "#acl/apps.ts";
 import { runAgentInWorker } from "#agent/agent.ts";
-import type { AgentSpace } from "#agent/tools.ts";
+import { type AgentSpace, uploadFile } from "#agent/tools.ts";
 import type { AIProvider, ChatImage, ChatMessage } from "#api/provider/types.ts";
 import { getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
@@ -66,7 +66,12 @@ interface DiscordMessage {
   content: string;
   author: { id: string; username: string; global_name?: string | null; bot?: boolean };
   mentions: Array<{ id: string }>;
-  attachments?: Array<{ url: string; content_type?: string; size: number }>;
+  attachments?: Array<{
+    url: string;
+    filename: string;
+    content_type?: string;
+    size: number;
+  }>;
 }
 
 interface GatewayPayload {
@@ -99,21 +104,29 @@ function imageAttachments(message: DiscordMessage) {
   );
 }
 
-/** Downloads the images of `message`, when it is recent enough for its links to still work. */
+/**
+ * Downloads the images of `message`, when it is recent enough for its links to
+ * still work, and uploads them to `space` so the agent can place them by URL.
+ * Uploads are content-addressed: the same image seen again lands on the same file.
+ */
 async function messageImages(
   platform: Platform,
+  space: AgentSpace,
   message: DiscordMessage,
-): Promise<ChatImage[]> {
+): Promise<Array<ChatImage & { url: string }>> {
   const sentAt = Number((BigInt(message.id) >> 22n) + DISCORD_EPOCH);
   if (Date.now() - sentAt > MAX_IMAGE_AGE_MS) return [];
   return await Promise.all(
     imageAttachments(message).map(async (attachment) => {
       const res = await platform.fetch(attachment.url, { method: "GET" });
       if (!res.ok) throw new Error(`Discord image download failed (${res.status})`);
-      return {
-        mediaType: attachment.content_type as ChatImage["mediaType"],
-        data: Buffer.from(await res.arrayBuffer()).toString("base64"),
-      };
+      const mediaType = attachment.content_type as ChatImage["mediaType"];
+      const data = Buffer.from(await res.arrayBuffer()).toString("base64");
+      const upload = (await uploadFile(
+        { apiUrl: getLocalOrigin(), spaceId: space.id, jobToken: space.jobToken },
+        { filename: attachment.filename, contentBase64: data, contentType: mediaType },
+      )) as { url: string };
+      return { mediaType, data, url: upload.url };
     }),
   );
 }
@@ -233,13 +246,20 @@ export function connectDiscordBot(
     return `@${message.author.username}:${text ? ` ${text}` : ""}`;
   }
 
-  /** `message` as the agent reads it, with its images. */
+  /** `message` as the agent reads it, with its images and the URLs they were uploaded to in `space`. */
   async function userMessage(
+    space: AgentSpace,
     message: DiscordMessage,
     line: string,
   ): Promise<ChatMessage> {
-    const images = await messageImages(platform, message);
-    return { role: "user", content: line, ...(images.length > 0 ? { images } : {}) };
+    const uploaded = await messageImages(platform, space, message);
+    if (uploaded.length === 0) return { role: "user", content: line };
+    const urls = uploaded.map((image) => `- ${image.url}`).join("\n");
+    return {
+      role: "user",
+      content: `${line}\nAttached images, uploaded to "${space.name}":\n${urls}`,
+      images: uploaded.map(({ mediaType, data }) => ({ mediaType, data })),
+    };
   }
 
   /**
@@ -293,7 +313,10 @@ export function connectDiscordBot(
   }
 
   /** The channel before `message`, oldest first; other people's text is blank unless it mentions the bot. */
-  async function channelHistory(message: DiscordMessage): Promise<ChatMessage[]> {
+  async function channelHistory(
+    space: AgentSpace,
+    message: DiscordMessage,
+  ): Promise<ChatMessage[]> {
     const entry = cachedChannel(message.channel_id);
     await entry.loaded;
     const earlier = entry.messages
@@ -304,7 +327,7 @@ export function connectDiscordBot(
         if (entry.author.id === botId)
           return { role: "assistant", content: entry.content };
         const line = authorLine(entry);
-        return line ? userMessage(entry, line) : null;
+        return line ? userMessage(space, entry, line) : null;
       }),
     );
     return history.filter((entry): entry is ChatMessage => entry !== null);
@@ -358,12 +381,7 @@ export function connectDiscordBot(
     );
     void discord("POST", `/channels/${message.channel_id}/typing`).catch(() => {});
     try {
-      // History alongside the space lookups; an unlinked author's simply goes unused.
-      const [spaceList, history, current] = await Promise.all([
-        agentSpaces(message),
-        channelHistory(message),
-        userMessage(message, line),
-      ]);
+      const spaceList = await agentSpaces(message);
       const [primary] = spaceList;
       if (!primary) throw new Error("No space uses this bot any more");
       // Only people with a Vektor account behind them get answers.
@@ -374,6 +392,11 @@ export function connectDiscordBot(
         );
         return;
       }
+      // Images land in the default space, where the agent acts unless told otherwise.
+      const [history, current] = await Promise.all([
+        channelHistory(primary, message),
+        userMessage(primary, message, line),
+      ]);
       // Pays with the author's own model connection where they linked Discord.
       const provider = await linkedAIProvider(platform, spaceList);
       const result = await runAgentInWorker(platform, {
