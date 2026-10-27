@@ -58,11 +58,11 @@ Two writers repair stale summaries, without any client watching another's:
 
 `bbox` is computed by the client, because only it can lay out text. It is rounded outward when narrowed to f32 (min towards −∞, max towards +∞): f32 resolution is about 0.1 world units far from the origin, and rounding to nearest would cull elements at the viewport edge. The server only asserts it is finite and ordered.
 
-`refs` lists the elements this one is derived from: a connector's endpoints (which may be connectors themselves) live in its extension-defined `data`, which the server cannot read. Loads use it to return dependent elements together with what they depend on (see Loading). A ref may dangle: an element whose endpoint was deleted keeps its `refs`, and its type's `resolve` already handles a lookup that finds nothing.
+`refs` lists the elements this one is derived from: a connector's endpoints (which may be connectors themselves) live in its extension-defined `data`, which the server cannot read. Loads use it in both directions (see Loading): a client holding an element also holds the elements that reference it, and a client holding a connector also holds its endpoints, so it can compute the connector's bbox. A ref may dangle: an element whose endpoint was deleted keeps its `refs`, and its type's `resolve` already handles a lookup that finds nothing.
 
 ### Deletion
 
-Deleting sets `deleted` in the element's doc, so a delete merges like any edit and `Y.UndoManager` undoes it. The summary flag mirrors it for the server: deleted elements are left out of loads, and a base rewrite drops them. Undoing a delete after that sends the element's full state (summary flag `full`), which the client still holds through its undo stack; the server drops records without `full` for ids it no longer has, so stale updates to a long-deleted element vanish.
+Deleting sets `deleted` in the element's doc, so a delete merges like any edit and `Y.UndoManager` undoes it. The summary flag mirrors it for the server: deleted elements are left out of loads. A base rewrite drops an element only when its merged doc has `deleted` set, never on the summary flag alone, because a stale summary would otherwise drop a live element for good. Undoing a delete after that sends the element's full state (summary flag `full`), which the client still holds through its undo stack; the server drops records without `full` for ids it no longer has, so stale updates to a long-deleted element vanish.
 
 ## File layout
 
@@ -131,7 +131,7 @@ Per document, under the existing `documents/<id>/` blob prefix:
 
 - `base-<uuid>.vcanvas` — the last base rewrite.
 - `seg-<firstSeq>-<epoch>.vcanvas` — ordered segments since then: `element` records, no index. The epoch keeps names unique: after a crash a new epoch reuses the `seq`s that were never flushed.
-- `merged-<lastSeq>.vcanvas` — the result of a segment merge, in the same list and order.
+- `merged-<uuid>.vcanvas` — the result of a segment merge, in the same list and order. A name from its seq range would collide: a higher-tier merge ends at the same `seq` as its last input, and would overwrite a blob a revision or an open read may still reference.
 
 The manifest replaces the JSON snapshot in `document.content` (a few hundred bytes, never spilled):
 
@@ -179,14 +179,15 @@ A graceful shutdown or eviction flushes first. A crash loses the unflushed recor
 
 Compaction has two tiers, so its cost follows the edits, not the document. Both run in the serializer worker, one at a time per document, and hand their result to the working set, which commits it conditional on the manifest's base being unchanged (a restore during compaction discards the result).
 
-**Segment merge**, size-tiered: whenever 4 adjacent segments are within 2× of each other in size, they are merged into `merged-<M>.vcanvas` (M their last `seq`): one record per id, with the latest summary and the updates combined by `Y.mergeUpdates`, which works on the encoded updates without loading a doc. A record is rewritten once per tier, the segment count stays logarithmic in the segments' total size, and no merge rewrites a large merged segment for a few small ones.
+**Segment merge**, size-tiered: whenever 4 adjacent segments are within 2× of each other in size, they are merged into a new `merged-<uuid>.vcanvas`: one record per id, with the latest summary and the updates combined by `Y.mergeUpdates`, which works on the encoded updates without loading a doc. A record is rewritten once per tier, the segment count stays logarithmic in the segments' total size, and no merge rewrites a large merged segment for a few small ones.
 
 **Base rewrite**, when segments exceed 25% of the base's size (and at least 1 MB). It covers the segments present when it starts:
 
-1. Stream base + segments, keeping only `id → (bbox, hilbert, refs, deleted, record locations)`. Memory is O(elements × ~60 bytes), never payloads.
-2. Sort live ids by Hilbert value. For each changed element, load its base state and updates into a Y.Doc and re-encode it, which garbage-collects overwritten values (a dragged shape: 5.1 KB of merged updates, 1.9 KB re-encoded). Unchanged elements are not decoded.
-3. Build `index`, `ids` and `refs` from the record lengths, and stream the output through `putStream`: header, index, ids, refs, then the elements. Unchanged elements are copied by one sequential read of the old base, which is already in Hilbert order for them.
-4. Update the manifest to the new base plus the segments flushed since it started, with exact `bounds`. Drop the map entries it folded.
+1. Stream base + segments, keeping only `id → (bbox, refs, record locations)`. Memory is O(elements × ~60 bytes), never payloads.
+2. For each changed element, load its base state and updates into a Y.Doc and re-encode it, which garbage-collects overwritten values (a dragged shape: 5.1 KB of merged updates, 1.9 KB re-encoded). An element whose doc has `deleted` set is dropped; the summaries' `deleted` flag is not consulted. Unchanged elements are not decoded: the base holds no deleted elements, so they are all live.
+3. Sort the live ids by the Hilbert value of their bbox.
+4. Build `index`, `ids` and `refs` from the record lengths, and stream the output through `putStream`: header, index, ids, refs, then the elements. Unchanged elements are copied by one sequential read of the old base, which is already in Hilbert order for them.
+5. Update the manifest to the new base plus the segments flushed since it started, with exact `bounds`. Drop the map entries it folded.
 
 Clients are not told: their docs already hold everything the new base holds.
 
@@ -202,7 +203,12 @@ Clients are not told: their docs already hold everything the new base holds.
 | `ids=a,b,…` | the named elements, via the `ids` table; combined with `view`, the union |
 | none | every element (export, agent, search indexing) |
 
-Matching uses the latest summary: the map's for elements with segment records, the base's otherwise. Deleted elements are skipped. Every response also includes the elements that reference a returned element, transitively (via the `refs` table and the map's reverse refs, with a visited set), so a client holding a shape holds the connectors attached to it, and the connectors attached to those.
+Matching uses the latest summary: the map's for elements with segment records, the base's otherwise. Deleted elements are skipped. Every response closes the matches over `refs` in two steps:
+
+1. **Referencing**, transitively: the elements that reference a returned element, via the `refs` table and the map's reverse refs, with a visited set. A client holding a shape holds the connectors attached to it, and the connectors attached to those.
+2. **Referenced**, one hop: the elements named in the `refs` of every element returned so far, via the `ids` table. A client holding a connector holds both its endpoints, which it needs to compute the connector's bbox when one of them moves. These are not closed again: following referencing elements from an endpoint would pull in every connected diagram.
+
+An endpoint reached in step 2 can itself be a connector whose endpoints were not returned. The client renders it as loaded, and fetches its endpoints with `ids=` before it has to compute its bbox.
 
 The server queries the cached index and the segment map. It then streams:
 
@@ -234,7 +240,12 @@ New `WsMsgType`s in `#realtime/protocol.ts`, framed like the Yjs frames: `[type 
 
 Records are the file's records, `kind | length | payload`, so a client decodes live ops and load responses with the same decoder.
 
-Every op goes to every room member, on one ordered socket per client. Clients apply every record for an element they hold, whose `refs` name an element they hold, or whose bbox lies in the loaded region, and keep the rest while requests are outstanding (see Join order). An element's summary is replaced only by one with a higher `seq`; records from a response count as `cursor`. Presence entries live in the canvas room, as they live in the Yjs room today (`yRooms` in `#realtime/presence.ts`), so removing the canvas Yjs rooms keeps presence and its gesture previews.
+Every op goes to every room member, on one ordered socket per client. A client applies every record for an element it holds. A record for an element it does not hold, whose `refs` name an element it holds or whose bbox intersects the loaded region, brings that element in:
+
+- With `full`, the record is the element's whole state, and the client adds it.
+- Without `full`, the update depends on state the client never loaded, and Yjs would hold it back as pending. The client keeps the record, requests the element with `ids=`, and merges the kept records into it when the response delivers it, exactly as during a region load (see Join order). A shape moved into the region by another client arrives this way.
+
+The client keeps the remaining records while requests are outstanding (see Join order). An element's summary is replaced only by one with a higher `seq`; records from a response count as `cursor`. Presence entries live in the canvas room, as they live in the Yjs room today (`yRooms` in `#realtime/presence.ts`), so removing the canvas Yjs rooms keeps presence and its gesture previews.
 
 ### Walkthrough
 
@@ -260,7 +271,7 @@ The canvas controller replaces the room-wide Y.Doc and its `observeDeep` sync (`
 - **Element store**: for each held element, its encoded state and its decoded value. Incoming records are merged with `Y.mergeUpdates` and decoded through a short-lived Y.Doc (3000 elements in 44 ms). A Y.Doc costs about 8 KB in memory against 0.4 KB for bytes and value, so a doc is kept only for elements being edited or in the undo stack.
 - **Streaming decoder**: merges elements into the store as records arrive and requests a render per batch.
 - **Region loader**: below the overview zoom it shows overview tiles instead (see Levels of detail). Otherwise, on viewport change, it requests the viewport padded by 50%, and passes `minSize` = one screen pixel in world units. The loader records each loaded rect with the `minSize` it was loaded at. A request covers only what no loaded rect covers at that `minSize` or finer; where a rect was loaded coarser (the user zoomed in), it requests that area with `maxSize` = the old `minSize`, fetching just the elements the coarser load skipped. Elements beyond 3× the viewport are evicted unless selected, being edited or in the undo stack, and evicting them shrinks the loaded rects to match.
-- **Op writer**: sends each local transaction's update with the summary computed from the doc. Editing a shape also sends summary-only records for the connectors that reference it, so their bboxes stay true; the client holds them, because every load returns referencing elements with what they reference.
+- **Op writer**: sends each local transaction's update with the summary computed from the doc. Editing a shape also sends summary-only records for the connectors that reference it, so their bboxes stay true; the client holds them and their other endpoints, because every load returns referencing elements and the endpoints of what it returns.
 - **Undo**: a `Y.UndoManager` per element doc, tracking local origins, under an app-level stack that groups the elements one user action touched; undoing pops a group and undoes each. Remote edits to other keys survive, as today.
 
 The client never assumes it holds every element:
@@ -268,7 +279,7 @@ The client never assumes it holds every element:
 - **Fit to content, minimap**: use the manifest's `bounds`, sent in `CanvasJoined` and updated with each `CanvasFlushed`.
 - **Select all, search**: query the server.
 - **Moving a section**: loads the section's bbox first, so contained elements are present.
-- **Connectors**: load off-view endpoints with `ids=`.
+- **Connectors**: arrive with their endpoints (see Loading); only a connector reached as an endpoint loads its own endpoints with `ids=`, when it is edited.
 
 ## Levels of detail
 
@@ -380,10 +391,12 @@ Integration level only:
 - The walkthrough above, scripted with three browser clients, asserting the final docs and summaries.
 - Two browser clients editing different keys, and the same key, of one shape concurrently; both converge as with Yjs today.
 - Panning while another client moves and deletes elements across the edge of the requested region: no element comes back in its old state.
+- Another client moving a shape from off-view into the loaded region: the shape appears at its new position with its full state.
 - Moving a shape whose connector's other end is off-view: the connector is loaded with the shape and its bbox follows.
 - A server restart between broadcast and flush: connected clients see a new epoch, reload, resend, and their unflushed edits land.
 - A revision restore while another client is editing: the client reloads the restored state, and its next edit lands.
 - Deleting a shape, undoing after a base rewrite dropped it: the shape comes back with its state.
+- A base rewrite over a shape whose last summary says `deleted` while its merged doc does not: the shape survives the rewrite.
 - Loading zoomed out, then zooming in over the same region: the small elements arrive, the large ones are not fetched twice.
 - A viewport load that asserts only intersecting ids arrive.
 - A large generated board (100k strokes) that checks load time and server memory against today.
