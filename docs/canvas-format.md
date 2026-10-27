@@ -107,7 +107,7 @@ In a base, `update` is the element's whole state (`Y.encodeStateAsUpdate`). In s
 
 ### `index`
 
-A packed Hilbert R-tree, as in FlatGeobuf. Elements in a base are sorted by the Hilbert value of their bbox centre, which also makes elements close on the canvas close in the file. The tree is stored root-first; node size is 16. Each node entry is 4×f32 bbox plus a u64 offset: a child node index for internal entries, the file offset of the `element` record for leaves (≈ 24 bytes per element).
+A packed Hilbert R-tree, as in FlatGeobuf. Elements in a base are sorted by the Hilbert value of their bbox centre, computed on a fixed grid of one-world-unit cells centred on the origin (2³² per axis, a u64 value, clamped at the edges), not on the document bounds, so an element's value depends only on its own bbox and stays the same across rewrites. The order also makes elements close on the canvas close in the file. The tree is stored root-first; node size is 16. Each node entry is 4×f32 bbox plus a u64 offset: a child node index for internal entries, the file offset of the `element` record for leaves (≈ 24 bytes per element).
 
 A query walks the tree with the viewport and returns leaf offsets, which collapse into a few contiguous byte ranges thanks to the Hilbert order; ranges less than 16 KB apart are read as one (4 ranges instead of 39 for a viewport at zoom 2, 15% more bytes). Size filters (`minSize`, `maxSize`) apply to leaves only: an internal node's bbox is large even when all its children are small, so a zoomed-out query visits every leaf in view.
 
@@ -136,6 +136,7 @@ Per document, under the existing `documents/<id>/` blob prefix:
 - `base-<uuid>.vcanvas` — the last base rewrite.
 - `seg-<firstSeq>-<epoch>.vcanvas` — ordered segments since then: `element` records, no index. The epoch keeps names unique: after a crash a new epoch reuses the `seq`s that were never flushed.
 - `merged-<uuid>.vcanvas` — the result of a segment merge, in the same list and order. A name from its seq range would collide: a higher-tier merge ends at the same `seq` as its last input, and would overwrite a blob a revision or an open read may still reference.
+- `fold-<uuid>.vcanvas` — a base rewrite's re-encoded elements (see Compaction), never in a manifest; garbage once the rewrite ends.
 
 The manifest replaces the JSON snapshot in `document.content` (a few hundred bytes, never spilled):
 
@@ -160,7 +161,7 @@ Blobs no manifest, revision or open read references are garbage. A blob is writt
 
 ## Writing
 
-The server keeps one working set per open canvas: its `epoch`, the `seq` counter, the records not yet flushed, the **segment map** `id → (summary, record locations)` for every element with records in the listed segments or the pending buffer, and its reverse `ref → ids`. Opening a canvas builds the map by streaming the segments once. The map is bounded by compaction and holds no payloads; the server never holds elements.
+The server keeps one working set per open canvas: its `epoch`, the `seq` counter, the records not yet flushed, the **segment map** `id → (summary, record locations)` for every element with records in the listed segments or the pending buffer, and its reverse `ref → ids`, both stored as columns (see Memory). Opening a canvas builds the map by streaming the segments once. The map is bounded by compaction and holds no payloads; the server never holds elements.
 
 1. A client sends a `CanvasOps` frame: the `epoch` it holds, an `opId`, and `element` records.
 2. The server checks write access and readonly, answers a frame from another epoch with `CanvasJoined` instead (see Durability), and checks each summary for well-formedness and size limits. It drops records without `full` for ids that exist in neither the map nor the base.
@@ -192,15 +193,33 @@ Compaction has two tiers, so its cost follows the edits, not the document. Both 
 
 **Segment merge**, size-tiered: whenever 4 adjacent segments are within 2× of each other in size, they are merged into a new `merged-<uuid>.vcanvas`: one record per id, with the latest summary and the updates combined by `Y.mergeUpdates`, which works on the encoded updates without loading a doc. A record is rewritten once per tier, the segment count stays logarithmic in the segments' total size, and no merge rewrites a large merged segment for a few small ones.
 
-**Base rewrite**, when segments exceed 25% of the base's size (and at least 1 MB). It covers the segments present when it starts:
+**Base rewrite**, when segments exceed 25% of the base's size (and at least 1 MB). It covers the segments present when it starts. Every blob is read sequentially or in coalesced ranges, never one range per element:
 
-1. Stream base + segments, keeping only `id → (bbox, refs, record locations)`. Memory is O(elements × ~60 bytes), never payloads: the header and index precede the elements and need every record's length, so changed elements are encoded twice (steps 2 and 4) instead of being held between the two.
-2. For each changed element, load its base state and updates into a Y.Doc and re-encode it, which garbage-collects overwritten values (a dragged shape: 5.1 KB of merged updates, 1.9 KB re-encoded). An element whose doc has `deleted` set is dropped; the summaries' `deleted` flag is not consulted. The map entry keeps the encoded length, the widened bbox and the doc's `refs` (see Summary); the encoded bytes are discarded. Unchanged elements are not decoded: the base holds no deleted elements, so they are all live.
-3. Sort the live ids by the Hilbert value of their bbox.
-4. Build `index`, `ids` and `refs` from the record lengths, and stream the output through `putStream`: header, index, ids, refs, then the elements. Unchanged elements are copied by one sequential read of the old base, which is already in Hilbert order for them. Changed elements are decoded and re-encoded a second time as their turn comes; the encoding is deterministic for the same updates, and a length that differs from step 2 aborts the rewrite.
-5. Update the manifest to the new base plus the segments flushed since it started, with exact `bounds`. Drop the map entries it folded.
+1. Build the element table (see Memory) from the base's `index`, `ids` and `refs`, without reading its elements: an unchanged record's length is the distance to the next record offset. Then stream the segments for the changed elements' latest summaries and record locations.
+2. Sort the changed ids by the Hilbert value of their latest summary's bbox.
+3. **Fold** the changed elements, in that order, into a temporary `fold-<uuid>.vcanvas` written through `putStream`, in chunks of up to 8 MB of input records. A chunk first reads its records from the base and from each segment as ranges sorted by offset, coalescing gaps under 16 KB, as loads do. Then, for each element, it loads the base state and updates into a Y.Doc and re-encodes it, which garbage-collects overwritten values (a dragged shape: 5.1 KB of merged updates, 1.9 KB re-encoded), and appends the record to the fold. An element whose doc has `deleted` set is dropped; the summaries' `deleted` flag is not consulted. The table keeps the record's length, its fold offset, the widened bbox and the doc's `refs` (see Summary). Unchanged elements are not decoded: the base holds no deleted elements, so they are all live.
+4. Order the live elements by Hilbert value: unchanged ones by their bbox, changed ones by the key from step 2, so the fold is already in output order. A bbox widened in step 3 goes into the index without moving its element; the order is only for locality, and the index stays exact.
+5. Build `index`, `ids` and `refs` from the record lengths, and stream the output through `putStream`: header, index, ids, refs, then the elements, merged from two sequential reads: the old base for the unchanged elements, which are in the same order there because their Hilbert values did not change, and the fold for the changed ones. Each element is encoded once.
+6. Update the manifest to the new base plus the segments flushed since it started, with exact `bounds`. Drop the map entries it folded. The fold is garbage from then on (see Storage).
+
+With 10 MB of segments on a 40 MB base, a rewrite reads each segment about twice (two chunks), the base once in full and once in the ranges of the changed elements, and the fold once.
 
 Clients are not told: their docs already hold everything the new base holds.
+
+### Memory
+
+The segment map, its reverse refs and the rewrite's element table are typed-array columns indexed by element number, not JS objects: a `Map` entry holding an id string, a bbox object and arrays costs 150–300 bytes. Per element:
+
+| Column | Bytes |
+|---|---|
+| id: offset u32 and length u8 into one UTF-8 arena | 41 for a UUID |
+| hash table slot: element number u32, load ≤ 2/3; a lookup compares the id in the arena | 6 |
+| bbox, 4×f32 | 16 |
+| Hilbert value, u64 | 8 |
+| base offset f64, fold offset u32, record length u32 | 16 |
+| first record location u32, first ref u32 | 8 |
+
+Record locations and refs are linked lists in shared pools: 16 bytes per location (segment, offset, length, next) and 12 per ref (the referenced id's hash u64, next u32; a ref may dangle, so it names no element number). That is about 100 bytes per element: a base rewrite at 100k holds 10 MB of table, one 8 MB fold chunk and one Y.Doc at a time. The working set holds the same columns for the elements in its segments only, which compaction bounds, plus the base's `index` and `ids` as the bytes read (40 bytes per element, 4 MB at 100k).
 
 ## Loading
 
@@ -324,7 +343,7 @@ The rects follow the edit, so their cost does too: moving a large selection zoom
 - **Agent canvas API**: `document-canvas.ts` (describe, and operations applied to the parsed snapshot) and `document-canvas-render.ts` (PNG of a region) read the whole JSON snapshot through `canvasRequest`. Describe and render read a full or `view` load instead; operations go through the agent edit path.
 - **Search, export, templates**: stream the full document through the decoder.
 - **Cloudflare**: the blob store is R2 (range reads supported, multipart uploads for `putStream`), and the working set lives in the space's Durable Object.
-  - Memory: all open canvases of a space share the object's 128 MB. A working set holds only the cached index, the segment map and pending records; a base rewrite holds about 60 bytes per element (6 MB at 100k). Working sets of canvases without room members are flushed and closed.
+  - Memory: all open canvases of a space share the object's 128 MB. A working set holds only the cached index, the segment map and pending records; a base rewrite holds its element table and one fold chunk (18 MB at 100k, see Memory). Working sets of canvases without room members are flushed and closed.
   - Compaction and tile renders: there is no serializer worker, so they run from the object's alarm, one document at a time. Both compaction tiers are streaming and wait mostly on R2; tiles render in batches across alarm invocations.
   - Eviction flushes, and hibernation is handled by the epoch in `CanvasOps` (see Durability).
 
@@ -338,6 +357,7 @@ Values marked *measured* come from the prototype (below); the others are still t
 | Flush size | 64 KB | the pending buffer |
 | Segment merge | 4 adjacent segments within 2× in size | segments per open and per load |
 | Base rewrite | segments > 25% of the base, ≥ 1 MB | write amplification: a base is rewritten at most once per quarter of its size in edits |
+| Fold chunk | 8 MB of input records | rewrite memory against passes over the segments |
 | GC age | 1 h | must exceed the longest write-to-commit gap of a flush or compaction |
 | Range gap | 16 KB | *measured*: range reads per load against wasted bytes (4 ranges instead of 39, +15% bytes) |
 | Overview zoom | 1/4 | *measured*: at 0.25 a viewport of elements is 0.95 MB against 1.2 MB of tiles; at 0.125 already 9.3k elements |
@@ -390,7 +410,7 @@ With gestures committing once, the history grows per gesture, not per pointer ev
 
 One cutover. On first open (or a one-shot migration over all spaces), convert the JSON snapshot into a base file and write the manifest. This is the one point where the server holds a whole canvas: it parses the snapshot as every load does today, so a canvas that opens today migrates.
 
-The conversion runs in the serializer worker, in the same two passes as a base rewrite. The first pass builds one element doc per shape and stroke, keeps its id, bbox, refs and encoded length, and discards the doc. The second, after the Hilbert sort, writes header, index, ids and refs, then builds each doc again and streams its record. Peak memory is the parsed snapshot plus about 60 bytes per element; neither the docs nor the 40 MB base are held. Existing canvas revisions are converted the same way, each to its own base, and the pre-migration snapshot is kept as one more converted revision. No dual read path afterwards.
+The conversion runs in the serializer worker, in the same two passes as a base rewrite. The first pass builds one element doc per shape and stroke, keeps its id, bbox, refs and encoded length, and discards the doc. The second, after the Hilbert sort, writes header, index, ids and refs, then builds each doc again and streams its record. Peak memory is the parsed snapshot plus the element table (about 100 bytes per element, see Memory); neither the docs nor the 40 MB base are held. Existing canvas revisions are converted the same way, each to its own base, and the pre-migration snapshot is kept as one more converted revision. No dual read path afterwards.
 
 Strokes have no `z` today and render in `updatedAt` order (`syncStrokesFromY`). Migration assigns their `z` from that order, and connectors get their `refs` map from their endpoints.
 
@@ -439,5 +459,5 @@ Integration level only:
 
 - Element docs keep their history until a base rewrite and keep about 5 B per overwritten value after it. Re-seeding an element would discard it but change its item ids, which breaks clients holding the old doc. Whether any element grows enough in practice to need it.
 - How existing strokes are quantized at migration: their drawing zoom was not stored, so either a fine fixed scale (64) or one derived from their point spacing.
-- Whether a base rewrite of the largest boards fits one Durable Object alarm invocation, or needs to resume across several.
+- Whether a base rewrite of the largest boards fits one Durable Object alarm invocation, or needs to resume across several; fold chunks are the natural point to resume from.
 - Whether the region loader should send its loaded rects so the server can subtract them, instead of the client computing uncovered areas.
