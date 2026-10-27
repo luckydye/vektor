@@ -17,7 +17,7 @@ Nothing can be loaded partially: a client needs the entire document before it re
 - Load streams: the first elements render before the last byte arrives.
 - Load is spatial: a client fetches the elements intersecting its viewport, and more as it pans.
 - Saving costs the size of the edit, not the size of the document.
-- The server never holds a whole canvas in memory, including during compaction.
+- The server never holds a whole canvas in memory, including during compaction. The one-time migration is the only exception (see Migration).
 - No new SQLite tables. The canvas lives in the blob store; the document row only points at it.
 - One sync implementation: Yjs merges, as it does for every other document type.
 
@@ -183,10 +183,10 @@ Compaction has two tiers, so its cost follows the edits, not the document. Both 
 
 **Base rewrite**, when segments exceed 25% of the base's size (and at least 1 MB). It covers the segments present when it starts:
 
-1. Stream base + segments, keeping only `id → (bbox, refs, record locations)`. Memory is O(elements × ~60 bytes), never payloads.
-2. For each changed element, load its base state and updates into a Y.Doc and re-encode it, which garbage-collects overwritten values (a dragged shape: 5.1 KB of merged updates, 1.9 KB re-encoded). An element whose doc has `deleted` set is dropped; the summaries' `deleted` flag is not consulted. Unchanged elements are not decoded: the base holds no deleted elements, so they are all live.
+1. Stream base + segments, keeping only `id → (bbox, refs, record locations)`. Memory is O(elements × ~60 bytes), never payloads: the header and index precede the elements and need every record's length, so changed elements are encoded twice (steps 2 and 4) instead of being held between the two.
+2. For each changed element, load its base state and updates into a Y.Doc and re-encode it, which garbage-collects overwritten values (a dragged shape: 5.1 KB of merged updates, 1.9 KB re-encoded). An element whose doc has `deleted` set is dropped; the summaries' `deleted` flag is not consulted. The map entry keeps the encoded length and the widened bbox (see Summary); the encoded bytes are discarded. Unchanged elements are not decoded: the base holds no deleted elements, so they are all live.
 3. Sort the live ids by the Hilbert value of their bbox.
-4. Build `index`, `ids` and `refs` from the record lengths, and stream the output through `putStream`: header, index, ids, refs, then the elements. Unchanged elements are copied by one sequential read of the old base, which is already in Hilbert order for them.
+4. Build `index`, `ids` and `refs` from the record lengths, and stream the output through `putStream`: header, index, ids, refs, then the elements. Unchanged elements are copied by one sequential read of the old base, which is already in Hilbert order for them. Changed elements are decoded and re-encoded a second time as their turn comes; the encoding is deterministic for the same updates, and a length that differs from step 2 aborts the rewrite.
 5. Update the manifest to the new base plus the segments flushed since it started, with exact `bounds`. Drop the map entries it folded.
 
 Clients are not told: their docs already hold everything the new base holds.
@@ -236,7 +236,7 @@ New `WsMsgType`s in `#realtime/protocol.ts`, framed like the Yjs frames: `[type 
 | 19 | `CanvasOps` | server → client | `opId` string, first `seq` varint, records |
 | 20 | `CanvasFlushed` | server → client | JSON `{ seq, bounds }` |
 | 21 | `CanvasReload` | server → client | JSON `{ epoch, seq }` — after a revision restore |
-| 22 | `CanvasTiles` | server → client | JSON `{ bbox }` — overview tiles in this area were re-rendered |
+| 22 | `CanvasTiles` | server → client | JSON `{ bbox, seq }` — overview tiles in this area were re-rendered; all tiles now include every record up to `seq` |
 
 Records are the file's records, `kind | length | payload`, so a client decodes live ops and load responses with the same decoder.
 
@@ -291,10 +291,20 @@ Rendering is too slow to do on request: the 100k board has 917 non-empty finest-
 
 - They are stored as blobs `tiles/<level>/<x>/<y>.png` under the document prefix, independent of the base, and the manifest records `tiles.seq`, the last `seq` they include.
 - Migration builds every canvas's pyramid, in the serializer worker; a new canvas starts with an empty one. There is never a canvas without tiles.
-- Each flush marks the finest-level tiles under the old and new bbox of its records dirty. The serializer worker re-renders dirty tiles and their ancestors in batches, at most every 10 s per document, commits `tiles.seq`, and the server broadcasts `CanvasTiles` with the union bbox of the re-rendered area. A zoomed-out client re-requests the tiles in view that intersect it.
+- Each flush marks the finest-level tiles under the old and new bbox of its records dirty. The serializer worker re-renders dirty tiles and their ancestors in batches, at most every 10 s per document, commits `tiles.seq`, and the server broadcasts `CanvasTiles` with the union bbox of the re-rendered area and the new `tiles.seq`. A zoomed-out client re-requests the tiles in view that intersect it.
 - On open, segments with records after `tiles.seq` mark their tiles dirty again, so a restart loses no re-render.
 
 While zoomed out, the client holds no elements: hovering and clicking load the elements under the pointer with a `view` query, and selecting by marquee queries the server.
+
+### Stale rects
+
+Tiles lag the client's own edits by a flush and up to 10 s of rendering, and a gesture preview drawn over them would show the elements twice: in the tile at their old position, and in the preview at the new one. The client therefore draws its own changes from elements, not tiles:
+
+- It keeps a list of **stale rects**, each with a `seq`. Committing a record adds the record's old and new bbox, with the record's `seq` once its echo arrives. A gesture adds the selection's bbox when it starts, and the area under the preview while it runs.
+- Inside stale rects, the client draws elements instead of tiles: it clips the tiles out, loads the rects with a `view` query (`minSize` = one screen pixel, as above the overview zoom), and draws the elements clipped to the rects. Selected elements under a running gesture are drawn at the preview transform, not at their committed position.
+- A `CanvasTiles` whose `seq` is at least a rect's `seq` removes that rect, and the elements loaded only for it are evicted. Rects of a running gesture stay until its commit is covered.
+
+The rects follow the edit, so their cost does too: moving a large selection zoomed out loads what it covers, which the gesture needs to hold anyway. Other clients' edits appear when their tiles are re-rendered, and their gesture previews are not drawn over tiles.
 
 ## Other consumers
 
@@ -367,7 +377,9 @@ With gestures committing once, the history grows per gesture, not per pointer ev
 
 ## Migration
 
-One cutover. On first open (or a one-shot migration over all spaces), stream the JSON snapshot into a base file, building one element doc per shape and stroke, and write the manifest. Existing canvas revisions are converted the same way, each to its own base, and the pre-migration snapshot is kept as one more converted revision. No dual read path afterwards.
+One cutover. On first open (or a one-shot migration over all spaces), convert the JSON snapshot into a base file and write the manifest. This is the one point where the server holds a whole canvas: it parses the snapshot as every load does today, so a canvas that opens today migrates.
+
+The conversion runs in the serializer worker, in the same two passes as a base rewrite. The first pass builds one element doc per shape and stroke, keeps its id, bbox, refs and encoded length, and discards the doc. The second, after the Hilbert sort, writes header, index, ids and refs, then builds each doc again and streams its record. Peak memory is the parsed snapshot plus about 60 bytes per element; neither the docs nor the 40 MB base are held. Existing canvas revisions are converted the same way, each to its own base, and the pre-migration snapshot is kept as one more converted revision. No dual read path afterwards.
 
 Strokes have no `z` today and render in `updatedAt` order (`syncStrokesFromY`). Migration assigns their `z` from that order, and connectors get `refs` from their endpoints.
 
@@ -401,6 +413,8 @@ Integration level only:
 - A viewport load that asserts only intersecting ids arrive.
 - A large generated board (100k strokes) that checks load time and server memory against today.
 - Zooming that board out to fit: the client switches to overview tiles, and a stroke drawn elsewhere appears in them after the next `CanvasTiles`.
+- Moving a shape while zoomed out: the shape shows at its new position and not at its old one, from the commit until after the `CanvasTiles` that covers it, with no frame showing it twice.
+- A base rewrite and a migration of the 100k board, asserting the server's peak memory stays within the bounds above.
 - A drag watched by a second client: the preview follows the transform, and the committed position replaces it without a jump back.
 - A move and a concurrent resize of one shape: exactly one correction is written, and a `view` query at the merged position returns the shape.
 - The same with the resizing client disconnected before its echo: after the next base rewrite, a `view` query at the merged position returns the shape.
