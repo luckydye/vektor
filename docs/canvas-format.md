@@ -146,14 +146,12 @@ The manifest replaces the JSON snapshot in `document.content` (a few hundred byt
   "base": "base-….vcanvas",
   "segments": ["seg-1042-k3f9….vcanvas", …],
   "seq": 1107,
-  "bounds": [x0, y0, x1, y1],
-  "tiles": { "seq": 1100 }
+  "bounds": [x0, y0, x1, y1]
 }
 ```
 
 - `seq`: the last flushed `seq`.
 - `bounds`: a superset of the document bounds. Flushes grow it; a base rewrite makes it exact again. The header's bounds are only valid for the base.
-- `tiles.seq`: the last `seq` the overview tiles include (see Levels of detail).
 
 The row write is the commit point, as for spilled content today. The working set is the only writer of the manifest: flushes, compaction results and restores are committed one at a time, each as a read-modify-write of the current row.
 
@@ -266,7 +264,6 @@ New `WsMsgType`s in `#realtime/protocol.ts`, framed like the Yjs frames: `[type 
 | 19 | `CanvasOps` | server → client | `opId` string, first `seq` varint, records |
 | 20 | `CanvasFlushed` | server → client | JSON `{ seq, bounds }` |
 | 21 | `CanvasReload` | server → client | JSON `{ epoch, seq }` — after a revision restore |
-| 22 | `CanvasTiles` | server → client | JSON `{ bbox, seq }` — overview tiles in this area were re-rendered; all tiles now include every record up to `seq` |
 
 Records are the file's records, `kind | length | payload`, so a client decodes live ops and load responses with the same decoder.
 
@@ -300,7 +297,7 @@ The canvas controller replaces the room-wide Y.Doc and its `observeDeep` sync (`
 
 - **Element store**: for each held element, its encoded state and its decoded value. Incoming records are merged with `Y.mergeUpdates` and decoded through a short-lived Y.Doc (3000 elements in 44 ms). A Y.Doc costs about 8 KB in memory against 0.4 KB for bytes and value, so a doc is kept only for elements being edited or in the undo stack.
 - **Streaming decoder**: merges elements into the store as records arrive and requests a render per batch.
-- **Region loader**: below the overview zoom it shows overview tiles instead (see Levels of detail). Otherwise, on viewport change, it requests the viewport padded by 50%, and passes `minSize` = one screen pixel in world units. The loader records each loaded rect with the `minSize` it was loaded at. A request covers only what no loaded rect covers at that `minSize` or finer; where a rect was loaded coarser (the user zoomed in), it requests that area with `maxSize` = the old `minSize`, fetching just the elements the coarser load skipped. Elements beyond 3× the viewport are evicted unless selected, being edited, in the undo stack, or holding updates from this session not yet covered by a `CanvasFlushed` (see Elements as Y.Docs), and evicting them shrinks the loaded rects to match.
+- **Region loader**: on viewport change, it requests the viewport padded by 50%, and passes `minSize` = one screen pixel in world units. The loader records each loaded rect with the `minSize` it was loaded at. A request covers only what no loaded rect covers at that `minSize` or finer; where a rect was loaded coarser (the user zoomed in), it requests that area with `maxSize` = the old `minSize`, fetching just the elements the coarser load skipped. Elements beyond 3× the viewport are evicted unless selected, being edited, in the undo stack, or holding updates from this session not yet covered by a `CanvasFlushed` (see Elements as Y.Docs), and evicting them shrinks the loaded rects to match.
 - **Op writer**: sends each local transaction's update with the summary computed from the doc. Editing a shape also sends summary-only records for the connectors that reference it, so their bboxes stay true; the client holds them and their other endpoints, because every load returns referencing elements and the endpoints of what it returns.
 - **Undo**: a `Y.UndoManager` per element doc, tracking local origins, under an app-level stack that groups the elements one user action touched; undoing pops a group and undoes each. Remote edits to other keys survive, as today.
 
@@ -311,30 +308,9 @@ The client never assumes it holds every element:
 - **Moving a section**: loads the section's bbox first, so contained elements are present.
 - **Connectors**: arrive with their endpoints (see Loading); only a connector reached as an endpoint loads its own endpoints with `ids=`, when it is edited.
 
-## Levels of detail
+## Zooming out
 
-Size culling is not a level of detail. On the 100k-stroke prototype board, a 1920×1080 viewport at zoom 0.05 still matches 47k elements (12.5 MB); at zoom 0.01, `minSize` = 1 px sends 22.7 MB, and 4 px sends nothing, so the board goes blank. Most of a record is fixed cost, so simplified points would not help either: zoomed out, the element count is the cost.
-
-Below an overview zoom of 1/4, the client stops loading elements and draws **overview tiles**: 256 px PNG tiles in a power-of-two pyramid, served from `GET …/canvas/tiles/:level/:x/:y`. They are drawn by `renderScene` (`#canvas/raster/scene.ts`), which already renders canvas regions for agents. The finest overview level is rendered from a view query of its tile (`minSize` = one tile pixel); each coarser tile is downsampled from its four children, so every element is drawn once per rebuild. A viewport's worth of tiles costs about the same at any zoom.
-
-Rendering is too slow to do on request: the 100k board has 917 non-empty finest-level tiles at up to 48 ms each, up to 44 s in all (see Prototype results). Tiles are therefore built ahead and kept up to date:
-
-- They are stored as blobs `tiles/<level>/<x>/<y>.png` under the document prefix, independent of the base, and the manifest records `tiles.seq`, the last `seq` they include.
-- Migration builds every canvas's pyramid, in the serializer worker; a new canvas starts with an empty one. There is never a canvas without tiles.
-- Each flush marks the finest-level tiles under the old and new bbox of its records dirty. The serializer worker re-renders dirty tiles and their ancestors in batches, at most every 10 s per document, commits `tiles.seq`, and the server broadcasts `CanvasTiles` with the union bbox of the re-rendered area and the new `tiles.seq`. A zoomed-out client re-requests the tiles in view that intersect it.
-- On open, segments with records after `tiles.seq` mark their tiles dirty again, so a restart loses no re-render.
-
-While zoomed out, the client holds no elements: hovering and clicking load the elements under the pointer with a `view` query, and selecting by marquee queries the server.
-
-### Stale rects
-
-Tiles lag the client's own edits by a flush and up to 10 s of rendering, and a gesture preview drawn over them would show the elements twice: in the tile at their old position, and in the preview at the new one. The client therefore draws its own changes from elements, not tiles:
-
-- It keeps a list of **stale rects**, each with a `seq`. Committing a record adds the record's old and new bbox, with the record's `seq` once its echo arrives. A gesture adds the selection's bbox when it starts, and the area under the preview while it runs.
-- Inside stale rects, the client draws elements instead of tiles: it clips the tiles out, loads the rects with a `view` query (`minSize` = one screen pixel, as above the overview zoom), and draws the elements clipped to the rects. Selected elements under a running gesture are drawn at the preview transform, not at their committed position.
-- A `CanvasTiles` whose `seq` is at least a rect's `seq` removes that rect, and the elements loaded only for it are evicted. Rects of a running gesture stay until its commit is covered.
-
-The rects follow the edit, so their cost does too: moving a large selection zoomed out loads what it covers, which the gesture needs to hold anyway. Other clients' edits appear when their tiles are re-rendered, and their gesture previews are not drawn over tiles.
+There is no level of detail beyond size culling: the client's zoom stops at 0.15 (`minZoom` in `#canvas/runtime/controller.ts`), and fit to content at 0.25. On the 100k-stroke prototype board, a 1920×1080 viewport at 0.25 holds 2,705 elements (0.95 MB); at 0.15 it holds about 2.8× as many, 7.5k elements (2.7 MB). Zooming out further would need one, because the element count, not the bytes per element, is the cost.
 
 ## Other consumers
 
@@ -344,7 +320,7 @@ The rects follow the edit, so their cost does too: moving a large selection zoom
 - **Search, export, templates**: stream the full document through the decoder.
 - **Cloudflare**: the blob store is R2 (range reads supported, multipart uploads for `putStream`), and the working set lives in the space's Durable Object.
   - Memory: all open canvases of a space share the object's 128 MB. A working set holds only the cached index, the segment map and pending records; a base rewrite holds its element table and one fold chunk (18 MB at 100k, see Memory). Working sets of canvases without room members are flushed and closed.
-  - Compaction and tile renders: there is no serializer worker, so they run from the object's alarm, one document at a time. Both compaction tiers are streaming and wait mostly on R2; tiles render in batches across alarm invocations.
+  - Compaction: there is no serializer worker, so it runs from the object's alarm, one document at a time. Both tiers are streaming and wait mostly on R2.
   - Eviction flushes, and hibernation is handled by the epoch in `CanvasOps` (see Durability).
 
 ## Tunables
@@ -360,7 +336,6 @@ Values marked *measured* come from the prototype (below); the others are still t
 | Fold chunk | 8 MB of input records | rewrite memory against passes over the segments |
 | GC age | 1 h | must exceed the longest write-to-commit gap of a flush or compaction |
 | Range gap | 16 KB | *measured*: range reads per load against wasted bytes (4 ranges instead of 39, +15% bytes) |
-| Overview zoom | 1/4 | *measured*: at 0.25 a viewport of elements is 0.95 MB against 1.2 MB of tiles; at 0.125 already 9.3k elements |
 | Region padding, eviction | 50%, 3× | requests while panning against client memory |
 | Index node size | 16 | *measured*: 8, 16 and 32 read the same bytes; with the index cached, node size only affects build time |
 | Point quantization | 16 × drawing zoom, power of two | *measured*: under 0.05 px at the drawing zoom |
@@ -382,10 +357,6 @@ Viewport queries, 1920×1080 at the given zoom over a cluster, `minSize` = 1 px:
 | 2 | 290 | 0.10 MB | 39 / 4 |
 | 1 | 712 | 0.25 MB | 26 / 4 |
 | 0.25 | 2,705 | 0.95 MB | 35 / 7 |
-
-Below the overview zoom, with the earlier custom encoding (Yjs records are about 25% larger): zoom 0.05 matches 46,795 elements (12.5 MB), zoom 0.01 80,924 (22.7 MB).
-
-Overview tiles, rendered with `renderScene` and `encodePng` at the finest overview level (zoom 1/4, 256 px tiles of 1024 world units), sampled over 60 tiles including the 20 densest: 48 ms and 30 KB per tile. The board has 917 non-empty tiles (median 94 strokes, max 967): at most 44 s and 27 MB for the finest level, since the sample favours dense tiles. A 1920×1080 viewport needs about 40 tiles, 1.2 MB, at any zoom below 1/4, on par with the 0.95 MB of elements at 1/4.
 
 Yjs per element:
 
@@ -444,8 +415,7 @@ Integration level only:
 - Loading zoomed out, then zooming in over the same region: the small elements arrive, the large ones are not fetched twice.
 - A viewport load that asserts only intersecting ids arrive.
 - A large generated board (100k strokes) that checks load time and server memory against today.
-- Zooming that board out to fit: the client switches to overview tiles, and a stroke drawn elsewhere appears in them after the next `CanvasTiles`.
-- Moving a shape while zoomed out: the shape shows at its new position and not at its old one, from the commit until after the `CanvasTiles` that covers it, with no frame showing it twice.
+- Zooming that board out to the minimum zoom over its densest area: the response stays under 3 MB.
 - A base rewrite and a migration of the 100k board, asserting the server's peak memory stays within the bounds above.
 - A drag watched by a second client: the preview follows the transform, and the committed position replaces it without a jump back.
 - A move and a concurrent resize of one shape: exactly one correction is written, and a `view` query at the merged position returns the shape.
