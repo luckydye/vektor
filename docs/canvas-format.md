@@ -169,10 +169,10 @@ Clients see ops at broadcast, before they are durable. Every client keeps a **re
 
 A graceful shutdown or eviction flushes first. A crash loses the unflushed records and drops every socket, and the next open starts a new working set with a new `epoch`, continuing after the highest live segment (see Storage). On every reconnect, whether the server restarted or only the connection broke, the client joins again and:
 
-1. Reloads its region, merging each response record into the element it holds instead of replacing it. Its state keeps every clock the client used, so its next edit continues past them.
+1. Syncs every element it holds, as a Yjs client syncs its doc on reconnect: a load with `ids=` naming every held element and `view` for its region, merging each response record into the element it holds instead of replacing it. Its state keeps every clock the client used, so its next edit continues past them.
 2. Sends one `full` record per element in its resend set: the element's whole state, with the summary computed from it. Corrections follow from the echoes as for any record (see Summary).
 
-The reload brings in the ops broadcast while the client was away, and the resend covers its frames lost with the old socket as well as the records a crash lost.
+The sync brings in the ops broadcast while the client was away, for held elements wherever they are now, deleted ones included; a `view` alone would miss an element moved out of the region or deleted, and the client would keep its old state. The resend covers its frames lost with the old socket as well as the records a crash lost.
 
 Resending the whole state, not just the client's own updates, matters because an update can depend on another client's record. An update that overwrites a key carries the overwritten item as its origin. If Q's recolour is lost in the crash and Q is gone, P's later recolour of the same element would stay pending on every other client. P merged Q's record, so P's whole state carries it.
 
@@ -208,10 +208,10 @@ The segment map, its reverse refs and the rewrite's element table are typed-arra
 | Query | Returns |
 |---|---|
 | `view=x0,y0,x1,y1` | elements whose bbox intersects the rect |
-| `ids=a,b,…` | the named elements, via the `ids` table; combined with `view`, the union |
+| `ids=a,b,…` | the named elements, via the `ids` table, deleted ones included; combined with `view`, the union |
 | none | every element (export, agent, search indexing) |
 
-Matching uses the latest summary: the map's for elements with segment records, the base's otherwise. Deleted elements are skipped. Every response closes the matches over `refs` in two steps:
+Matching uses the latest summary: the map's for elements with segment records, the base's otherwise. Deleted elements are skipped, unless named in `ids=`, so a client holding one receives its delete. Every response closes the matches over `refs` in two steps:
 
 1. **Referencing**, transitively: the elements that reference a returned element, via the `refs` table and the map's reverse refs, with a visited set. A client holding a shape holds the connectors attached to it, and the connectors attached to those.
 2. **Referenced**, one hop: the elements named in the `refs` of every element returned so far, via the `ids` table. A client holding a connector holds both its endpoints, which it needs to compute the connector's bbox when one of them moves. These are not closed again: following referencing elements from an endpoint would pull in every connected diagram.
@@ -398,6 +398,7 @@ Integration level only, with browser clients against the server.
 **Durability**
 - A server restart between broadcast and flush, after Q recoloured a shape and left and P recoloured it again: clients reconnect, reload and resend, every connected client's edit lands, and the shape has P's colour.
 - A connection drop while another client edits: on reconnect the client has the other client's edits, and its frames sent into the dropped socket land.
+- A connection drop while another client moves a held shape out of the region and deletes another: on reconnect the first is at its new position and the second is gone, on the client and in the index.
 - A revision restore while another client edits: the client reloads the restored state, and its next edit lands.
 
 **Deletion and compaction**
