@@ -1,11 +1,7 @@
 /**
- * Strokes on the wire: Y.Map <-> CanvasStroke.
- *
- * Freehand points are stored as plain objects rather than nested Y types — a
- * stroke is written once and never edited point-by-point, so per-point CRDT
- * granularity would cost memory and buy nothing.
+ * Strokes as snapshot items: the plain shape objects flatten to and from (see
+ * `#canvas/document/format/object.ts`), where their points pack into bytes.
  */
-import * as Y from "yjs";
 import {
   FREEHAND_STYLE,
   type FreehandPoint,
@@ -34,24 +30,27 @@ export function strokeStyleFromUnknown(value: unknown): FreehandStrokeStyle {
     : { ...FREEHAND_STYLE };
 }
 
-export function createStrokeMap(stroke: CanvasStrokeSnapshot) {
-  const map = new Y.Map<unknown>();
-  map.set("points", stroke.points.map(cloneFreehandPoint));
-  map.set("style", { ...stroke.style });
-  if (stroke.kind === "shape") map.set("kind", "shape");
-  if (typeof stroke.rotation === "number") map.set("rotation", stroke.rotation);
-  if (stroke.authorId) map.set("authorId", stroke.authorId);
-  if (stroke.locked) map.set("locked", true);
-  map.set("updatedAt", stroke.updatedAt);
-  return map;
+export function strokeToItem(stroke: CanvasStrokeSnapshot): Record<string, unknown> {
+  return {
+    id: stroke.id,
+    points: stroke.points.map(cloneFreehandPoint),
+    style: { ...stroke.style },
+    ...(stroke.kind === "shape" ? { kind: "shape" } : {}),
+    ...(typeof stroke.rotation === "number" ? { rotation: stroke.rotation } : {}),
+    ...(stroke.authorId ? { authorId: stroke.authorId } : {}),
+    ...(stroke.locked ? { locked: true } : {}),
+    updatedAt: stroke.updatedAt,
+    // Strokes stack by their last edit.
+    z: stroke.updatedAt,
+  };
 }
 
 export function toCanvasStroke(
   id: string,
-  source: Y.Map<unknown> | CanvasStrokeSnapshot,
+  source: CanvasStrokeSnapshot | Record<string, unknown>,
 ): CanvasStroke {
   const read = (key: keyof CanvasStrokeSnapshot) =>
-    source instanceof Y.Map ? source.get(key) : source[key];
+    (source as Record<string, unknown>)[key];
   const pointsValue = read("points");
   const style = strokeStyleFromUnknown(read("style"));
   const points = Array.isArray(pointsValue)

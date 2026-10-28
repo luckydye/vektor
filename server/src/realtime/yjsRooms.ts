@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { openSpaceStore } from "#db/client/store.ts";
+import { parseCanvasSnapshot, readCanvasSnapshot } from "#db/space/canvasSnapshot.ts";
 import { getDocument, getDocumentContent, updateDocument } from "#db/space/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/space/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
@@ -13,7 +14,6 @@ import {
   type CollaborationContentFormat,
   contentFromDoc,
   docNodeFromContent,
-  mapSnapshotFromDoc,
   toCleanHtml,
 } from "#documents/serialization.ts";
 import { documentIsReadonly } from "#documents/types.ts";
@@ -22,6 +22,7 @@ import { traced, tracedSync } from "#observability/trace.ts";
 import type { Platform } from "#platform/platform.ts";
 import { every } from "#utils/every.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
+import { writeCanvasSnapshot } from "./canvasEdits.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -53,7 +54,6 @@ const knownCollaborationContentFormats: Readonly<
   Record<string, CollaborationContentFormat>
 > = {
   app: "source-code",
-  canvas: "map-snapshot",
   workflow: "source-code",
 };
 
@@ -83,6 +83,8 @@ export async function loadYDoc(
 ): Promise<Y.Doc> {
   const meta = await getDocument(await openSpaceStore(platform, spaceId), documentId);
   if (!meta) return new Y.Doc();
+  // A canvas lives in the object store and its own rooms (`canvasRooms.ts`).
+  if (meta.type === "canvas") throw new Error("A canvas has no Yjs room");
   const content = await getDocumentContent(
     await openSpaceStore(platform, spaceId),
     documentId,
@@ -146,60 +148,6 @@ export function setYRoomWriteBlocked(
   return previous;
 }
 
-/**
- * Diffs an edited item list into a canvas Y.Map collection (keyed by item id),
- * so only actual changes produce Yjs updates. Items without a string id are
- * ignored. Must run inside a transaction.
- */
-function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): void {
-  // One level of maps (`frame`, `style`, `data`), as `shapeToYMap` writes them;
-  // values inside are plain JSON, such as a connector's `start`.
-  const toYValue = (value: unknown): unknown => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-    const map = new Y.Map<unknown>();
-    for (const [key, child] of Object.entries(value)) map.set(key, child);
-    return map;
-  };
-  const comparable = (value: unknown) =>
-    value instanceof Y.Map || value instanceof Y.Array ? value.toJSON() : value;
-  const byId = new Map<string, Record<string, unknown>>();
-  if (Array.isArray(items)) {
-    for (const item of items) {
-      if (
-        item &&
-        typeof item === "object" &&
-        typeof (item as { id?: unknown }).id === "string"
-      ) {
-        byId.set((item as { id: string }).id, item as Record<string, unknown>);
-      }
-    }
-  }
-
-  for (const id of [...target.keys()]) {
-    if (!byId.has(id)) target.delete(id);
-  }
-
-  for (const [id, item] of byId) {
-    let map = target.get(id);
-    if (!(map instanceof Y.Map)) {
-      map = new Y.Map<unknown>();
-      target.set(id, map);
-    }
-    for (const [key, value] of Object.entries(item)) {
-      if (key === "id" || value === undefined) continue;
-      if (JSON.stringify(comparable(map.get(key))) !== JSON.stringify(value)) {
-        map.set(key, toYValue(value));
-      }
-    }
-    for (const key of [...map.keys()]) {
-      // `in` would see inherited keys, so a key named after an `Object.prototype`
-      // member (`__proto__`, `toString`, ...) always looked present and was never
-      // deleted — a removal on the wire silently no-op'd on the live document.
-      if (!Object.hasOwn(item, key)) map.delete(key);
-    }
-  }
-}
-
 function isJsonContent(content: string): boolean {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
@@ -239,9 +187,10 @@ export function getLiveDocumentContent(
   persisted: string,
 ): string {
   const format = collaborationContentFormat(type);
+  // A canvas's stored content is already read from its live working set.
+  if (type === "canvas") return persisted;
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
-    if (format === "map-snapshot") return JSON.stringify(mapSnapshotFromDoc(room.doc));
     if (format === "source-code") return contentFromDoc(format, room.doc);
     return toCleanHtml(room.doc);
   }
@@ -267,7 +216,8 @@ export function replaceLiveDocumentContent(
   content: string,
 ): boolean {
   const room = yRooms.get(roomKey(spaceId, documentId));
-  if (!room?.doc) return false;
+  // A canvas write already went through the object store as records.
+  if (!room?.doc || type === "canvas") return false;
 
   const doc = room.doc;
   const format = collaborationContentFormat(type);
@@ -277,18 +227,6 @@ export function replaceLiveDocumentContent(
   doc.on("update", captureUpdate);
   try {
     doc.transact(() => {
-      if (format === "map-snapshot") {
-        const snapshot = JSON.parse(content) as { shapes?: unknown; strokes?: unknown };
-        syncCanvasCollection(
-          doc.getMap<Y.Map<unknown>>("canvas.shapes"),
-          snapshot.shapes,
-        );
-        syncCanvasCollection(
-          doc.getMap<Y.Map<unknown>>("canvas.strokes"),
-          snapshot.strokes,
-        );
-        return;
-      }
       applyDocToFragment(
         doc.getXmlFragment("default"),
         docNodeFromContent(format, content),
@@ -618,30 +556,31 @@ function broadcastCanvasAgentPresence(
   });
 }
 
-/** Shapes added or changed between two canvas snapshots, with their positions. */
-function changedCanvasShapes(
-  before: Record<string, unknown>[],
-  after: Record<string, unknown>[],
-): CanvasShapePosition[] {
-  const beforeById = new Map(
-    before.map((shape) => [String(shape.id), JSON.stringify(shape)]),
-  );
-  const result: CanvasShapePosition[] = [];
-  for (const shape of after) {
-    const id = typeof shape.id === "string" ? shape.id : null;
-    if (!id) continue;
-    if (beforeById.get(id) === JSON.stringify(shape)) continue; // unchanged
+/** Shows the agent's cursor over the shapes it just wrote. */
+export function showAgentOnCanvas(
+  platform: Platform,
+  spaceId: string,
+  documentId: string,
+  shapes: readonly { id?: unknown; frame?: unknown }[],
+): void {
+  const changed = shapes.map((shape) => {
     const frame =
       shape.frame && typeof shape.frame === "object"
         ? (shape.frame as Record<string, unknown>)
         : {};
-    result.push({
-      id,
+    return {
+      id: String(shape.id),
       x: typeof frame.x === "number" ? frame.x : 0,
       y: typeof frame.y === "number" ? frame.y : 0,
-    });
-  }
-  return result;
+    };
+  });
+  broadcastCanvasAgentPresence(
+    platform,
+    roomKey(spaceId, documentId),
+    documentId,
+    getRoom(spaceId, documentId),
+    changed,
+  );
 }
 
 /**
@@ -803,6 +742,28 @@ export async function transformDocumentContent(
     throw new Error("Cannot edit readonly document");
   }
 
+  if (dbDoc.type === "canvas") {
+    const store = await openSpaceStore(platform, spaceId);
+    const before = await readCanvasSnapshot(store, documentId);
+    let next: { shapes?: unknown; strokes?: unknown };
+    try {
+      next = parseCanvasSnapshot(transform(JSON.stringify(before, null, 2)));
+    } catch {
+      throw new Error("canvas edit must produce valid JSON");
+    }
+    const changed = new Set(
+      await writeCanvasSnapshot(platform, spaceId, documentId, next),
+    );
+    const after = await readCanvasSnapshot(store, documentId);
+    showAgentOnCanvas(
+      platform,
+      spaceId,
+      documentId,
+      after.shapes.filter((shape) => changed.has(String(shape.id))),
+    );
+    return { content: JSON.stringify(after), live: true };
+  }
+
   const format = collaborationContentFormat(dbDoc.type);
 
   const room = yRooms.get(roomKey(spaceId, documentId));
@@ -834,46 +795,6 @@ export async function transformDocumentContent(
   const doc = room.doc;
   const updates: Uint8Array[] = [];
   const captureUpdate = (update: Uint8Array) => updates.push(update);
-
-  if (format === "map-snapshot") {
-    const nextRaw = transform(JSON.stringify(mapSnapshotFromDoc(doc), null, 2));
-    let next: { shapes?: unknown; strokes?: unknown };
-    try {
-      next = JSON.parse(nextRaw) as { shapes?: unknown; strokes?: unknown };
-    } catch {
-      throw new Error("canvas edit must produce valid JSON");
-    }
-    if (!next || typeof next !== "object" || Array.isArray(next)) {
-      throw new Error("canvas content must be an object with shapes and strokes");
-    }
-
-    const shapesBefore = mapSnapshotFromDoc(doc).shapes;
-
-    doc.on("update", captureUpdate);
-    try {
-      doc.transact(() => {
-        syncCanvasCollection(doc.getMap<Y.Map<unknown>>("canvas.shapes"), next.shapes);
-        syncCanvasCollection(doc.getMap<Y.Map<unknown>>("canvas.strokes"), next.strokes);
-      }, "server-edit");
-    } finally {
-      doc.off("update", captureUpdate);
-    }
-
-    for (const update of updates) {
-      broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
-    }
-
-    const shapesAfter = mapSnapshotFromDoc(doc).shapes;
-    broadcastCanvasAgentPresence(
-      platform,
-      roomKey(spaceId, documentId),
-      documentId,
-      room,
-      changedCanvasShapes(shapesBefore, shapesAfter),
-    );
-
-    return { content: JSON.stringify(mapSnapshotFromDoc(doc)), live: true };
-  }
 
   if (format === "source-code") {
     const transformed = transform(contentFromDoc(format, doc));

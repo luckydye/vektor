@@ -14,38 +14,6 @@ describe("serialization pool", () => {
     expect(out).toBe(html);
   });
 
-  it("round-trips canvas snapshots through a worker", async () => {
-    const snapshot = JSON.stringify({
-      version: 1,
-      shapes: [
-        {
-          id: "s1",
-          type: "note",
-          frame: { x: 10, y: 20, width: 240, height: 150, rotation: 0 },
-          style: { color: "#fef3c7" },
-          data: { text: "hi" },
-          updatedAt: 1,
-        },
-      ],
-      strokes: [],
-    });
-    const doc = await poolDocSerializer.deserialize("map-snapshot", snapshot);
-    const out = await poolDocSerializer.serialize("map-snapshot", doc);
-    const parsed = JSON.parse(out) as {
-      shapes: {
-        id: string;
-        type: string;
-        frame: { x: number };
-        data: { text: string };
-      }[];
-    };
-    expect(parsed.shapes).toHaveLength(1);
-    expect(parsed.shapes[0]?.id).toBe("s1");
-    expect(parsed.shapes[0]?.type).toBe("note");
-    expect(parsed.shapes[0]?.frame.x).toBe(10);
-    expect(parsed.shapes[0]?.data.text).toBe("hi");
-  });
-
   it("matches in-process serialization byte-for-byte", async () => {
     // The worker and the main thread share documents/serialization, so content
     // stored by either reads back identically through the other.

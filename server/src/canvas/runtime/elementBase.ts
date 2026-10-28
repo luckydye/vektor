@@ -1,4 +1,6 @@
 import "#editor/elements/rich-text-editor.ts";
+import type * as Y from "yjs";
+import { BODY_FIELD } from "#canvas/document/format/object.ts";
 import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import type { RichTextEditorElementApi } from "#editor/elements/rich-text-editor.ts";
 import type { TranslationKey } from "#utils/lang.ts";
@@ -20,6 +22,9 @@ export interface CanvasElementContext {
   // type-specific events the host has to interpret. The host owns the shape
   // store, selection, and singleton chrome; extensions drive them.
   updateData: (shapeId: string, patch: Record<string, unknown>) => void;
+  // The shape's body doc, which its rich-text editor binds to; held until the
+  // edit ends.
+  body: (shapeId: string) => Y.Doc;
   removeShape: (shapeId: string) => void;
   selectShape: (shapeId: string) => void;
   // Retarget the shared canvas formatting toolbar at a focused editor (or clear
@@ -181,10 +186,13 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     const editor = document.createElement("rich-text-editor") as RichTextEditorElementApi;
     editor.className = "canvas-shape-textwrap";
     editor.setAttribute("headings", "");
-    // Set before connect so the editor mounts with the right initial content.
-    editor.value =
-      typeof this.shapeData?.data.text === "string" ? this.shapeData.data.text : "";
+    // Set before connect: the editor binds to the body and edits it with everyone else's.
+    const id = this.shapeData?.id;
+    if (!id || !this.services)
+      throw new Error("A rich-text element needs its shape and context");
+    editor.fragment = this.services.body(id).getXmlFragment(BODY_FIELD);
 
+    // The text itself travels in the body; the host refits the shape to it.
     editor.addEventListener("content-change", (event) => {
       const id = this.shapeData?.id;
       if (id) this.services?.updateData(id, { text: (event as CustomEvent).detail });
@@ -219,12 +227,8 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     });
   }
 
-  protected update() {
-    if (this.editorEl && this.shapeData) {
-      this.editorEl.value =
-        typeof this.shapeData.data.text === "string" ? this.shapeData.data.text : "";
-    }
-  }
+  // The bound body carries remote text; nothing to patch from the shape.
+  protected update() {}
 
   focus(options?: FocusOptions) {
     this.editorEl?.focus(options);

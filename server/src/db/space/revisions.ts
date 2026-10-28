@@ -12,7 +12,11 @@ import { createId } from "#db/ids.ts";
 import { document, revision } from "#db/schema/space.ts";
 import { deletePrefix } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import { restoreCanvasRevision } from "#realtime/canvasRooms.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { isCanvasBaseKey } from "./canvasBase.ts";
+import { readBaseSnapshot } from "./canvasSnapshot.ts";
+import { canvasRevisionBase, canvasWorkingSet } from "./canvasStore.ts";
 import { touchDocument } from "./changeSeq.ts";
 
 export interface Revision {
@@ -222,13 +226,39 @@ async function insertRevision(
   return inserted[0];
 }
 
+/**
+ * A canvas revision is its base: the working set is flushed and rewritten so
+ * the base covers every broadcast op, and the snapshot is that base's key.
+ * Null for any other document.
+ */
+async function canvasRevisionKey(
+  s: SpaceStore,
+  documentId: string,
+): Promise<string | null> {
+  const row = await one(
+    s.db
+      .select({ contentKey: document.contentKey })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
+  if (!isCanvasBaseKey(row?.contentKey ?? null)) return null;
+  return canvasRevisionBase(await canvasWorkingSet(s, documentId));
+}
+
 export async function createRevision(
   s: SpaceStore,
   documentId: string,
-  content: string,
+  documentContent: string,
   userId: string,
   options: CreateRevisionOptions = {},
 ): Promise<Revision> {
+  const canvasKey = await canvasRevisionKey(s, documentId);
+  // A base is already compact; its key is stored inline and never compressed.
+  const content = canvasKey ?? documentContent;
+  const snapshotOf = async (revisionId: string) =>
+    canvasKey !== null
+      ? Buffer.from(canvasKey, "utf-8")
+      : storeSnapshot(s, documentId, revisionId, await compressRevisionContent(content));
   const checksum = calculateChecksum(content);
   const kind = options.kind ?? "save";
   const parentRev = options.parentRev ?? null;
@@ -266,12 +296,11 @@ export async function createRevision(
   // Overwrite the last revision in place if it's a regular save within the 3-hour window,
   // but never overwrite the published revision — that would silently change published content.
   if (lastRevision && lastIsRecent && !lastIsPublished && coalescesWithPrevious(kind)) {
-    const compressed = await compressRevisionContent(content);
     const updatedMessage = options.message ?? lastRevision.message;
     // The overwrite takes a fresh id, so the new snapshot lands under its own key
     // and the row swap below is the single point where it replaces the old one.
     const id = createId("revision");
-    const snapshot = await storeSnapshot(s, documentId, id, compressed);
+    const snapshot = await snapshotOf(id);
     const replaced = await commitSnapshot(s, documentId, id, snapshot, () =>
       s.tx(async (tx) => {
         // Re-read inside the transaction: a concurrent overwrite may have swapped the id already.
@@ -331,11 +360,10 @@ export async function createRevision(
     };
   }
 
-  const compressed = await compressRevisionContent(content);
   const id = createId("revision");
   const now = new Date();
   const slug = await getDocumentSlug(s, documentId);
-  const snapshot = await storeSnapshot(s, documentId, id, compressed);
+  const snapshot = await snapshotOf(id);
 
   const created = await commitSnapshot(s, documentId, id, snapshot, () =>
     insertRevision(s, {
@@ -433,6 +461,10 @@ export async function getRevisionContent(
     return null;
   }
   const snapshot = await readSnapshot(s, revisionRecord);
+  const canvasKey = snapshot.toString("utf-8");
+  if (isCanvasBaseKey(canvasKey)) {
+    return JSON.stringify(await readBaseSnapshot(s, canvasKey));
+  }
   try {
     return decompressRevisionContent(snapshot);
   } catch (error) {
@@ -456,6 +488,22 @@ export async function resolvePublishedDocumentContent<
   return content === null ? document : { ...document, content };
 }
 
+/** The base a canvas revision names, or null when `rev` is not one. */
+export async function getCanvasRevisionBaseKey(
+  s: SpaceStore,
+  documentId: string,
+  rev: number,
+): Promise<string | null> {
+  const revisionRecord = await getRevision(s, documentId, rev);
+  if (!revisionRecord) return null;
+  const key = (await readSnapshot(s, revisionRecord)).toString("utf-8");
+  return isCanvasBaseKey(key) ? key : null;
+}
+
+/**
+ * Restores `rev`. A canvas is replaced by a copy of the revision's base and
+ * its room reloads; anything else returns the content for the caller to write.
+ */
 export async function restoreRevision(
   s: SpaceStore,
   documentId: string,
@@ -467,6 +515,9 @@ export async function restoreRevision(
   if (content === null) {
     return null;
   }
+  const canvasKey = await getCanvasRevisionBaseKey(s, documentId, rev);
+  if (canvasKey !== null)
+    await restoreCanvasRevision(s.platform, s.spaceId, documentId, canvasKey);
 
   const restoredMessage = message || `Restored from revision ${rev}`;
 
