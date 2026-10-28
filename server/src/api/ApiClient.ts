@@ -33,6 +33,14 @@ import type { SeriesQuery, SeriesQueryResult } from "#series/query.ts";
 import { ReplicaCache } from "./ReplicaCache.ts";
 import type { ReplicaOperation } from "./ReplicaDb.ts";
 
+export type JobRunnerSummary = {
+  id: string;
+  name: string;
+  url: string;
+  createdBy: string;
+  createdAt: string;
+};
+
 export interface User {
   id: string;
   name: string;
@@ -2823,6 +2831,36 @@ export class ApiClient {
         { credentials: "same-origin" },
       );
       return nodes;
+    },
+  };
+
+  /** The space's job runners (docs/job-runners.md). */
+  runners = {
+    list: async (spaceId: string): Promise<JobRunnerSummary[]> => {
+      const { runners } = await this.apiGet<{ runners: JobRunnerSummary[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners`,
+      );
+      return runners;
+    },
+
+    /** Owner only; the secret is in this answer and nowhere else. */
+    create: async (
+      spaceId: string,
+      body: { name: string; url: string },
+    ): Promise<{ runner: JobRunnerSummary; secret: string }> => {
+      return await this.apiPost(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners`,
+        body,
+      );
+    },
+
+    delete: async (spaceId: string, runnerId: string): Promise<void> => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners/${encodeURIComponent(runnerId)}`,
+      );
     },
   };
 

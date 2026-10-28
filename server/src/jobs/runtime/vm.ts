@@ -1,12 +1,12 @@
 /**
- * Runs guest code in the platform's job VM, or in a node's, one job per call.
+ * Runs guest code in the platform's job VM, or on a runner, one job per call.
  * The VM owns execution, timeouts and the host-call protocol; this assembles
  * the capabilities and turns what the guest produced into stored outputs.
  */
 
-import { nodeRegistry } from "#agent/nodes/registry.ts";
 import { config } from "#config";
 import { persistOutputBlobs } from "#jobs/outputBlobs.ts";
+import { runOnRunner } from "#jobs/runners.ts";
 import { createCapabilities } from "./capabilities.ts";
 import type { JobExecution, JobRunContext, JobRuntime } from "./types.ts";
 
@@ -64,7 +64,8 @@ export function createVmRuntime(): JobRuntime {
         signal: context.signal,
       };
       const running = remote
-        ? nodeRegistry.runJob(
+        ? runOnRunner(
+            platform,
             {
               spaceId: context.spaceId,
               userId: context.initiatedByUserId,

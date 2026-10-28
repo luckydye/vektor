@@ -11,6 +11,7 @@ const idPrefixes = {
   property: "prop",
   revision: "rev",
   run: "run",
+  runner: "runner",
   secret: "secret",
   shareLink: "share",
   space: "space",

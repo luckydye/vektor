@@ -59,9 +59,9 @@ export interface CapabilityContext {
   onLog: (message: string) => void;
   signal?: AbortSignal;
   /**
-   * The guest runs on a node, which handles the portable capabilities, the
-   * scratch directory and `exec` itself; the table then holds only what needs
-   * the server, so a node's job can never make the server fetch or run tools.
+   * The guest runs on a runner (#jobs/runners.ts), which brings its own
+   * `fetch`, scratch directory and `exec`: the table leaves them out, so a
+   * runner's job can never make the server fetch, touch disk or run tools.
    */
   remote?: boolean;
   /** Capabilities layered on top of the standard table (workflows add runJob). */
@@ -165,14 +165,16 @@ export function createCapabilities(
     return response;
   }
 
+  // Validated and pinned on every hop: a bare `fetch` here let a public 302
+  // walk the server into loopback or the metadata endpoint.
+  const { fetch: guestFetch, ...portable } = createPortableCapabilities(
+    (url, init) => platform.fetch(url, init, assertEgressAllowed),
+    signal,
+  );
+
   const table: CapabilityTable = {
-    // Validated and pinned on every hop: a bare `fetch` here let a public 302
-    // walk the server into loopback or the metadata endpoint.
-    ...(host &&
-      createPortableCapabilities(
-        (url, init) => platform.fetch(url, init, assertEgressAllowed),
-        signal,
-      )),
+    ...portable,
+    ...(host && { fetch: guestFetch, ...host.table }),
 
     /**
      * Call this Vektor instance's own API with the run's job token.
@@ -362,9 +364,6 @@ export function createCapabilities(
       const response = await api(`/secrets/${encodeURIComponent(String(name))}`);
       return ((await response.json()) as { value: unknown }).value;
     }) as never,
-
-    // ── scratch filesystem and tools ─────────────────────────────────────────
-    ...host?.table,
 
     ...context.extra,
   };

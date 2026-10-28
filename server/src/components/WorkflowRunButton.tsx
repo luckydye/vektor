@@ -2,6 +2,7 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { api } from "#api/client.ts";
+import { useJobRunners } from "#composeables/useJobRunners.ts";
 import { useNodes } from "#composeables/useNodes.ts";
 import { useToast } from "#composeables/useToast.ts";
 import {
@@ -30,12 +31,14 @@ export function WorkflowRunButton(props: Props) {
   const [latestRunStatus, setLatestRunStatus] = createSignal<string | null>(null);
   const [promptFields, setPromptFields] = createSignal<WorkflowInputField[] | null>(null);
   const [promptError, setPromptError] = createSignal<string | null>(null);
-  /** The node to run on; null is the server. */
+  /** The runner or node to run on; null is the server. */
   const [node, setNode] = createSignal<string | null>(null);
   const nodes = useNodes(() => true);
-  const onlineNodes = createMemo(() =>
-    nodes()?.flatMap((n) => (n.online ? [n.name] : [])),
-  );
+  const { runners } = useJobRunners(() => true);
+  const runnerNames = createMemo(() => [
+    ...(nodes() ?? []).flatMap((n) => (n.online ? [n.name] : [])),
+    ...(runners() ?? []).map((r) => r.name),
+  ]);
 
   const isActiveRun = createMemo(
     () => latestRunStatus() === "running" || latestRunStatus() === "pending",
@@ -127,9 +130,9 @@ export function WorkflowRunButton(props: Props) {
 
   return (
     <>
-      <Show when={!isActiveRun() && onlineNodes()?.length}>
+      <Show when={!isActiveRun() && runnerNames().length}>
         <AgentNodePicker
-          nodes={onlineNodes() ?? []}
+          nodes={runnerNames()}
           value={node()}
           onChange={setNode}
           label="Run the workflow on"

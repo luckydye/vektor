@@ -1,5 +1,6 @@
 import { createMemo, Show } from "solid-js";
 import { Permission } from "#acl/permissions.ts";
+import { useJobRunners } from "#composeables/useJobRunners.ts";
 import { useNodes } from "#composeables/useNodes.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
@@ -9,6 +10,7 @@ import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
 import { SpaceAIUsage } from "./SpaceAIUsage.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
+import { SpaceJobRunners } from "./SpaceJobRunners.tsx";
 import { SpaceNodes } from "./SpaceNodes.tsx";
 import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
 
@@ -37,6 +39,7 @@ export function SpaceSettings() {
   const { currentSpace } = useSpace();
   const isOwner = createMemo(() => currentSpace()?.userRole === Permission.OWNER);
   const nodes = useNodes(isOwner);
+  const jobRunners = useJobRunners(isOwner);
 
   return (
     <SettingsLayout
@@ -70,9 +73,19 @@ export function SpaceSettings() {
             <SpaceAIUsage />
             <SettingsSection
               title="Nodes"
-              description="Your devices that agents and chats can run on. Only space owners can connect one."
+              description="Your devices that agents, chats and jobs can run on. Only space owners can connect one."
             >
               <SpaceNodes nodes={nodes()} />
+            </SettingsSection>
+            <SettingsSection
+              title="Job runners"
+              description="Endpoints that run this space's jobs and workflows instead of the server."
+            >
+              <SpaceJobRunners
+                runners={jobRunners.runners()}
+                onAdd={jobRunners.add}
+                onRemove={jobRunners.remove}
+              />
             </SettingsSection>
           </Show>
         ),
