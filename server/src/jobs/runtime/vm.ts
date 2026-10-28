@@ -4,7 +4,7 @@
  * the capabilities and turns what the guest produced into stored outputs.
  */
 
-import { config } from "#config";
+import { isIntegratedRunnerEnabled } from "#config";
 import { persistOutputBlobs } from "#jobs/outputBlobs.ts";
 import { runOnRunner } from "#runners/jobs.ts";
 import { createCapabilities } from "./capabilities.ts";
@@ -16,7 +16,7 @@ export function createVmRuntime(): JobRuntime {
 
     execute(code: string, context: JobRunContext): JobExecution {
       const { platform } = context;
-      const remote = context.node !== undefined || config().JOB_RUNTIME === "runners";
+      const remote = context.node !== undefined || !isIntegratedRunnerEnabled();
 
       /**
        * Where `output(...)` lands.
