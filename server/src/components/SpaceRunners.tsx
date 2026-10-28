@@ -1,9 +1,12 @@
 import { createSignal, For, Show } from "solid-js";
+import type { NodeSummary } from "#agent/nodes/protocol.ts";
 import type { RunnerSummary } from "#api/client.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 
 interface Props {
-  /** Undefined while loading. */
+  /** The user's connected nodes; undefined while loading. */
+  nodes: NodeSummary[] | undefined;
+  /** The space's HTTP runners; undefined while loading. */
   runners: RunnerSummary[] | undefined;
   /** Resolves with the new runner's secret. */
   onAdd(name: string, url: string): Promise<string>;
@@ -25,7 +28,10 @@ function offers(runner: RunnerSummary): string {
 const inputClass =
   "focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium";
 
-/** HTTP endpoints that run the space's jobs and workflows, and agents if they offer them (docs/runners.md). */
+/**
+ * Where the space's jobs and workflows, and agents, can run besides the
+ * server: the user's nodes and the space's HTTP runners (docs/runners.md).
+ */
 export function SpaceRunners(props: Props) {
   const [name, setName] = createSignal("");
   const [url, setUrl] = createSignal("");
@@ -59,8 +65,26 @@ export function SpaceRunners(props: Props) {
 
   return (
     <div class="space-y-3">
-      <Show when={props.runners?.length}>
+      <Show when={props.nodes?.length || props.runners?.length}>
         <ul class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-background">
+          <For each={props.nodes}>
+            {(node) => (
+              <li class="flex items-center justify-between gap-4 px-5 py-3">
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-neutral-900 text-size-medium">
+                    {node.name}
+                  </p>
+                  <p class="truncate text-neutral-500 text-size-small">
+                    Node · {node.os} · {node.workdir}
+                  </p>
+                  <p class="truncate text-neutral-500 text-size-small">
+                    {node.shared ? "jobs for the whole space" : "jobs"} · agents:{" "}
+                    {node.adapters.join(", ")} · up to {node.maxSessions} sessions
+                  </p>
+                </div>
+              </li>
+            )}
+          </For>
           <For each={props.runners}>
             {(runner) => (
               <li class="flex items-center justify-between gap-4 px-5 py-3">
@@ -110,6 +134,11 @@ export function SpaceRunners(props: Props) {
       <Show when={error()}>
         <p class="text-red-600 text-size-small">{error()}</p>
       </Show>
+
+      <p class="text-neutral-500 text-size-small">
+        A node is a device running <code>vektor agent serve</code>, logged in to this
+        space with <code>vektor login</code>. A runner is an HTTP endpoint you add here.
+      </p>
 
       <form
         class="flex flex-wrap gap-2"

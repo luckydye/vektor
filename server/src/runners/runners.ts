@@ -25,16 +25,6 @@ import {
  * (`vektor agent serve`), which get the same requests over their socket.
  */
 
-/** What a runner learns about a run it carries. */
-export type RunLink = {
-  /** Aborted when the run is cancelled or times out. */
-  signal: AbortSignal;
-  /** Fails the run: the runner went away with it. */
-  lost(error: Error): void;
-  /** Settles when the run ends, however it ends. */
-  ended: Promise<void>;
-};
-
 export type Runner = {
   /** Identifies the runner across runs, for spreading them. */
   key: string;
@@ -42,8 +32,11 @@ export type Runner = {
   description: RunnerDescription;
   /** Agent sessions it holds at once; unbounded when absent. */
   maxSessions?: number;
-  /** Hands a request over; resolves once the runner has accepted it. */
-  send(request: RunnerRequest, link?: RunLink): Promise<void>;
+  /**
+   * Hands a request over; resolves once the runner has accepted it. `signal`
+   * aborts when the run is cancelled or times out.
+   */
+  send(request: RunnerRequest, signal?: AbortSignal): Promise<void>;
   /** A node's extension: viewers can open a session's display. */
   screens?: NodeScreens;
 };
@@ -89,7 +82,6 @@ export function startRun(
   const token = randomBytes(32).toString("base64url");
   const controller = new AbortController();
   const finished = Promise.withResolvers<object>();
-  const ended = Promise.withResolvers<void>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const touch = () => {
     if (!runs.has(runId)) return;
@@ -115,19 +107,12 @@ export function startRun(
 
   const host = { url: `${callbackOrigin()}/api/v1/runs/${runId}/call`, token };
   // Not awaited: the result may come back before the runner's answer does.
-  runner
-    .send(options.request(runId, host), {
-      signal: controller.signal,
-      lost: finished.reject,
-      ended: ended.promise,
-    })
-    .catch(finished.reject);
+  runner.send(options.request(runId, host), controller.signal).catch(finished.reject);
 
   const result = finished.promise.finally(() => {
     // The token dies with the run: a runner that keeps going is refused.
     runs.delete(runId);
     clearTimeout(timer);
-    ended.resolve();
   });
   return { result, touch, cancel: () => controller.abort(new Error("cancelled")) };
 }
@@ -216,8 +201,8 @@ async function httpRunners(platform: Platform, spaceId: string): Promise<Runner[
     key: `http:${spaceId}:${runner.id}`,
     name: runner.name,
     description: runner.description,
-    async send(request, link) {
-      const response = await post(platform, runner, request, link?.signal);
+    async send(request, signal) {
+      const response = await post(platform, runner, request, signal);
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
         throw new Error(`Runner "${runner.name}" answered ${response.status}: ${detail}`);

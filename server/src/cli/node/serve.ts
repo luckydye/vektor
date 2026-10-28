@@ -371,8 +371,6 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
             workdir,
             adapters: [...adapters.keys()],
             maxSessions: options.maxSessions,
-            // Runs carry on over HTTP while the socket is down; these are still ours.
-            runs: [...runs.keys()],
             shared: options.shared,
           } satisfies NodeToServerFrame),
         );

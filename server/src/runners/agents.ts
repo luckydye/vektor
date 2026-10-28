@@ -57,8 +57,8 @@ export interface AgentRunnerHost {
     userId: string;
     jobToken: string;
     task: string;
-    node?: string;
-    adapter?: string;
+    runner?: string;
+    agent?: string;
   }): Promise<{ sessionId: string; runner: string }>;
   /** Resolves at once with anything pending, else when something happens or `waitMs` passes. */
   pollSession(sessionId: string, waitMs: number): Promise<AgentSessionPoll>;
@@ -149,27 +149,26 @@ async function open(
     spaceId: string;
     userId: string;
     jobToken: string;
-    node?: string;
-    adapter?: string;
+    runner?: string;
+    agent?: string;
   },
   chat: string | null,
 ) {
   const runners = await agentRunners(platform, request);
-  const runner = request.node
-    ? runners.find((r) => r.name === request.node)
+  const runner = request.runner
+    ? runners.find((r) => r.name === request.runner)
     : runners.find(
         (r) =>
-          hasRoom(r) &&
-          (!request.adapter || r.description.agents.includes(request.adapter)),
+          hasRoom(r) && (!request.agent || r.description.agents.includes(request.agent)),
       );
   if (!runner) {
     throw new Error(
-      request.node
-        ? `No runner or node "${request.node}" is available. Use list_nodes to see what is.`
+      request.runner
+        ? `No runner or node "${request.runner}" is available. Use list_nodes to see what is.`
         : "No runner or node can run an agent for you. Start a node with `vektor agent serve`.",
     );
   }
-  const agent = request.adapter ?? runner.description.agents[0];
+  const agent = request.agent ?? runner.description.agents[0];
   if (!runner.description.agents.includes(agent)) {
     throw new Error(
       `"${runner.name}" has no "${agent}" agent; it offers ${runner.description.agents.join(", ")}.`,
@@ -312,7 +311,7 @@ function chatSession(scope: { spaceId: string; userId: string; chatId: string })
 }
 
 /**
- * Starts one prompt of a chat on its session at `node`, opening one when the
+ * Starts one prompt of a chat on its session at `runner`, opening one when the
  * chat has none: on its first prompt, or after the session ended. `fresh`
  * says a session was opened, so it remembers no earlier prompt.
  */
@@ -322,7 +321,7 @@ export async function promptChat(
     spaceId: string;
     userId: string;
     chatId: string;
-    node: string;
+    runner: string;
     jobToken: string;
     text: string;
   } & Omit<Turn, "done">,

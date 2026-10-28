@@ -214,7 +214,7 @@ export const POST: ApiRouteHandler = (context) =>
         sourceExtensionId,
         runtimeInputs: inputs,
         seedCache,
-        node,
+        runner: node,
       });
 
       return jsonResponse({ runId }, 202);

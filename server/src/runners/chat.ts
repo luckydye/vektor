@@ -13,7 +13,7 @@ export async function runChatOnRunner(
     spaceId: string;
     userId: string;
     chatId: string;
-    node: string;
+    runner: string;
     jobToken: string;
     text: string;
     /** Whether the chat had earlier turns, which a fresh session does not remember. */
@@ -22,7 +22,7 @@ export async function runChatOnRunner(
     onEvent: (event: AgentEvent) => void;
   },
 ): Promise<AgentResult> {
-  const { node, signal, onEvent } = options;
+  const { runner, signal, onEvent } = options;
   const toolNames = new Map<string, string>();
   let content = "";
   const { fresh, result } = await promptChat(platform, {
@@ -34,12 +34,12 @@ export async function runChatOnRunner(
       onEvent(event);
     },
     onScreen: (sessionId) =>
-      onEvent({ type: "screen", sessionId, runner: node, task: options.text }),
+      onEvent({ type: "screen", sessionId, runner, task: options.text }),
   });
   if (fresh && options.resumed) {
     onEvent({
       type: "status",
-      text: `Started a new session on ${node}; it does not remember earlier messages.`,
+      text: `Started a new session on ${runner}; it does not remember earlier messages.`,
     });
   }
 

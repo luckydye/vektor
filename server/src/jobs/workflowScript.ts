@@ -11,7 +11,7 @@ import {
   setRunStatus,
   writeRunResult,
 } from "./runStore.ts";
-import { getJobRuntime } from "./runtime/index.ts";
+import { executeJob } from "./runtime/execute.ts";
 import { runJob } from "./scheduler.ts";
 import {
   createStepCacheWriter,
@@ -47,8 +47,8 @@ export async function executeWorkflowScript(
      * runs, which then behave exactly as before.
      */
     seedCache?: WorkflowStepCache;
-    /** The node the script and the jobs it runs run on; see `JobRunContext.node`. */
-    node?: string;
+    /** The runner the script and the jobs it runs run on; see `JobRunContext.runner`. */
+    runner?: string;
   },
 ): Promise<void> {
   const run = getRun(runId);
@@ -158,7 +158,7 @@ export async function executeWorkflowScript(
         initiatedByUserId: run.initiatedByUserId,
         attribution,
         jobId: workflowJobId,
-        node: options?.node,
+        runner: options?.runner,
       },
     );
 
@@ -176,14 +176,14 @@ export async function executeWorkflowScript(
   };
 
   try {
-    const execution = getJobRuntime().execute(code, {
+    const execution = executeJob(code, {
       platform,
       spaceId,
       jobId: `workflow:${runId}`,
       initiatedByUserId: run.initiatedByUserId,
       attribution,
       inputs: runtimeInputs,
-      node: options?.node,
+      runner: options?.runner,
       onLog: appendWorkflowLog,
       signal: controller.signal,
       extraCapabilities: { runJob: runWorkflowJob as never },

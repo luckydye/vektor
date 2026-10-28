@@ -28,8 +28,8 @@ export async function runSubagentOnRunner(options: {
     userId: options.userId,
     jobToken: options.jobToken,
     task: options.task,
-    node: options.target.node,
-    adapter: options.target.agent,
+    runner: options.target.node,
+    agent: options.target.agent,
   });
   const cancel = () => void runners.cancelSession(sessionId).catch(() => {});
   if (signal.aborted) cancel();

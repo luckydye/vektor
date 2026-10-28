@@ -1,11 +1,4 @@
-/**
- * The contract between "what should run" and "what runs it".
- *
- * Vektor ships one implementation (`createVmRuntime`, backed by the platform's
- * `JobVm`), but everything above this file — the scheduler, the workflow driver, the job
- * API route — talks only to `JobRuntime`. Plugging in another executor means
- * implementing this interface and returning it from `resolveJobRuntime()`.
- */
+/** What a job run is given (`executeJob`), and what it hands back. */
 
 import type { Attribution } from "#acl/apps.ts";
 import type { Platform } from "#platform/platform.ts";
@@ -38,7 +31,7 @@ export interface JobRunContext {
    * the integrated runner is off (`VEKTOR_INTEGRATED_RUNNER=0`), and then on
    * any the run may use.
    */
-  node?: string;
+  runner?: string;
   onLog: (message: string) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -54,19 +47,4 @@ export interface JobExecution {
   result: Promise<Record<string, unknown>>;
   /** Renew the inactivity deadline for progress the guest does not log itself. */
   touch(): void;
-}
-
-export interface JobRuntime {
-  /** Identifies the runtime in logs and error messages. */
-  readonly name: string;
-
-  /**
-   * Start `code`; `result` resolves with its outputs and rejects if the code
-   * throws, the deadline passes, or `context.signal` cancels it. Implementations
-   * must not execute guest code on the main thread.
-   */
-  execute(code: string, context: JobRunContext): JobExecution;
-
-  /** Release any process-level resources. Called once at shutdown. */
-  dispose?(): Promise<void>;
 }

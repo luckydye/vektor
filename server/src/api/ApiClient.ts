@@ -27,7 +27,6 @@ import {
   type YjsJoinPayload,
   type YjsRoomGenerationPayload,
 } from "#realtime/protocol.ts";
-import type { AgentRunnerSummary } from "#runners/agents.ts";
 import type { RunnerDescription } from "#runners/contract.ts";
 import type { SeriesPoint } from "#series/format.ts";
 import type { SeriesPredicate } from "#series/predicates.ts";
@@ -2860,11 +2859,11 @@ export class ApiClient {
       );
     },
 
-    /** Where the caller can run agents: its nodes, and agent runners when it owns the space. */
-    forAgents: async (spaceId: string): Promise<AgentRunnerSummary[]> => {
-      const { runners } = await this.apiGet<{ runners: AgentRunnerSummary[] }>(
+    /** The names of the runners and nodes the caller may run jobs or agents on. */
+    available: async (spaceId: string, kind: "jobs" | "agents"): Promise<string[]> => {
+      const { runners } = await this.apiGet<{ runners: string[] }>(
         this.baseUrl,
-        `/api/v1/spaces/${encodeURIComponent(spaceId)}/agent-runners`,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/available-runners?for=${kind}`,
       );
       return runners;
     },

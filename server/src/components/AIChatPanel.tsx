@@ -5,12 +5,12 @@ import {
   type AIChatSessionListEntry,
   isUploadAborted,
 } from "#api/client.ts";
-import { useAgentRunners } from "#composeables/useAgentRunners.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
   useAIChat,
 } from "#composeables/useAIChat.ts";
+import { useAvailableRunners } from "#composeables/useAvailableRunners.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
@@ -120,8 +120,10 @@ export function AIChatPanel(props: Props) {
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
   // Where a chat runs is chosen before its first message, then fixed.
-  const runners = useAgentRunners(createMemo(() => isOpen() && !currentSessionId()));
-  const agentRunners = createMemo(() => runners()?.map((runner) => runner.name));
+  const agentRunners = useAvailableRunners(
+    "agents",
+    createMemo(() => isOpen() && !currentSessionId()),
+  );
   const showRunnerPicker = createMemo(() =>
     currentSessionId() ? !!chatNode() : !!agentRunners()?.length,
   );

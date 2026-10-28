@@ -136,4 +136,4 @@ A runner brings those itself. The JS prelude uses the runtime's `fetch`. A node 
 
 ## Nodes
 
-A node gets requests as `{ "type": "run", "request": … }` frames, and makes its runs' calls over HTTP like any runner, so a run carries on while the socket reconnects. A node that stays away 30 seconds fails its runs. Its `hello` names its agents, its session limit and the runs it still has; `cancel` frames stop a run early. Screens, an agent session's live display, are a node's own extension: the node says `screen` when a session has one, and streams it on `screen.open`.
+A node gets requests as `{ "type": "run", "request": … }` frames, and makes its runs' calls over HTTP like any runner, so a run carries on while the socket reconnects; like any runner's, a run whose node goes quiet fails on its deadline. Its `hello` names its agents and its session limit; `cancel` frames stop a run early. Screens, an agent session's live display, are a node's own extension: the node says `screen` when a session has one, and streams it on `screen.open`.
