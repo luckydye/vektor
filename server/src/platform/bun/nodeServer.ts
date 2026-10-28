@@ -13,8 +13,8 @@ import {
   parseFrame,
 } from "#agent/nodes/protocol.ts";
 import { nodeRegistry } from "#agent/nodes/registry.ts";
-import { MAX_PAYLOAD_BYTES } from "#jobs/runtime/portable.ts";
 import { isNoAuthMode } from "#config";
+import { MAX_PAYLOAD_BYTES } from "#jobs/runtime/portable.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 

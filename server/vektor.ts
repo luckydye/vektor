@@ -111,7 +111,12 @@ function stripFlag(
   return { argv: result, value };
 }
 
-const SERVE_BOOLEAN_FLAGS = new Set(["readonly", "auto-approve", "allow-shell", "shared"]);
+const SERVE_BOOLEAN_FLAGS = new Set([
+  "readonly",
+  "auto-approve",
+  "allow-shell",
+  "shared",
+]);
 
 function parseServeArgs(args: string[]): ServeOptions {
   const flags = new Map<string, string[]>();

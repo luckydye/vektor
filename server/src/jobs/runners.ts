@@ -75,7 +75,9 @@ function callbackOrigin() {
 
 /** The space's HTTP runners; the server's request carries the runner's secret. */
 async function httpRunners(platform: Platform, spaceId: string): Promise<Runner[]> {
-  const runners = await listJobRunnersWithSecrets(await openSpaceStore(platform, spaceId));
+  const runners = await listJobRunnersWithSecrets(
+    await openSpaceStore(platform, spaceId),
+  );
   return runners.map((runner) => ({
     key: `http:${spaceId}:${runner.id}`,
     name: runner.name,
