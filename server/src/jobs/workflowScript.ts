@@ -47,6 +47,8 @@ export async function executeWorkflowScript(
      * runs, which then behave exactly as before.
      */
     seedCache?: WorkflowStepCache;
+    /** The node the script and the jobs it runs run on; see `JobRunContext.node`. */
+    node?: string;
   },
 ): Promise<void> {
   const run = getRun(runId);
@@ -156,6 +158,7 @@ export async function executeWorkflowScript(
         initiatedByUserId: run.initiatedByUserId,
         attribution,
         jobId: workflowJobId,
+        node: options?.node,
       },
     );
 
@@ -180,6 +183,7 @@ export async function executeWorkflowScript(
       initiatedByUserId: run.initiatedByUserId,
       attribution,
       inputs: runtimeInputs,
+      node: options?.node,
       onLog: appendWorkflowLog,
       signal: controller.signal,
       extraCapabilities: { runJob: runWorkflowJob as never },

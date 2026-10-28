@@ -37,6 +37,8 @@ import type { Platform } from "#platform/platform.ts";
 /**
  * Run a job
  *
+ * `node` runs it on that node (`vektor agent serve`).
+ *
  * @tag Jobs
  * @jobToken
  * @body
@@ -59,8 +61,9 @@ export const POST: ApiRouteHandler = (context) =>
         jobId?: string;
         inputs?: Record<string, unknown>;
         stream?: boolean;
+        node?: string;
       }>(context.req.raw);
-      const { jobId, inputs = {} } = body;
+      const { jobId, inputs = {}, node } = body;
 
       if (!jobId) return badRequestResponse("jobId is required");
 
@@ -133,6 +136,7 @@ export const POST: ApiRouteHandler = (context) =>
                   initiatedByUserId,
                   attribution,
                   jobId,
+                  node,
                 },
               );
               send({ type: "output", outputs });
@@ -175,6 +179,7 @@ export const POST: ApiRouteHandler = (context) =>
           initiatedByUserId,
           attribution,
           jobId,
+          node,
         },
       );
 

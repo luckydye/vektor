@@ -2646,7 +2646,8 @@ export class ApiClient {
       spaceId: string,
       documentId: string,
       inputs?: Record<string, unknown>,
-      options?: { sourceExtensionId?: string },
+      /** `node` runs it on that node rather than the server. */
+      options?: { sourceExtensionId?: string; node?: string },
     ): Promise<{ runId: string }> => {
       return await this.apiPost<{ runId: string }>(
         this.baseUrl,
@@ -2655,6 +2656,7 @@ export class ApiClient {
           documentId,
           inputs,
           sourceExtensionId: options?.sourceExtensionId,
+          node: options?.node,
         },
       );
     },
@@ -2784,10 +2786,13 @@ export class ApiClient {
       spaceId: string,
       jobId: string,
       inputs: Record<string, unknown> = {},
+      /** Runs it on this node rather than the server. */
+      node?: string,
     ): Promise<{ outputs: Record<string, unknown>; logs: string[] }> => {
       return await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/jobs/run`, {
         jobId,
         inputs,
+        node,
       });
     },
 
@@ -2796,12 +2801,14 @@ export class ApiClient {
       jobId: string,
       inputs: Record<string, unknown> = {},
       signal?: AbortSignal,
+      /** Runs it on this node rather than the server. */
+      node?: string,
     ): Promise<Response> => {
       return fetch(`${this.baseUrl}/api/v1/spaces/${spaceId}/jobs/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ jobId, inputs, stream: true }),
+        body: JSON.stringify({ jobId, inputs, stream: true, node }),
         signal,
       });
     },

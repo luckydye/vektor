@@ -140,6 +140,7 @@ export const GET: ApiRouteHandler = (context) =>
  * Start a workflow run
  *
  * Returns `202 { runId }` immediately; execution proceeds in the background.
+ * `node` runs the script and its jobs on that node (`vektor agent serve`).
  *
  * @tag Workflows
  * @jobToken
@@ -164,8 +165,9 @@ export const POST: ApiRouteHandler = (context) =>
         inputs?: Record<string, unknown>;
         sourceExtensionId?: string;
         resumeFromRunId?: string;
+        node?: string;
       }>(context.req.raw);
-      const { sourceExtensionId, resumeFromRunId } = body;
+      const { sourceExtensionId, resumeFromRunId, node } = body;
 
       // Resume-from-failure: inherit the prior run's document + inputs and seed
       // its step cache so completed steps replay instead of re-executing. The
@@ -212,6 +214,7 @@ export const POST: ApiRouteHandler = (context) =>
         sourceExtensionId,
         runtimeInputs: inputs,
         seedCache,
+        node,
       });
 
       return jsonResponse({ runId }, 202);

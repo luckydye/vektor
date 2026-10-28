@@ -8,12 +8,22 @@ import {
   checkPayloadSize,
   MAX_PAYLOAD_BYTES,
   toBytes,
-} from "#jobs/runtime/capabilities.ts";
+} from "#jobs/runtime/portable.ts";
 import { PRELUDE } from "#jobs/runtime/prelude.ts";
 import type { CapabilityTable } from "#jobs/runtime/types.ts";
 import type { VmEvent } from "#native/exec/index.d.ts";
 import type { JobVm } from "#platform/platform.ts";
 import { getNativeExec } from "./native.ts";
+
+/**
+ * The document-conversion tools the image installs; one that does not ship
+ * would be admitted the day it does. Nodes offer the same set.
+ */
+export const JOB_EXEC_ALLOWLIST: ReadonlySet<string> = new Set([
+  "htmlq",
+  "pandoc",
+  "rsvg-convert",
+]);
 
 /** Wall-clock ceiling for one subprocess. */
 const EXEC_TIMEOUT_MS = 5 * 60 * 1000;

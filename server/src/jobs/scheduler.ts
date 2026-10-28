@@ -94,6 +94,8 @@ export async function runJob(
     /** The app credited for what the job does. */
     attribution: Attribution;
     jobId?: string;
+    /** The node to run on; see `JobRunContext.node`. */
+    node?: string;
     /** Capabilities granted on top of the standard table (workflows add runJob). */
     extraCapabilities?: CapabilityTable;
   },
@@ -104,6 +106,7 @@ export async function runJob(
     initiatedByUserId,
     attribution,
     jobId: logicalJobId,
+    node,
     extraCapabilities,
   } = options;
 
@@ -129,6 +132,7 @@ export async function runJob(
       initiatedByUserId: initiatedByUserId ?? null,
       attribution,
       inputs: { ...inputs, jobId: executionId, spaceId },
+      node,
       onLog: (message) => onLog?.(message),
       signal,
       timeoutMs,

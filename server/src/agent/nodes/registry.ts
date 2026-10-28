@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { CapabilityTable } from "#jobs/runtime/types.ts";
+import type { JobVmRun, JobVmRunning } from "#platform/platform.ts";
 import {
   type AgentNodeHost,
   decodeScreenMedia,
@@ -13,9 +15,10 @@ import {
 } from "./protocol.ts";
 
 /**
- * The nodes connected to this server and the tasks running on them. A node
- * belongs to the user whose access token it dialled in with, within one space,
- * and only agents running as that user can reach it.
+ * The nodes connected to this server and the tasks and jobs running on them. A
+ * node belongs to the user whose access token it dialled in with, within one
+ * space, and only agents running as that user can reach it. Jobs may also use
+ * a node shared with the space.
  */
 
 /** How long a node may be away before the tasks it was running are failed. */
@@ -69,6 +72,14 @@ type ChatTurn = {
   done(result: PromptResult): void;
 };
 
+/** A job on a node; its capability calls are answered from `capabilities`. */
+type RemoteJob = {
+  node: ConnectedNode;
+  capabilities: CapabilityTable;
+  onLog(message: string): void;
+  settle(outcome: { output?: unknown; error?: unknown }): void;
+};
+
 type ConnectedNode = {
   key: string;
   spaceId: string;
@@ -87,6 +98,7 @@ export class NodeRegistry implements AgentNodeHost {
   private nodes = new Map<string, ConnectedNode>();
   private tasks = new Map<string, RemoteTask>();
   private screens = new Map<string, OpenScreen>();
+  private jobs = new Map<string, RemoteJob>();
   /** A chat's session, by `nodeKey`-style chat key. */
   private chats = new Map<string, string>();
 
@@ -127,6 +139,10 @@ export class NodeRegistry implements AgentNodeHost {
     for (const [screenId, screen] of this.screens) {
       if (screen.nodeKey === node.key) this.endScreen(screenId, "The node went away.");
     }
+    // A job's capability calls cannot wait for a reconnect, so it fails at once.
+    for (const job of this.jobs.values()) {
+      if (job.node === node) job.settle({ error: `Node "${node.hello.name}" went offline.` });
+    }
     node.graceTimer = setTimeout(() => {
       if (this.nodes.get(node.key) === node) this.nodes.delete(node.key);
       for (const task of this.tasks.values()) {
@@ -151,6 +167,15 @@ export class NodeRegistry implements AgentNodeHost {
       if (this.screens.get(frame.screenId)?.nodeKey === node.key) {
         this.endScreen(frame.screenId, frame.error);
       }
+      return;
+    }
+    if (frame.type === "job.log" || frame.type === "job.call" || frame.type === "job.result") {
+      // Only a node's own jobs answer to it.
+      const job = this.jobs.get(frame.jobId);
+      if (job?.node !== node) return;
+      if (frame.type === "job.log") job.onLog(String(frame.message));
+      else if (frame.type === "job.call") void this.callForJob(job, frame);
+      else job.settle(frame);
       return;
     }
     // Only a node's own tasks answer to it.
@@ -268,7 +293,91 @@ export class NodeRegistry implements AgentNodeHost {
       maxSessions: node.hello.maxSessions,
       running: this.runningOn(node),
       online: node.transport !== null,
+      shared: node.hello.shared,
     }));
+  }
+
+  private jobsOn(node: ConnectedNode) {
+    let count = 0;
+    for (const job of this.jobs.values()) if (job.node === node) count++;
+    return count;
+  }
+
+  /**
+   * Runs a job on a node the run may use: one of its user's own, or one shared
+   * with the space. `node` names it; otherwise the least busy is taken.
+   */
+  runJob(
+    scope: { spaceId: string; userId: string | null; node?: string },
+    job: JobVmRun,
+  ): JobVmRunning {
+    const node = [...this.nodes.values()]
+      .filter(
+        (n) =>
+          n.transport &&
+          n.spaceId === scope.spaceId &&
+          (n.hello.shared || n.userId === scope.userId) &&
+          (!scope.node || n.hello.name === scope.node),
+      )
+      .sort((a, b) => this.jobsOn(a) - this.jobsOn(b))[0];
+    if (!node) {
+      throw new Error(
+        scope.node
+          ? `Node "${scope.node}" is not online for this job.`
+          : "No node is online to run this job. Start one with `vektor agent serve`.",
+      );
+    }
+
+    const jobId = `job-${randomUUID()}`;
+    const send = (frame: ServerToNodeFrame) => node.transport?.send(frame);
+    const result = new Promise<unknown>((resolve, reject) => {
+      this.jobs.set(jobId, {
+        node,
+        capabilities: job.capabilities,
+        onLog: job.onLog,
+        settle: ({ output, error }) => {
+          if (!this.jobs.delete(jobId)) return;
+          job.signal?.removeEventListener("abort", cancel);
+          if (error === undefined) resolve(output);
+          else reject(new Error(String(error)));
+        },
+      });
+    });
+    // Settled here rather than when the node confirms, so a node that does
+    // not answer cannot hold a cancelled run.
+    const cancel = () => {
+      send({ type: "job.cancel", jobId });
+      this.jobs.get(jobId)?.settle({ error: "Job cancelled" });
+    };
+    send({
+      type: "job.run",
+      jobId,
+      script: job.script,
+      inputs: job.inputs,
+      timeoutMs: job.timeoutMs,
+    });
+    if (job.signal?.aborted) cancel();
+    else job.signal?.addEventListener("abort", cancel, { once: true });
+    return { result, touch: () => send({ type: "job.touch", jobId }) };
+  }
+
+  /** Answers a node job's capability call from what the job was granted, and nothing else. */
+  private async callForJob(
+    job: RemoteJob,
+    frame: Extract<NodeToServerFrame, { type: "job.call" }>,
+  ) {
+    const { jobId, callId, name } = frame;
+    const reply = (answer: { value?: unknown; error?: string }) =>
+      job.node.transport?.send({ type: "job.reply", jobId, callId, ...answer });
+    try {
+      if (!Object.hasOwn(job.capabilities, name)) {
+        throw new Error(`"${name}" is not available in this job`);
+      }
+      const args = (Array.isArray(frame.args) ? frame.args : []) as never[];
+      reply({ value: (await job.capabilities[name](...args)) ?? null });
+    } catch (error) {
+      reply({ error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   async startRemoteTask(request: Parameters<AgentNodeHost["startRemoteTask"]>[0]) {

@@ -250,8 +250,10 @@ export function config() {
       AI_WEEKLY_MAX_TOKENS: process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS,
 
       /**
-       * Which runtime executes extension jobs and workflow scripts. Only "vm",
-       * the platform's job VM, ships today; isolation is not optional.
+       * Where extension jobs and workflow scripts run: "vm", the platform's job
+       * VM (the default), or "node", the VMs of nodes (`vektor agent serve`)
+       * only, so no job code runs on this server. A run that names a node
+       * runs there either way.
        */
       JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
       /**
@@ -526,8 +528,8 @@ if (typeof document === "undefined" && isNoAuthMode()) {
 // than the first job.
 if (typeof document === "undefined") {
   const jobRuntime = config().JOB_RUNTIME?.trim();
-  if (jobRuntime && jobRuntime !== "vm") {
-    throw new Error(`VEKTOR_JOB_RUNTIME must be "vm", got "${jobRuntime}"`);
+  if (jobRuntime && jobRuntime !== "vm" && jobRuntime !== "node") {
+    throw new Error(`VEKTOR_JOB_RUNTIME must be "vm" or "node", got "${jobRuntime}"`);
   }
 }
 

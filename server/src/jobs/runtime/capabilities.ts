@@ -18,7 +18,6 @@
  *   native, because there is no route to protect and no reason to pay for a hop.
  */
 
-import { createHash, createHmac } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { Attribution } from "#acl/apps.ts";
@@ -34,19 +33,19 @@ import {
   type UrlValidator,
   urlHostname,
 } from "#utils/ssrf.ts";
-import { readXlsxRows } from "#utils/xlsx.ts";
-import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
 import { JobCache } from "./jobCache.ts";
+import {
+  asBuffer,
+  asRecord,
+  asText,
+  checkPayloadSize,
+  createPortableCapabilities,
+  describeResponse,
+  isBytesEnvelope,
+  toBytes,
+} from "./portable.ts";
 import type { CapabilityTable } from "./types.ts";
-
-/** Base64 envelope marking binary data across the VM boundary. */
-const BYTES_KEY = "__bytes";
-
-/** Largest response body / file / subprocess output accepted from one call. */
-export const MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
-/** Ceiling for a single `sleep`, so a job cannot park past its own deadline. */
-const MAX_SLEEP_MS = 5 * 60 * 1000;
 
 /** Encoders the image addon ships; an unknown name would keep the input format silently. */
 const IMAGE_OUTPUT_FORMATS = new Set(["webp", "jpeg", "png"]);
@@ -59,59 +58,14 @@ export interface CapabilityContext {
   attribution: Attribution;
   onLog: (message: string) => void;
   signal?: AbortSignal;
+  /**
+   * The guest runs on a node, which handles the portable capabilities, the
+   * scratch directory and `exec` itself; the table then holds only what needs
+   * the server, so a node's job can never make the server fetch or run tools.
+   */
+  remote?: boolean;
   /** Capabilities layered on top of the standard table (workflows add runJob). */
   extra?: CapabilityTable;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Binary and argument coercion
-// ─────────────────────────────────────────────────────────────────────────────
-
-function isBytesEnvelope(value: unknown): value is Record<string, string> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>)[BYTES_KEY] === "string"
-  );
-}
-
-/** Wrap bytes for the trip back into the VM, where they become a `Uint8Array`. */
-export function toBytes(data: Buffer | Uint8Array): Record<string, string> {
-  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  return { [BYTES_KEY]: buffer.toString("base64") };
-}
-
-/**
- * Accept whatever the guest passed as content: a string, a `Uint8Array` (as an
- * envelope), or nothing.
- */
-export function asBuffer(value: unknown): Buffer<ArrayBuffer> {
-  if (value === undefined || value === null) return Buffer.alloc(0);
-  if (isBytesEnvelope(value)) return Buffer.from(value[BYTES_KEY], "base64");
-  if (typeof value === "string") return Buffer.from(value, "utf8");
-  if (Array.isArray(value)) return Buffer.from(value as number[]);
-  return Buffer.from(String(value), "utf8");
-}
-
-function asText(value: unknown): string {
-  if (value === undefined || value === null) return "";
-  if (isBytesEnvelope(value)) return asBuffer(value).toString("utf8");
-  if (typeof value === "string") return value;
-  return String(value);
-}
-
-export function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-export function checkPayloadSize(bytes: number, what: string): void {
-  if (bytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(
-      `${what} is ${bytes} bytes, over the ${MAX_PAYLOAD_BYTES} byte limit`,
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,35 +121,6 @@ export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
   return { url, addresses: isIP(hostname) ? [] : addresses };
 };
 
-/**
- * Flatten a `Response` into the plain shape the prelude rebuilds a
- * `Response`-like object from. The body crosses once, as bytes.
- */
-async function describeResponse(
-  response: Response,
-  requestedUrl: string,
-): Promise<Record<string, unknown>> {
-  const bytes = Buffer.from(await response.arrayBuffer());
-  checkPayloadSize(bytes.byteLength, `response from ${requestedUrl}`);
-
-  const headers: Record<string, string> = {};
-  response.headers.forEach((value, key) => {
-    // Cookies travel separately: a single header string cannot represent
-    // multiple Set-Cookie values, and jobs that follow logins need them intact.
-    if (key.toLowerCase() !== "set-cookie") headers[key] = value;
-  });
-
-  return {
-    status: response.status,
-    statusText: response.statusText,
-    url: response.url || requestedUrl,
-    redirected: response.redirected,
-    headers,
-    setCookies: response.headers.getSetCookie?.() ?? [],
-    body: toBytes(bytes),
-  };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // The table
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,7 +135,7 @@ export function createCapabilities(
   context: CapabilityContext,
 ): Capabilities {
   const { spaceId, jobId, initiatedByUserId, attribution, onLog, signal } = context;
-  const host = platform.jobVm.hostCapabilities(signal);
+  const host = context.remote ? null : platform.jobVm.hostCapabilities(signal);
   const cache = new JobCache(platform.jobCache, jobId);
 
   // Space operations authenticate exactly as they did from the sandbox: a
@@ -241,52 +166,13 @@ export function createCapabilities(
   }
 
   const table: CapabilityTable = {
-    // ── timing ───────────────────────────────────────────────────────────────
-    sleep: ((ms: unknown) =>
-      new Promise<null>((resolve, reject) => {
-        const delay = Math.min(Math.max(0, Number(ms) || 0), MAX_SLEEP_MS);
-        const timer = setTimeout(() => {
-          signal?.removeEventListener("abort", onAbort);
-          resolve(null);
-        }, delay);
-        const onAbort = () => {
-          clearTimeout(timer);
-          reject(new Error("cancelled"));
-        };
-        signal?.addEventListener("abort", onAbort, { once: true });
-      })) as never,
-
-    // ── network ──────────────────────────────────────────────────────────────
-    fetch: (async (rawUrl: unknown, rawInit: unknown) => {
-      const url = new URL(String(rawUrl));
-
-      const init = asRecord(rawInit);
-      const method = String(init.method ?? "GET").toUpperCase();
-      const body =
-        init.body === null || init.body === undefined
-          ? undefined
-          : isBytesEnvelope(init.body)
-            ? asBuffer(init.body)
-            : String(init.body);
-
-      // Validated and pinned on every hop: a bare `fetch` here let a public 302
-      // walk the server into loopback or the metadata endpoint.
-      const response = await platform.fetch(
-        url.href,
-        {
-          method,
-          headers: Object.fromEntries(
-            Object.entries(asRecord(init.headers)).map(([k, v]) => [k, String(v)]),
-          ),
-          body,
-          ...(init.redirect === "manual" ? { redirect: "manual" as const } : {}),
-          signal,
-        },
-        assertEgressAllowed,
-      );
-
-      return await describeResponse(response, url.href);
-    }) as never,
+    // Validated and pinned on every hop: a bare `fetch` here let a public 302
+    // walk the server into loopback or the metadata endpoint.
+    ...(host &&
+      createPortableCapabilities(
+        (url, init) => platform.fetch(url, init, assertEgressAllowed),
+        signal,
+      )),
 
     /**
      * Call this Vektor instance's own API with the run's job token.
@@ -350,25 +236,6 @@ export function createCapabilities(
     }) as never,
 
     // ── compute ──────────────────────────────────────────────────────────────
-    hash: ((algorithm: unknown, data: unknown) =>
-      createHash(String(algorithm ?? "sha256"))
-        .update(asBuffer(data))
-        .digest("hex")) as never,
-
-    /**
-     * Keyed digest, bytes by default so the caller can chain one result into the
-     * next key — AWS SigV4 derives its signing key that way, and a hex string
-     * would have to be decoded at every step.
-     */
-    hmac: ((algorithm: unknown, key: unknown, data: unknown, encoding: unknown) => {
-      const digest = createHmac(String(algorithm ?? "sha256"), asBuffer(key))
-        .update(asBuffer(data))
-        .digest();
-      return String(encoding ?? "bytes") === "hex"
-        ? digest.toString("hex")
-        : toBytes(digest);
-    }) as never,
-
     imageMetadata: (async (bytes: unknown) =>
       platform.imageTransformer.metadata(asBuffer(bytes))) as never,
 
@@ -393,46 +260,6 @@ export function createCapabilities(
       });
       if (!out) throw new Error("image.transform: the input could not be transformed");
       return toBytes(out);
-    }) as never,
-
-    zipRead: ((bytes: unknown) => {
-      const archive = unzipSync(new Uint8Array(asBuffer(bytes)));
-      return {
-        entries: Object.entries(archive).map(([name, data]) => ({
-          name,
-          data: toBytes(data),
-        })),
-      };
-    }) as never,
-
-    zipWrite: ((rawEntries: unknown) => {
-      const entries = Array.isArray(rawEntries) ? rawEntries : [];
-      return toBytes(
-        createZipBuffer(
-          entries.map((entry) => {
-            const { name, data } = asRecord(entry);
-            return { name: String(name), data: asBuffer(data) };
-          }),
-        ),
-      );
-    }) as never,
-
-    /**
-     * Parse a spreadsheet to a row grid. Host-side because the JS parser is a
-     * 1.4 MB bundle that every job using it used to carry, and parsing it in an
-     * interpreter is far slower than doing it here.
-     */
-    spreadsheetToRows: ((bytes: unknown, rawOptions: unknown) => {
-      const options = asRecord(rawOptions);
-      return readXlsxRows(new Uint8Array(asBuffer(bytes)), {
-        cellDates: options.cellDates === true,
-        raw: options.raw === true,
-        blankRows: options.blankRows === true,
-        sheet:
-          typeof options.sheet === "string" || typeof options.sheet === "number"
-            ? options.sheet
-            : undefined,
-      });
     }) as never,
 
     // ── cache ────────────────────────────────────────────────────────────────
@@ -537,13 +364,13 @@ export function createCapabilities(
     }) as never,
 
     // ── scratch filesystem and tools ─────────────────────────────────────────
-    ...host.table,
+    ...host?.table,
 
     ...context.extra,
   };
 
   return {
     table,
-    dispose: () => host.dispose(),
+    dispose: async () => host?.dispose(),
   };
 }
