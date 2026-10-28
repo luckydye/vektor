@@ -10,12 +10,13 @@ import type { CapabilityTable } from "./runtime/types.ts";
 
 /**
  * Jobs on runners: anything outside this server that runs job code, by one
- * contract (docs/job-runners.md). A runner gets a {@link RunnerRequest} and
- * answers with a {@link RunnerResponse}; while the job runs, it asks for
- * capabilities by POSTing `{ name, args }` to `host.url` with `host.token`.
- * The server answers from the job's table, which holds no capability that
- * touches this server's network, disk or processes, so a runner's job can
- * never make the server do those.
+ * contract (docs/job-runners.md). A runner accepts a {@link RunnerRequest}
+ * and, while the job runs, calls capabilities by POSTing `{ name, args }` to
+ * `host.url` with `host.token`; the `result` call ends the job with a
+ * {@link RunnerResponse}. Every hop is a short request, so no connection has
+ * to last as long as the job. The server answers from the job's table, which
+ * holds no capability that touches this server's network, disk or processes,
+ * so a runner's job can never make the server do those.
  *
  * Runners are the space's HTTP endpoints (space settings) and nodes
  * (`vektor agent serve`), which get the same request over their socket.
@@ -35,11 +36,15 @@ export type RunnerRequest = {
 /** `error` when the job failed, else what it returned. */
 export type RunnerResponse = { output?: unknown; error?: string };
 
-/** Runs a request until it answers; rejects with `signal.reason` once aborted. */
+/**
+ * Hands a request to a runner. Resolves once it is accepted, with the result
+ * when the transport carries it (a node's socket), else with nothing: the
+ * result then arrives as the job's `result` call.
+ */
 export type RunRequest = (
   request: RunnerRequest,
   signal: AbortSignal,
-) => Promise<RunnerResponse>;
+) => Promise<RunnerResponse | undefined>;
 
 export type Runner = {
   /** Identifies the runner across jobs, for spreading them. */
@@ -57,6 +62,8 @@ type RemoteJob = {
   capabilities: CapabilityTable;
   onLog(message: string): void;
   touch(): void;
+  /** Ends the job; only the first result counts, so a runner may retry it. */
+  finish(response: RunnerResponse): void;
 };
 
 const remoteJobs = new Map<string, RemoteJob>();
@@ -73,23 +80,24 @@ async function httpRunners(platform: Platform, spaceId: string): Promise<Runner[
     key: `http:${spaceId}:${runner.id}`,
     name: runner.name,
     async run(request, signal) {
-      const init: BunFetchRequestInit & { method: string } = {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${runner.secret}`,
+      const response = await platform.fetch(
+        runner.url,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${runner.secret}`,
+          },
+          body: JSON.stringify(request),
+          signal,
         },
-        body: JSON.stringify(request),
-        signal,
-        // A job is one request for as long as it runs; its deadline is ours.
-        timeout: false,
-      };
-      const response = await platform.fetch(runner.url, init, assertEgressAllowed);
+        assertEgressAllowed,
+      );
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
         throw new Error(`Runner "${runner.name}" answered ${response.status}: ${detail}`);
       }
-      return (await response.json()) as RunnerResponse;
+      return undefined;
     },
   }));
 }
@@ -124,8 +132,10 @@ async function chooseRunner(
 }
 
 /**
- * Runs a job on a runner. The deadline is kept here, renewed by every
- * capability call, log and `touch`, so a runner need not keep one.
+ * Runs a job on a runner. The deadline is kept here: it is the same
+ * inactivity deadline as the job VM's, renewed by every call the runner
+ * makes, so a runner that goes away fails the job once it has been quiet
+ * that long.
  */
 export function runOnRunner(
   platform: Platform,
@@ -137,7 +147,9 @@ export function runOnRunner(
   const controller = new AbortController();
   const timeoutMs = job.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let done = false;
   const touch = () => {
+    if (done) return;
     clearTimeout(timer);
     timer = setTimeout(
       () => controller.abort(new Error(`timed out after ${timeoutMs}ms`)),
@@ -151,27 +163,40 @@ export function runOnRunner(
     job.signal?.addEventListener("abort", cancel, { once: true });
     try {
       const runner = await chooseRunner(platform, scope);
+      const finished = Promise.withResolvers<RunnerResponse>();
+      if (controller.signal.aborted) finished.reject(controller.signal.reason);
+      controller.signal.addEventListener(
+        "abort",
+        () => finished.reject(controller.signal.reason),
+        { once: true },
+      );
       remoteJobs.set(jobId, {
         token,
         runner: runner.key,
         capabilities: job.capabilities,
         onLog: job.onLog,
         touch,
+        finish: finished.resolve,
       });
       touch();
-      const response = await runner.run(
-        {
-          jobId,
-          script: job.script,
-          inputs: job.inputs,
-          prelude: JOB_RUNNER,
-          host: { url: `${callbackOrigin()}/api/v1/jobs/${jobId}/call`, token },
-        },
-        controller.signal,
-      );
+      // Not awaited: the result may come back before the runner's answer does.
+      runner
+        .run(
+          {
+            jobId,
+            script: job.script,
+            inputs: job.inputs,
+            prelude: JOB_RUNNER,
+            host: { url: `${callbackOrigin()}/api/v1/jobs/${jobId}/call`, token },
+          },
+          controller.signal,
+        )
+        .then((response) => response && finished.resolve(response), finished.reject);
+      const response = await finished.promise;
       if (response.error !== undefined) throw new Error(String(response.error));
       return response.output;
     } finally {
+      done = true;
       clearTimeout(timer);
       // The token dies with the job: a runner that keeps going is refused.
       remoteJobs.delete(jobId);
@@ -200,6 +225,16 @@ export async function answerRunnerCall(
   job.touch();
   if (name === "log") {
     job.onLog(String(args[0] ?? ""));
+    return { value: null };
+  }
+  // Keeps a job that works quietly from passing its deadline.
+  if (name === "touch") return { value: null };
+  if (name === "result") {
+    const response = args[0];
+    if (typeof response !== "object" || response === null) {
+      return { error: "result takes { output } or { error }" };
+    }
+    job.finish(response as RunnerResponse);
     return { value: null };
   }
   try {

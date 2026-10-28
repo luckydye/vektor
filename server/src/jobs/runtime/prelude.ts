@@ -290,10 +290,11 @@ export const PRELUDE = String.raw`
 
 /**
  * What a JS runner evaluates to run a job (see docs/job-runners.md):
- * `eval(prelude)(host, extra)(script, input)` resolves with the job's result.
- * Capability calls go to `host.url` with `host.token`; bytes cross as base64
- * envelopes, which this encodes and decodes. `extra` adds globals of the
- * runner's own, and the guest's `fetch` and timers are the runner's.
+ * `eval(prelude)(host, extra)(script, input)` runs it and reports its result
+ * to the server, resolving once that is delivered. Capability calls go to
+ * `host.url` with `host.token`; bytes cross as base64 envelopes, which this
+ * encodes and decodes. `extra` adds globals of the runner's own, and the
+ * guest's `fetch` and timers are the runner's.
  */
 export const JOB_RUNNER = String.raw`
 (host, extra = {}) => {
@@ -345,11 +346,22 @@ export const JOB_RUNNER = String.raw`
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       ...extra,
     };
+    let result;
     try {
       const run = new AsyncFunction(...Object.keys(scope), "input", script);
-      return encode(await run(...Object.values(scope), input));
-    } finally {
-      await logs;
+      result = { output: encode(await run(...Object.values(scope), input)) };
+    } catch (error) {
+      result = { error: error instanceof Error ? error.message : String(error) };
+    }
+    await logs;
+    // The server keeps only the first result, so retrying is safe.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await send("result", [result]);
+      } catch (error) {
+        if (attempt === 5) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+      }
     }
   };
 }
