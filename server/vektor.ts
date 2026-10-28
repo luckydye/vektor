@@ -9,7 +9,7 @@
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
  *   vektor mcp
  *   vektor agent [prompt...] [--doc <slug|id>] [--once]
- *   vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--capabilities <module>] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path[:path-in-env]>]... [--gateway <ip>] [--env-workdir <dir>]
+ *   vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path[:path-in-env]>]... [--gateway <ip>] [--env-workdir <dir>]
  *   vektor workflow run <docId> [--input key=value ...] [--node <name>] [--json]
  *   vektor workflow logs <runId>
  *   vektor extension create <id>
@@ -160,7 +160,6 @@ function parseServeArgs(args: string[]): ServeOptions {
     autoApprove: flags.has("auto-approve"),
     allowShell: flags.has("allow-shell"),
     shared: flags.has("shared"),
-    capabilities: one("capabilities"),
     managed: {
       env: Object.fromEntries(
         (flags.get("env") ?? []).map((spec) => {
@@ -194,7 +193,7 @@ Commands:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor mcp
   vektor agent [prompt...] [--doc <slug|id>] [--once]
-  vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--capabilities <module>] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path>]...
+  vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path>]...
   vektor workflow run <docId> [--input key=value ...] [--node <name>] [--json]
   vektor workflow logs <runId>
   vektor extension create <id>

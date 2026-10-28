@@ -57,25 +57,7 @@ export type ServeOptions = {
   managed: Omit<ManagedOptions, "manager" | "host">;
   /** Runs jobs for anyone in the space, not only for the logged-in user. */
   shared: boolean;
-  /** A module whose function exports are capabilities this node's jobs get as globals. */
-  capabilities?: string;
 };
-
-/**
- * The function exports of `path`. Each takes the guest's arguments as JSON
- * values, bytes as `{ __bytes: base64 }`, and returns one the same way.
- */
-async function loadCapabilities(path: string): Promise<CapabilityTable> {
-  const exported = (await import(resolve(path))) as Record<string, unknown>;
-  const table: CapabilityTable = {};
-  for (const [name, value] of Object.entries(exported)) {
-    if (typeof value !== "function") {
-      throw new Error(`${path}: export "${name}" is not a function`);
-    }
-    table[name] = value as CapabilityTable[string];
-  }
-  return table;
-}
 
 /** Bun's WebSocket constructor also takes request headers, which the DOM typings lack. */
 type WebSocketInit = ConstructorParameters<typeof WebSocket>[1] & {
@@ -163,13 +145,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   const outbox: NodeToServerFrame[] = [];
   const screens = new Map<string, ScreenSession>();
   const jobs = new Map<string, AbortController>();
-  const ownCapabilities = options.capabilities
-    ? await loadCapabilities(options.capabilities)
-    : {};
-  const jobVm = createBoaJobVm({
-    execAllowlist: JOB_EXEC_ALLOWLIST,
-    globals: Object.keys(ownCapabilities),
-  });
+  const jobVm = createBoaJobVm({ execAllowlist: JOB_EXEC_ALLOWLIST });
   let socket: WebSocket | null = null;
 
   function send(frame: NodeToServerFrame) {
@@ -291,9 +267,9 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
 
   /**
    * Runs a job in this node's VM, as any runner does (docs/job-runners.md).
-   * `fetch`, timers, the compute helpers, the scratch directory, `exec` and
-   * the node's own capabilities run here; every other capability, and each
-   * log line, is a call to the server.
+   * `fetch`, timers, the compute helpers, the scratch directory and `exec`
+   * run here; every other capability, and each log line, is a call to the
+   * server.
    */
   async function runJob({ jobId, script, inputs, host }: RunnerRequest) {
     const controller = new AbortController();
@@ -322,7 +298,6 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     const local: CapabilityTable = {
       ...createPortableCapabilities((url, init) => fetch(url, init), controller.signal),
       ...scratch.table,
-      ...ownCapabilities,
     };
     const capabilities = new Proxy(local, {
       get: (table, name) =>

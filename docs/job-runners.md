@@ -70,20 +70,7 @@ const run = eval(job.prelude)(job.host, {
 });
 ```
 
-A node takes a module instead. Every export must be a function, and each becomes a global in the node's jobs:
-
-```sh
-vektor agent serve --capabilities ./capabilities.ts
-```
-
-```ts
-// capabilities.ts
-export async function gpuInfo() {
-  return { name: "RTX 4090", memoryGb: 24 };
-}
-```
-
-Arguments and results are JSON, with bytes as `{ "__bytes": "<base64>" }`.
+Nodes (`vektor agent serve`) offer the standard set only.
 
 ## What runs where
 
