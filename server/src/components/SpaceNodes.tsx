@@ -6,7 +6,7 @@ interface Props {
   nodes: NodeSummary[] | undefined;
 }
 
-/** The devices the user's agents and chats can run on. */
+/** The devices the user's agents, chats and jobs can run on. */
 export function SpaceNodes(props: Props) {
   return (
     <Show
@@ -36,6 +36,7 @@ export function SpaceNodes(props: Props) {
                 </div>
                 <p class="mt-0.5 truncate text-neutral-500 text-size-small">
                   {node.os} · {node.workdir}
+                  {node.shared ? " · runs jobs for the whole space" : ""}
                 </p>
               </div>
               <div class="text-right text-neutral-500 text-size-small">

@@ -396,6 +396,7 @@ export function AIChatPanel(props: Props) {
                       nodes={agentNodes() ?? []}
                       value={chatNode()}
                       onChange={currentSessionId() ? undefined : setChatNode}
+                      label="Run the agent on"
                     />
                   </Show>
                   <Show

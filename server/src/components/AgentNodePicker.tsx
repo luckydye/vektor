@@ -7,9 +7,11 @@ interface Props {
   value: string | null;
   /** Unset shows the choice without letting it change, as for a running chat. */
   onChange?: (node: string | null) => void;
+  /** What runs there, as in "Run the agent on". */
+  label: string;
 }
 
-/** Where a chat's agent runs: on the server, or on one of the user's nodes. */
+/** Where a chat's agent or a workflow runs: on the server, or on one of the user's nodes. */
 export function AgentNodePicker(props: Props) {
   return (
     <Show
@@ -22,8 +24,8 @@ export function AgentNodePicker(props: Props) {
     >
       {(onChange) => (
         <select
-          aria-label="Run the agent on"
-          title="Run the agent on"
+          aria-label={props.label}
+          title={props.label}
           value={props.value ?? ""}
           onChange={(event) => onChange()(event.currentTarget.value || null)}
           class="focus-ring min-w-0 max-w-[10rem] truncate rounded-md bg-transparent px-1.5 py-1 text-neutral-600 text-size-small hover:bg-neutral-100"

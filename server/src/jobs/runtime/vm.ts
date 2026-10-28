@@ -1,9 +1,11 @@
 /**
- * Runs guest code in the platform's job VM, one job per call. The VM owns
- * execution, timeouts and the host-call protocol; this assembles the
- * capabilities and turns what the guest produced into stored outputs.
+ * Runs guest code in the platform's job VM, or in a node's, one job per call.
+ * The VM owns execution, timeouts and the host-call protocol; this assembles
+ * the capabilities and turns what the guest produced into stored outputs.
  */
 
+import { nodeRegistry } from "#agent/nodes/registry.ts";
+import { config } from "#config";
 import { persistOutputBlobs } from "#jobs/outputBlobs.ts";
 import { createCapabilities } from "./capabilities.ts";
 import type { JobExecution, JobRunContext, JobRuntime } from "./types.ts";
@@ -14,6 +16,7 @@ export function createVmRuntime(): JobRuntime {
 
     execute(code: string, context: JobRunContext): JobExecution {
       const { platform } = context;
+      const remote = context.node !== undefined || config().JOB_RUNTIME === "node";
 
       /**
        * Where `output(...)` lands.
@@ -34,6 +37,7 @@ export function createVmRuntime(): JobRuntime {
         attribution: context.attribution,
         onLog: context.onLog,
         signal: context.signal,
+        remote,
         extra: {
           // Blobs are stored while the VM is still alive, so the job learns
           // here if its bytes were rejected rather than after it has finished.
@@ -51,14 +55,24 @@ export function createVmRuntime(): JobRuntime {
         },
       });
 
-      const running = platform.jobVm.run({
+      const job = {
         script: code,
         inputs: context.inputs,
         capabilities: capabilities.table,
         onLog: context.onLog,
         timeoutMs: context.timeoutMs,
         signal: context.signal,
-      });
+      };
+      const running = remote
+        ? nodeRegistry.runJob(
+            {
+              spaceId: context.spaceId,
+              userId: context.initiatedByUserId,
+              node: context.node,
+            },
+            job,
+          )
+        : platform.jobVm.run(job);
 
       const result = (async () => {
         try {

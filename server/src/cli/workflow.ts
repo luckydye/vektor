@@ -5,7 +5,7 @@
  * with VEKTOR_HOST, VEKTOR_SPACE_ID and VEKTOR_ACCESS_TOKEN.
  *
  * Usage:
- *   vektor workflow run <docId> [--input key=value ...] [--file key=/path ...] [--json]
+ *   vektor workflow run <docId> [--input key=value ...] [--file key=/path ...] [--node <name>] [--json]
  *
  * Examples:
  *   vektor workflow abc123 --input file=https://example.com/data.xlsx
@@ -28,6 +28,8 @@ export type CliOptions = {
   documentId: string;
   inputs: Record<string, unknown>;
   filePaths: Record<string, string>;
+  /** Runs it on this node (`vektor agent serve`) rather than the server. */
+  node?: string;
   json: boolean;
 };
 
@@ -37,7 +39,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function usage(): string {
   return [
-    "Usage: vektor workflow run <docId> [--input key=value ...] [--json]",
+    "Usage: vektor workflow run <docId> [--input key=value ...] [--node <name>] [--json]",
     "",
     "Connection: vektor login, or VEKTOR_HOST / VEKTOR_SPACE_ID / VEKTOR_ACCESS_TOKEN",
     "",
@@ -58,6 +60,7 @@ export function parseArgs(argv: string[]): CliOptions {
 
   const inputs: Record<string, unknown> = {};
   const filePaths: Record<string, string> = {};
+  let node: string | undefined;
   let json = false;
 
   for (let i = 1; i < argv.length; i++) {
@@ -80,6 +83,12 @@ export function parseArgs(argv: string[]): CliOptions {
       i++;
       continue;
     }
+    if (arg === "--node") {
+      node = argv[i + 1];
+      assert(node, "--node requires a node name");
+      i++;
+      continue;
+    }
     if (arg === "--json") {
       json = true;
       continue;
@@ -91,6 +100,7 @@ export function parseArgs(argv: string[]): CliOptions {
     documentId,
     inputs,
     filePaths,
+    node,
     json,
   };
 }
@@ -166,7 +176,7 @@ export async function commandLogs(runId: string): Promise<void> {
 }
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
-  const { documentId, inputs, filePaths, json } = options;
+  const { documentId, inputs, filePaths, node, json } = options;
   const { host, token, spaceId } = await resolveConfig();
 
   for (const [key, filePath] of Object.entries(filePaths)) {
@@ -185,6 +195,7 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
       body: JSON.stringify({
         documentId,
         inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
+        node,
       }),
     },
   )) as { runId: string };

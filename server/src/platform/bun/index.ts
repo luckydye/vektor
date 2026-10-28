@@ -10,7 +10,7 @@ import { assertOutsideTransaction } from "#utils/transactionScope.ts";
 import { createDatabase, dataDirectory, getAuthDatabaseUrl } from "./database.ts";
 import { createBunFetch } from "./fetch.ts";
 import { diskJobCacheStore } from "./jobCacheStore.ts";
-import { createBoaJobVm } from "./jobVm.ts";
+import { createBoaJobVm, JOB_EXEC_ALLOWLIST } from "./jobVm.ts";
 import { createLocalBlobStore } from "./localBlobStore.ts";
 import { smtpMailer } from "./mailer.ts";
 import { getNativeEmbedding, getNativeImage } from "./native.ts";
@@ -96,11 +96,7 @@ export function createBunPlatform(): Platform {
       },
     },
 
-    jobVm: createBoaJobVm({
-      // The document-conversion tools the image installs; one that does not ship
-      // would be admitted the day it does.
-      execAllowlist: new Set(["htmlq", "pandoc", "rsvg-convert"]),
-    }),
+    jobVm: createBoaJobVm({ execAllowlist: JOB_EXEC_ALLOWLIST }),
 
     docSerializer: poolDocSerializer,
 

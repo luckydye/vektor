@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { hostname, platform } from "node:os";
 import { resolve } from "node:path";
 import {
@@ -9,6 +10,9 @@ import {
   type ServerToNodeFrame,
 } from "#agent/nodes/protocol.ts";
 import { resolveConfig } from "#cli/resolve.ts";
+import { createPortableCapabilities } from "#jobs/runtime/portable.ts";
+import type { CapabilityTable } from "#jobs/runtime/types.ts";
+import { createBoaJobVm, JOB_EXEC_ALLOWLIST } from "#platform/bun/jobVm.ts";
 import { commandAdapter, echoAdapter, vektorAdapter } from "./adapters.ts";
 import { type ManagedOptions, managedAdapter } from "./managed.ts";
 import { terminalConfirm } from "./policy.ts";
@@ -23,7 +27,8 @@ import type {
 /**
  * `vektor agent serve` — makes this device a node: it dials the server, then
  * runs the agents the server sends tasks to, as subprocesses speaking ACP, and
- * relays their updates back. The node is a bridge, not an agent.
+ * relays their updates back. The node is a bridge, not an agent. It also runs
+ * the server's jobs and workflow scripts in its own job VM.
  */
 
 const WS_CLOSE_UNAUTHORIZED = 4401;
@@ -50,6 +55,8 @@ export type ServeOptions = {
   managers: Record<string, string[]>;
   /** How those environments are used; each manager's own command and the server's host are added. */
   managed: Omit<ManagedOptions, "manager" | "host">;
+  /** Runs jobs for anyone in the space, not only for the logged-in user. */
+  shared: boolean;
 };
 
 /** Bun's WebSocket constructor also takes request headers, which the DOM typings lack. */
@@ -111,6 +118,13 @@ type Running = {
   cancelled: boolean;
 };
 
+type RunningJob = {
+  controller: AbortController;
+  touch(): void;
+  /** Capability calls waiting for the server's reply. */
+  calls: Map<string, PromiseWithResolvers<unknown>>;
+};
+
 const log = (message: string) => process.stderr.write(`${message}\n`);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
@@ -134,6 +148,8 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   /** Frames that could not be sent because the server was away. */
   const outbox: NodeToServerFrame[] = [];
   const screens = new Map<string, ScreenSession>();
+  const jobs = new Map<string, RunningJob>();
+  const jobVm = createBoaJobVm({ execAllowlist: JOB_EXEC_ALLOWLIST });
   let socket: WebSocket | null = null;
 
   function send(frame: NodeToServerFrame) {
@@ -141,8 +157,9 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
       socket.send(JSON.stringify(frame));
       return;
     }
-    // A ping is only worth sending to a server that is there.
-    if (frame.type === "ping") return;
+    // A ping is only worth sending to a server that is there, and a job's
+    // frames only to the connection it ran on: the server fails it on disconnect.
+    if (frame.type === "ping" || frame.type.startsWith("job.")) return;
     outbox.push(frame);
     if (outbox.length > MAX_OUTBOX) outbox.shift();
   }
@@ -252,6 +269,71 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     finish(taskId, result.stopReason, result.error);
   }
 
+  /**
+   * Runs a job in this node's VM. The portable capabilities, the scratch
+   * directory and `exec` run here; every other capability is asked of the
+   * server, which grants or refuses it.
+   */
+  function runJob(frame: Extract<ServerToNodeFrame, { type: "job.run" }>) {
+    const { jobId } = frame;
+    const controller = new AbortController();
+    const calls = new Map<string, PromiseWithResolvers<unknown>>();
+    const host = jobVm.hostCapabilities(controller.signal);
+    const local: CapabilityTable = {
+      ...createPortableCapabilities((url, init) => fetch(url, init), controller.signal),
+      ...host.table,
+    };
+    const relay =
+      (name: string) =>
+      (...args: unknown[]) => {
+        const callId = randomUUID();
+        const call = Promise.withResolvers<unknown>();
+        calls.set(callId, call);
+        send({ type: "job.call", jobId, callId, name, args });
+        return call.promise;
+      };
+    const capabilities = new Proxy(local, {
+      get: (table, name) =>
+        typeof name !== "string"
+          ? undefined
+          : Object.hasOwn(table, name)
+            ? table[name]
+            : relay(name),
+    });
+    const running = jobVm.run({
+      script: frame.script,
+      inputs: frame.inputs,
+      capabilities,
+      onLog: (message) => send({ type: "job.log", jobId, message }),
+      timeoutMs: frame.timeoutMs,
+      signal: controller.signal,
+    });
+    jobs.set(jobId, { controller, touch: running.touch, calls });
+    void running.result
+      .then(
+        (output) => send({ type: "job.result", jobId, output: output ?? null }),
+        (error) =>
+          send({
+            type: "job.result",
+            jobId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      )
+      .finally(() => {
+        jobs.delete(jobId);
+        void host.dispose();
+      });
+  }
+
+  function answerJobCall(frame: Extract<ServerToNodeFrame, { type: "job.reply" }>) {
+    const calls = jobs.get(frame.jobId)?.calls;
+    const call = calls?.get(frame.callId);
+    if (!call) return;
+    calls?.delete(frame.callId);
+    if (frame.error === undefined) call.resolve(frame.value ?? null);
+    else call.reject(new Error(frame.error));
+  }
+
   function handle(frame: ServerToNodeFrame) {
     if (frame.type === "ping") return;
     if (frame.type === "session.new") startSession(frame);
@@ -261,6 +343,10 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     else if (frame.type === "screen.input")
       screens.get(frame.screenId)?.input(frame.events);
     else if (frame.type === "screen.close") screens.get(frame.screenId)?.close();
+    else if (frame.type === "job.run") runJob(frame);
+    else if (frame.type === "job.reply") answerJobCall(frame);
+    else if (frame.type === "job.touch") jobs.get(frame.jobId)?.touch();
+    else if (frame.type === "job.cancel") jobs.get(frame.jobId)?.controller.abort();
     else if (frame.type === "session.cancel") {
       const entry = running.get(frame.taskId);
       if (!entry) return;
@@ -302,6 +388,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
             adapters: [...adapters.keys()],
             maxSessions: options.maxSessions,
             sessions,
+            shared: options.shared,
           } satisfies NodeToServerFrame),
         );
         for (const frame of outbox.splice(0)) ws.send(JSON.stringify(frame));
@@ -316,6 +403,8 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
       ws.onclose = (event) => {
         clearInterval(heartbeat);
         if (socket === ws) socket = null;
+        // The server has failed them; their capability calls would go unanswered.
+        for (const job of jobs.values()) job.controller.abort();
         done(event.code);
       };
     });
@@ -333,7 +422,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   process.once("SIGTERM", () => void stop());
 
   log(
-    `vektor node "${name}" · ${connection.host} · space ${connection.spaceId} · adapters ${[...adapters.keys()].join(", ")}`,
+    `vektor node "${name}" · ${connection.host} · space ${connection.spaceId} · adapters ${[...adapters.keys()].join(", ")}${options.shared ? " · runs jobs for the whole space" : ""}`,
   );
   let backoff = MIN_BACKOFF_MS;
   while (true) {

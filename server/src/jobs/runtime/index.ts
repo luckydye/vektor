@@ -3,8 +3,9 @@
  *
  * There is one runtime today and the whole system talks to it through
  * `JobRuntime`, so swapping in another executor is a change to this function and
- * nothing else. `VEKTOR_JOB_RUNTIME` names that choice and is validated at boot
- * in `config.ts`; isolation is not optional.
+ * nothing else. Its VM is the platform's or a node's: `VEKTOR_JOB_RUNTIME`
+ * (validated at boot in `config.ts`) and a run's `node` choose; isolation is
+ * not optional.
  */
 
 import type { JobRuntime } from "./types.ts";

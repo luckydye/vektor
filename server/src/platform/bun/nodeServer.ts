@@ -13,6 +13,7 @@ import {
   parseFrame,
 } from "#agent/nodes/protocol.ts";
 import { nodeRegistry } from "#agent/nodes/registry.ts";
+import { MAX_PAYLOAD_BYTES } from "#jobs/runtime/portable.ts";
 import { isNoAuthMode } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
@@ -24,7 +25,8 @@ const SCREEN_PATH = /^\/screens\/([^/]+)\/([^/]+)$/;
 /** Media a slow viewer may have queued before its screen is closed rather than lag further. */
 const MAX_VIEWER_BUFFER_BYTES = 8 * 1024 * 1024;
 
-const MAX_FRAME_BYTES = 1024 * 1024;
+/** Fits a job's capability call or reply: a payload at its limit, base64-encoded, with room for the frame. */
+const MAX_FRAME_BYTES = Math.ceil((MAX_PAYLOAD_BYTES * 4) / 3) + 1024 * 1024;
 const WS_CLOSE_UNAUTHORIZED = 4401;
 const WS_CLOSE_FORBIDDEN = 4403;
 
@@ -213,6 +215,7 @@ async function acceptNode(
         sessions: Array.isArray(frame.sessions)
           ? frame.sessions.filter((s) => typeof s === "string")
           : [],
+        shared: frame.shared === true,
       };
       connection = nodeRegistry.connect({ spaceId, userId: identity.userId }, hello, {
         send: (out) => websocket.readyState === 1 && websocket.send(JSON.stringify(out)),

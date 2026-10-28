@@ -2,12 +2,14 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { api } from "#api/client.ts";
+import { useNodes } from "#composeables/useNodes.ts";
 import { useToast } from "#composeables/useToast.ts";
 import {
   parseWorkflowInputFields,
   type WorkflowInputField,
 } from "#documents/workflowInputs.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
+import { AgentNodePicker } from "./AgentNodePicker.tsx";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowRunInputsDialog } from "./WorkflowRunInputsDialog.tsx";
@@ -28,6 +30,12 @@ export function WorkflowRunButton(props: Props) {
   const [latestRunStatus, setLatestRunStatus] = createSignal<string | null>(null);
   const [promptFields, setPromptFields] = createSignal<WorkflowInputField[] | null>(null);
   const [promptError, setPromptError] = createSignal<string | null>(null);
+  /** The node to run on; null is the server. */
+  const [node, setNode] = createSignal<string | null>(null);
+  const nodes = useNodes(() => true);
+  const onlineNodes = createMemo(() =>
+    nodes()?.flatMap((n) => (n.online ? [n.name] : [])),
+  );
 
   const isActiveRun = createMemo(
     () => latestRunStatus() === "running" || latestRunStatus() === "pending",
@@ -48,6 +56,7 @@ export function WorkflowRunButton(props: Props) {
         props.spaceId,
         props.documentId,
         inputs,
+        { node: node() ?? undefined },
       );
       setLatestRunId(runId);
       setLatestRunStatus("running");
@@ -118,6 +127,14 @@ export function WorkflowRunButton(props: Props) {
 
   return (
     <>
+      <Show when={!isActiveRun() && onlineNodes()?.length}>
+        <AgentNodePicker
+          nodes={onlineNodes() ?? []}
+          value={node()}
+          onChange={setNode}
+          label="Run the workflow on"
+        />
+      </Show>
       <Show
         when={isActiveRun()}
         fallback={

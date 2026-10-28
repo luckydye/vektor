@@ -3,6 +3,11 @@
  * per WebSocket message. The node dials in, so it needs no inbound port.
  * Inbound messages for a running agent are not a frame: they wait in the
  * task's mailbox and the agent reads them through the `read_messages` MCP tool.
+ *
+ * A node also runs jobs and workflow scripts in its own VM. It handles the
+ * portable capabilities, the scratch directory and `exec` itself, and asks the
+ * server for every other capability with `job.call`, so it never holds a
+ * credential for the space.
  */
 
 /** How often each side pings, and how long silence may last before the node is offline. */
@@ -19,6 +24,8 @@ export type NodeHelloFrame = {
   maxSessions: number;
   /** Tasks still running here, so a reconnect resumes them rather than failing them. */
   sessions: string[];
+  /** Runs jobs for anyone in the space, not only for its own user. */
+  shared: boolean;
 };
 
 /** What a session needs to reach the Vektor server as the task's user. */
@@ -43,6 +50,18 @@ export type ServerToNodeFrame =
   | { type: "screen.open"; taskId: string; screenId: string }
   | { type: "screen.input"; screenId: string; events: ScreenInputEvent[] }
   | { type: "screen.close"; screenId: string }
+  | {
+      type: "job.run";
+      jobId: string;
+      script: string;
+      inputs: Record<string, unknown>;
+      timeoutMs?: number;
+    }
+  /** Answers a `job.call`: `error` when the capability threw, else its `value`. */
+  | { type: "job.reply"; jobId: string; callId: string; value?: unknown; error?: string }
+  /** Renews the job's inactivity deadline for progress the server saw. */
+  | { type: "job.touch"; jobId: string }
+  | { type: "job.cancel"; jobId: string }
   | { type: "ping" };
 
 export type SessionStopReason = "end_turn" | "cancelled" | "error";
@@ -64,6 +83,11 @@ export type NodeToServerFrame =
   | { type: "screen.end"; screenId: string; error?: string }
   /** From the agent to the parent (`to: "parent"`) or a sibling sub-agent. */
   | { type: "message"; taskId: string; to: string; text: string }
+  | { type: "job.log"; jobId: string; message: string }
+  /** The job asks the server for a capability the node does not run itself. */
+  | { type: "job.call"; jobId: string; callId: string; name: string; args: unknown[] }
+  /** The job ended: `error` when it failed, else what it returned. */
+  | { type: "job.result"; jobId: string; output?: unknown; error?: string }
   | { type: "ping" };
 
 /**
@@ -137,6 +161,7 @@ export type NodeSummary = {
   maxSessions: number;
   running: number;
   online: boolean;
+  shared: boolean;
 };
 
 /** `idle` is a chat's session between prompts. */
