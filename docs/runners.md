@@ -19,6 +19,8 @@ Authorization: Bearer <the runner's secret, shown once when it was added>
 Content-Type: application/json
 ```
 
+A runner's URL is reachable by anyone, so it **must** refuse any request without exactly this header, before reading the body. The secret is the only thing that proves a request came from the Vektor instance.
+
 The body's `kind` says what it is. A runner must handle `job`; the rest are optional:
 
 | `kind` | What | The runner answers |
