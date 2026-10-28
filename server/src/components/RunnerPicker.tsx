@@ -1,18 +1,18 @@
 import { For, Show } from "solid-js";
 
 interface Props {
-  /** Nodes to offer besides the server. */
-  nodes: string[];
-  /** The chosen node; null is the server. */
+  /** Runners and nodes to offer besides the server, by name. */
+  runners: string[];
+  /** The chosen one; null is the server. */
   value: string | null;
   /** Unset shows the choice without letting it change, as for a running chat. */
-  onChange?: (node: string | null) => void;
+  onChange?: (runner: string | null) => void;
   /** What runs there, as in "Run the agent on". */
   label: string;
 }
 
-/** Where a chat's agent or a workflow runs: on the server, or on one of the user's nodes. */
-export function AgentNodePicker(props: Props) {
+/** Where a chat's agent or a workflow runs: on the server, or on a runner or node. */
+export function RunnerPicker(props: Props) {
   return (
     <Show
       when={props.onChange}
@@ -31,7 +31,9 @@ export function AgentNodePicker(props: Props) {
           class="focus-ring min-w-0 max-w-[10rem] truncate rounded-md bg-transparent px-1.5 py-1 text-neutral-600 text-size-small hover:bg-neutral-100"
         >
           <option value="">Vektor</option>
-          <For each={props.nodes}>{(node) => <option value={node}>{node}</option>}</For>
+          <For each={props.runners}>
+            {(runner) => <option value={runner}>{runner}</option>}
+          </For>
         </select>
       )}
     </Show>

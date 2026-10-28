@@ -3,7 +3,7 @@ import { useRemoteScreen } from "#composeables/useRemoteScreen.ts";
 
 /** A remote sub-agent's live screen; clicking it hands mouse and keyboard to the remote machine. */
 export function RemoteScreen(props: {
-  screen: { spaceId: string; taskId: string; node: string };
+  screen: { spaceId: string; sessionId: string; runner: string };
   task: string;
 }) {
   let canvas: HTMLCanvasElement | undefined;
@@ -38,7 +38,7 @@ export function RemoteScreen(props: {
   return (
     <div class="min-w-0 flex-1 overflow-hidden rounded-lg border border-neutral-200">
       <div class="flex items-center gap-2 px-3 py-1.5 text-size-small">
-        <span class="shrink-0 font-medium text-neutral-800">{props.screen.node}</span>
+        <span class="shrink-0 font-medium text-neutral-800">{props.screen.runner}</span>
         <span class="min-w-0 flex-1 truncate text-neutral-500">{props.task}</span>
         <Show when={remote.state() === "live"}>
           <button
@@ -61,7 +61,7 @@ export function RemoteScreen(props: {
         <canvas
           ref={canvas}
           tabIndex={0}
-          aria-label={`Screen of ${props.screen.node}`}
+          aria-label={`Screen of ${props.screen.runner}`}
           class="block h-auto w-full cursor-default bg-black outline-none"
           classList={{ "ring-2 ring-primary-500 ring-inset": focused() }}
           onFocus={() => setFocused(true)}

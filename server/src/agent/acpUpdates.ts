@@ -44,8 +44,8 @@ export function parseAcpUpdate(
     if (generic?.type === "screen") {
       return {
         type: "screen",
-        taskId: text(generic.taskId),
-        node: text(generic.node),
+        sessionId: text(generic.sessionId),
+        runner: text(generic.runner),
         task: text(generic.task),
       };
     }

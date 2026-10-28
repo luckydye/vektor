@@ -1,10 +1,10 @@
 import { createSignal, For, Show } from "solid-js";
-import type { JobRunnerSummary } from "#api/client.ts";
+import type { RunnerSummary } from "#api/client.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 
 interface Props {
   /** Undefined while loading. */
-  runners: JobRunnerSummary[] | undefined;
+  runners: RunnerSummary[] | undefined;
   /** Resolves with the new runner's secret. */
   onAdd(name: string, url: string): Promise<string>;
   /** Asks the runner what it offers. */
@@ -12,7 +12,7 @@ interface Props {
   onRemove(runnerId: string): Promise<void>;
 }
 
-function offers(runner: JobRunnerSummary): string {
+function offers(runner: RunnerSummary): string {
   const { kinds, agents } = runner.description;
   return [
     kinds.includes("job") ? "jobs" : null,
@@ -26,7 +26,7 @@ const inputClass =
   "focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium";
 
 /** HTTP endpoints that run the space's jobs and workflows, and agents if they offer them (docs/runners.md). */
-export function SpaceJobRunners(props: Props) {
+export function SpaceRunners(props: Props) {
   const [name, setName] = createSignal("");
   const [url, setUrl] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
@@ -43,7 +43,7 @@ export function SpaceJobRunners(props: Props) {
     }
   }
 
-  async function describe(runner: JobRunnerSummary) {
+  async function describe(runner: RunnerSummary) {
     setError(null);
     try {
       await props.onDescribe(runner.id);
@@ -52,7 +52,7 @@ export function SpaceJobRunners(props: Props) {
     }
   }
 
-  async function remove(runner: JobRunnerSummary) {
+  async function remove(runner: RunnerSummary) {
     if (!(await confirmDialog(`Remove the runner "${runner.name}"?`))) return;
     await props.onRemove(runner.id);
   }

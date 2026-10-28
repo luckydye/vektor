@@ -22,13 +22,13 @@ import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
 import { useTranslation } from "#composeables/useTranslation.ts";
-import { AgentNodePicker } from "./AgentNodePicker.tsx";
 import { AIChatMessages, type AIChatMessagesHandle } from "./AIChatMessages.tsx";
 import { AIChatSessions } from "./AIChatSessions.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { MessageInput, type MessageInputHandle } from "./MessageInput.tsx";
+import { RunnerPicker } from "./RunnerPicker.tsx";
 
 interface Props {
   documentId?: string;
@@ -121,9 +121,9 @@ export function AIChatPanel(props: Props) {
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
   // Where a chat runs is chosen before its first message, then fixed.
   const runners = useAgentRunners(createMemo(() => isOpen() && !currentSessionId()));
-  const agentNodes = createMemo(() => runners()?.map((runner) => runner.name));
-  const showNodePicker = createMemo(() =>
-    currentSessionId() ? !!chatNode() : !!agentNodes()?.length,
+  const agentRunners = createMemo(() => runners()?.map((runner) => runner.name));
+  const showRunnerPicker = createMemo(() =>
+    currentSessionId() ? !!chatNode() : !!agentRunners()?.length,
   );
 
   const {
@@ -389,9 +389,9 @@ export function AIChatPanel(props: Props) {
               onSubmit={() => void sendMessage()}
               actions={
                 <div class="flex min-w-0 items-center gap-1">
-                  <Show when={showNodePicker()}>
-                    <AgentNodePicker
-                      nodes={agentNodes() ?? []}
+                  <Show when={showRunnerPicker()}>
+                    <RunnerPicker
+                      runners={agentRunners() ?? []}
                       value={chatNode()}
                       onChange={currentSessionId() ? undefined : setChatNode}
                       label="Run the agent on"

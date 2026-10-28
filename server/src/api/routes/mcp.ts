@@ -109,7 +109,7 @@ export const POST: ApiRouteHandler = (context) =>
       apiUrl: getLocalOrigin(),
       spaceId,
       jobToken,
-      ...(agentSession ? { remoteTaskId: agentSession } : {}),
+      ...(agentSession ? { agentSessionId: agentSession } : {}),
     };
 
     return jsonRpcResponse(await handleMcpRequest(mcpConfig, request));

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
 /** The current space's runners; `runners` is `undefined` until loaded. */
-export function useJobRunners(enabled: Accessor<boolean>) {
+export function useRunners(enabled: Accessor<boolean>) {
   const { currentSpaceId } = useSpace();
   const queryClient = useQueryClient();
   const queryKey = createMemo(() => ["runners", currentSpaceId()]);

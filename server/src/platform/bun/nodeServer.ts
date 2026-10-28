@@ -14,7 +14,6 @@ import {
 } from "#agent/nodes/protocol.ts";
 import { nodeRegistry } from "#agent/nodes/registry.ts";
 import { isNoAuthMode } from "#config";
-import { MAX_PAYLOAD_BYTES } from "#jobs/runtime/portable.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { openAgentScreen } from "#runners/agents.ts";
@@ -26,8 +25,8 @@ const SCREEN_PATH = /^\/screens\/([^/]+)\/([^/]+)$/;
 /** Media a slow viewer may have queued before its screen is closed rather than lag further. */
 const MAX_VIEWER_BUFFER_BYTES = 8 * 1024 * 1024;
 
-/** Fits a job's capability call or reply: a payload at its limit, base64-encoded, with room for the frame. */
-const MAX_FRAME_BYTES = Math.ceil((MAX_PAYLOAD_BYTES * 4) / 3) + 1024 * 1024;
+/** Fits a `run` request: a bundled job's script and its inputs. Runs' calls go over HTTP. */
+const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const WS_CLOSE_UNAUTHORIZED = 4401;
 const WS_CLOSE_FORBIDDEN = 4403;
 

@@ -224,8 +224,8 @@ export const spaceSecret = sqliteTable(
  * agents when it offers them (docs/runners.md). The server authenticates
  * to it with the encrypted secret.
  */
-export const jobRunner = sqliteTable(
-  "job_runner",
+export const spaceRunner = sqliteTable(
+  "runner",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
@@ -238,7 +238,7 @@ export const jobRunner = sqliteTable(
     createdBy: text("created_by").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   },
-  (table) => [uniqueIndex("job_runner_name_unique").on(table.name)],
+  (table) => [uniqueIndex("runner_name_unique").on(table.name)],
 );
 
 export const oauthIntegration = sqliteTable(

@@ -16,7 +16,7 @@ export function createVmRuntime(): JobRuntime {
 
     execute(code: string, context: JobRunContext): JobExecution {
       const { platform } = context;
-      const remote = context.node !== undefined || config().JOB_RUNTIME === "node";
+      const remote = context.node !== undefined || config().JOB_RUNTIME === "runners";
 
       /**
        * Where `output(...)` lands.

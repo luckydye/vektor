@@ -49,8 +49,8 @@ export type VektorMcpConfig = {
   accessToken?: string;
   documentId?: string;
   connectedProviders?: string[];
-  /** Set when the agent runs as a remote task, which gives it a mailbox through `send_message` and `read_messages`. */
-  remoteTaskId?: string;
+  /** Set when the agent runs on a runner, which gives it a mailbox through `send_message` and `read_messages`. */
+  agentSessionId?: string;
   /** Every space the agent works in, `spaceId` included; set only when there are several. */
   spaces?: AgentSpace[];
 };
@@ -205,8 +205,8 @@ async function apiResponse(
 }
 
 function remoteTaskMessagesPath(config: VektorMcpConfig): string {
-  if (!config.remoteTaskId) throw new Error("This agent has no mailbox.");
-  return `/api/v1/spaces/${config.spaceId}/agent-sessions/${encodeURIComponent(config.remoteTaskId)}/messages`;
+  if (!config.agentSessionId) throw new Error("This agent has no mailbox.");
+  return `/api/v1/spaces/${config.spaceId}/agent-sessions/${encodeURIComponent(config.agentSessionId)}/messages`;
 }
 
 export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
@@ -666,7 +666,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["prompt"],
       },
     },
-    ...(config.remoteTaskId
+    ...(config.agentSessionId
       ? [
           {
             name: "send_message",

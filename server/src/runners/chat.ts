@@ -1,13 +1,13 @@
 import { parseAcpUpdate } from "#agent/acpUpdates.ts";
 import type { AgentEvent, AgentResult } from "#agent/core.ts";
 import type { Platform } from "#platform/platform.ts";
-import { cancelChat, promptChat } from "#runners/agents.ts";
+import { cancelChat, promptChat } from "./agents.ts";
 
 /**
  * Runs a chat's turn on its node or runner. The runner's session holds the
  * conversation, so the prompt carries only the new message.
  */
-export async function runChatOnNode(
+export async function runChatOnRunner(
   platform: Platform,
   options: {
     spaceId: string;
@@ -33,7 +33,8 @@ export async function runChatOnNode(
       if (event.type === "text") content += event.text;
       onEvent(event);
     },
-    onScreen: (taskId) => onEvent({ type: "screen", taskId, node, task: options.text }),
+    onScreen: (sessionId) =>
+      onEvent({ type: "screen", sessionId, runner: node, task: options.text }),
   });
   if (fresh && options.resumed) {
     onEvent({

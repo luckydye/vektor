@@ -65,7 +65,7 @@ export type AgentHostCall =
   | { method: "integrationAccessToken"; args: [turnId: number] }
   | {
       [Method in keyof AgentRunnerHost]: {
-        method: `nodes.${Method}`;
+        method: `runners.${Method}`;
         args: Parameters<AgentRunnerHost[Method]>;
       };
     }[keyof AgentRunnerHost];
@@ -307,12 +307,12 @@ const workerHost: AgentHost = {
   runIntegrationCommand(request) {
     return callHost({ method: "runIntegrationCommand", args: [request] });
   },
-  nodes: {
-    listNodes: (...args) => callHost({ method: "nodes.listNodes", args }),
-    startRemoteTask: (...args) => callHost({ method: "nodes.startRemoteTask", args }),
-    pollRemoteTask: (...args) => callHost({ method: "nodes.pollRemoteTask", args }),
-    sendRemoteTask: (...args) => callHost({ method: "nodes.sendRemoteTask", args }),
-    cancelRemoteTask: (...args) => callHost({ method: "nodes.cancelRemoteTask", args }),
+  runners: {
+    listRunners: (...args) => callHost({ method: "runners.listRunners", args }),
+    startSession: (...args) => callHost({ method: "runners.startSession", args }),
+    pollSession: (...args) => callHost({ method: "runners.pollSession", args }),
+    sendToSession: (...args) => callHost({ method: "runners.sendToSession", args }),
+    cancelSession: (...args) => callHost({ method: "runners.cancelSession", args }),
   },
 };
 

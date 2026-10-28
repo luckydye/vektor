@@ -35,7 +35,7 @@ import type { SeriesQuery, SeriesQueryResult } from "#series/query.ts";
 import { ReplicaCache } from "./ReplicaCache.ts";
 import type { ReplicaOperation } from "./ReplicaDb.ts";
 
-export type JobRunnerSummary = {
+export type RunnerSummary = {
   id: string;
   name: string;
   url: string;
@@ -669,7 +669,7 @@ export interface AIChatMessage {
   content: string;
   timestamp: number;
   /** A remote sub-agent's screen, on a `screen` message; live only during its turn. */
-  screen?: { spaceId: string; taskId: string; node: string };
+  screen?: { spaceId: string; sessionId: string; runner: string };
   toolName?: string;
   toolCallId?: string;
   toolPhase?: "call" | "result";
@@ -2840,8 +2840,8 @@ export class ApiClient {
 
   /** The space's runners (docs/runners.md). */
   runners = {
-    list: async (spaceId: string): Promise<JobRunnerSummary[]> => {
-      const { runners } = await this.apiGet<{ runners: JobRunnerSummary[] }>(
+    list: async (spaceId: string): Promise<RunnerSummary[]> => {
+      const { runners } = await this.apiGet<{ runners: RunnerSummary[] }>(
         this.baseUrl,
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners`,
       );
@@ -2852,7 +2852,7 @@ export class ApiClient {
     create: async (
       spaceId: string,
       body: { name: string; url: string },
-    ): Promise<{ runner: JobRunnerSummary; secret: string }> => {
+    ): Promise<{ runner: RunnerSummary; secret: string }> => {
       return await this.apiPost(
         this.baseUrl,
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners`,
@@ -2870,8 +2870,8 @@ export class ApiClient {
     },
 
     /** Owner only: asks the runner what it offers, and keeps the answer. */
-    describe: async (spaceId: string, runnerId: string): Promise<JobRunnerSummary> => {
-      const { runner } = await this.apiPost<{ runner: JobRunnerSummary }>(
+    describe: async (spaceId: string, runnerId: string): Promise<RunnerSummary> => {
+      const { runner } = await this.apiPost<{ runner: RunnerSummary }>(
         this.baseUrl,
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners/${encodeURIComponent(runnerId)}/describe`,
         {},
