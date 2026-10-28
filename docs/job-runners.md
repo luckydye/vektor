@@ -11,7 +11,7 @@ A run names a runner or node by name: `node` on `POST /api/v1/spaces/:spaceId/jo
 
 ## The contract
 
-The server sends a job as one request:
+Every hop is a short request; no connection has to last as long as the job. The server hands the job over:
 
 ```http
 POST <runner url>
@@ -27,16 +27,17 @@ Content-Type: application/json
 }
 ```
 
-The runner answers `{ "output": <what the script returned> }`, or `{ "error": "<message>" }` when it failed.
+The runner accepts it with any `2xx` (`202 Accepted`) right away, and runs the job after answering.
 
 - **`script`** is the body of an async function: it may `await` and `return`, and reads its inputs as `input`.
 - **Capabilities.** While the job runs, the runner calls capabilities (`readDocument`, `uploadArtifact`, `runJob`, …) by POSTing `{ "name": "readDocument", "args": ["doc_…"] }` to `host.url` with `Authorization: Bearer <host.token>`. The answer is `{ "value": … }` or `{ "error": "…" }`.
 - **Logs** are the same call: `{ "name": "log", "args": ["a line"] }`.
+- **The result** ends the job: `{ "name": "result", "args": [{ "output": <what the script returned> }] }`, or `[{ "error": "<message>" }]` when it failed. Only the first result counts, so a runner may retry it.
 - **Bytes** cross as `{ "__bytes": "<base64>" }`, in both directions.
 - **The token** dies with the job.
-- **The deadline is the server's.** It runs 15 minutes, and any call renews it. When it passes, or the run is cancelled, the server drops the request and refuses the job's calls.
+- **The deadline is the server's,** the same inactivity deadline a job has on the server: 15 minutes, renewed by every call. A job that works quietly for longer can call `touch` (no args) to stay alive. When the deadline passes, or the run is cancelled, the job fails and its calls are refused, which tells the runner to stop. A runner that crashes or goes away fails its jobs the same way.
 
-`prelude` does all of that for a JavaScript runner. It evaluates to `(host, extra) => (script, input) => Promise<output>`: it builds the job's globals over the calls above, runs the script, and encodes bytes. The guest's `fetch` and timers are the runtime's own.
+`prelude` does all of that for a JavaScript runner. It evaluates to `(host, extra) => (script, input) => Promise`: it builds the job's globals over the calls above, runs the script, encodes bytes, and reports the result (retrying it), resolving once the result is delivered. The guest's `fetch` and timers are the runtime's own.
 
 ## A runner in a few lines
 
@@ -46,28 +47,24 @@ export async function POST(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
   const job = await req.json();
-  try {
-    const run = eval(job.prelude)(job.host);
-    return Response.json({ output: await run(job.script, job.inputs) });
-  } catch (error) {
-    return Response.json({ error: String(error) });
-  }
+  eval(job.prelude)(job.host)(job.script, job.inputs).catch(console.error);
+  return new Response(null, { status: 202 });
 }
 ```
 
 This runs job code in the runner's own process, with whatever access that process has. Run it somewhere disposable, or swap `eval` for an isolate.
 
-A job is one request for as long as it runs, so the runner's HTTP server must not time it out. With `Bun.serve`, for example, set `idleTimeout: 0`.
+The job keeps running after the answer, so the process must outlive the request. On a serverless platform, hand the promise to its keep-alive (`ctx.waitUntil` on Cloudflare Workers) and mind its time limit.
 
 ## Capabilities of your own
 
 Pass them as `extra`; each becomes a global in the job:
 
 ```ts
-const run = eval(job.prelude)(job.host, {
+eval(job.prelude)(job.host, {
   gpuInfo: async () => ({ name: "RTX 4090", memoryGb: 24 }),
   exec: (command: string, args: string[]) => runInSandbox(command, args),
-});
+})(job.script, job.inputs);
 ```
 
 Nodes (`vektor agent serve`) offer the standard set only.
