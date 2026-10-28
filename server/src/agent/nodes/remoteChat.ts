@@ -1,27 +1,31 @@
 import { parseAcpUpdate } from "#agent/acpUpdates.ts";
 import type { AgentEvent, AgentResult } from "#agent/core.ts";
-import { nodeRegistry } from "./registry.ts";
+import type { Platform } from "#platform/platform.ts";
+import { cancelChat, promptChat } from "#runners/agents.ts";
 
 /**
- * Runs a chat's turn on its node. The node's session holds the conversation,
- * so the prompt carries only the new message.
+ * Runs a chat's turn on its node or runner. The runner's session holds the
+ * conversation, so the prompt carries only the new message.
  */
-export async function runChatOnNode(options: {
-  spaceId: string;
-  userId: string;
-  chatId: string;
-  node: string;
-  jobToken: string;
-  text: string;
-  /** Whether the chat had earlier turns, which a fresh session does not remember. */
-  resumed: boolean;
-  signal: AbortSignal;
-  onEvent: (event: AgentEvent) => void;
-}): Promise<AgentResult> {
+export async function runChatOnNode(
+  platform: Platform,
+  options: {
+    spaceId: string;
+    userId: string;
+    chatId: string;
+    node: string;
+    jobToken: string;
+    text: string;
+    /** Whether the chat had earlier turns, which a fresh session does not remember. */
+    resumed: boolean;
+    signal: AbortSignal;
+    onEvent: (event: AgentEvent) => void;
+  },
+): Promise<AgentResult> {
   const { node, signal, onEvent } = options;
   const toolNames = new Map<string, string>();
   let content = "";
-  const { fresh, result } = nodeRegistry.promptChat({
+  const { fresh, result } = await promptChat(platform, {
     ...options,
     onUpdate(update) {
       const event = parseAcpUpdate(update, toolNames);
@@ -38,7 +42,7 @@ export async function runChatOnNode(options: {
     });
   }
 
-  const cancel = () => nodeRegistry.cancelChat(options);
+  const cancel = () => cancelChat(options);
   signal.addEventListener("abort", cancel, { once: true });
   try {
     const { stopReason, error } = await result;

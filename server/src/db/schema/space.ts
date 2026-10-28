@@ -220,9 +220,9 @@ export const spaceSecret = sqliteTable(
 );
 
 /**
- * A job runner a space owner registered: an HTTP endpoint that runs jobs and
- * workflow scripts (docs/job-runners.md). The server authenticates to it with
- * the encrypted secret.
+ * A runner a space owner registered: an HTTP endpoint that runs jobs, and
+ * agents when it offers them (docs/runners.md). The server authenticates
+ * to it with the encrypted secret.
  */
 export const jobRunner = sqliteTable(
   "job_runner",
@@ -230,6 +230,8 @@ export const jobRunner = sqliteTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     url: text("url").notNull(),
+    /** JSON: what it answered `describe` with, a `RunnerDescription`. */
+    description: text("description").notNull(),
     ciphertext: text("ciphertext").notNull(),
     iv: text("iv").notNull(),
     authTag: text("auth_tag").notNull(),

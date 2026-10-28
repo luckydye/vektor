@@ -6,7 +6,7 @@
 
 import { config } from "#config";
 import { persistOutputBlobs } from "#jobs/outputBlobs.ts";
-import { runOnRunner } from "#jobs/runners.ts";
+import { runOnRunner } from "#runners/jobs.ts";
 import { createCapabilities } from "./capabilities.ts";
 import type { JobExecution, JobRunContext, JobRuntime } from "./types.ts";
 

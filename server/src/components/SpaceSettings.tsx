@@ -78,12 +78,13 @@ export function SpaceSettings() {
               <SpaceNodes nodes={nodes()} />
             </SettingsSection>
             <SettingsSection
-              title="Job runners"
-              description="Endpoints that run this space's jobs and workflows instead of the server."
+              title="Runners"
+              description="Endpoints that run this space's jobs and workflows instead of the server, and your agents if they offer them."
             >
               <SpaceJobRunners
                 runners={jobRunners.runners()}
                 onAdd={jobRunners.add}
+                onDescribe={jobRunners.describe}
                 onRemove={jobRunners.remove}
               />
             </SettingsSection>

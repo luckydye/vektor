@@ -33,5 +33,5 @@ export const GET: ApiRouteHandler = (context) =>
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
     if (!userId)
       throw forbiddenResponse("Nodes belong to a user; this job token has none");
-    return jsonResponse({ nodes: await nodeRegistry.listNodes({ spaceId, userId }) });
+    return jsonResponse({ nodes: nodeRegistry.listNodes({ spaceId, userId }) });
   }, "Failed to list nodes");

@@ -46,7 +46,7 @@ export function vektorAdapter(connection: {
         host,
         authHeaders,
         "session/new",
-        { spaceId, title: `Node task ${init.taskId}`.slice(0, 60) },
+        { spaceId, title: `Node session ${init.sessionId}`.slice(0, 60) },
       );
       let controller: AbortController | undefined;
       return {

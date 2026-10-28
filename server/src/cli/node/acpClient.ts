@@ -1,4 +1,4 @@
-import type { PromptResult } from "#agent/nodes/protocol.ts";
+import type { PromptResult } from "#runners/contract.ts";
 import { answerPermission } from "./policy.ts";
 import type { AdapterSession, SessionInit } from "./types.ts";
 

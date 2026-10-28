@@ -1,17 +1,17 @@
 import type { AgentLink, SubagentTarget } from "#agent/subagents.ts";
-import type { AgentNodeHost } from "./protocol.ts";
+import type { AgentRunnerHost } from "#runners/agents.ts";
 
 /** How long one poll may wait; also how late a message for the remote agent can be forwarded. */
 const POLL_MS = 2_000;
 
 /**
- * Runs a sub-agent's task on a node and returns its final answer. Messages
+ * Runs a sub-agent's task on a node or runner and returns its final answer. Messages
  * between the remote agent and the rest of the turn are carried across here:
  * what the remote agent sends goes through the hub's own `send_message`, and
  * what the hub holds for it is put in the task's mailbox for `read_messages`.
  */
 export async function runRemoteSubagent(options: {
-  nodes: AgentNodeHost;
+  nodes: AgentRunnerHost;
   spaceId: string;
   userId: string;
   jobToken: string;

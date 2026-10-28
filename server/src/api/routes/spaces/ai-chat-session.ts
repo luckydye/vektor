@@ -1,6 +1,5 @@
 import { requireChatSessionOwner, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { nodeRegistry } from "#agent/nodes/registry.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -12,6 +11,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { deleteAIChatSession, getAIChatSession } from "#db/space/aiChatSessions.ts";
 import type { Platform } from "#platform/platform.ts";
+import { closeChat } from "#runners/agents.ts";
 
 /**
  * Read one AI chat session
@@ -64,6 +64,6 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     await deleteAIChatSession(store, sessionId, user.id);
-    nodeRegistry.closeChat({ spaceId, userId: user.id, chatId: sessionId });
+    closeChat({ spaceId, userId: user.id, chatId: sessionId });
     return jsonResponse({ success: true });
   }, "Failed to delete AI chat session");

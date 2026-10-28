@@ -8,6 +8,7 @@ import type {
   IntegrationAIProvider,
 } from "#api/provider/types.ts";
 import { createBunFetch } from "#platform/bun/fetch.ts";
+import type { AgentRunnerHost } from "#runners/agents.ts";
 import {
   type AgentEvent,
   type AgentHost,
@@ -17,7 +18,6 @@ import {
   runAgentPrompt,
 } from "./core.ts";
 import type { IntegrationAgentSurface } from "./integrations.ts";
-import type { AgentNodeHost } from "./nodes/protocol.ts";
 import { AgentTurnError } from "./turnError.ts";
 
 /**
@@ -64,11 +64,11 @@ export type AgentHostCall =
     }
   | { method: "integrationAccessToken"; args: [turnId: number] }
   | {
-      [Method in keyof AgentNodeHost]: {
+      [Method in keyof AgentRunnerHost]: {
         method: `nodes.${Method}`;
-        args: Parameters<AgentNodeHost[Method]>;
+        args: Parameters<AgentRunnerHost[Method]>;
       };
-    }[keyof AgentNodeHost];
+    }[keyof AgentRunnerHost];
 
 export type AgentWorkerRequest =
   | { type: "run"; turnId: number; request: AgentTurnRequest }

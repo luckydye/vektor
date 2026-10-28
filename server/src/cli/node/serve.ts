@@ -9,10 +9,15 @@ import {
   type ServerToNodeFrame,
 } from "#agent/nodes/protocol.ts";
 import { resolveConfig } from "#cli/resolve.ts";
-import type { RunnerRequest } from "#jobs/runners.ts";
 import { createPortableCapabilities } from "#jobs/runtime/portable.ts";
 import type { CapabilityTable } from "#jobs/runtime/types.ts";
 import { createBoaJobVm, JOB_EXEC_ALLOWLIST } from "#platform/bun/jobVm.ts";
+import type {
+  AgentRequest,
+  JobRequest,
+  PromptResult,
+  RunnerHost,
+} from "#runners/contract.ts";
 import { commandAdapter, echoAdapter, vektorAdapter } from "./adapters.ts";
 import { type ManagedOptions, managedAdapter } from "./managed.ts";
 import { terminalConfirm } from "./policy.ts";
@@ -25,10 +30,10 @@ import type {
 } from "./types.ts";
 
 /**
- * `vektor agent serve` — makes this device a node: it dials the server, then
- * runs the agents the server sends tasks to, as subprocesses speaking ACP, and
- * relays their updates back. The node is a bridge, not an agent. It also runs
- * the server's jobs and workflow scripts in its own job VM.
+ * `vektor agent serve` — makes this device a node, a runner that dials in
+ * (docs/runners.md): it gets runner requests over its socket, runs jobs in
+ * its own job VM and agents as subprocesses speaking ACP, and makes each run's
+ * calls to the server over HTTP. For agents the node is a bridge, not an agent.
  */
 
 const WS_CLOSE_UNAUTHORIZED = 4401;
@@ -93,16 +98,12 @@ function buildAdapters(options: ServeOptions, connection: Connection) {
 }
 
 /** How a session's agent starts the Vektor MCP server, as this very binary. */
-function mcpLaunch(
-  host: string,
-  access: { spaceId: string; jobToken: string },
-  taskId: string,
-): McpLaunch {
+function mcpLaunch(host: string, mcp: AgentRequest["mcp"]): McpLaunch {
   const env = {
     VEKTOR_HOST: host,
-    VEKTOR_SPACE_ID: access.spaceId,
-    VEKTOR_JOB_TOKEN: access.jobToken,
-    VEKTOR_TASK_ID: taskId,
+    VEKTOR_SPACE_ID: mcp.headers["X-Space-Id"] ?? "",
+    VEKTOR_JOB_TOKEN: mcp.headers["X-Job-Token"] ?? "",
+    VEKTOR_TASK_ID: mcp.headers["X-Agent-Session"] ?? "",
   };
   // Compiled, the binary is the CLI; from source, the script is.
   const compiled = import.meta.url.includes("$bunfs");
@@ -113,16 +114,39 @@ function mcpLaunch(
   };
 }
 
-type Running = {
-  opening: Promise<AdapterSession>;
-  cancelled: boolean;
-};
-
-/** The server keeps a job's deadline, so the node's VM keeps none of its own. */
+/** The server keeps a run's deadline, so the node's VM keeps none of its own. */
 const NO_DEADLINE_MS = 2 ** 31 - 1;
 
 const log = (message: string) => process.stderr.write(`${message}\n`);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
+/**
+ * In order, and as few calls as keep up: what queues while one call is out
+ * goes in the next, as one.
+ */
+function batched<T>(send: (items: T[]) => Promise<unknown>) {
+  let queue: T[] = [];
+  let flight = Promise.resolve();
+  return {
+    push(item: T) {
+      queue.push(item);
+      if (queue.length > 1) return;
+      flight = flight
+        .then(() => {
+          const items = queue;
+          queue = [];
+          return send(items);
+        })
+        .then(
+          () => {},
+          () => {},
+        );
+    },
+    flushed: () => flight,
+  };
+}
 
 export async function commandAgentServe(options: ServeOptions): Promise<void> {
   const connection = await resolveConfig();
@@ -140,11 +164,13 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     confirm: terminalConfirm(),
   };
 
-  const running = new Map<string, Running>();
+  /** Agent sessions, kept between turns until the server closes them. */
+  const sessions = new Map<string, Promise<AdapterSession>>();
+  /** How to stop each run in flight. */
+  const runs = new Map<string, () => void>();
   /** Frames that could not be sent because the server was away. */
   const outbox: NodeToServerFrame[] = [];
   const screens = new Map<string, ScreenSession>();
-  const jobs = new Map<string, AbortController>();
   const jobVm = createBoaJobVm({ execAllowlist: JOB_EXEC_ALLOWLIST });
   let socket: WebSocket | null = null;
 
@@ -153,66 +179,135 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
       socket.send(JSON.stringify(frame));
       return;
     }
-    // A ping is only worth sending to a server that is there, and a job's
-    // frames only to the connection it ran on: the server fails it on disconnect.
-    if (frame.type === "ping" || frame.type.startsWith("job.")) return;
+    // A ping is only worth sending to a server that is there.
+    if (frame.type === "ping") return;
     outbox.push(frame);
     if (outbox.length > MAX_OUTBOX) outbox.shift();
   }
 
-  function finish(
-    taskId: string,
-    stopReason: "end_turn" | "cancelled" | "error",
-    error?: string,
-  ) {
-    send({ type: "session.result", taskId, stopReason, ...(error ? { error } : {}) });
+  /** A run's calls, to the server this node dialled, whichever origin the server named. */
+  function caller(host: RunnerHost, signal?: AbortSignal) {
+    const url = new URL(new URL(host.url).pathname, connection.host);
+    return async (callName: string, args: unknown[]) => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${host.token}`,
+        },
+        body: JSON.stringify({ name: callName, args }),
+        signal,
+      });
+      const { value, error } = (await response.json()) as {
+        value?: unknown;
+        error?: string;
+      };
+      if (error !== undefined) throw new Error(error);
+      return value;
+    };
   }
 
-  /** Sessions stay open between prompts until the server closes them. */
-  function closeSession(taskId: string) {
-    const entry = running.get(taskId);
-    if (!entry) return;
-    running.delete(taskId);
-    void entry.opening.then((session) => session.close()).catch(() => {});
-  }
+  /**
+   * Runs a job in this node's VM. `fetch`, timers, the compute helpers, the
+   * scratch directory and `exec` run here; every other capability, each log
+   * line and the result are calls to the server.
+   */
+  async function runJob({ runId, script, inputs, host }: JobRequest) {
+    const controller = new AbortController();
+    runs.set(runId, () => controller.abort());
+    const call = caller(host, controller.signal);
+    const logs = batched<string>(async (lines) => {
+      for (const line of lines) await call("log", [line]);
+    });
+    const scratch = jobVm.hostCapabilities(controller.signal);
+    const local: CapabilityTable = {
+      ...createPortableCapabilities((url, init) => fetch(url, init), controller.signal),
+      ...scratch.table,
+    };
+    const capabilities = new Proxy(local, {
+      get: (table, capability) =>
+        typeof capability !== "string"
+          ? undefined
+          : Object.hasOwn(table, capability)
+            ? table[capability]
+            : (...args: unknown[]) => call(capability, args),
+    });
 
-  function startSession(frame: Extract<ServerToNodeFrame, { type: "session.new" }>) {
-    const { taskId } = frame;
-    const adapter = adapters.get(frame.adapter);
-    if (!adapter) {
-      finish(taskId, "error", `This node has no "${frame.adapter}" adapter.`);
-      return;
+    let result: { output: unknown } | { error: string };
+    try {
+      const output = await jobVm.run({
+        script,
+        inputs,
+        capabilities,
+        onLog: logs.push,
+        timeoutMs: NO_DEADLINE_MS,
+        signal: controller.signal,
+      }).result;
+      result = { output: output ?? null };
+    } catch (error) {
+      result = { error: message(error) };
+    } finally {
+      runs.delete(runId);
+      await scratch.dispose();
     }
-    if (running.size >= options.maxSessions) {
-      finish(
-        taskId,
-        "error",
+    // Every log line reaches the server before the result does.
+    await logs.flushed();
+    await call("result", [result]).catch(() => {});
+  }
+
+  function openSession({ sessionId, agent, mcp }: AgentRequest) {
+    const adapter = adapters.get(agent);
+    if (!adapter) throw new Error(`This node has no "${agent}" agent.`);
+    if (sessions.size >= options.maxSessions) {
+      throw new Error(
         `This node is running its maximum of ${options.maxSessions} sessions.`,
       );
-      return;
     }
     const opening = adapter.open({
-      taskId,
+      sessionId,
       cwd: workdir,
-      mcp: mcpLaunch(connection.host, frame.access, taskId),
+      mcp: mcpLaunch(connection.host, mcp),
       policy,
-      spaceId: frame.access.spaceId,
-      jobToken: frame.access.jobToken,
+      spaceId: mcp.headers["X-Space-Id"] ?? "",
+      jobToken: mcp.headers["X-Job-Token"] ?? "",
     });
-    const entry: Running = { opening, cancelled: false };
-    running.set(taskId, entry);
-    // A failed start is reported when the prompt that follows arrives.
+    sessions.set(sessionId, opening);
     void opening.then(
-      (session) => session.screen && send({ type: "session.screen", taskId }),
-      () => {},
+      (session) => session.screen && send({ type: "screen", sessionId }),
+      () => sessions.delete(sessionId),
     );
+    return opening;
+  }
+
+  /** One turn of an agent session, opening the session on its first. */
+  async function runAgentTurn(request: AgentRequest) {
+    const call = caller(request.host);
+    const updates = batched<Record<string, unknown>>((items) => call("updates", [items]));
+    let result: PromptResult;
+    try {
+      const session = await (sessions.get(request.sessionId) ?? openSession(request));
+      runs.set(request.runId, () => session.cancel());
+      result = await session.prompt(request.prompt, updates.push);
+    } catch (error) {
+      result = { stopReason: "error", error: message(error) };
+    } finally {
+      runs.delete(request.runId);
+    }
+    await updates.flushed();
+    await call("result", [result]).catch(() => {});
+  }
+
+  function closeSession(sessionId: string) {
+    const opening = sessions.get(sessionId);
+    sessions.delete(sessionId);
+    void opening?.then((session) => session.close()).catch(() => {});
   }
 
   /** Relays one viewer's screen until either side ends it. */
-  async function openScreen(taskId: string, screenId: string) {
-    const session = await running.get(taskId)?.opening.catch(() => undefined);
+  async function openScreen(sessionId: string, screenId: string) {
+    const session = await sessions.get(sessionId)?.catch(() => undefined);
     if (!session?.screen) {
-      send({ type: "screen.end", screenId, error: "This task has no screen." });
+      send({ type: "screen.end", screenId, error: "This session has no screen." });
       return;
     }
     const screen = session.screen();
@@ -229,131 +324,25 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
       await screen.ended;
       send({ type: "screen.end", screenId });
     } catch (error) {
-      send({
-        type: "screen.end",
-        screenId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      send({ type: "screen.end", screenId, error: message(error) });
     } finally {
       screens.delete(screenId);
       screen.close();
     }
   }
 
-  async function prompt(taskId: string, text: string) {
-    const entry = running.get(taskId);
-    if (!entry) {
-      finish(taskId, "error", "This node has no such session; it may have restarted.");
-      return;
-    }
-    let session: AdapterSession;
-    try {
-      session = await entry.opening;
-    } catch (error) {
-      finish(taskId, "error", error instanceof Error ? error.message : String(error));
-      return;
-    }
-    if (entry.cancelled) {
-      entry.cancelled = false;
-      finish(taskId, "cancelled");
-      return;
-    }
-    const result = await session.prompt(text, (update) =>
-      send({ type: "session.update", taskId, update }),
-    );
-    entry.cancelled = false;
-    finish(taskId, result.stopReason, result.error);
-  }
-
-  /**
-   * Runs a job in this node's VM, as any runner does (docs/job-runners.md).
-   * `fetch`, timers, the compute helpers, the scratch directory and `exec`
-   * run here; every other capability, and each log line, is a call to the
-   * server.
-   */
-  async function runJob({ jobId, script, inputs, host }: RunnerRequest) {
-    const controller = new AbortController();
-    jobs.set(jobId, controller);
-    // To the server this node dialled, whichever origin the server named.
-    const callUrl = new URL(new URL(host.url).pathname, connection.host);
-    const call = async (name: string, args: unknown[]) => {
-      const response = await fetch(callUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${host.token}`,
-        },
-        body: JSON.stringify({ name, args }),
-        signal: controller.signal,
-      });
-      const { value, error } = (await response.json()) as {
-        value?: unknown;
-        error?: string;
-      };
-      if (error !== undefined) throw new Error(error);
-      return value;
-    };
-    let logs = Promise.resolve();
-    const scratch = jobVm.hostCapabilities(controller.signal);
-    const local: CapabilityTable = {
-      ...createPortableCapabilities((url, init) => fetch(url, init), controller.signal),
-      ...scratch.table,
-    };
-    const capabilities = new Proxy(local, {
-      get: (table, name) =>
-        typeof name !== "string"
-          ? undefined
-          : Object.hasOwn(table, name)
-            ? table[name]
-            : (...args: unknown[]) => call(name, args),
-    });
-
-    let result: { output: unknown } | { error: string };
-    try {
-      const output = await jobVm.run({
-        script,
-        inputs,
-        capabilities,
-        onLog: (message) => {
-          logs = logs
-            .then(() => call("log", [message]))
-            .then(
-              () => {},
-              () => {},
-            );
-        },
-        timeoutMs: NO_DEADLINE_MS,
-        signal: controller.signal,
-      }).result;
-      result = { output: output ?? null };
-    } catch (error) {
-      result = { error: error instanceof Error ? error.message : String(error) };
-    } finally {
-      jobs.delete(jobId);
-      await scratch.dispose();
-    }
-    // Every log line reaches the server before the result does.
-    await logs;
-    send({ type: "job.result", jobId, ...result });
-  }
-
   function handle(frame: ServerToNodeFrame) {
-    if (frame.type === "ping") return;
-    if (frame.type === "session.new") startSession(frame);
-    else if (frame.type === "session.prompt") void prompt(frame.taskId, frame.text);
-    else if (frame.type === "session.close") closeSession(frame.taskId);
-    else if (frame.type === "screen.open") void openScreen(frame.taskId, frame.screenId);
+    if (frame.type === "run") {
+      const { request } = frame;
+      if (request.kind === "job") void runJob(request);
+      else if (request.kind === "agent") void runAgentTurn(request);
+      else if (request.kind === "agent.close") closeSession(request.sessionId);
+    } else if (frame.type === "cancel") runs.get(frame.runId)?.();
+    else if (frame.type === "screen.open")
+      void openScreen(frame.sessionId, frame.screenId);
     else if (frame.type === "screen.input")
       screens.get(frame.screenId)?.input(frame.events);
     else if (frame.type === "screen.close") screens.get(frame.screenId)?.close();
-    else if (frame.type === "job.run") void runJob(frame.request);
-    else if (frame.type === "job.cancel") jobs.get(frame.jobId)?.abort();
-    else if (frame.type === "session.cancel") {
-      const entry = running.get(frame.taskId);
-      if (!entry) return;
-      entry.cancelled = true;
-      void entry.opening.then((session) => session.cancel()).catch(() => {});
-    }
   }
 
   /** One connection's life; resolves with the close code once it ends. */
@@ -374,12 +363,6 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
 
       ws.onopen = () => {
         socket = ws;
-        // Results still waiting in the outbox count as running, or the server
-        // would fail those tasks before it hears how they ended.
-        const sessions = [
-          ...running.keys(),
-          ...outbox.flatMap((f) => (f.type === "session.result" ? [f.taskId] : [])),
-        ];
         ws.send(
           JSON.stringify({
             type: "hello",
@@ -388,7 +371,8 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
             workdir,
             adapters: [...adapters.keys()],
             maxSessions: options.maxSessions,
-            sessions,
+            // Runs carry on over HTTP while the socket is down; these are still ours.
+            runs: [...runs.keys()],
             shared: options.shared,
           } satisfies NodeToServerFrame),
         );
@@ -404,8 +388,6 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
       ws.onclose = (event) => {
         clearInterval(heartbeat);
         if (socket === ws) socket = null;
-        // The server has failed them; their capability calls would go unanswered.
-        for (const controller of jobs.values()) controller.abort();
         done(event.code);
       };
     });
@@ -413,8 +395,8 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
 
   const stop = async () => {
     await Promise.all(
-      [...running.values()].map((entry) =>
-        entry.opening.then((session) => session.close()).catch(() => {}),
+      [...sessions.values()].map((opening) =>
+        opening.then((session) => session.close()).catch(() => {}),
       ),
     );
     process.exit(0);
@@ -423,7 +405,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   process.once("SIGTERM", () => void stop());
 
   log(
-    `vektor node "${name}" · ${connection.host} · space ${connection.spaceId} · adapters ${[...adapters.keys()].join(", ")}${options.shared ? " · runs jobs for the whole space" : ""}`,
+    `vektor node "${name}" · ${connection.host} · space ${connection.spaceId} · agents ${[...adapters.keys()].join(", ")}${options.shared ? " · runs jobs for the whole space" : ""}`,
   );
   let backoff = MIN_BACKOFF_MS;
   while (true) {

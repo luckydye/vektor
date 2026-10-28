@@ -33,7 +33,9 @@ export type ToolImage = {
 
 export function isToolImage(value: unknown): value is ToolImage {
   return (
-    typeof value === "object" && value !== null && (value as { kind?: unknown }).kind === "image"
+    typeof value === "object" &&
+    value !== null &&
+    (value as { kind?: unknown }).kind === "image"
   );
 }
 
@@ -204,7 +206,7 @@ async function apiResponse(
 
 function remoteTaskMessagesPath(config: VektorMcpConfig): string {
   if (!config.remoteTaskId) throw new Error("This agent has no mailbox.");
-  return `/api/v1/spaces/${config.spaceId}/nodes/tasks/${encodeURIComponent(config.remoteTaskId)}/messages`;
+  return `/api/v1/spaces/${config.spaceId}/agent-sessions/${encodeURIComponent(config.remoteTaskId)}/messages`;
 }
 
 export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {

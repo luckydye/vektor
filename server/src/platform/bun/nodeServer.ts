@@ -17,10 +17,11 @@ import { isNoAuthMode } from "#config";
 import { MAX_PAYLOAD_BYTES } from "#jobs/runtime/portable.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import { openAgentScreen } from "#runners/agents.ts";
 
 /** The URL path nodes dial: `/nodes/<spaceId>`. */
 const NODE_PATH = /^\/nodes\/([^/]+)$/;
-/** The URL path a browser watches a remote task's screen at: `/screens/<spaceId>/<taskId>`. */
+/** The URL path a browser watches an agent session's screen at: `/screens/<spaceId>/<sessionId>`. */
 const SCREEN_PATH = /^\/screens\/([^/]+)\/([^/]+)$/;
 /** Media a slow viewer may have queued before its screen is closed rather than lag further. */
 const MAX_VIEWER_BUFFER_BYTES = 8 * 1024 * 1024;
@@ -122,7 +123,7 @@ export function attachNodeWebSocketServer(platform: Platform, server: Server) {
           request.headers,
           {
             spaceId: decodeURIComponent(screen[1]),
-            taskId: decodeURIComponent(screen[2]),
+            sessionId: decodeURIComponent(screen[2]),
           },
           () => lastSeenAt.set(websocket, Date.now()),
         ).catch((error: unknown) => {
@@ -212,8 +213,8 @@ async function acceptNode(
           ? frame.adapters.filter((a) => typeof a === "string").slice(0, 32)
           : [],
         maxSessions: Math.max(1, Math.min(Number(frame.maxSessions) || 1, 64)),
-        sessions: Array.isArray(frame.sessions)
-          ? frame.sessions.filter((s) => typeof s === "string")
+        runs: Array.isArray(frame.runs)
+          ? frame.runs.filter((s) => typeof s === "string")
           : [],
         shared: frame.shared === true,
       };
@@ -240,19 +241,19 @@ function headersOf(rawHeaders: IncomingHttpHeaders) {
 }
 
 /**
- * A browser watching and driving a remote task's screen: media goes out as
+ * A browser watching and driving an agent session's screen: media goes out as
  * binary messages, input comes in as JSON arrays of `ScreenInputEvent`s. Only
- * the task's own user may open it.
+ * the session's own user may open it.
  */
 async function acceptScreenViewer(
   platform: Platform,
   websocket: WebSocket,
   rawHeaders: IncomingHttpHeaders,
-  scope: { spaceId: string; taskId: string },
+  scope: { spaceId: string; sessionId: string },
   touch: () => void,
 ) {
   let closed = false;
-  let screen: ReturnType<typeof nodeRegistry.openScreen> | null = null;
+  let screen: ReturnType<typeof openAgentScreen> | null = null;
   websocket.on("close", () => {
     closed = true;
     screen?.close();
@@ -287,7 +288,7 @@ async function acceptScreenViewer(
   }
   if (closed) return;
   try {
-    screen = nodeRegistry.openScreen(
+    screen = openAgentScreen(
       { ...scope, userId: user.id },
       {
         send(bytes) {

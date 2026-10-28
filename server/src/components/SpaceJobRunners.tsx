@@ -7,13 +7,25 @@ interface Props {
   runners: JobRunnerSummary[] | undefined;
   /** Resolves with the new runner's secret. */
   onAdd(name: string, url: string): Promise<string>;
+  /** Asks the runner what it offers. */
+  onDescribe(runnerId: string): Promise<void>;
   onRemove(runnerId: string): Promise<void>;
+}
+
+function offers(runner: JobRunnerSummary): string {
+  const { kinds, agents } = runner.description;
+  return [
+    kinds.includes("job") ? "jobs" : null,
+    agents.length ? `agents: ${agents.join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 const inputClass =
   "focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium";
 
-/** HTTP endpoints that run the space's jobs and workflows (docs/job-runners.md). */
+/** HTTP endpoints that run the space's jobs and workflows, and agents if they offer them (docs/runners.md). */
 export function SpaceJobRunners(props: Props) {
   const [name, setName] = createSignal("");
   const [url, setUrl] = createSignal("");
@@ -28,6 +40,15 @@ export function SpaceJobRunners(props: Props) {
       setUrl("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add the runner");
+    }
+  }
+
+  async function describe(runner: JobRunnerSummary) {
+    setError(null);
+    try {
+      await props.onDescribe(runner.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to check the runner");
     }
   }
 
@@ -48,14 +69,26 @@ export function SpaceJobRunners(props: Props) {
                     {runner.name}
                   </p>
                   <p class="truncate text-neutral-500 text-size-small">{runner.url}</p>
+                  <p class="truncate text-neutral-500 text-size-small">
+                    {offers(runner)}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void remove(runner)}
-                  class="text-red-600 text-size-small hover:text-red-800"
-                >
-                  Remove
-                </button>
+                <div class="flex shrink-0 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void describe(runner)}
+                    class="text-blue-600 text-size-small hover:text-blue-800"
+                  >
+                    Check
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void remove(runner)}
+                    class="text-red-600 text-size-small hover:text-red-800"
+                  >
+                    Remove
+                  </button>
+                </div>
               </li>
             )}
           </For>
@@ -67,7 +100,7 @@ export function SpaceJobRunners(props: Props) {
           <div class="rounded-md border border-blue-200 bg-blue-50 p-3 text-size-small">
             <p class="mb-1 text-neutral-700">
               The runner's secret, sent as <code>Authorization: Bearer …</code>. It is not
-              shown again.
+              shown again. Once the runner has it, Check asks what it offers.
             </p>
             <code class="block break-all font-mono">{value()}</code>
           </div>

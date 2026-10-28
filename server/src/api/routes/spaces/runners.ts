@@ -1,7 +1,7 @@
 /**
  * /api/v1/spaces/:spaceId/runners
  *
- * GET: the space's job runners (docs/job-runners.md)
+ * GET: the space's job runners (docs/runners.md)
  * POST: register one; its secret is in this answer only
  */
 
