@@ -37,10 +37,12 @@ import {
 import { listAllFiles } from "#files/storage.ts";
 import { deleteRepositoryObjects } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
+import { writeCanvasSnapshot } from "#realtime/canvasEdits.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { deleteDocumentSeriesObjects, seriesIdsForDocument } from "#series/catalog.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { parseCanvasSnapshot } from "./canvasSnapshot.ts";
 import {
   type DocumentWriteOutcome,
   type DocumentWriteResult,
@@ -463,17 +465,25 @@ export async function updateDocument(
 
   const now = new Date();
   const nextType = type === undefined ? existing.type : type;
+  if ((existing.type === "canvas") !== (nextType === "canvas")) {
+    throw new Error("A document cannot change to or from a canvas");
+  }
+  const canvas = nextType === "canvas";
 
   const written = await touchDocument(
     s,
     id,
     {
-      content: await storeDocumentContent(s, id, content),
+      // A canvas's content is its object store; the snapshot is written as records below.
+      ...(canvas ? {} : { content: await storeDocumentContent(s, id, content) }),
       updatedAt: now,
       type: nextType,
     },
     expected,
   );
+  if (written.ok && canvas) {
+    await writeCanvasSnapshot(s.platform, s.spaceId, id, parseCanvasSnapshot(content));
+  }
   if (!written.ok) {
     return { ok: false, reason: "conflict" };
   }

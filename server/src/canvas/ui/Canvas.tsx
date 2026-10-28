@@ -1,5 +1,4 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
-import type * as Y from "yjs";
 import { canEdit } from "#acl/permissions.ts";
 import { CanvasProperties } from "#canvas/ui/CanvasProperties.tsx";
 import { CanvasToolbar } from "#canvas/ui/CanvasToolbar.tsx";
@@ -23,6 +22,7 @@ import type {
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import "#canvas/ui/CanvasHostElement.ts";
 import { type Accessor, createMemo, createSignal } from "solid-js";
+import type { CanvasTransport } from "#canvas/document/canvasSync.ts";
 import type { CanvasDocumentCollaboration } from "#canvas/document/collaboration.ts";
 import type { CanvasView } from "#canvas/runtime/controller.ts";
 import type { CanvasPlugins } from "#canvas/runtime/plugins.ts";
@@ -76,7 +76,7 @@ export function createCanvasChrome(
 interface Props {
   spaceId: string;
   documentId?: string;
-  ydoc: Y.Doc;
+  transport: CanvasTransport;
   plugins: CanvasPlugins;
   presenceProfiles?: CollaborationPresenceProfile<CanvasPresenceState>[];
   onPresence?: (states: CanvasPresenceState[]) => void;
@@ -144,7 +144,7 @@ export function Canvas(props: Props) {
     host.spaceid = props.spaceId;
     host.documentid = props.documentId;
     host.plugins = props.plugins;
-    host.ydoc = props.ydoc;
+    host.transport = props.transport;
     host.presence = props.presenceProfiles ?? [];
     host.currentuserid = currentUser()?.id;
     host.cursorcolor = cursorColorOverride() ?? getAvatarColor(currentUser()?.id);

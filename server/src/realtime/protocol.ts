@@ -216,6 +216,13 @@ export const WsMsgType = {
   YjsJoined: 14,
   /** Rejects a stale Y.Doc whose transient room generation no longer exists. */
   YjsReset: 15,
+  /** Canvas object rooms; see docs/canvas-format.md, Live protocol. */
+  CanvasJoin: 16,
+  CanvasLeave: 17,
+  CanvasJoined: 18,
+  CanvasOps: 19,
+  CanvasFlushed: 20,
+  CanvasReload: 21,
 } as const;
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];
@@ -239,7 +246,7 @@ export interface YjsRoomGenerationPayload {
 export interface RealtimeErrorPayload {
   message?: string;
   /** Where the failure happened, for logs; the client branches on the fields. */
-  scope?: "yjs-join" | "yjs-room" | "presence-join" | "frame";
+  scope?: "yjs-join" | "yjs-room" | "canvas-join" | "presence-join" | "frame";
   /** Set only for a Yjs room: it is what the client rejects the join against. */
   documentId?: string;
   /** Presence room the failure belongs to, which is not always a document. */
@@ -281,6 +288,115 @@ export function wsEncodeYjsSyncRequest(
   stateVector: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
   return wsEncodeYjsBinary(WsMsgType.YjsSyncRequest, documentId, stateVector);
+}
+
+/** A frame addressed to a document: `[type][documentId length u32 BE][documentId][payload]`. */
+export function wsEncodeDocumentFrame(
+  type: WsMsgType,
+  documentId: string,
+  payload: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  return wsEncodeYjsBinary(type, documentId, payload);
+}
+
+/** Splits a frame `wsEncodeDocumentFrame` built into its document and payload. */
+export function wsDecodeDocumentFrame(payload: Uint8Array): {
+  documentId: string;
+  payload: Uint8Array;
+} {
+  const { documentId, update } = wsDecodeYjsUpdate(payload);
+  return { documentId, payload: update };
+}
+
+export interface CanvasJoinedPayload {
+  epoch: string;
+  seq: number;
+  bounds: [number, number, number, number];
+}
+
+export interface CanvasFlushedPayload {
+  seq: number;
+  bounds: [number, number, number, number];
+}
+
+export interface CanvasReloadPayload {
+  epoch: string;
+  seq: number;
+}
+
+/**
+ * A `CanvasOps` payload: `epoch` (client to server only) and `opId` as
+ * varint-length strings, then records as the file stores them.
+ */
+export interface CanvasOpsPayload {
+  epoch?: string;
+  opId: string;
+  records: Uint8Array[];
+}
+
+function writeVarint(out: number[], value: number): void {
+  let rest = value;
+  while (rest >= 0x80) {
+    out.push((rest % 0x80) | 0x80);
+    rest = Math.floor(rest / 0x80);
+  }
+  out.push(rest);
+}
+
+function readVarint(bytes: Uint8Array, at: { offset: number }): number {
+  let value = 0;
+  let scale = 1;
+  while (true) {
+    if (at.offset >= bytes.length) throw new Error("Truncated canvas ops frame");
+    const byte = bytes[at.offset++];
+    value += (byte & 0x7f) * scale;
+    if (byte < 0x80) return value;
+    scale *= 0x80;
+  }
+}
+
+export function encodeCanvasOps(ops: CanvasOpsPayload): Uint8Array {
+  const head: number[] = [];
+  for (const text of ops.epoch === undefined ? [ops.opId] : [ops.epoch, ops.opId]) {
+    const bytes = enc.encode(text);
+    writeVarint(head, bytes.length);
+    head.push(...bytes);
+  }
+  const length = ops.records.reduce((sum, record) => sum + record.length, head.length);
+  const payload = new Uint8Array(length);
+  payload.set(head);
+  let offset = head.length;
+  for (const record of ops.records) {
+    payload.set(record, offset);
+    offset += record.length;
+  }
+  return payload;
+}
+
+/** Decodes a `CanvasOps` payload; `withEpoch` for one a client sent. */
+export function decodeCanvasOps(
+  payload: Uint8Array,
+  withEpoch: boolean,
+): CanvasOpsPayload {
+  const at = { offset: 0 };
+  const text = () => {
+    const length = readVarint(payload, at);
+    const value = dec.decode(payload.subarray(at.offset, at.offset + length));
+    at.offset += length;
+    return value;
+  };
+  const epoch = withEpoch ? text() : undefined;
+  const opId = text();
+  const records: Uint8Array[] = [];
+  while (at.offset < payload.length) {
+    const start = at.offset;
+    at.offset++;
+    const length = readVarint(payload, at);
+    at.offset += length;
+    if (at.offset > payload.length) throw new Error("Truncated canvas ops frame");
+    records.push(payload.slice(start, at.offset));
+  }
+  return { epoch, opId, records };
 }
 
 function wsEncodeYjsBinary(

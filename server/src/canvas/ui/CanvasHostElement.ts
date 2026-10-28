@@ -1,5 +1,5 @@
 import { render } from "lit-html";
-import type * as Y from "yjs";
+import type { CanvasTransport } from "#canvas/document/canvasSync.ts";
 import type { CanvasDomRefs, CanvasView } from "#canvas/runtime/controller.ts";
 import {
   type CanvasController,
@@ -73,7 +73,7 @@ const INPUT_EVENTS = [
  *
  * Why the canvas sits outside the framework: the element bodies are already
  * custom elements, and the host is 3,700 lines of viewport maths, pointer
- * handling and Yjs wiring that needs no framework.
+ * handling and sync wiring that needs no framework.
  *
  * Everything the canvas cannot resolve for itself — the current user, the space
  * role, the document's grid setting, an uploader — arrives as a property. The
@@ -88,8 +88,8 @@ export class CanvasHostElement extends HostElement {
   private controller: CanvasController | null = null;
   private renderQueued = false;
   private started = false;
-  /** The document the live controller reads. See `changed()`. */
-  private boundYdoc: Y.Doc | undefined;
+  /** The transport the live controller syncs over. See `changed()`. */
+  private boundTransport: CanvasTransport | undefined;
 
   private readonly dom: CanvasDomRefs = {
     viewport: null,
@@ -101,13 +101,13 @@ export class CanvasHostElement extends HostElement {
   };
 
   /**
-   * Properties, not attributes: a `Y.Doc` cannot be serialised into markup.
+   * Properties, not attributes: a transport cannot be serialised into markup.
    * Single-word names because a template that lowercases kebab-cased bindings
    * reaches a single-word setter and silently misses a camelCase one.
    */
   spaceid = "";
   documentid: string | undefined;
-  ydoc: Y.Doc | undefined;
+  transport: CanvasTransport | undefined;
   currentuserid: string | undefined;
   cursorcolor = "#3b82f6";
   cursorcompanion: string | null = null;
@@ -171,12 +171,12 @@ export class CanvasHostElement extends HostElement {
    * one render.
    */
   changed(): void {
-    // A new doc is a new canvas, and the controller is bound to one for its
-    // whole life. Keyed on the doc, not `documentid`, which changes first —
-    // restarting on the mismatched pair saves the old shapes into the new doc.
-    if (this.started && this.ydoc !== this.boundYdoc) this.stop();
+    // A new transport is a new canvas, and the controller is bound to one for
+    // its whole life. Keyed on the transport, not `documentid`, which changes
+    // first — restarting on the mismatched pair writes the old shapes into the new canvas.
+    if (this.started && this.transport !== this.boundTransport) this.stop();
 
-    // Also the start signal. The shell sets `ydoc` after the element is in the
+    // Also the start signal. The shell sets `transport` after the element is in the
     // document, so `connectedCallback` alone is too early — whichever of the
     // two happens last is the one that starts the canvas.
     this.start();
@@ -202,19 +202,19 @@ export class CanvasHostElement extends HostElement {
    * Deliberately does **not** tear down.
    *
    * A parent reordering its children disconnects and reconnects this element,
-   * and rebuilding on every reconnect would destroy the Yjs wiring and every
+   * and rebuilding on every reconnect would destroy the sync wiring and every
    * element body inside — the same trap `CanvasElementBase` documents. Teardown
    * belongs in an explicit `destroy()`, not in a callback that fires on a move.
    */
   disconnectedCallback(): void {}
 
   private start(): void {
-    const ydoc = this.ydoc;
-    if (this.started || !ydoc) return;
+    const transport = this.transport;
+    if (this.started || !transport) return;
     const plugins = this.plugins;
-    if (!plugins) throw new Error("Set `plugins` on the canvas before `ydoc`");
+    if (!plugins) throw new Error("Set `plugins` on the canvas before `transport`");
     this.started = true;
-    this.boundYdoc = ydoc;
+    this.boundTransport = transport;
 
     // Getters, not a snapshot: the reactions compare each of these against the
     // previous flush, so a property the shell rewrites later has to be visible
@@ -228,7 +228,7 @@ export class CanvasHostElement extends HostElement {
         get documentId() {
           return element.documentid;
         },
-        ydoc,
+        transport,
         get presenceProfiles() {
           return element.#presence;
         },
@@ -348,7 +348,7 @@ export class CanvasHostElement extends HostElement {
     this.controller?.destroy();
     this.controller = null;
     this.started = false;
-    this.boundYdoc = undefined;
+    this.boundTransport = undefined;
   }
 
   /** Explicit teardown. Not called on disconnect — see `disconnectedCallback`. */

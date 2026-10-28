@@ -12,7 +12,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { updateDocument } from "#db/space/documents.ts";
+import { getDocument, updateDocument } from "#db/space/documents.ts";
 import { listRevisionMetadata, restoreRevision } from "#db/space/revisions.ts";
 import type { Platform } from "#platform/platform.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
@@ -87,12 +87,14 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const { revision, content } = restored;
-    const written = await updateDocument(store, documentId, content);
-    if (!written.ok) {
-      throw notFoundResponse("Document");
+    // A canvas was replaced by the restore itself.
+    if ((await getDocument(store, documentId))?.type !== "canvas") {
+      const written = await updateDocument(store, documentId, content);
+      if (!written.ok) {
+        throw notFoundResponse("Document");
+      }
+      replaceLiveDocumentContent(spaceId, documentId, written.document.type, content);
     }
-    const document = written.document;
-    replaceLiveDocumentContent(spaceId, documentId, document.type, content);
     sendSyncEvent(spaceId, realtimeTopics.document(documentId));
 
     return jsonResponse({
