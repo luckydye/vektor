@@ -175,7 +175,7 @@ export function managedAdapter(options: ManagedOptions): Adapter {
           VEKTOR_HOST: `http://${address}:${proxy.port}`,
           VEKTOR_SPACE_ID: init.spaceId,
           VEKTOR_JOB_TOKEN: init.jobToken,
-          VEKTOR_TASK_ID: init.sessionId,
+          VEKTOR_AGENT_SESSION: init.sessionId,
         };
         const envArgs = Object.entries(env).map(([key, value]) => `${key}=${value}`);
         const session = await openAcpSession(

@@ -4,7 +4,7 @@ import { Permission, ResourceType } from "#acl/permissions.ts";
 import { type NodeScreens, nodeRegistry } from "#agent/nodes/registry.ts";
 import { config, getLocalOrigin } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
-import { listJobRunnersWithSecrets } from "#db/space/jobRunners.ts";
+import { listSpaceRunnersWithSecrets } from "#db/space/runners.ts";
 import { assertEgressAllowed } from "#jobs/runtime/capabilities.ts";
 import type { Platform } from "#platform/platform.ts";
 import {
@@ -169,13 +169,13 @@ export async function answerRunnerCall(
   }
 }
 
-async function post(
+function post(
   platform: Platform,
-  runner: { name: string; url: string; secret: string },
+  runner: { url: string; secret: string },
   request: RunnerRequest,
   signal?: AbortSignal,
-): Promise<void> {
-  const response = await platform.fetch(
+): Promise<Response> {
+  return platform.fetch(
     runner.url,
     {
       method: "POST",
@@ -188,10 +188,6 @@ async function post(
     },
     assertEgressAllowed,
   );
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Runner "${runner.name}" answered ${response.status}: ${detail}`);
-  }
 }
 
 /**
@@ -202,18 +198,7 @@ export async function describeRunner(
   platform: Platform,
   runner: { name: string; url: string; secret: string },
 ): Promise<RunnerDescription> {
-  const response = await platform.fetch(
-    runner.url,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${runner.secret}`,
-      },
-      body: JSON.stringify({ kind: "describe" } satisfies RunnerRequest),
-    },
-    assertEgressAllowed,
-  );
+  const response = await post(platform, runner, { kind: "describe" });
   if (!response.ok) return JOBS_ONLY;
   const answer = (await response.json().catch(() => ({}))) as Partial<RunnerDescription>;
   const strings = (value: unknown) =>
@@ -224,7 +209,7 @@ export async function describeRunner(
 
 /** The space's HTTP runners; requests carry the runner's secret. */
 async function httpRunners(platform: Platform, spaceId: string): Promise<Runner[]> {
-  const runners = await listJobRunnersWithSecrets(
+  const runners = await listSpaceRunnersWithSecrets(
     await openSpaceStore(platform, spaceId),
   );
   return runners.map((runner) => ({
@@ -232,7 +217,11 @@ async function httpRunners(platform: Platform, spaceId: string): Promise<Runner[
     name: runner.name,
     description: runner.description,
     async send(request, link) {
-      await post(platform, runner, request, link?.signal);
+      const response = await post(platform, runner, request, link?.signal);
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`Runner "${runner.name}" answered ${response.status}: ${detail}`);
+      }
     },
   }));
 }

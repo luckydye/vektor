@@ -3,7 +3,7 @@
  *
  * There is one runtime today and the whole system talks to it through
  * `JobRuntime`, so swapping in another executor is a change to this function and
- * nothing else. Its VM is the platform's or a node's: `VEKTOR_JOB_RUNTIME`
+ * nothing else. Its VM is the platform's, or a runner runs it: `VEKTOR_JOB_RUNTIME`
  * (validated at boot in `config.ts`) and a run's `node` choose; isolation is
  * not optional.
  */

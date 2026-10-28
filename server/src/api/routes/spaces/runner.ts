@@ -15,7 +15,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { deleteJobRunner } from "#db/space/jobRunners.ts";
+import { deleteSpaceRunner } from "#db/space/runners.ts";
 
 /**
  * Remove a job runner
@@ -34,7 +34,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       Permission.OWNER,
     );
     const store = await openSpaceStore(context.var.platform, spaceId);
-    const deleted = await deleteJobRunner(
+    const deleted = await deleteSpaceRunner(
       store,
       requireParam(context.var.params, "runnerId"),
     );

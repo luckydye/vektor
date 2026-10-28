@@ -7,7 +7,6 @@ import {
   type ChatMessage,
   runAgentInWorker,
 } from "#agent/agent.ts";
-import { runChatOnNode } from "#agent/nodes/remoteChat.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import { AgentTurnError } from "#agent/turnError.ts";
 import {
@@ -36,6 +35,7 @@ import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { listAgentRunners } from "#runners/agents.ts";
+import { runChatOnRunner } from "#runners/chat.ts";
 import { isTimeZone } from "#utils/dateFormat.ts";
 
 // JSON-RPC 2.0 types
@@ -914,7 +914,7 @@ export const POST: ApiRouteHandler = (context) =>
             userText,
             userAttachments: chatAttachments,
             run: ({ signal, onEvent }) =>
-              runChatOnNode(context.var.platform, {
+              runChatOnRunner(context.var.platform, {
                 spaceId,
                 userId,
                 chatId: sessionId,

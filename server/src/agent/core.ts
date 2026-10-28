@@ -10,6 +10,7 @@ import {
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import type { AgentRunnerHost } from "#runners/agents.ts";
+import { runSubagentOnRunner } from "#runners/subagent.ts";
 import type { SafeFetch } from "#utils/ssrf.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
@@ -24,7 +25,6 @@ import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import { generateImage, generateImageTool } from "./imageGeneration.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 import { callModel, type SettleAITokens } from "./model.ts";
-import { runRemoteSubagent } from "./nodes/remoteSubagent.ts";
 import { type AgentLink, createSubagentHub } from "./subagents.ts";
 import { AgentTurnError } from "./turnError.ts";
 import { webSearch, webSearchTool } from "./webSearch.ts";
@@ -57,7 +57,7 @@ export interface AgentHost {
     args: string[];
   }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
   /** Where sub-agents can run besides here: nodes and runners; unset when this host has none. */
-  nodes?: AgentRunnerHost;
+  runners?: AgentRunnerHost;
 }
 
 export type AgentShellBootstrap = {
@@ -89,7 +89,7 @@ export type AgentEvent =
       isError: boolean;
     }
   /** A remote sub-agent's screen the user can watch and drive. */
-  | { type: "screen"; taskId: string; node: string; task: string };
+  | { type: "screen"; sessionId: string; runner: string; task: string };
 
 function describeNow(timeZone: string): string {
   const now = new Date();
@@ -532,7 +532,7 @@ export async function runAgentPrompt(options: {
 
   const provider = options.provider ?? getAIProvider();
   const { host, fetch } = options;
-  const nodes = host?.nodes;
+  const runners = host?.runners;
   const modelCaller =
     options.modelCaller ??
     ((
@@ -550,9 +550,9 @@ export async function runAgentPrompt(options: {
     ? undefined
     : createSubagentHub(
         (task, subagentSignal, subagentLink, target) =>
-          target && nodes && options.userId
-            ? runRemoteSubagent({
-                nodes,
+          target && runners && options.userId
+            ? runSubagentOnRunner({
+                runners,
                 spaceId,
                 userId: options.userId,
                 jobToken: options.jobToken,
@@ -573,8 +573,8 @@ export async function runAgentPrompt(options: {
                 signal: subagentSignal,
                 link: subagentLink,
               }).then((result) => result.content),
-        nodes && options.userId
-          ? () => nodes.listNodes({ spaceId, userId: options.userId as string })
+        runners && options.userId
+          ? () => runners.listRunners({ spaceId, userId: options.userId as string })
           : undefined,
       );
   const link = (options.link ?? hub?.parent) as AgentLink;

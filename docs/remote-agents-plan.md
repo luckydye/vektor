@@ -1,36 +1,20 @@
 # Remote agents
 
-Run sub-agents on other devices, and inside disposable VMs, from the Vektor server. A remote agent is self-sufficient: it brings its own model, tools and credentials, and can be any ACP-speaking agent (OpenCode, Claude via an adapter, the built-in Vektor loop) rather than only ours.
+Sub-agents and chats can run on other devices, and inside disposable VMs. A remote agent is self-sufficient: it brings its own model, tools and credentials, and can be any ACP-speaking agent (OpenCode, Claude via an adapter, the built-in Vektor loop) rather than only ours.
 
-## Where we are
+Agents run on runners, by the contract in [runners.md](runners.md): a node (`vektor agent serve`), or an HTTP runner that offers agents. This page covers what is particular to nodes.
 
-- The agent loop runs on the server in a Bun worker (`server/src/agent`). `runAgentPrompt` is the loop; its shell is an in-memory sandbox.
-- The server speaks an ACP-style JSON-RPC protocol at `/api/v1/chat/acp` (`session/new`, `session/prompt`, `session/update`, `session/cancel`).
-- Sub-agents (`agent/subagents.ts`): `start_subagent`, `list_subagents`, `wait_subagents`, `cancel_subagent`, `send_message`. They run in-process; the hub's `run(task, signal, link)` callback is the single place a run starts.
-- The CLI has `vektor login` (host + access token), `vektor agent` (ACP client) and a stdio MCP server (`cli/mcp.ts`) over the Vektor tool surface.
-- Scheduled prompts exist as `workflow_schedule` rows with a `prompt`.
-
-## Model
+## Nodes
 
 ```
-Vektor server
-  ├─ node registry (per user, online/offline, capabilities)
-  └─ sub-agent hub ── start_subagent({ task, node?, agent? })
-        │  WebSocket frames (outbound from the node)
-        ▼
 vektor agent serve   (on any device, logged in)
-  ├─ adapter: vektor    built-in loop, run locally
+  ├─ adapter: vektor    the server's own agent, over its ACP endpoint
   ├─ adapter: opencode  `opencode acp` as stdio subprocess
-  ├─ adapter: claude    ACP adapter subprocess
   ├─ adapter: <cmd>     any stdio ACP command
   └─ adapter: managed   create an environment through a CLI, run an adapter inside it
 ```
 
-The node is a bridge, not an agent. It holds one outbound WebSocket (no inbound ports, works behind NAT), spawns the chosen agent as a stdio ACP subprocess, and relays JSON-RPC frames both ways.
-
-## Protocol
-
-A node is a runner; see [runners.md](runners.md) for the contract it shares with HTTP runners. Agent turns are `agent` requests, their ACP updates and results come back as HTTP calls, and messages between agents go through the `read_messages` and `send_message` tools of the Vektor MCP server, backed by the session's mailbox.
+The node is a bridge, not an agent. It holds one outbound WebSocket (no inbound ports, works behind NAT), spawns the chosen agent as a stdio ACP subprocess with the Vektor MCP server (`vektor mcp`), and makes the run's calls to the server over HTTP.
 
 ## Managed environment adapter (see environment-manager-protocol.md)
 
@@ -38,38 +22,19 @@ A node is a runner; see [runners.md](runners.md) for the contract it shares with
 
 1. On a session's first `agent` request, create an environment (`<cli> create`).
 2. Run `<inner agent> acp` in the VM; its stdio is the ACP pipe.
-3. Relay frames as for any adapter. The VM lives as long as the session, so follow-up prompts and messages hit the same machine.
-4. On cancel or completion, destroy the VM, or snapshot it when the task asks to keep it.
+3. The VM lives as long as the session, so follow-up prompts and messages hit the same machine.
+4. When the session closes, destroy the VM.
 
-A VM needs the `vektor` binary (for the MCP server), a job token, and network reach to the Vektor server (direct, or proxied by the bridge). Artifacts leave the VM as space uploads or a git branch. `maxSessions` caps concurrent VMs.
-
-Because the VM is disposable, auto-approving permissions is safe there.
+A VM needs the `vektor` binary (for the MCP server), a job token, and network reach to the Vektor server, proxied by the node. Artifacts leave the VM as space uploads or a git branch. `maxSessions` caps concurrent VMs. Because the VM is disposable, auto-approving permissions is safe there.
 
 ## Trust and security
 
 - Each device gets its own revocable access token (device-code login), not the user's main token.
-- A node is usable only by agents running as its owner. Nodes belong to a user (open: or to a space).
+- A node runs agents only for its owner; with `--shared` it runs jobs for the whole space.
 - Node policy flags: `--workdir` (confine files), `--readonly`, `--auto-approve`, and `--allow-shell` or a per-command confirm prompt. Default: confirm.
-- Remote agents' `session/request_permission` is forwarded to the parent agent and the user unless policy answers it.
-- The server never opens a connection to the device. Each task gets a short-lived job token.
+- The server never opens a connection to the device. Each session's agent gets a short-lived job token for its user.
 
-## Phases
+## Open
 
-1. **Transport and registry.** WebSocket endpoint, node registry, device token, `vektor agent serve` with heartbeat and reconnect, `list_nodes` tool. No adapter yet beyond echo.
-2. **Hub integration.** `start_subagent` gets `node` and `agent`. The hub's `run` sends `session.*` frames and maps `session.update` to events and the final result. Cancel and `send_message` over frames.
-3. **Adapters.** `vektor` (local `runAgentPrompt`), then `opencode`, then a generic `<cmd>` adapter, then Claude once its ACP route is confirmed.
-4. **MCP for foreign agents.** Pass `cli/mcp.ts` in `mcpServers`; add `send_message` and `read_messages` MCP tools.
-5. **Managed adapter.** Boot, exec, relay, destroy; image selection; `maxSessions`.
-6. **Triggers.** Schedules and chat can name a node (and adapter), so "every morning, run X on the home server" works.
-7. **Runners.** Jobs, workflow scripts and agents run on nodes and HTTP runners, by one contract (runners.md); `VEKTOR_JOB_RUNTIME=node` makes them the only place jobs run. Open: schedules naming a runner.
-
-## Open questions
-
-- varmint's interface: CLI, socket or API for boot, exec and destroy?
-  -> cli
-- Ephemeral VMs only, or snapshots so a session can resume?
-  -> Ephemeral only for now
-- VM → Vektor server: direct network, or proxied by the bridge?
-  -> proxied by the vektor cli
-- Do nodes belong to a user or to a space?
-  -> whatever is simpler
+- Schedules naming a runner, so "every morning, run X on the home server" works.
+- Snapshots of a managed VM, so a session can resume; ephemeral only for now.

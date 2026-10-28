@@ -17,9 +17,9 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
-  listJobRunnersWithSecrets,
-  setJobRunnerDescription,
-} from "#db/space/jobRunners.ts";
+  listSpaceRunnersWithSecrets,
+  setSpaceRunnerDescription,
+} from "#db/space/runners.ts";
 import { describeRunner } from "#runners/runners.ts";
 
 /**
@@ -42,7 +42,7 @@ export const POST: ApiRouteHandler = (context) =>
     );
     const store = await openSpaceStore(context.var.platform, spaceId);
     const runnerId = requireParam(context.var.params, "runnerId");
-    const runner = (await listJobRunnersWithSecrets(store)).find(
+    const runner = (await listSpaceRunnersWithSecrets(store)).find(
       (r) => r.id === runnerId,
     );
     if (!runner) throw notFoundResponse("Runner");
@@ -54,7 +54,7 @@ export const POST: ApiRouteHandler = (context) =>
         `Runner "${runner.name}" could not be reached: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    await setJobRunnerDescription(store, runner.id, description);
+    await setSpaceRunnerDescription(store, runner.id, description);
     const { secret: _, ...summary } = runner;
     return jsonResponse({ runner: { ...summary, description } });
   }, "Failed to describe runner");

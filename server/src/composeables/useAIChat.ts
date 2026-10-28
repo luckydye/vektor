@@ -161,8 +161,8 @@ export function useAIChat(options: {
         timestamp: Date.now(),
         screen: {
           spaceId: options.currentSpaceId() as string,
-          taskId: event.taskId,
-          node: event.node,
+          sessionId: event.sessionId,
+          runner: event.runner,
         },
       });
     } else {

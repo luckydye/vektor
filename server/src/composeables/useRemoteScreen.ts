@@ -130,7 +130,7 @@ function h264Codec(data: Uint8Array): string {
  * sound is on, and mouse and keyboard sent back as evdev events.
  */
 export function useRemoteScreen(
-  screen: { spaceId: string; taskId: string },
+  screen: { spaceId: string; sessionId: string },
   draw: (frame: VideoFrame) => void,
 ) {
   const [state, setState] = createSignal<"connecting" | "live" | "ended">("connecting");
@@ -146,7 +146,7 @@ export function useRemoteScreen(
   let playAt = 0;
 
   const socket = new WebSocket(
-    `${location.origin.replace(/^http/, "ws")}/screens/${encodeURIComponent(screen.spaceId)}/${encodeURIComponent(screen.taskId)}`,
+    `${location.origin.replace(/^http/, "ws")}/screens/${encodeURIComponent(screen.spaceId)}/${encodeURIComponent(screen.sessionId)}`,
   );
   socket.binaryType = "arraybuffer";
 

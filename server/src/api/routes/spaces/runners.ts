@@ -18,7 +18,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { createJobRunner, listJobRunners } from "#db/space/jobRunners.ts";
+import { createSpaceRunner, listSpaceRunners } from "#db/space/runners.ts";
 
 /**
  * List the space's job runners
@@ -37,7 +37,7 @@ export const GET: ApiRouteHandler = (context) =>
       Permission.EDITOR,
     );
     const store = await openSpaceStore(context.var.platform, spaceId);
-    return jsonResponse({ runners: await listJobRunners(store) });
+    return jsonResponse({ runners: await listSpaceRunners(store) });
   }, "Failed to list runners");
 
 /**
@@ -71,6 +71,6 @@ export const POST: ApiRouteHandler = (context) =>
     }
     const store = await openSpaceStore(context.var.platform, spaceId);
     return createdResponse(
-      await createJobRunner(store, { name, url: url.href, createdBy: user.id }),
+      await createSpaceRunner(store, { name, url: url.href, createdBy: user.id }),
     );
   }, "Failed to register runner");

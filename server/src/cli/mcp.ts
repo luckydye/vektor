@@ -1,8 +1,8 @@
 import {
   assertObject,
   callTool,
-  isToolImage,
   expectString,
+  isToolImage,
   listTools,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
@@ -359,7 +359,7 @@ export async function commandMcp(): Promise<void> {
     spaceId,
     accessToken: token,
     ...(config().CLI_JOB_TOKEN ? { jobToken: config().CLI_JOB_TOKEN } : {}),
-    ...(config().CLI_TASK_ID ? { remoteTaskId: config().CLI_TASK_ID } : {}),
+    ...(config().CLI_AGENT_SESSION ? { agentSessionId: config().CLI_AGENT_SESSION } : {}),
     connectedProviders: [],
   };
 

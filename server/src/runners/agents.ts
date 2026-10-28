@@ -48,19 +48,22 @@ export type AgentRunnerSummary = {
 
 /** The server-side operations a sub-agent hub needs to run agents on runners. */
 export interface AgentRunnerHost {
-  listNodes(request: { spaceId: string; userId: string }): Promise<AgentRunnerSummary[]>;
-  startRemoteTask(request: {
+  listRunners(request: {
+    spaceId: string;
+    userId: string;
+  }): Promise<AgentRunnerSummary[]>;
+  startSession(request: {
     spaceId: string;
     userId: string;
     jobToken: string;
     task: string;
     node?: string;
     adapter?: string;
-  }): Promise<{ taskId: string; node: string }>;
+  }): Promise<{ sessionId: string; runner: string }>;
   /** Resolves at once with anything pending, else when something happens or `waitMs` passes. */
-  pollRemoteTask(taskId: string, waitMs: number): Promise<AgentSessionPoll>;
-  sendRemoteTask(taskId: string, from: string, text: string): Promise<void>;
-  cancelRemoteTask(taskId: string): Promise<void>;
+  pollSession(sessionId: string, waitMs: number): Promise<AgentSessionPoll>;
+  sendToSession(sessionId: string, from: string, text: string): Promise<void>;
+  cancelSession(sessionId: string): Promise<void>;
 }
 
 type Turn = {
@@ -357,9 +360,9 @@ function sessionOf(sessionId: string) {
 /** The sub-agent side, for the agent worker's hub. */
 export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
   return {
-    listNodes: (scope) => listAgentRunners(platform, scope),
+    listRunners: (scope) => listAgentRunners(platform, scope),
 
-    async startRemoteTask(request) {
+    async startSession(request) {
       const session = await open(platform, request, null);
       void prompt(session, request.task).then((result) => {
         if (result.stopReason === "end_turn") settle(session, "done", session.output);
@@ -367,10 +370,10 @@ export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
           settle(session, "cancelled", "Cancelled.");
         else settle(session, "failed", result.error ?? "The agent failed.");
       });
-      return { taskId: session.id, node: session.runner.name };
+      return { sessionId: session.id, runner: session.runner.name };
     },
 
-    async pollRemoteTask(sessionId, waitMs) {
+    async pollSession(sessionId, waitMs) {
       const session = sessionOf(sessionId);
       if (session.status === "running" && !session.outbox.length && waitMs > 0) {
         await new Promise<void>((resolve) => {
@@ -395,7 +398,7 @@ export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
       };
     },
 
-    async sendRemoteTask(sessionId, from, text) {
+    async sendToSession(sessionId, from, text) {
       const session = sessionOf(sessionId);
       if (session.status !== "running")
         throw new Error("The agent is no longer running.");
@@ -403,7 +406,7 @@ export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
       session.inbox.push({ from, text });
     },
 
-    async cancelRemoteTask(sessionId) {
+    async cancelSession(sessionId) {
       const session = sessions.get(sessionId);
       if (session) settle(session, "cancelled", "Cancelled.");
     },
