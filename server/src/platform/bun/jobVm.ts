@@ -203,16 +203,7 @@ export function createBoaJobVm(options: {
    * so `exec` is a door to specific tools rather than to the shell.
    */
   execAllowlist: ReadonlySet<string>;
-  /** Capabilities beyond the standard ones, each a global of the same name in every job. */
-  globals?: string[];
 }): JobVm {
-  const prelude = [
-    PRELUDE,
-    ...(options.globals ?? []).map(
-      (name) =>
-        `globalThis[${JSON.stringify(name)}] = (...args) => __hostCall(${JSON.stringify(name)}, ...args);`,
-    ),
-  ].join("\n");
   return {
     run({ script, inputs, capabilities, onLog, timeoutMs, signal }) {
       let touch = () => {};
@@ -286,7 +277,7 @@ export function createBoaJobVm(options: {
             };
 
             try {
-              vmId = native.vmCreate(prelude, script, inputs, { timeoutMs }, onEvent);
+              vmId = native.vmCreate(PRELUDE, script, inputs, { timeoutMs }, onEvent);
               touch = () => {
                 if (vmId !== null && !settled) native.vmTouch(vmId);
               };
