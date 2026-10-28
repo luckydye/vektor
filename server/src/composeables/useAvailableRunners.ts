@@ -3,15 +3,15 @@ import { api } from "#api/client.ts";
 import { useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
-/** Where the user can run agents in the current space; `undefined` until loaded. */
-export function useAgentRunners(enabled: Accessor<boolean>) {
+/** The names of the runners and nodes the user may run jobs or agents on; `undefined` until loaded. */
+export function useAvailableRunners(kind: "jobs" | "agents", enabled: Accessor<boolean>) {
   const { currentSpaceId } = useSpace();
   const { data } = useQuery({
-    queryKey: createMemo(() => ["agent-runners", currentSpaceId()]),
+    queryKey: createMemo(() => ["available-runners", kind, currentSpaceId()]),
     queryFn: async () => {
       const spaceId = currentSpaceId();
       if (!spaceId) throw new Error("No active space selected");
-      return await api.runners.forAgents(spaceId);
+      return await api.runners.available(spaceId, kind);
     },
     enabled: createMemo(() => !!currentSpaceId() && enabled()),
   });

@@ -7,26 +7,26 @@ import { jobRunners, runsOn, startRun } from "./runners.ts";
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 
 /**
- * Runs a job on a runner: the one named `node`, else the least busy the run
+ * Runs a job on a runner: the one named `runner`, else the least busy the run
  * may use. The job's table answers its calls, and holds no capability that
  * touches this server's network, disk or processes, so a runner's job can
  * never make the server do those.
  */
 export function runOnRunner(
   platform: Platform,
-  scope: { spaceId: string; userId: string | null; node?: string },
+  scope: { spaceId: string; userId: string | null; runner?: string },
   job: JobVmRun,
 ): JobVmRunning {
   let touch = () => {};
   const result = (async () => {
     if (job.signal?.aborted) throw new Error("cancelled");
     const runner = (await jobRunners(platform, scope))
-      .filter((runner) => !scope.node || runner.name === scope.node)
+      .filter((runner) => !scope.runner || runner.name === scope.runner)
       .sort((a, b) => runsOn(a) - runsOn(b))[0];
     if (!runner) {
       throw new Error(
-        scope.node
-          ? `No runner or node "${scope.node}" is available for this job.`
+        scope.runner
+          ? `No runner or node "${scope.runner}" is available for this job.`
           : "No runner or node is available to run this job. Add a runner in the space settings, or start a node with `vektor agent serve`.",
       );
     }

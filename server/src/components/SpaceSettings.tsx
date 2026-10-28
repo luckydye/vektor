@@ -10,7 +10,6 @@ import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
 import { SpaceAIUsage } from "./SpaceAIUsage.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
-import { SpaceNodes } from "./SpaceNodes.tsx";
 import { SpaceRunners } from "./SpaceRunners.tsx";
 import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
 
@@ -66,22 +65,17 @@ export function SpaceSettings() {
             when={isOwner()}
             fallback={
               <p class="text-neutral-500 text-size-small">
-                Only space owners manage AI usage and nodes.
+                Only space owners manage AI usage and runners.
               </p>
             }
           >
             <SpaceAIUsage />
             <SettingsSection
-              title="Nodes"
-              description="Your devices that agents, chats and jobs can run on. Only space owners can connect one."
-            >
-              <SpaceNodes nodes={nodes()} />
-            </SettingsSection>
-            <SettingsSection
               title="Runners"
-              description="Endpoints that run this space's jobs and workflows instead of the server, and your agents if they offer them."
+              description="Where this space's jobs, workflows and your agents can run instead of the server."
             >
               <SpaceRunners
+                nodes={nodes()}
                 runners={runners.runners()}
                 onAdd={runners.add}
                 onDescribe={runners.describe}

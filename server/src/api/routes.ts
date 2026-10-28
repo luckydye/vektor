@@ -14,7 +14,6 @@ import * as runCall from "./routes/runs/call.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
 import * as accessTokens from "./routes/spaces/access-tokens.ts";
-import * as agentRunners from "./routes/spaces/agent-runners.ts";
 import * as agentSessionMessages from "./routes/spaces/agent-session-messages.ts";
 import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
 import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
@@ -22,6 +21,7 @@ import * as aiChatSession from "./routes/spaces/ai-chat-session.ts";
 import * as aiChatSessionContext from "./routes/spaces/ai-chat-session-context.ts";
 import * as aiChatSessions from "./routes/spaces/ai-chat-sessions.ts";
 import * as spaceAuditLogs from "./routes/spaces/audit-logs.ts";
+import * as availableRunners from "./routes/spaces/available-runners.ts";
 import * as categories from "./routes/spaces/categories.ts";
 import * as category from "./routes/spaces/category.ts";
 import * as spaceComments from "./routes/spaces/comments.ts";
@@ -249,7 +249,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },
 
   { pattern: "/api/v1/spaces/[spaceId]/nodes", module: nodes },
-  { pattern: "/api/v1/spaces/[spaceId]/agent-runners", module: agentRunners },
+  { pattern: "/api/v1/spaces/[spaceId]/available-runners", module: availableRunners },
   {
     pattern: "/api/v1/spaces/[spaceId]/agent-sessions/[sessionId]/messages",
     module: agentSessionMessages,

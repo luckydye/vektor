@@ -22,8 +22,6 @@ export type NodeHelloFrame = {
   /** Its agents, in order of preference; the first runs a session that names none. */
   adapters: string[];
   maxSessions: number;
-  /** Runs still going here, so a reconnect keeps them rather than failing them. */
-  runs: string[];
   /** Runs jobs for anyone in the space, not only for its own user. */
   shared: boolean;
 };
@@ -113,7 +111,5 @@ export type NodeSummary = {
   workdir: string;
   adapters: string[];
   maxSessions: number;
-  running: number;
-  online: boolean;
   shared: boolean;
 };

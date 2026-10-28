@@ -19,8 +19,8 @@ export async function startWorkflowRun(
     runtimeInputs?: Record<string, unknown>;
     /** Prior run's step cache to resume from; matching steps replay instead of re-running. */
     seedCache?: WorkflowStepCache;
-    /** The node to run on; see `JobRunContext.node`. */
-    node?: string;
+    /** The runner to run on; see `JobRunContext.runner`. */
+    runner?: string;
   },
 ): Promise<string> {
   const { spaceId } = store;
@@ -55,7 +55,7 @@ export async function startWorkflowRun(
   executeWorkflowScript(store.platform, spaceId, runId, code, {
     runtimeInputs: options.runtimeInputs,
     seedCache: options.seedCache,
-    node: options.node,
+    runner: options.runner,
   }).catch(() => {});
 
   return runId;

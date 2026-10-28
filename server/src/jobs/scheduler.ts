@@ -1,7 +1,7 @@
 import type { Attribution } from "#acl/apps.ts";
 import { extractFile } from "#db/space/extensions.ts";
 import type { Platform } from "#platform/platform.ts";
-import { getJobRuntime } from "./runtime/index.ts";
+import { executeJob } from "./runtime/execute.ts";
 import type { CapabilityTable } from "./runtime/types.ts";
 
 /**
@@ -94,8 +94,8 @@ export async function runJob(
     /** The app credited for what the job does. */
     attribution: Attribution;
     jobId?: string;
-    /** The node to run on; see `JobRunContext.node`. */
-    node?: string;
+    /** The runner to run on; see `JobRunContext.runner`. */
+    runner?: string;
     /** Capabilities granted on top of the standard table (workflows add runJob). */
     extraCapabilities?: CapabilityTable;
   },
@@ -106,7 +106,7 @@ export async function runJob(
     initiatedByUserId,
     attribution,
     jobId: logicalJobId,
-    node,
+    runner,
     extraCapabilities,
   } = options;
 
@@ -125,14 +125,14 @@ export async function runJob(
   }
 
   try {
-    const execution = getJobRuntime().execute(fileBuffer.toString("utf8"), {
+    const execution = executeJob(fileBuffer.toString("utf8"), {
       platform,
       spaceId,
       jobId: logicalJobId ?? entryPath,
       initiatedByUserId: initiatedByUserId ?? null,
       attribution,
       inputs: { ...inputs, jobId: executionId, spaceId },
-      node,
+      runner,
       onLog: (message) => onLog?.(message),
       signal,
       timeoutMs,

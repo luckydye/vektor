@@ -136,7 +136,7 @@ export const POST: ApiRouteHandler = (context) =>
                   initiatedByUserId,
                   attribution,
                   jobId,
-                  node,
+                  runner: node,
                 },
               );
               send({ type: "output", outputs });
@@ -179,7 +179,7 @@ export const POST: ApiRouteHandler = (context) =>
           initiatedByUserId,
           attribution,
           jobId,
-          node,
+          runner: node,
         },
       );
 

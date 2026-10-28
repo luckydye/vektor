@@ -918,7 +918,7 @@ export const POST: ApiRouteHandler = (context) =>
                 spaceId,
                 userId,
                 chatId: sessionId,
-                node,
+                runner: node,
                 jobToken,
                 text,
                 resumed: history.length > 0,

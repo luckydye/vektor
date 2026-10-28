@@ -63,7 +63,7 @@ export interface CapabilityContext {
    * `fetch`, scratch directory and `exec`: the table leaves them out, so a
    * runner's job can never make the server fetch, touch disk or run tools.
    */
-  remote?: boolean;
+  onRunner?: boolean;
   /** Capabilities layered on top of the standard table (workflows add runJob). */
   extra?: CapabilityTable;
 }
@@ -135,7 +135,7 @@ export function createCapabilities(
   context: CapabilityContext,
 ): Capabilities {
   const { spaceId, jobId, initiatedByUserId, attribution, onLog, signal } = context;
-  const host = context.remote ? null : platform.jobVm.hostCapabilities(signal);
+  const host = context.onRunner ? null : platform.jobVm.hostCapabilities(signal);
   const cache = new JobCache(platform.jobCache, jobId);
 
   // Space operations authenticate exactly as they did from the sandbox: a

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { RunnerRequest } from "#runners/contract.ts";
-import type { RunLink, Runner } from "#runners/runners.ts";
+import type { Runner } from "#runners/runners.ts";
 import {
   decodeScreenMedia,
   type NodeHelloFrame,
@@ -17,9 +17,6 @@ import {
  * it dialled in with, within one space; jobs may also use a node shared with
  * the space. Screens, a session's live display, are a node's own extension.
  */
-
-/** How long a node may be away before the runs it carries are failed. */
-const RECONNECT_GRACE_MS = 30_000;
 
 export interface NodeTransport {
   send(frame: ServerToNodeFrame): void;
@@ -50,8 +47,7 @@ type ConnectedNode = {
   spaceId: string;
   userId: string;
   hello: NodeHelloFrame;
-  transport: NodeTransport | null;
-  graceTimer?: ReturnType<typeof setTimeout>;
+  transport: NodeTransport;
 };
 
 const nodeKey = (spaceId: string, userId: string, name: string) =>
@@ -59,8 +55,6 @@ const nodeKey = (spaceId: string, userId: string, name: string) =>
 
 export class NodeRegistry {
   private nodes = new Map<string, ConnectedNode>();
-  /** Runs out on nodes, by run id. */
-  private runs = new Map<string, { nodeKey: string; link: RunLink }>();
   private screens = new Map<string, OpenScreen>();
   private screenWatchers = new Set<(sessionId: string, runnerKey: string) => void>();
 
@@ -71,55 +65,35 @@ export class NodeRegistry {
     transport: NodeTransport,
   ) {
     const key = nodeKey(scope.spaceId, scope.userId, hello.name);
-    const previous = this.nodes.get(key);
-    if (previous) {
-      clearTimeout(previous.graceTimer);
-      // A node that dials in again replaces its stale connection.
-      previous.transport?.close();
-    }
+    // A node that dials in again replaces its stale connection.
+    this.nodes.get(key)?.transport.close();
     const node: ConnectedNode = { key, ...scope, hello, transport };
     this.nodes.set(key, node);
-
-    // Runs the node no longer has died with its previous process.
-    const alive = new Set(hello.runs);
-    for (const [runId, run] of this.runs) {
-      if (run.nodeKey === key && !alive.has(runId)) {
-        run.link.lost(new Error(`Node "${hello.name}" restarted and lost this run.`));
-      }
-    }
 
     return {
       handle: (frame: NodeToServerFrame) => this.handleFrame(node, frame),
       media: (message: Uint8Array) => this.media(node, message),
-      disconnect: () => this.disconnect(node, transport),
+      disconnect: () => this.disconnect(node),
     };
   }
 
-  private disconnect(node: ConnectedNode, transport: NodeTransport) {
-    if (node.transport !== transport) return;
-    node.transport = null;
+  /**
+   * Runs carry on while the node is away, since their calls are HTTP; one
+   * whose node does not come back fails on its inactivity deadline.
+   */
+  private disconnect(node: ConnectedNode) {
+    if (this.nodes.get(node.key) !== node) return;
+    this.nodes.delete(node.key);
     for (const [screenId, screen] of this.screens) {
       if (screen.nodeKey === node.key) this.endScreen(screenId, "The node went away.");
     }
-    // Runs keep going while the node is away, since their calls are HTTP;
-    // only a node that stays away loses them.
-    node.graceTimer = setTimeout(() => {
-      if (this.nodes.get(node.key) !== node) return;
-      this.nodes.delete(node.key);
-      for (const run of this.runs.values()) {
-        if (run.nodeKey === node.key) {
-          run.link.lost(new Error(`Node "${node.hello.name}" went offline.`));
-        }
-      }
-    }, RECONNECT_GRACE_MS);
-    node.graceTimer.unref?.();
   }
 
   private handleFrame(node: ConnectedNode, frame: NodeToServerFrame) {
     if (frame.type === "hello") {
       node.hello = { ...frame, name: node.hello.name };
     } else if (frame.type === "ping") {
-      node.transport?.send({ type: "ping" });
+      node.transport.send({ type: "ping" });
     } else if (frame.type === "screen") {
       for (const watch of this.screenWatchers) watch(frame.sessionId, `node:${node.key}`);
     } else if (frame.type === "screen.end") {
@@ -134,12 +108,6 @@ export class NodeRegistry {
     this.screenWatchers.add(watch);
   }
 
-  private runsOn(key: string) {
-    let count = 0;
-    for (const run of this.runs.values()) if (run.nodeKey === key) count++;
-    return count;
-  }
-
   /** The user's nodes in the space, for the settings. */
   listNodes({ spaceId, userId }: { spaceId: string; userId: string }): NodeSummary[] {
     return [...this.nodes.values()]
@@ -150,8 +118,6 @@ export class NodeRegistry {
         workdir: node.hello.workdir,
         adapters: node.hello.adapters,
         maxSessions: node.hello.maxSessions,
-        running: this.runsOn(node.key),
-        online: node.transport !== null,
         shared: node.hello.shared,
       }));
   }
@@ -161,7 +127,6 @@ export class NodeRegistry {
     return [...this.nodes.values()]
       .filter(
         (n) =>
-          n.transport &&
           n.spaceId === scope.spaceId &&
           (n.userId === scope.userId || (scope.shared && n.hello.shared)),
       )
@@ -170,7 +135,7 @@ export class NodeRegistry {
         name: node.hello.name,
         description: { kinds: ["job", "agent"], agents: node.hello.adapters },
         maxSessions: node.hello.maxSessions,
-        send: async (request, link) => this.send(node.key, request, link),
+        send: async (request, signal) => this.send(node.key, request, signal),
         screens: {
           open: (sessionId, viewer) => this.openScreen(node.key, sessionId, viewer),
           closeAll: (sessionId) => {
@@ -183,16 +148,14 @@ export class NodeRegistry {
   }
 
   /** By key rather than connection, so a node that dialled in again still gets it. */
-  private send(key: string, request: RunnerRequest, link?: RunLink) {
+  private send(key: string, request: RunnerRequest, signal?: AbortSignal) {
     const transport = this.nodes.get(key)?.transport;
     if (!transport) throw new Error("The node is offline.");
-    if (link && "runId" in request) {
+    if (signal && "runId" in request) {
       const { runId } = request;
-      this.runs.set(runId, { nodeKey: key, link });
-      void link.ended.then(() => this.runs.delete(runId));
-      link.signal.addEventListener(
+      signal.addEventListener(
         "abort",
-        () => this.nodes.get(key)?.transport?.send({ type: "cancel", runId }),
+        () => this.nodes.get(key)?.transport.send({ type: "cancel", runId }),
         { once: true },
       );
     }
@@ -217,7 +180,7 @@ export class NodeRegistry {
   private closeScreen(screenId: string, error?: string) {
     const screen = this.screens.get(screenId);
     if (!screen) return;
-    this.nodes.get(screen.nodeKey)?.transport?.send({ type: "screen.close", screenId });
+    this.nodes.get(screen.nodeKey)?.transport.send({ type: "screen.close", screenId });
     this.endScreen(screenId, error);
   }
 
@@ -230,7 +193,7 @@ export class NodeRegistry {
     return {
       input: (events) => {
         if (!this.screens.has(screenId)) return;
-        this.nodes.get(key)?.transport?.send({ type: "screen.input", screenId, events });
+        this.nodes.get(key)?.transport.send({ type: "screen.input", screenId, events });
       },
       close: (error) => this.closeScreen(screenId, error),
     };

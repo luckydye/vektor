@@ -212,9 +212,6 @@ async function acceptNode(
           ? frame.adapters.filter((a) => typeof a === "string").slice(0, 32)
           : [],
         maxSessions: Math.max(1, Math.min(Number(frame.maxSessions) || 1, 64)),
-        runs: Array.isArray(frame.runs)
-          ? frame.runs.filter((s) => typeof s === "string")
-          : [],
         shared: frame.shared === true,
       };
       connection = nodeRegistry.connect({ spaceId, userId: identity.userId }, hello, {
