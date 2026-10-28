@@ -1,15 +1,14 @@
 /**
  * Frames between the server and a node (`vektor agent serve`): one JSON object
  * per WebSocket message. The node dials in, so it needs no inbound port.
- * Inbound messages for a running agent are not a frame: they wait in the
- * task's mailbox and the agent reads them through the `read_messages` MCP tool.
  *
- * A node is also a job runner (docs/job-runners.md): `job.run` carries the
- * same request an HTTP runner gets, and `job.result` its answer. The job's
- * capability calls go to the server over HTTP, as any runner's do.
+ * A node is a runner (docs/runners.md): `run` carries the same requests
+ * an HTTP runner gets, and a run's calls, its result included, go to the
+ * server over HTTP as any runner's do. `cancel` is a node's shortcut for a run
+ * the server gave up on. Screens, a session's live display, are a node's own.
  */
 
-import type { RunnerRequest, RunnerResponse } from "#jobs/runners.ts";
+import type { RunnerRequest } from "#runners/contract.ts";
 
 /** How often each side pings, and how long silence may last before the node is offline. */
 export const NODE_PING_INTERVAL_MS = 15_000;
@@ -20,61 +19,29 @@ export type NodeHelloFrame = {
   name: string;
   os: string;
   workdir: string;
-  /** In order of preference; the first runs a task that names none. */
+  /** Its agents, in order of preference; the first runs a session that names none. */
   adapters: string[];
   maxSessions: number;
-  /** Tasks still running here, so a reconnect resumes them rather than failing them. */
-  sessions: string[];
+  /** Runs still going here, so a reconnect keeps them rather than failing them. */
+  runs: string[];
   /** Runs jobs for anyone in the space, not only for its own user. */
   shared: boolean;
 };
 
-/** What a session needs to reach the Vektor server as the task's user. */
-export type NodeSessionAccess = {
-  spaceId: string;
-  /** Short-lived; scopes the session's MCP server to the task's user. */
-  jobToken: string;
-};
-
 export type ServerToNodeFrame =
-  | {
-      type: "session.new";
-      taskId: string;
-      adapter: string;
-      access: NodeSessionAccess;
-    }
-  | { type: "session.prompt"; taskId: string; text: string }
-  | { type: "session.cancel"; taskId: string }
-  /** Ends the session and whatever its adapter started. */
-  | { type: "session.close"; taskId: string }
-  /** A viewer opened the task's screen; its media comes back as binary messages tagged with `screenId`. */
-  | { type: "screen.open"; taskId: string; screenId: string }
+  | { type: "run"; request: RunnerRequest }
+  | { type: "cancel"; runId: string }
+  /** A viewer opened the session's screen; its media comes back as binary messages tagged with `screenId`. */
+  | { type: "screen.open"; sessionId: string; screenId: string }
   | { type: "screen.input"; screenId: string; events: ScreenInputEvent[] }
   | { type: "screen.close"; screenId: string }
-  | { type: "job.run"; request: RunnerRequest }
-  | { type: "job.cancel"; jobId: string }
   | { type: "ping" };
-
-export type SessionStopReason = "end_turn" | "cancelled" | "error";
-
-export type PromptResult = { stopReason: SessionStopReason; error?: string };
 
 export type NodeToServerFrame =
   | NodeHelloFrame
-  /** An ACP `session/update` notification's update. */
-  | { type: "session.update"; taskId: string; update: Record<string, unknown> }
-  | {
-      type: "session.result";
-      taskId: string;
-      stopReason: SessionStopReason;
-      error?: string;
-    }
-  /** The task's environment has a screen that viewers can open. */
-  | { type: "session.screen"; taskId: string }
+  /** The session's environment has a screen that viewers can open. */
+  | { type: "screen"; sessionId: string }
   | { type: "screen.end"; screenId: string; error?: string }
-  /** From the agent to the parent (`to: "parent"`) or a sibling sub-agent. */
-  | { type: "message"; taskId: string; to: string; text: string }
-  | ({ type: "job.result"; jobId: string } & RunnerResponse)
   | { type: "ping" };
 
 /**
@@ -139,7 +106,7 @@ export function parseFrame<T extends { type: string }>(raw: string): T | null {
   return null;
 }
 
-/** A node as agents and clients see it. */
+/** A node as the settings show it. */
 export type NodeSummary = {
   name: string;
   os: string;
@@ -150,34 +117,3 @@ export type NodeSummary = {
   online: boolean;
   shared: boolean;
 };
-
-/** `idle` is a chat's session between prompts. */
-export type RemoteTaskStatus = "running" | "idle" | "done" | "failed" | "cancelled";
-
-/** What a poll of a remote task reports. */
-export type RemoteTaskPoll = {
-  status: RemoteTaskStatus;
-  /** The agent's final answer once finished, or its error. */
-  output?: string;
-  /** Whether viewers can open the task's screen. */
-  screen: boolean;
-  /** Messages the remote agent sent since the last poll. */
-  messages: Array<{ to: string; text: string }>;
-};
-
-/** The server-side operations a sub-agent hub needs to run work on nodes. */
-export interface AgentNodeHost {
-  listNodes(request: { spaceId: string; userId: string }): Promise<NodeSummary[]>;
-  startRemoteTask(request: {
-    spaceId: string;
-    userId: string;
-    jobToken: string;
-    task: string;
-    node?: string;
-    adapter?: string;
-  }): Promise<{ taskId: string; node: string }>;
-  /** Resolves at once with anything pending, else when something happens or `waitMs` passes. */
-  pollRemoteTask(taskId: string, waitMs: number): Promise<RemoteTaskPoll>;
-  sendRemoteTask(taskId: string, from: string, text: string): Promise<void>;
-  cancelRemoteTask(taskId: string): Promise<void>;
-}

@@ -27,6 +27,8 @@ import {
   type YjsJoinPayload,
   type YjsRoomGenerationPayload,
 } from "#realtime/protocol.ts";
+import type { AgentRunnerSummary } from "#runners/agents.ts";
+import type { RunnerDescription } from "#runners/contract.ts";
 import type { SeriesPoint } from "#series/format.ts";
 import type { SeriesPredicate } from "#series/predicates.ts";
 import type { SeriesQuery, SeriesQueryResult } from "#series/query.ts";
@@ -37,6 +39,8 @@ export type JobRunnerSummary = {
   id: string;
   name: string;
   url: string;
+  /** What it answered `describe` with. */
+  description: RunnerDescription;
   createdBy: string;
   createdAt: string;
 };
@@ -2834,7 +2838,7 @@ export class ApiClient {
     },
   };
 
-  /** The space's job runners (docs/job-runners.md). */
+  /** The space's runners (docs/runners.md). */
   runners = {
     list: async (spaceId: string): Promise<JobRunnerSummary[]> => {
       const { runners } = await this.apiGet<{ runners: JobRunnerSummary[] }>(
@@ -2854,6 +2858,25 @@ export class ApiClient {
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners`,
         body,
       );
+    },
+
+    /** Where the caller can run agents: its nodes, and agent runners when it owns the space. */
+    forAgents: async (spaceId: string): Promise<AgentRunnerSummary[]> => {
+      const { runners } = await this.apiGet<{ runners: AgentRunnerSummary[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/agent-runners`,
+      );
+      return runners;
+    },
+
+    /** Owner only: asks the runner what it offers, and keeps the answer. */
+    describe: async (spaceId: string, runnerId: string): Promise<JobRunnerSummary> => {
+      const { runner } = await this.apiPost<{ runner: JobRunnerSummary }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners/${encodeURIComponent(runnerId)}/describe`,
+        {},
+      );
+      return runner;
     },
 
     delete: async (spaceId: string, runnerId: string): Promise<void> => {

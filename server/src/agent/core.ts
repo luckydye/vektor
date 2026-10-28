@@ -9,6 +9,7 @@ import {
 } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
+import type { AgentRunnerHost } from "#runners/agents.ts";
 import type { SafeFetch } from "#utils/ssrf.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
@@ -23,7 +24,6 @@ import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 import { generateImage, generateImageTool } from "./imageGeneration.ts";
 import type { IntegrationAgentCommand, IntegrationAgentSurface } from "./integrations.ts";
 import { callModel, type SettleAITokens } from "./model.ts";
-import type { AgentNodeHost } from "./nodes/protocol.ts";
 import { runRemoteSubagent } from "./nodes/remoteSubagent.ts";
 import { type AgentLink, createSubagentHub } from "./subagents.ts";
 import { AgentTurnError } from "./turnError.ts";
@@ -56,8 +56,8 @@ export interface AgentHost {
     userId: string | null;
     args: string[];
   }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
-  /** Where sub-agents can run besides here; unset when this host has no nodes. */
-  nodes?: AgentNodeHost;
+  /** Where sub-agents can run besides here: nodes and runners; unset when this host has none. */
+  nodes?: AgentRunnerHost;
 }
 
 export type AgentShellBootstrap = {

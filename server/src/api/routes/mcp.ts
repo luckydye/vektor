@@ -103,10 +103,13 @@ export const POST: ApiRouteHandler = (context) =>
       return new Response(null, { status: 202 });
     }
 
+    // An agent on a runner names its session, whose mailbox its message tools use.
+    const agentSession = context.req.raw.headers.get("X-Agent-Session");
     const mcpConfig: VektorMcpConfig = {
       apiUrl: getLocalOrigin(),
       spaceId,
       jobToken,
+      ...(agentSession ? { remoteTaskId: agentSession } : {}),
     };
 
     return jsonRpcResponse(await handleMcpRequest(mcpConfig, request));

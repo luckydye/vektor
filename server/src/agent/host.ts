@@ -1,10 +1,10 @@
 import type { AgentHost } from "#agent/core.ts";
-import { nodeRegistry } from "#agent/nodes/registry.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { reserveAITokens } from "#db/space/aiUsage.ts";
 import { getExtensionPackage } from "#db/space/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import type { Platform } from "#platform/platform.ts";
+import { createAgentRunnerHost } from "#runners/agents.ts";
 
 /** Job outputs are `{ type, value }` pairs; anything else is treated as absent. */
 function textOutput(outputs: Record<string, unknown>, key: string): string {
@@ -19,14 +19,7 @@ function textOutput(outputs: Record<string, unknown>, key: string): string {
 /** The agent's access to the space databases and the job scheduler, on the main thread. */
 export function createAgentHost(platform: Platform): AgentHost {
   return {
-    nodes: {
-      listNodes: (request) => nodeRegistry.listNodes(request),
-      startRemoteTask: (request) => nodeRegistry.startRemoteTask(request),
-      pollRemoteTask: (taskId, waitMs) => nodeRegistry.pollRemoteTask(taskId, waitMs),
-      sendRemoteTask: (taskId, from, text) =>
-        nodeRegistry.sendRemoteTask(taskId, from, text),
-      cancelRemoteTask: (taskId) => nodeRegistry.cancelRemoteTask(taskId),
-    },
+    nodes: createAgentRunnerHost(platform),
 
     async reserveAITokens(spaceId, inputTokens) {
       return reserveAITokens(await openSpaceStore(platform, spaceId), inputTokens);

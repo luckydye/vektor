@@ -59,7 +59,7 @@ export interface CapabilityContext {
   onLog: (message: string) => void;
   signal?: AbortSignal;
   /**
-   * The guest runs on a runner (#jobs/runners.ts), which brings its own
+   * The guest runs on a runner (#runners/jobs.ts), which brings its own
    * `fetch`, scratch directory and `exec`: the table leaves them out, so a
    * runner's job can never make the server fetch, touch disk or run tools.
    */

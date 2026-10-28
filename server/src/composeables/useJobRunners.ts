@@ -3,7 +3,7 @@ import { api } from "#api/client.ts";
 import { useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
-/** The current space's job runners; `runners` is `undefined` until loaded. */
+/** The current space's runners; `runners` is `undefined` until loaded. */
 export function useJobRunners(enabled: Accessor<boolean>) {
   const { currentSpaceId } = useSpace();
   const queryClient = useQueryClient();
@@ -25,6 +25,10 @@ export function useJobRunners(enabled: Accessor<boolean>) {
       const { secret } = await api.runners.create(spaceId(), { name, url });
       queryClient.invalidateQueries({ queryKey: queryKey() });
       return secret;
+    },
+    async describe(runnerId: string) {
+      await api.runners.describe(spaceId(), runnerId);
+      queryClient.invalidateQueries({ queryKey: queryKey() });
     },
     async remove(runnerId: string) {
       await api.runners.delete(spaceId(), runnerId);

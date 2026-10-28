@@ -1,9 +1,9 @@
 /**
- * /api/v1/spaces/:spaceId/nodes/tasks/:taskId/messages
+ * /api/v1/spaces/:spaceId/agent-sessions/:sessionId/messages
  *
- * The mailbox of an agent running on a node, for the `read_messages` and
- * `send_message` tools of its MCP server. Only the job token minted for the
- * task's own user reaches it.
+ * The mailbox of an agent running on a node or runner, for the
+ * `read_messages` and `send_message` tools of its MCP server. Only the job
+ * token minted for the session's own user reaches it.
  *
  * GET:  take the messages other agents sent to this one
  * POST: send a message to the parent agent (`to: "parent"`) or a sibling sub-agent
@@ -13,7 +13,6 @@
 
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
-import { nodeRegistry } from "#agent/nodes/registry.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -23,10 +22,11 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
+import { agentMailbox } from "#runners/agents.ts";
 
 async function mailboxOf(context: ApiContext) {
   const spaceId = requireParam(context.var.params, "spaceId");
-  const taskId = requireParam(context.var.params, "taskId");
+  const sessionId = requireParam(context.var.params, "sessionId");
   const auth = await authenticateJobTokenOrSpaceRole(
     context.var.platform,
     context.var.credentials,
@@ -35,9 +35,9 @@ async function mailboxOf(context: ApiContext) {
   );
   const userId = auth.type === "user" ? auth.user.id : auth.userId;
   try {
-    return nodeRegistry.forAgent(taskId, { spaceId, userId });
+    return agentMailbox(sessionId, { spaceId, userId });
   } catch {
-    throw notFoundResponse("Remote task");
+    throw notFoundResponse("Agent session");
   }
 }
 

@@ -33,7 +33,7 @@ export interface JobRunContext {
   /** Becomes the guest's `input` global. */
   inputs: Record<string, unknown>;
   /**
-   * Runs the guest on the runner or node of this name (#jobs/runners.ts)
+   * Runs the guest on the runner or node of this name (#runners/jobs.ts)
    * rather than on the server. Without it, it runs on one only when
    * `VEKTOR_JOB_RUNTIME` is `node`, and then on any the run may use.
    */

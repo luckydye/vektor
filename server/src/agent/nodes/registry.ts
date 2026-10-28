@@ -1,40 +1,30 @@
 import { randomUUID } from "node:crypto";
-import type { Runner, RunnerResponse } from "#jobs/runners.ts";
+import type { RunnerRequest } from "#runners/contract.ts";
+import type { RunLink, Runner } from "#runners/runners.ts";
 import {
-  type AgentNodeHost,
   decodeScreenMedia,
   type NodeHelloFrame,
   type NodeSummary,
   type NodeToServerFrame,
-  type PromptResult,
-  type RemoteTaskPoll,
-  type RemoteTaskStatus,
   type ScreenInputEvent,
   type ServerToNodeFrame,
 } from "./protocol.ts";
 
 /**
- * The nodes connected to this server and the tasks and jobs running on them. A
- * node belongs to the user whose access token it dialled in with, within one
- * space, and only agents running as that user can reach it. Jobs may also use
- * a node shared with the space.
+ * The nodes connected to this server. A node is a runner (#runners/runners.ts)
+ * that dials in: it gets runner requests over its socket, and makes its runs'
+ * calls over HTTP like any runner. It belongs to the user whose access token
+ * it dialled in with, within one space; jobs may also use a node shared with
+ * the space. Screens, a session's live display, are a node's own extension.
  */
 
-/** How long a node may be away before the tasks it was running are failed. */
+/** How long a node may be away before the runs it carries are failed. */
 const RECONNECT_GRACE_MS = 30_000;
-/** How long a finished task stays readable. */
-const FINISHED_TASK_RETENTION_MS = 10 * 60_000;
-const MAX_OUTPUT_CHARS = 200_000;
-const MAX_MAILBOX = 100;
-/** How long a chat's session may sit between prompts before it is closed. */
-const CHAT_IDLE_MS = 30 * 60_000;
 
 export interface NodeTransport {
   send(frame: ServerToNodeFrame): void;
   close(): void;
 }
-
-type Message = { from: string; text: string };
 
 /** Where a screen's media goes: the browser watching it. */
 export interface ScreenViewer {
@@ -42,37 +32,18 @@ export interface ScreenViewer {
   close(error?: string): void;
 }
 
-type OpenScreen = { taskId: string; nodeKey: string; viewer: ScreenViewer };
-
-type RemoteTask = {
-  id: string;
-  spaceId: string;
-  userId: string;
-  nodeKey: string;
-  status: RemoteTaskStatus;
-  output: string;
-  error?: string;
-  /** For the remote agent: `read_messages` drains it. */
-  inbox: Message[];
-  /** From the remote agent to others in the turn; the hub drains it by polling. */
-  outbox: Array<{ to: string; text: string }>;
-  wake: Set<() => void>;
-  screen: boolean;
-  /** The chat whose session this is, kept open between prompts; null for a sub-agent's one-answer task. */
-  chat: string | null;
-  /** A chat's prompt in flight. */
-  turn?: ChatTurn;
-  idleTimer?: ReturnType<typeof setTimeout>;
+export type ScreenHandle = {
+  input(events: ScreenInputEvent[]): void;
+  close(error?: string): void;
 };
 
-type ChatTurn = {
-  onUpdate(update: Record<string, unknown>): void;
-  onScreen(taskId: string): void;
-  done(result: PromptResult): void;
+/** A node runner's screens, by agent session. */
+export type NodeScreens = {
+  open(sessionId: string, viewer: ScreenViewer): ScreenHandle;
+  closeAll(sessionId: string): void;
 };
 
-/** A job's request on a node, until the node answers. */
-type NodeJob = { node: ConnectedNode; settle(response: RunnerResponse): void };
+type OpenScreen = { sessionId: string; nodeKey: string; viewer: ScreenViewer };
 
 type ConnectedNode = {
   key: string;
@@ -86,15 +57,12 @@ type ConnectedNode = {
 const nodeKey = (spaceId: string, userId: string, name: string) =>
   `${spaceId}\0${userId}\0${name}`;
 
-const isOpen = (task: RemoteTask) => task.status === "running" || task.status === "idle";
-
-export class NodeRegistry implements AgentNodeHost {
+export class NodeRegistry {
   private nodes = new Map<string, ConnectedNode>();
-  private tasks = new Map<string, RemoteTask>();
+  /** Runs out on nodes, by run id. */
+  private runs = new Map<string, { nodeKey: string; link: RunLink }>();
   private screens = new Map<string, OpenScreen>();
-  private jobs = new Map<string, NodeJob>();
-  /** A chat's session, by `nodeKey`-style chat key. */
-  private chats = new Map<string, string>();
+  private screenWatchers = new Set<(sessionId: string, runnerKey: string) => void>();
 
   /** Registers a node's connection; the returned handle takes its frames and its disconnect. */
   connect(
@@ -112,11 +80,11 @@ export class NodeRegistry implements AgentNodeHost {
     const node: ConnectedNode = { key, ...scope, hello, transport };
     this.nodes.set(key, node);
 
-    // Tasks the node no longer runs died with its previous process.
-    const alive = new Set(hello.sessions);
-    for (const task of this.tasks.values()) {
-      if (task.nodeKey === key && isOpen(task) && !alive.has(task.id)) {
-        this.settle(task, "failed", `Node "${hello.name}" restarted and lost this task.`);
+    // Runs the node no longer has died with its previous process.
+    const alive = new Set(hello.runs);
+    for (const [runId, run] of this.runs) {
+      if (run.nodeKey === key && !alive.has(runId)) {
+        run.link.lost(new Error(`Node "${hello.name}" restarted and lost this run.`));
       }
     }
 
@@ -133,16 +101,14 @@ export class NodeRegistry implements AgentNodeHost {
     for (const [screenId, screen] of this.screens) {
       if (screen.nodeKey === node.key) this.endScreen(screenId, "The node went away.");
     }
-    // A job's capability calls cannot wait for a reconnect, so it fails at once.
-    for (const job of this.jobs.values()) {
-      if (job.node === node)
-        job.settle({ error: `Node "${node.hello.name}" went offline.` });
-    }
+    // Runs keep going while the node is away, since their calls are HTTP;
+    // only a node that stays away loses them.
     node.graceTimer = setTimeout(() => {
-      if (this.nodes.get(node.key) === node) this.nodes.delete(node.key);
-      for (const task of this.tasks.values()) {
-        if (task.nodeKey === node.key && isOpen(task)) {
-          this.settle(task, "failed", `Node "${node.hello.name}" went offline.`);
+      if (this.nodes.get(node.key) !== node) return;
+      this.nodes.delete(node.key);
+      for (const run of this.runs.values()) {
+        if (run.nodeKey === node.key) {
+          run.link.lost(new Error(`Node "${node.hello.name}" went offline.`));
         }
       }
     }, RECONNECT_GRACE_MS);
@@ -152,358 +118,85 @@ export class NodeRegistry implements AgentNodeHost {
   private handleFrame(node: ConnectedNode, frame: NodeToServerFrame) {
     if (frame.type === "hello") {
       node.hello = { ...frame, name: node.hello.name };
-      return;
-    }
-    if (frame.type === "ping") {
+    } else if (frame.type === "ping") {
       node.transport?.send({ type: "ping" });
-      return;
-    }
-    if (frame.type === "screen.end") {
+    } else if (frame.type === "screen") {
+      for (const watch of this.screenWatchers) watch(frame.sessionId, `node:${node.key}`);
+    } else if (frame.type === "screen.end") {
       if (this.screens.get(frame.screenId)?.nodeKey === node.key) {
         this.endScreen(frame.screenId, frame.error);
       }
-      return;
-    }
-    if (frame.type === "job.result") {
-      // Only a node's own jobs answer to it.
-      const job = this.jobs.get(frame.jobId);
-      if (job?.node === node) job.settle(frame);
-      return;
-    }
-    // Only a node's own tasks answer to it.
-    const task = this.tasks.get(frame.taskId);
-    if (!task || task.nodeKey !== node.key || !isOpen(task)) return;
-
-    if (frame.type === "session.update") {
-      const update = frame.update;
-      if (task.turn) {
-        task.turn.onUpdate(update);
-        return;
-      }
-      const content = update.content as { type?: string; text?: unknown } | undefined;
-      if (
-        update.sessionUpdate === "agent_message_chunk" &&
-        content?.type === "text" &&
-        typeof content.text === "string" &&
-        task.output.length < MAX_OUTPUT_CHARS
-      ) {
-        task.output += content.text;
-      }
-    } else if (frame.type === "session.screen") {
-      task.screen = true;
-      task.turn?.onScreen(task.id);
-      this.notify(task);
-    } else if (frame.type === "message") {
-      if (task.outbox.length < MAX_MAILBOX) {
-        task.outbox.push({ to: frame.to, text: frame.text });
-        this.notify(task);
-      }
-    } else if (frame.type === "session.result") {
-      if (task.chat) this.endTurn(task, frame);
-      else if (frame.stopReason === "end_turn") this.settle(task, "done", task.output);
-      else if (frame.stopReason === "cancelled")
-        this.settle(task, "cancelled", "Cancelled.");
-      else this.settle(task, "failed", frame.error ?? "The remote agent failed.");
     }
   }
 
-  /** A chat's prompt ended; its session waits for the next unless the agent failed. */
-  private endTurn(task: RemoteTask, result: PromptResult) {
-    if (result.stopReason === "error") {
-      this.settle(task, "failed", result.error ?? "The remote agent failed.");
-      return;
-    }
-    const turn = task.turn;
-    task.turn = undefined;
-    task.status = "idle";
-    task.idleTimer = setTimeout(
-      () => this.settle(task, "cancelled", "Closed after being idle."),
-      CHAT_IDLE_MS,
-    );
-    task.idleTimer.unref?.();
-    turn?.done(result);
+  /** Called when a node says a session's screen can be opened. */
+  watchScreens(watch: (sessionId: string, runnerKey: string) => void) {
+    this.screenWatchers.add(watch);
   }
 
-  private settle(task: RemoteTask, status: RemoteTaskStatus, output: string) {
-    if (!isOpen(task)) return;
-    task.status = status;
-    if (status === "done") task.output = output;
-    else task.error = output;
-    clearTimeout(task.idleTimer);
-    if (task.chat && this.chats.get(task.chat) === task.id) this.chats.delete(task.chat);
-    this.nodes
-      .get(task.nodeKey)
-      ?.transport?.send({ type: "session.close", taskId: task.id });
-    const turn = task.turn;
-    task.turn = undefined;
-    turn?.done({
-      stopReason: status === "cancelled" ? "cancelled" : "error",
-      error: output,
-    });
-    this.notify(task);
-    for (const [screenId, screen] of this.screens) {
-      if (screen.taskId === task.id) this.closeScreen(screenId);
-    }
-    const timer = setTimeout(
-      () => this.tasks.delete(task.id),
-      FINISHED_TASK_RETENTION_MS,
-    );
-    timer.unref?.();
-  }
-
-  private notify(task: RemoteTask) {
-    for (const wake of task.wake) wake();
-  }
-
-  private ownNodes(spaceId: string, userId: string) {
-    return [...this.nodes.values()].filter(
-      (n) => n.spaceId === spaceId && n.userId === userId,
-    );
-  }
-
-  /** Sessions open on `node`, idle chats' included: each holds an agent there. */
-  private runningOn(node: ConnectedNode) {
+  private runsOn(key: string) {
     let count = 0;
-    for (const task of this.tasks.values()) {
-      if (task.nodeKey === node.key && isOpen(task)) count++;
-    }
+    for (const run of this.runs.values()) if (run.nodeKey === key) count++;
     return count;
   }
 
-  async listNodes({
-    spaceId,
-    userId,
-  }: {
-    spaceId: string;
-    userId: string;
-  }): Promise<NodeSummary[]> {
-    return this.ownNodes(spaceId, userId).map((node) => ({
-      name: node.hello.name,
-      os: node.hello.os,
-      workdir: node.hello.workdir,
-      adapters: node.hello.adapters,
-      maxSessions: node.hello.maxSessions,
-      running: this.runningOn(node),
-      online: node.transport !== null,
-      shared: node.hello.shared,
-    }));
+  /** The user's nodes in the space, for the settings. */
+  listNodes({ spaceId, userId }: { spaceId: string; userId: string }): NodeSummary[] {
+    return [...this.nodes.values()]
+      .filter((n) => n.spaceId === spaceId && n.userId === userId)
+      .map((node) => ({
+        name: node.hello.name,
+        os: node.hello.os,
+        workdir: node.hello.workdir,
+        adapters: node.hello.adapters,
+        maxSessions: node.hello.maxSessions,
+        running: this.runsOn(node.key),
+        online: node.transport !== null,
+        shared: node.hello.shared,
+      }));
   }
 
-  /**
-   * The nodes a job may run on, as runners: its user's own and those shared
-   * with the space, online.
-   */
-  jobRunners(scope: { spaceId: string; userId: string | null }): Runner[] {
+  /** Online nodes as runners: the user's own, and with `shared` those shared with the space. */
+  runners(scope: { spaceId: string; userId: string | null; shared: boolean }): Runner[] {
     return [...this.nodes.values()]
       .filter(
         (n) =>
           n.transport &&
           n.spaceId === scope.spaceId &&
-          (n.hello.shared || n.userId === scope.userId),
+          (n.userId === scope.userId || (scope.shared && n.hello.shared)),
       )
       .map((node) => ({
         key: `node:${node.key}`,
         name: node.hello.name,
-        run: (request, signal) => this.runOn(node, request, signal),
+        description: { kinds: ["job", "agent"], agents: node.hello.adapters },
+        maxSessions: node.hello.maxSessions,
+        send: async (request, link) => this.send(node.key, request, link),
+        screens: {
+          open: (sessionId, viewer) => this.openScreen(node.key, sessionId, viewer),
+          closeAll: (sessionId) => {
+            for (const [screenId, screen] of this.screens) {
+              if (screen.sessionId === sessionId) this.closeScreen(screenId);
+            }
+          },
+        },
       }));
   }
 
-  private runOn(
-    node: ConnectedNode,
-    request: Parameters<Runner["run"]>[0],
-    signal: AbortSignal,
-  ): Promise<RunnerResponse> {
-    const { jobId } = request;
-    return new Promise((resolve, reject) => {
-      const onAbort = () => {
-        node.transport?.send({ type: "job.cancel", jobId });
-        settle({});
-      };
-      const settle = (response: RunnerResponse) => {
-        if (!this.jobs.delete(jobId)) return;
-        signal.removeEventListener("abort", onAbort);
-        // Settled here rather than when the node confirms, so a node that does
-        // not answer cannot hold a cancelled job.
-        if (signal.aborted) reject(signal.reason);
-        else resolve(response);
-      };
-      this.jobs.set(jobId, { node, settle });
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      signal.addEventListener("abort", onAbort, { once: true });
-      node.transport?.send({ type: "job.run", request });
-    });
-  }
-
-  async startRemoteTask(request: Parameters<AgentNodeHost["startRemoteTask"]>[0]) {
-    const { task, node } = this.open(request, null);
-    task.status = "running";
-    node.transport?.send({ type: "session.prompt", taskId: task.id, text: request.task });
-    return { taskId: task.id, node: node.hello.name };
-  }
-
-  /** Starts a session on one of the user's online nodes; it is idle until prompted. */
-  private open(
-    request: {
-      spaceId: string;
-      userId: string;
-      jobToken: string;
-      node?: string;
-      adapter?: string;
-    },
-    chat: string | null,
-  ) {
-    const { spaceId, userId, jobToken } = request;
-    const candidates = this.ownNodes(spaceId, userId).filter((n) => n.transport);
-    const node = request.node
-      ? candidates.find((n) => n.hello.name === request.node)
-      : candidates.find(
-          (n) =>
-            this.runningOn(n) < n.hello.maxSessions &&
-            (!request.adapter || n.hello.adapters.includes(request.adapter)),
-        );
-    if (!node?.transport) {
-      throw new Error(
-        request.node
-          ? `Node "${request.node}" is not online. Use list_nodes to see what is.`
-          : "No node is online for this user. Start one with `vektor agent serve`.",
+  /** By key rather than connection, so a node that dialled in again still gets it. */
+  private send(key: string, request: RunnerRequest, link?: RunLink) {
+    const transport = this.nodes.get(key)?.transport;
+    if (!transport) throw new Error("The node is offline.");
+    if (link && "runId" in request) {
+      const { runId } = request;
+      this.runs.set(runId, { nodeKey: key, link });
+      void link.ended.then(() => this.runs.delete(runId));
+      link.signal.addEventListener(
+        "abort",
+        () => this.nodes.get(key)?.transport?.send({ type: "cancel", runId }),
+        { once: true },
       );
     }
-    const adapter = request.adapter ?? node.hello.adapters[0];
-    if (!adapter || !node.hello.adapters.includes(adapter)) {
-      throw new Error(
-        `Node "${node.hello.name}" has no "${request.adapter}" adapter; it offers ${node.hello.adapters.join(", ") || "none"}.`,
-      );
-    }
-    if (this.runningOn(node) >= node.hello.maxSessions) {
-      throw new Error(
-        `Node "${node.hello.name}" is running its maximum of ${node.hello.maxSessions} sessions.`,
-      );
-    }
-
-    const task: RemoteTask = {
-      id: `rt-${randomUUID()}`,
-      spaceId,
-      userId,
-      nodeKey: node.key,
-      status: "idle",
-      output: "",
-      inbox: [],
-      outbox: [],
-      wake: new Set(),
-      screen: false,
-      chat,
-    };
-    this.tasks.set(task.id, task);
-    if (chat) this.chats.set(chat, task.id);
-    node.transport.send({
-      type: "session.new",
-      taskId: task.id,
-      adapter,
-      access: { spaceId, jobToken },
-    });
-    return { task, node };
-  }
-
-  /**
-   * Starts one prompt of a chat on its session at `node`, opening one when the
-   * chat has none: on its first prompt, or after the session ended. `fresh`
-   * says a session was opened, so it remembers no earlier prompt.
-   */
-  promptChat(
-    request: {
-      spaceId: string;
-      userId: string;
-      chatId: string;
-      node: string;
-      jobToken: string;
-      text: string;
-    } & Omit<ChatTurn, "done">,
-  ): { fresh: boolean; result: Promise<PromptResult> } {
-    const existing = this.chatTask(request);
-    const fresh = !existing;
-    const task =
-      existing ??
-      this.open(request, nodeKey(request.spaceId, request.userId, request.chatId)).task;
-    if (task.status !== "idle")
-      throw new Error("A prompt is already running in this chat.");
-    const transport = this.nodes.get(task.nodeKey)?.transport;
-    if (!transport) throw new Error(`Node "${request.node}" is offline.`);
-    clearTimeout(task.idleTimer);
-    task.status = "running";
-    const result = new Promise<PromptResult>((done) => {
-      task.turn = { onUpdate: request.onUpdate, onScreen: request.onScreen, done };
-    });
-    if (task.screen) request.onScreen(task.id);
-    transport.send({ type: "session.prompt", taskId: task.id, text: request.text });
-    return { fresh, result };
-  }
-
-  private chatTask(scope: { spaceId: string; userId: string; chatId: string }) {
-    return this.tasks.get(
-      this.chats.get(nodeKey(scope.spaceId, scope.userId, scope.chatId)) ?? "",
-    );
-  }
-
-  /** Stops a chat's prompt in flight; its session stays open. */
-  cancelChat(scope: { spaceId: string; userId: string; chatId: string }) {
-    const task = this.chatTask(scope);
-    if (task?.status !== "running") return;
-    this.nodes
-      .get(task.nodeKey)
-      ?.transport?.send({ type: "session.cancel", taskId: task.id });
-  }
-
-  /** Ends a chat's session, if it has one. */
-  closeChat(scope: { spaceId: string; userId: string; chatId: string }) {
-    const task = this.chatTask(scope);
-    if (task) this.settle(task, "cancelled", "The chat was closed.");
-  }
-
-  private task(taskId: string) {
-    const task = this.tasks.get(taskId);
-    if (!task) throw new Error(`No remote task "${taskId}".`);
-    return task;
-  }
-
-  async pollRemoteTask(taskId: string, waitMs: number): Promise<RemoteTaskPoll> {
-    const task = this.task(taskId);
-    if (task.status === "running" && !task.outbox.length && waitMs > 0) {
-      await new Promise<void>((resolve) => {
-        const done = () => {
-          clearTimeout(timer);
-          task.wake.delete(done);
-          resolve();
-        };
-        const timer = setTimeout(done, waitMs);
-        task.wake.add(done);
-      });
-    }
-    return {
-      status: task.status,
-      screen: task.screen,
-      ...(task.status === "running"
-        ? {}
-        : { output: task.status === "done" ? task.output : (task.error ?? "") }),
-      messages: task.outbox.splice(0),
-    };
-  }
-
-  async sendRemoteTask(taskId: string, from: string, text: string) {
-    const task = this.task(taskId);
-    if (task.status !== "running")
-      throw new Error("The remote task is no longer running.");
-    if (task.inbox.length >= MAX_MAILBOX) task.inbox.shift();
-    task.inbox.push({ from, text });
-  }
-
-  async cancelRemoteTask(taskId: string) {
-    const task = this.tasks.get(taskId);
-    if (!task || !isOpen(task)) return;
-    this.nodes.get(task.nodeKey)?.transport?.send({ type: "session.cancel", taskId });
-    this.settle(task, "cancelled", "Cancelled.");
+    transport.send({ type: "run", request });
   }
 
   private media(node: ConnectedNode, message: Uint8Array) {
@@ -528,57 +221,18 @@ export class NodeRegistry implements AgentNodeHost {
     this.endScreen(screenId, error);
   }
 
-  /** Opens an open task's screen for its own user. */
-  openScreen(
-    { spaceId, userId, taskId }: { spaceId: string; userId: string; taskId: string },
-    viewer: ScreenViewer,
-  ) {
-    const task = this.tasks.get(taskId);
-    const transport = task && this.nodes.get(task.nodeKey)?.transport;
-    if (
-      !task ||
-      task.spaceId !== spaceId ||
-      task.userId !== userId ||
-      !isOpen(task) ||
-      !task.screen
-    ) {
-      throw new Error(`No screen for remote task "${taskId}".`);
-    }
+  private openScreen(key: string, sessionId: string, viewer: ScreenViewer): ScreenHandle {
+    const transport = this.nodes.get(key)?.transport;
     if (!transport) throw new Error("The node is offline.");
     const screenId = randomUUID();
-    this.screens.set(screenId, { taskId, nodeKey: task.nodeKey, viewer });
-    transport.send({ type: "screen.open", taskId, screenId });
+    this.screens.set(screenId, { sessionId, nodeKey: key, viewer });
+    transport.send({ type: "screen.open", sessionId, screenId });
     return {
-      input: (events: ScreenInputEvent[]) => {
+      input: (events) => {
         if (!this.screens.has(screenId)) return;
-        this.nodes
-          .get(task.nodeKey)
-          ?.transport?.send({ type: "screen.input", screenId, events });
+        this.nodes.get(key)?.transport?.send({ type: "screen.input", screenId, events });
       },
-      close: (error?: string) => this.closeScreen(screenId, error),
-    };
-  }
-
-  /**
-   * What the remote agent's MCP tools reach. Scoped to the task's own user and
-   * space, so a job token for another task cannot read or write this one.
-   */
-  forAgent(taskId: string, scope: { spaceId: string; userId: string | null }) {
-    const task = this.tasks.get(taskId);
-    if (!task || task.spaceId !== scope.spaceId || task.userId !== scope.userId) {
-      throw new Error(`No remote task "${taskId}".`);
-    }
-    return {
-      readMessages: () => task.inbox.splice(0),
-      sendMessage: (to: string, text: string) => {
-        if (task.chat)
-          throw new Error("This agent runs a chat; there is no other agent.");
-        if (task.status !== "running") throw new Error("This task is no longer running.");
-        if (task.outbox.length >= MAX_MAILBOX)
-          throw new Error("Too many unread messages.");
-        task.outbox.push({ to, text });
-        this.notify(task);
-      },
+      close: (error) => this.closeScreen(screenId, error),
     };
   }
 }

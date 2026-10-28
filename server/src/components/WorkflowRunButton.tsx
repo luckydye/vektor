@@ -37,7 +37,9 @@ export function WorkflowRunButton(props: Props) {
   const { runners } = useJobRunners(() => true);
   const runnerNames = createMemo(() => [
     ...(nodes() ?? []).flatMap((n) => (n.online ? [n.name] : [])),
-    ...(runners() ?? []).map((r) => r.name),
+    ...(runners() ?? []).flatMap((r) =>
+      r.description.kinds.includes("job") ? [r.name] : [],
+    ),
   ]);
 
   const isActiveRun = createMemo(

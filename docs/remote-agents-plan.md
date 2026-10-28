@@ -30,28 +30,13 @@ The node is a bridge, not an agent. It holds one outbound WebSocket (no inbound 
 
 ## Protocol
 
-JSON frames over the WebSocket, wrapping ACP messages:
-
-| Frame | Direction | Purpose |
-|---|---|---|
-| `hello` | node → server | name, OS, workdir, adapters, `maxSessions` |
-| `session.new` / `session.prompt` / `session.cancel` | server → node | ACP requests, with a server-chosen `taskId` |
-| `session.close` | server → node | ends the session; a chat's stays open between prompts until then |
-| `session.update` / `session.result` | node → server | ACP `session/update` notifications and the final `stopReason` |
-| `message` | both | `send_message` between the parent and the sub-agent |
-| `ping` | both | heartbeat; the server marks a node offline after missed beats |
-
-A reconnecting node re-announces its running sessions; the server resumes streaming them or fails the ones that died.
-
-## Vektor tools and messaging for foreign agents
-
-`cli/mcp.ts` is passed in `mcpServers` on `session/new`, authenticated with a short-lived job token for the task's user. Foreign agents then get the Vektor tool surface. Add two MCP tools, `send_message` and `read_messages`, backed by the server hub, so parent ↔ sub-agent and sub-agent ↔ sub-agent messaging works for any adapter. Cancel maps to `session/cancel`.
+A node is a runner; see [runners.md](runners.md) for the contract it shares with HTTP runners. Agent turns are `agent` requests, their ACP updates and results come back as HTTP calls, and messages between agents go through the `read_messages` and `send_message` tools of the Vektor MCP server, backed by the session's mailbox.
 
 ## Managed environment adapter (see environment-manager-protocol.md)
 
 `--manager <name>=<cli> --run-args <args> --inner "opencode acp"`, for any CLI implementing the environment manager protocol:
 
-1. On `session.new`, create an environment (`<cli> create`).
+1. On a session's first `agent` request, create an environment (`<cli> create`).
 2. Run `<inner agent> acp` in the VM; its stdio is the ACP pipe.
 3. Relay frames as for any adapter. The VM lives as long as the session, so follow-up prompts and messages hit the same machine.
 4. On cancel or completion, destroy the VM, or snapshot it when the task asks to keep it.
@@ -59,10 +44,6 @@ A reconnecting node re-announces its running sessions; the server resumes stream
 A VM needs the `vektor` binary (for the MCP server), a job token, and network reach to the Vektor server (direct, or proxied by the bridge). Artifacts leave the VM as space uploads or a git branch. `maxSessions` caps concurrent VMs.
 
 Because the VM is disposable, auto-approving permissions is safe there.
-
-## Jobs and workflows on nodes
-
-Nodes are job runners too, beside HTTP runners; see [job-runners.md](job-runners.md). A node gets the job as a `job.run` frame carrying the runner request, answers with `job.result`, and makes the job's capability calls to the server over HTTP like any runner. `job.cancel` stops it. A node that drops fails its jobs at once.
 
 ## Trust and security
 
@@ -80,7 +61,7 @@ Nodes are job runners too, beside HTTP runners; see [job-runners.md](job-runners
 4. **MCP for foreign agents.** Pass `cli/mcp.ts` in `mcpServers`; add `send_message` and `read_messages` MCP tools.
 5. **Managed adapter.** Boot, exec, relay, destroy; image selection; `maxSessions`.
 6. **Triggers.** Schedules and chat can name a node (and adapter), so "every morning, run X on the home server" works.
-7. **Jobs.** Jobs and workflow scripts run on nodes and HTTP runners (job-runners.md); `VEKTOR_JOB_RUNTIME=node` makes them the only place they run. Open: schedules naming a runner.
+7. **Runners.** Jobs, workflow scripts and agents run on nodes and HTTP runners, by one contract (runners.md); `VEKTOR_JOB_RUNTIME=node` makes them the only place jobs run. Open: schedules naming a runner.
 
 ## Open questions
 

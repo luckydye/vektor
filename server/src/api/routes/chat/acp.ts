@@ -7,7 +7,6 @@ import {
   type ChatMessage,
   runAgentInWorker,
 } from "#agent/agent.ts";
-import { nodeRegistry } from "#agent/nodes/registry.ts";
 import { runChatOnNode } from "#agent/nodes/remoteChat.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import { AgentTurnError } from "#agent/turnError.ts";
@@ -36,6 +35,7 @@ import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import { listAgentRunners } from "#runners/agents.ts";
 import { isTimeZone } from "#utils/dateFormat.ts";
 
 // JSON-RPC 2.0 types
@@ -817,11 +817,11 @@ export const POST: ApiRouteHandler = (context) =>
         const { userId, source } = await authenticateAgentCaller(context, spaceId);
         if (
           node !== null &&
-          !(await nodeRegistry.listNodes({ spaceId, userId })).some(
+          !(await listAgentRunners(context.var.platform, { spaceId, userId })).some(
             (n) => n.name === node,
           )
         ) {
-          return badRequestResponse(`No node "${node}" is connected for you`);
+          return badRequestResponse(`No node or runner "${node}" can run agents for you`);
         }
         const session = await createAIChatSession(
           await openSpaceStore(context.var.platform, spaceId),
@@ -914,7 +914,7 @@ export const POST: ApiRouteHandler = (context) =>
             userText,
             userAttachments: chatAttachments,
             run: ({ signal, onEvent }) =>
-              runChatOnNode({
+              runChatOnNode(context.var.platform, {
                 spaceId,
                 userId,
                 chatId: sessionId,

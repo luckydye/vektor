@@ -289,7 +289,7 @@ export const PRELUDE = String.raw`
 `;
 
 /**
- * What a JS runner evaluates to run a job (see docs/job-runners.md):
+ * What a JS runner evaluates to run a job (see docs/runners.md):
  * `eval(prelude)(host, extra)(script, input)` runs it and reports its result
  * to the server, resolving once that is delivered. Capability calls go to
  * `host.url` with `host.token`; bytes cross as base64 envelopes, which this

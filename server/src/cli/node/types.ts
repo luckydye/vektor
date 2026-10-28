@@ -1,4 +1,5 @@
-import type { PromptResult, ScreenInputEvent } from "#agent/nodes/protocol.ts";
+import type { ScreenInputEvent } from "#agent/nodes/protocol.ts";
+import type { PromptResult } from "#runners/contract.ts";
 
 /** How an agent's MCP client starts the Vektor MCP server for one task. */
 export type McpLaunch = {
@@ -22,7 +23,7 @@ export type Policy = {
 };
 
 export type SessionInit = {
-  taskId: string;
+  sessionId: string;
   cwd: string;
   /** Null when the agent has no way to reach the Vektor server's tools. */
   mcp: McpLaunch | null;

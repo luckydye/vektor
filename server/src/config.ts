@@ -252,7 +252,7 @@ export function config() {
       /**
        * Where extension jobs and workflow scripts run: "vm", the platform's job
        * VM (the default), or "node", job runners and nodes only
-       * (docs/job-runners.md), so no job code runs on this server. A run that
+       * (docs/runners.md), so no job code runs on this server. A run that
        * names a runner runs there either way.
        */
       JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,

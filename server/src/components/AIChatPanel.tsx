@@ -5,6 +5,7 @@ import {
   type AIChatSessionListEntry,
   isUploadAborted,
 } from "#api/client.ts";
+import { useAgentRunners } from "#composeables/useAgentRunners.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
@@ -13,7 +14,6 @@ import {
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
-import { useNodes } from "#composeables/useNodes.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
@@ -120,10 +120,8 @@ export function AIChatPanel(props: Props) {
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
   // Where a chat runs is chosen before its first message, then fixed.
-  const nodes = useNodes(createMemo(() => isOpen() && !currentSessionId()));
-  const agentNodes = createMemo(() =>
-    nodes()?.flatMap((node) => (node.online ? [node.name] : [])),
-  );
+  const runners = useAgentRunners(createMemo(() => isOpen() && !currentSessionId()));
+  const agentNodes = createMemo(() => runners()?.map((runner) => runner.name));
   const showNodePicker = createMemo(() =>
     currentSessionId() ? !!chatNode() : !!agentNodes()?.length,
   );

@@ -70,6 +70,7 @@
     "#observability/*": "./src/observability/*",
     "#pages/*": "./src/pages/*",
     "#realtime/*": "./src/realtime/*",
+    "#runners/*": "./src/runners/*",
     "#search/*": "./src/search/*",
     "#series/*": "./src/series/*",
     "#events/*": "./src/events/*",
