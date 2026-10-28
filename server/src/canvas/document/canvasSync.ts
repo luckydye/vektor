@@ -5,7 +5,11 @@
  * resending after a reconnect, and summary corrections on echo.
  */
 
-import { objectDeleted, objectRefs } from "#canvas/document/format/object.ts";
+import {
+  EXTENSION_STATE_ID,
+  objectDeleted,
+  objectRefs,
+} from "#canvas/document/format/object.ts";
 import {
   type BBox,
   decodeCursorPayload,
@@ -167,6 +171,8 @@ export function createCanvasSync(options: CanvasSyncOptions) {
       epoch = payload.epoch;
       receivedSeq = payload.seq;
       if (viewport) setViewport(viewport);
+      // Not anywhere on the canvas, so no region brings it in.
+      void request({ ids: [EXTENSION_STATE_ID] }).catch(options.onError);
       return;
     }
     // A reconnect: catch up on what the socket missed, then resend.
@@ -304,6 +310,7 @@ export function createCanvasSync(options: CanvasSyncOptions) {
     store.clear();
     options.onReload();
     if (viewport) setViewport(viewport);
+    void request({ ids: [EXTENSION_STATE_ID] }).catch(options.onError);
   }
 
   /** Sends the records of a local transaction, in one frame. */
@@ -429,6 +436,7 @@ export function createCanvasSync(options: CanvasSyncOptions) {
 
   function evict(limit: BBox): void {
     const keep = new Set([
+      EXTENSION_STATE_ID,
       ...options.pinned(),
       ...store.undoIds(),
       ...store.editingBodies(),

@@ -1,4 +1,5 @@
 import { render } from "lit-html";
+import type * as Y from "yjs";
 import type { CanvasTransport } from "#canvas/document/canvasSync.ts";
 import type { CanvasDomRefs, CanvasView } from "#canvas/runtime/controller.ts";
 import {
@@ -122,6 +123,8 @@ export class CanvasHostElement extends HostElement {
   save: ((snapshot: unknown) => Promise<unknown>) | undefined;
   error: ((message: string) => void) | undefined;
   onpresence: ((states: CanvasPresenceState[]) => void) | undefined;
+  /** Receives the Y.Doc extensions share on this canvas, and null when it goes. */
+  oncollaboration: ((ydoc: Y.Doc | null) => void) | undefined;
   plugins: CanvasPlugins | undefined;
 
   /**
@@ -269,6 +272,7 @@ export class CanvasHostElement extends HostElement {
         save: (snapshot) => element.save?.(snapshot) ?? Promise.resolve(),
         error: (message) => element.error?.(message),
         presenceChanged: (states) => element.onpresence?.(states),
+        collaborationChanged: (ydoc) => element.oncollaboration?.(ydoc),
         requestRender: () => element.requestRender(),
       },
       this.dom,

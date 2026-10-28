@@ -1,4 +1,5 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
+import type * as Y from "yjs";
 import { canEdit } from "#acl/permissions.ts";
 import { CanvasProperties } from "#canvas/ui/CanvasProperties.tsx";
 import { CanvasToolbar } from "#canvas/ui/CanvasToolbar.tsx";
@@ -80,6 +81,8 @@ interface Props {
   plugins: CanvasPlugins;
   presenceProfiles?: CollaborationPresenceProfile<CanvasPresenceState>[];
   onPresence?: (states: CanvasPresenceState[]) => void;
+  /** The Y.Doc extensions share on this canvas, and null when it goes. */
+  onCollaboration?: (ydoc: Y.Doc | null) => void;
 }
 
 export function Canvas(props: Props) {
@@ -158,6 +161,7 @@ export function Canvas(props: Props) {
     host.save = (snapshot) => saveDocument(snapshot as string, { format: "serialized" });
     host.error = (message) => toast.error(message);
     host.onpresence = (states) => props.onPresence?.(states);
+    host.oncollaboration = (ydoc) => props.onCollaboration?.(ydoc);
     host.onframe = chrome.onFrame;
     host.changed();
   });

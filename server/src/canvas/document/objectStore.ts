@@ -33,8 +33,11 @@ import type {
   PropertyValue,
 } from "#canvas/document/format/records.ts";
 
-/** Who caused a change: this client, its undo stack, or someone else's record. */
-export type ChangeOrigin = "local" | "undo" | "remote";
+/**
+ * Who caused a change: this client, its undo stack, someone else's record, or
+ * this client's bookkeeping, which no undo takes back.
+ */
+export type ChangeOrigin = "local" | "undo" | "remote" | "internal";
 
 export interface CanvasStoreOptions {
   /** The object's world bbox as laid out, or null when it has none. */

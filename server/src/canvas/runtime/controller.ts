@@ -1,3 +1,4 @@
+import type * as Y from "yjs";
 import type { CanvasTransport } from "#canvas/document/canvasSync.ts";
 import type { CanvasCollaborationFactory } from "#canvas/document/collaboration.ts";
 import { dataRefs } from "#canvas/document/format/object.ts";
@@ -254,6 +255,8 @@ export interface CanvasHost {
   save(snapshot: unknown): Promise<unknown>;
   error(message: string): void;
   presenceChanged(states: CanvasPresenceState[]): void;
+  /** The Y.Doc extensions share on this canvas, or null once it is gone. */
+  collaborationChanged(ydoc: Y.Doc | null): void;
   requestRender(): void;
 }
 
@@ -496,6 +499,8 @@ export function createCanvasController(
     onReload: () => {
       clearSelection();
       stopActiveEdit();
+      // The restore dropped the old state doc with everything else.
+      host.collaborationChanged(doc.extensionState());
     },
     onError: (error) => host.error(error.message),
   });
@@ -4909,6 +4914,7 @@ export function createCanvasController(
 
     updatePresence();
     registerCanvasActions();
+    host.collaborationChanged(doc.extensionState());
     isReady = true;
     // If the room state already arrived before mount, frame it now that the
     // screen has been measured; otherwise the Yjs observer frames it on first
@@ -4928,6 +4934,7 @@ export function createCanvasController(
     themeObserver?.disconnect();
     colorSchemeMedia?.removeEventListener("change", updateThemeMode);
     host.presenceChanged([]);
+    host.collaborationChanged(null);
     disposeCanvasActions();
     unsubscribeStore?.();
     doc.destroy();

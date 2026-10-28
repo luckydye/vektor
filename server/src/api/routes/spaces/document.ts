@@ -361,6 +361,7 @@ async function handleReadonlyPatch(
  * @jobToken
  * @param documentId Document id or slug.
  * @query draft:boolean Read the current draft instead of the published revision. Requires editor permission.
+ * @query canvasContent:boolean `false` leaves a canvas's content out: it is the whole canvas, which the canvas itself loads by region.
  * @response #/components/schemas/DocumentResponse
  */
 export const GET: ApiRouteHandler = (context) =>
@@ -372,6 +373,8 @@ export const GET: ApiRouteHandler = (context) =>
     // live=true returns the draft content as currently held in the document's
     // collaboration room (if open), so partial edits reference the same state.
     const live = new URL(context.req.url).searchParams.get("live") === "true";
+    const canvasContent =
+      new URL(context.req.url).searchParams.get("canvasContent") !== "false";
 
     // The index carries id, slug and name, all this response needs of the space.
     const space =
@@ -471,7 +474,10 @@ export const GET: ApiRouteHandler = (context) =>
     // getDocument is metadata-only; this route returns the body, so load it
     // explicitly (from the live room when there is one, else the stored column).
     let document: DocumentMeta & { content: string };
-    if (live) {
+    if (meta.type === "canvas" && !canvasContent) {
+      // Metadata only: reading the content would merge every object of the canvas.
+      document = { ...meta, content: "" };
+    } else if (live) {
       document = {
         ...meta,
         content: getLiveDocumentContent(

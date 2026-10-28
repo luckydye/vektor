@@ -7,6 +7,7 @@
 import { shapeBounds } from "#canvas/agent/model.ts";
 import {
   type CanvasObject,
+  EXTENSION_STATE_TYPE,
   objectRefs,
   objectToItem,
   objectType,
@@ -45,13 +46,15 @@ export function sceneShapeOf(object: CanvasObject): SceneShape {
 }
 
 /**
- * The object's bounds, or null for a stroke without points. `lookup` resolves
+ * The object's bounds, or null for a stroke without points and for the
+ * extensions' state, which has no place on the canvas. `lookup` resolves
  * the objects its `refs` name, as rendering does.
  */
 export function objectBounds(
   object: CanvasObject,
   lookup: (id: string) => CanvasObject | undefined,
 ): BBox | null {
+  if (objectType(object) === EXTENSION_STATE_TYPE) return null;
   if (objectType(object) === STROKE_TYPE) {
     const points = readProperty(object.properties, "points");
     const decoded = points instanceof Uint8Array ? decodePoints(points) : [];

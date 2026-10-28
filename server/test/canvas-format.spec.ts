@@ -16,7 +16,6 @@ import {
   CanvasCatchUpRefused,
   type CanvasSync,
   type CanvasTransport,
-  createCanvasSync,
 } from "#canvas/document/canvasSync.ts";
 import { BODY_FIELD } from "#canvas/document/format/object.ts";
 import { readProperty } from "#canvas/document/format/properties.ts";
@@ -28,10 +27,9 @@ import {
   RecordKind,
 } from "#canvas/document/format/records.ts";
 import { streamRecords } from "#canvas/document/format/stream.ts";
-import {
-  type CanvasObjectStore,
-  createCanvasObjectStore,
-} from "#canvas/document/objectStore.ts";
+import type { CanvasObjectStore } from "#canvas/document/objectStore.ts";
+import { type CanvasDocument, createCanvasDocument } from "#canvas/runtime/canvasDocument.ts";
+import type { CanvasExtensionManager } from "#canvas/runtime/registry.ts";
 import {
   decodeCanvasOps,
   encodeCanvasOps,
@@ -142,6 +140,7 @@ async function saveRevision(server: Server, documentId: string) {
 }
 
 interface Client {
+  document: CanvasDocument;
   store: CanvasObjectStore;
   sync: CanvasSync;
   joined: () => boolean;
@@ -230,18 +229,16 @@ function openClient(server: Server, documentId: string, viewport: BBox): Client 
   };
 
   const bounds = (id: string) => {
-    const object = store.view(id);
-    return object ? objectBounds(object, (ref) => store.view(ref)) : null;
+    const object = document.store.view(id);
+    return object ? objectBounds(object, (ref) => document.store.view(ref)) : null;
   };
-  const store: CanvasObjectStore = createCanvasObjectStore({
-    bounds,
-    send: (records) => sync.send(records),
-  });
-  const sync: CanvasSync = createCanvasSync({
+  // The app's document over the store and sync; these specs never write shapes
+  // through extension serialization, so no extension manager is needed.
+  const document: CanvasDocument = createCanvasDocument({
     transport,
-    store,
-    pinned: () => new Set(),
+    extensions: {} as CanvasExtensionManager,
     bounds,
+    pinned: () => new Set(),
     onBounds() {},
     onReload() {
       reloads++;
@@ -250,9 +247,11 @@ function openClient(server: Server, documentId: string, viewport: BBox): Client 
       errors.push(error);
     },
   });
+  const { store, sync } = document;
   sync.setViewport(viewport);
 
   return {
+    document,
     store,
     sync,
     joined: () => joins > 0,
@@ -391,6 +390,46 @@ describe("canvas object store", () => {
       await until(() => property(p, "far", "frame.x") === 100, "the moved shape");
       expect(property(p, "far", "type")).toBe("note");
       expect(property(p, "far", "frame.width")).toBe(180);
+    });
+  });
+
+  describe("metadata reads", () => {
+    it("leaves a canvas's content out of a metadata-only read", async () => {
+      const id = await createCanvas(server, [note("a", 0, 0, "hello")]);
+      const response = await server.api(
+        `/api/v1/spaces/${server.spaceId}/documents/${id}?canvasContent=false`,
+      );
+      expect(response.status).toBe(200);
+      const { document } = await response.json();
+      expect(document.type).toBe("canvas");
+      expect(document.properties.title).toBe("Canvas");
+      expect(document.content).toBe("");
+      // Any other read still gets the whole canvas.
+      expect((await readCanvas(server, id)).shapes.map((shape) => shape.id)).toEqual(["a"]);
+    });
+  });
+
+  describe("extension state", () => {
+    it("syncs the extensions' Y.Doc between clients, keeps it out of the shapes, and stores it", async () => {
+      const id = await createCanvas(server, [note("a", 0, 0)]);
+      const p = client(id);
+      const q = client(id);
+      await until(() => p.joined() && q.store.objects.has("a"), "the room");
+
+      p.document.extensionState().getMap("game.test").set("score", 3);
+      await until(
+        () => q.document.extensionState().getMap("game.test").get("score") === 3,
+        "the shared state",
+      );
+      // Not a shape: no snapshot reader sees it, and creating it was no user action.
+      expect((await readCanvas(server, id)).shapes.map((shape) => shape.id)).toEqual(["a"]);
+      expect(p.store.canUndo()).toBe(false);
+
+      await saveRevision(server, id);
+      const r = client(id, [9000, 9000, 9100, 9100]);
+      await until(() => r.store.objects.has("extension-state"), "the stored state");
+      expect(r.document.extensionState().getMap("game.test").get("score")).toBe(3);
+      expect((await readCanvas(server, id)).shapes.map((shape) => shape.id)).toEqual(["a"]);
     });
   });
 
