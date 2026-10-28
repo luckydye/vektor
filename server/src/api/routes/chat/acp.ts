@@ -34,8 +34,8 @@ import { resolveUserAIProvider } from "#integrations/aiProvider.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
-import { listAgentRunners } from "#runners/agents.ts";
 import { runChatOnRunner } from "#runners/chat.ts";
+import { agentRunners } from "#runners/runners.ts";
 import { isTimeZone } from "#utils/dateFormat.ts";
 
 // JSON-RPC 2.0 types
@@ -817,8 +817,8 @@ export const POST: ApiRouteHandler = (context) =>
         const { userId, source } = await authenticateAgentCaller(context, spaceId);
         if (
           node !== null &&
-          !(await listAgentRunners(context.var.platform, { spaceId, userId })).some(
-            (n) => n.name === node,
+          !(await agentRunners(context.var.platform, { spaceId, userId })).some(
+            (runner) => runner.name === node,
           )
         ) {
           return badRequestResponse(`No node or runner "${node}" can run agents for you`);

@@ -1,12 +1,13 @@
 /**
  * /api/v1/spaces/:spaceId/runners
  *
- * GET: the space's job runners (docs/runners.md)
+ * GET: the space's runners (docs/runners.md), and the caller's nodes
  * POST: register one; its secret is in this answer only
  */
 
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { nodeRegistry } from "#agent/nodes/registry.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -21,7 +22,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { createSpaceRunner, listSpaceRunners } from "#db/space/runners.ts";
 
 /**
- * List the space's job runners
+ * List the space's runners and the caller's nodes
  *
  * @tag Jobs
  */
@@ -34,10 +35,13 @@ export const GET: ApiRouteHandler = (context) =>
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
-      Permission.EDITOR,
+      Permission.OWNER,
     );
     const store = await openSpaceStore(context.var.platform, spaceId);
-    return jsonResponse({ runners: await listSpaceRunners(store) });
+    return jsonResponse({
+      runners: await listSpaceRunners(store),
+      nodes: nodeRegistry.listNodes({ spaceId, userId: user.id }),
+    });
   }, "Failed to list runners");
 
 /**

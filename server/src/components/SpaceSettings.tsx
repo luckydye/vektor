@@ -1,6 +1,5 @@
 import { createMemo, Show } from "solid-js";
 import { Permission } from "#acl/permissions.ts";
-import { useNodes } from "#composeables/useNodes.ts";
 import { useRunners } from "#composeables/useRunners.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
@@ -37,7 +36,6 @@ function setTab(id: string) {
 export function SpaceSettings() {
   const { currentSpace } = useSpace();
   const isOwner = createMemo(() => currentSpace()?.userRole === Permission.OWNER);
-  const nodes = useNodes(isOwner);
   const runners = useRunners(isOwner);
 
   return (
@@ -75,7 +73,7 @@ export function SpaceSettings() {
               description="Where this space's jobs, workflows and your agents can run instead of the server."
             >
               <SpaceRunners
-                nodes={nodes()}
+                nodes={runners.nodes()}
                 runners={runners.runners()}
                 onAdd={runners.add}
                 onDescribe={runners.describe}

@@ -8,7 +8,7 @@ import { listSpaceRunnersWithSecrets } from "#db/space/runners.ts";
 import { assertEgressAllowed } from "#jobs/runtime/capabilities.ts";
 import type { Platform } from "#platform/platform.ts";
 import {
-  JOBS_ONLY,
+  NO_AGENTS,
   type RunnerDescription,
   type RunnerHost,
   type RunnerRequest,
@@ -176,7 +176,7 @@ function post(
 }
 
 /**
- * What an HTTP runner offers. One that refuses `describe` runs jobs only;
+ * The agents an HTTP runner offers. One that refuses `describe` offers none;
  * one that cannot be reached throws.
  */
 export async function describeRunner(
@@ -184,12 +184,13 @@ export async function describeRunner(
   runner: { name: string; url: string; secret: string },
 ): Promise<RunnerDescription> {
   const response = await post(platform, runner, { kind: "describe" });
-  if (!response.ok) return JOBS_ONLY;
-  const answer = (await response.json().catch(() => ({}))) as Partial<RunnerDescription>;
-  const strings = (value: unknown) =>
-    Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-  const kinds = strings(answer.kinds).filter((k) => k === "job" || k === "agent");
-  return { kinds, agents: kinds.includes("agent") ? strings(answer.agents) : [] };
+  if (!response.ok) return NO_AGENTS;
+  const { agents } = (await response.json().catch(() => ({}))) as { agents?: unknown };
+  return {
+    agents: Array.isArray(agents)
+      ? agents.filter((agent): agent is string => typeof agent === "string")
+      : [],
+  };
 }
 
 /** The space's HTTP runners; requests carry the runner's secret. */
@@ -219,7 +220,7 @@ export async function jobRunners(
   return [
     ...nodeRegistry.runners({ ...scope, shared: true }),
     ...(await httpRunners(platform, scope.spaceId)),
-  ].filter((runner) => runner.description.kinds.includes("job"));
+  ];
 }
 
 /**

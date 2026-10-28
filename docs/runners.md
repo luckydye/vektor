@@ -26,7 +26,7 @@ The body's `kind` says what it is. A runner must handle `job`; the rest are opti
 | `kind` | What | The runner answers |
 |---|---|---|
 | `job` | run a job or workflow script | `202`, then runs it |
-| `describe` | what it offers | `{ "kinds": ["job", "agent"], "agents": ["claude"] }`; any `4xx` means jobs only |
+| `describe` | which agents it offers | `{ "agents": ["claude"] }`; any `4xx` means none |
 | `agent` | one turn of an agent session | `202`, then runs it |
 | `agent.close` | the session is over | `2xx` |
 
@@ -78,7 +78,7 @@ The job keeps running after the answer, so the process must outlive the request.
 
 ## Agents
 
-A runner that answers `describe` with `"agent"` in `kinds` runs agents. The owner clicks Check on the runner after giving it its secret, and the server keeps the answer. Each turn of a session is one `agent` request:
+A runner that names agents when asked to `describe` runs them. The owner clicks Check on the runner after giving it its secret, and the server keeps the answer. Each turn of a session is one `agent` request:
 
 ```json
 {

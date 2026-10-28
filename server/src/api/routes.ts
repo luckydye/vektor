@@ -49,7 +49,6 @@ import * as integrations from "./routes/spaces/integrations.ts";
 import * as jobBlob from "./routes/spaces/job-blob.ts";
 import * as jobsRun from "./routes/spaces/jobs-run.ts";
 import * as members from "./routes/spaces/members.ts";
-import * as nodes from "./routes/spaces/nodes.ts";
 import * as spaceNotificationPreference from "./routes/spaces/notification-preference.ts";
 import * as permissions from "./routes/spaces/permissions.ts";
 import * as permissionsMe from "./routes/spaces/permissions-me.ts";
@@ -248,7 +247,6 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/uploads", module: uploads },
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },
 
-  { pattern: "/api/v1/spaces/[spaceId]/nodes", module: nodes },
   { pattern: "/api/v1/spaces/[spaceId]/available-runners", module: availableRunners },
   {
     pattern: "/api/v1/spaces/[spaceId]/agent-sessions/[sessionId]/messages",
