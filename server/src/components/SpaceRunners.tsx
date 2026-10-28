@@ -16,13 +16,8 @@ interface Props {
 }
 
 function offers(runner: RunnerSummary): string {
-  const { kinds, agents } = runner.description;
-  return [
-    kinds.includes("job") ? "jobs" : null,
-    agents.length ? `agents: ${agents.join(", ")}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const { agents } = runner.description;
+  return agents.length ? `jobs · agents: ${agents.join(", ")}` : "jobs";
 }
 
 const inputClass =

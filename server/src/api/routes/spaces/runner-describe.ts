@@ -25,7 +25,7 @@ import { describeRunner } from "#runners/runners.ts";
 /**
  * Describe a runner
  *
- * A runner that refuses `describe` runs jobs only.
+ * A runner that refuses `describe` offers no agents.
  *
  * @tag Jobs
  */

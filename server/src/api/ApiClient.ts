@@ -2825,26 +2825,16 @@ export class ApiClient {
     },
   };
 
-  nodes = {
-    /** The caller's nodes, which a new chat can run on. */
-    list: async (spaceId: string): Promise<NodeSummary[]> => {
-      const { nodes } = await this.apiFetch<{ nodes: NodeSummary[] }>(
-        this.baseUrl,
-        `/api/v1/spaces/${encodeURIComponent(spaceId)}/nodes`,
-        { credentials: "same-origin" },
-      );
-      return nodes;
-    },
-  };
-
   /** The space's runners (docs/runners.md). */
   runners = {
-    list: async (spaceId: string): Promise<RunnerSummary[]> => {
-      const { runners } = await this.apiGet<{ runners: RunnerSummary[] }>(
+    /** Owner only: the space's runners, and the caller's connected nodes. */
+    list: async (
+      spaceId: string,
+    ): Promise<{ runners: RunnerSummary[]; nodes: NodeSummary[] }> => {
+      return await this.apiGet(
         this.baseUrl,
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/runners`,
       );
-      return runners;
     },
 
     /** Owner only; the secret is in this answer and nowhere else. */

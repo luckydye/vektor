@@ -45,10 +45,13 @@ export type RunnerRequest =
   | AgentCloseRequest
   | DescribeRequest;
 
-/** What a runner offers. One that does not answer `describe` runs jobs only. */
-export type RunnerDescription = { kinds: Array<"job" | "agent">; agents: string[] };
+/**
+ * The agents a runner offers besides jobs, which every runner runs. One that
+ * does not answer `describe` offers none.
+ */
+export type RunnerDescription = { agents: string[] };
 
-export const JOBS_ONLY: RunnerDescription = { kinds: ["job"], agents: [] };
+export const NO_AGENTS: RunnerDescription = { agents: [] };
 
 /** A job's `result` call. */
 export type JobResult = { output?: unknown; error?: string };

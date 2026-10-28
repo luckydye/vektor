@@ -40,8 +40,6 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 const WS_CLOSE_FORBIDDEN = 4403;
 const MIN_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
-/** Frames kept for a server that is away; the oldest go first. */
-const MAX_OUTBOX = 10_000;
 /** Media a slow server may have queued before a screen is ended rather than lag further. */
 const MAX_SCREEN_BUFFER_BYTES = 8 * 1024 * 1024;
 
@@ -168,21 +166,16 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   const sessions = new Map<string, Promise<AdapterSession>>();
   /** How to stop each run in flight. */
   const runs = new Map<string, () => void>();
-  /** Frames that could not be sent because the server was away. */
-  const outbox: NodeToServerFrame[] = [];
   const screens = new Map<string, ScreenSession>();
   const jobVm = createBoaJobVm({ execAllowlist: JOB_EXEC_ALLOWLIST });
   let socket: WebSocket | null = null;
 
+  /**
+   * A frame for a server that is away is dropped: runs make their calls over
+   * HTTP, and the server ends a node's screens when it goes.
+   */
   function send(frame: NodeToServerFrame) {
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(frame));
-      return;
-    }
-    // A ping is only worth sending to a server that is there.
-    if (frame.type === "ping") return;
-    outbox.push(frame);
-    if (outbox.length > MAX_OUTBOX) outbox.shift();
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame));
   }
 
   /** A run's calls, to the server this node dialled, whichever origin the server named. */
@@ -374,7 +367,6 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
             shared: options.shared,
           } satisfies NodeToServerFrame),
         );
-        for (const frame of outbox.splice(0)) ws.send(JSON.stringify(frame));
         onConnected();
       };
       ws.onmessage = (event) => {

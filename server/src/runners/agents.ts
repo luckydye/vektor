@@ -69,7 +69,6 @@ export interface AgentRunnerHost {
 type Turn = {
   onUpdate(update: Record<string, unknown>): void;
   onScreen(sessionId: string): void;
-  done(result: PromptResult): void;
 };
 
 type AgentSession = {
@@ -129,18 +128,6 @@ nodeRegistry.watchScreens((sessionId, runnerKey) => {
   session.turn?.onScreen(session.id);
   notify(session);
 });
-
-export async function listAgentRunners(
-  platform: Platform,
-  scope: { spaceId: string; userId: string },
-): Promise<AgentRunnerSummary[]> {
-  return (await agentRunners(platform, scope)).map((runner) => ({
-    name: runner.name,
-    agents: runner.description.agents,
-    running: openOn(runner),
-    maxSessions: runner.maxSessions ?? null,
-  }));
-}
 
 /** Opens a session on one of the user's runners; it is idle until prompted. */
 async function open(
@@ -273,13 +260,9 @@ function settle(session: AgentSession, status: AgentSessionStatus, output: strin
   else session.error = output;
   clearTimeout(session.idleTimer);
   if (session.chat && chats.get(session.chat) === session.id) chats.delete(session.chat);
+  // Its prompt then resolves as cancelled.
   session.cancelTurn?.();
-  const turn = session.turn;
   session.turn = undefined;
-  turn?.done({
-    stopReason: status === "cancelled" ? "cancelled" : "error",
-    error: output,
-  });
   void session.runner
     .send({ kind: "agent.close", sessionId: session.id })
     .catch(() => {});
@@ -295,7 +278,6 @@ function endTurn(session: AgentSession, result: PromptResult) {
     settle(session, "failed", result.error ?? "The agent failed.");
     return;
   }
-  const turn = session.turn;
   session.turn = undefined;
   session.status = "idle";
   session.idleTimer = setTimeout(
@@ -303,7 +285,6 @@ function endTurn(session: AgentSession, result: PromptResult) {
     CHAT_IDLE_MS,
   );
   session.idleTimer.unref?.();
-  turn?.done(result);
 }
 
 function chatSession(scope: { spaceId: string; userId: string; chatId: string }) {
@@ -324,17 +305,16 @@ export async function promptChat(
     runner: string;
     jobToken: string;
     text: string;
-  } & Omit<Turn, "done">,
+  } & Turn,
 ): Promise<{ fresh: boolean; result: Promise<PromptResult> }> {
   const existing = chatSession(request);
   const session = existing ?? (await open(platform, request, chatKey(request)));
   if (session.status !== "idle")
     throw new Error("A prompt is already running in this chat.");
-  const result = new Promise<PromptResult>((done) => {
-    session.turn = { onUpdate: request.onUpdate, onScreen: request.onScreen, done };
-  });
+  session.turn = { onUpdate: request.onUpdate, onScreen: request.onScreen };
   if (session.screen) request.onScreen(session.id);
-  void prompt(session, request.text).then((ended) => endTurn(session, ended));
+  const result = prompt(session, request.text);
+  void result.then((ended) => endTurn(session, ended));
   return { fresh: !existing, result };
 }
 
@@ -359,7 +339,13 @@ function sessionOf(sessionId: string) {
 /** The sub-agent side, for the agent worker's hub. */
 export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
   return {
-    listRunners: (scope) => listAgentRunners(platform, scope),
+    listRunners: async (scope) =>
+      (await agentRunners(platform, scope)).map((runner) => ({
+        name: runner.name,
+        agents: runner.description.agents,
+        running: openOn(runner),
+        maxSessions: runner.maxSessions ?? null,
+      })),
 
     async startSession(request) {
       const session = await open(platform, request, null);

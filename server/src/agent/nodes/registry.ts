@@ -133,7 +133,7 @@ export class NodeRegistry {
       .map((node) => ({
         key: `node:${node.key}`,
         name: node.hello.name,
-        description: { kinds: ["job", "agent"], agents: node.hello.adapters },
+        description: { agents: node.hello.adapters },
         maxSessions: node.hello.maxSessions,
         send: async (request, signal) => this.send(node.key, request, signal),
         screens: {

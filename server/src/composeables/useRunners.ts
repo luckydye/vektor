@@ -3,7 +3,7 @@ import { api } from "#api/client.ts";
 import { useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
-/** The current space's runners; `runners` is `undefined` until loaded. */
+/** The current space's runners and the user's nodes; both `undefined` until loaded. */
 export function useRunners(enabled: Accessor<boolean>) {
   const { currentSpaceId } = useSpace();
   const queryClient = useQueryClient();
@@ -19,7 +19,8 @@ export function useRunners(enabled: Accessor<boolean>) {
     enabled: createMemo(() => !!currentSpaceId() && enabled()),
   });
   return {
-    runners: data,
+    runners: () => data()?.runners,
+    nodes: () => data()?.nodes,
     /** Resolves with the runner's secret, which is not shown again. */
     async add(name: string, url: string) {
       const { secret } = await api.runners.create(spaceId(), { name, url });

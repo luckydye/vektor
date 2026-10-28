@@ -4,7 +4,7 @@ import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { spaceRunner } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
-import { JOBS_ONLY, type RunnerDescription } from "#runners/contract.ts";
+import { NO_AGENTS, type RunnerDescription } from "#runners/contract.ts";
 
 export type SpaceRunner = {
   id: string;
@@ -53,7 +53,7 @@ export async function createSpaceRunner(
   const runner: SpaceRunner = {
     id: createId("runner"),
     createdAt: new Date(),
-    description: JOBS_ONLY,
+    description: NO_AGENTS,
     ...input,
   };
   await s.db.insert(spaceRunner).values({
