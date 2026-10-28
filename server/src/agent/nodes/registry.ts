@@ -135,7 +135,8 @@ export class NodeRegistry implements AgentNodeHost {
     }
     // A job's capability calls cannot wait for a reconnect, so it fails at once.
     for (const job of this.jobs.values()) {
-      if (job.node === node) job.settle({ error: `Node "${node.hello.name}" went offline.` });
+      if (job.node === node)
+        job.settle({ error: `Node "${node.hello.name}" went offline.` });
     }
     node.graceTimer = setTimeout(() => {
       if (this.nodes.get(node.key) === node) this.nodes.delete(node.key);

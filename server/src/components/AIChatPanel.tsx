@@ -17,8 +17,8 @@ import { useNodes } from "#composeables/useNodes.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
-import { registerScopedAction } from "#utils/scopedAction.ts";
 import { mentionsToText } from "#utils/markdown.ts";
+import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -410,7 +410,7 @@ export function AIChatPanel(props: Props) {
                           (!messageInput().trim() &&
                             !messageInputEl()?.pendingAttachments().length)
                         }
-                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:opacity-30"
+                        class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:opacity-30"
                         title="Send (↵)"
                       >
                         <Icon class="h-3.5 w-3.5" name="send-message" />
@@ -420,7 +420,7 @@ export function AIChatPanel(props: Props) {
                     <button
                       type="button"
                       onClick={cancelGeneration}
-                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg pointer-coarse:h-9 pointer-coarse:w-9 bg-neutral-800 text-neutral-10 transition-colors hover:bg-neutral-900"
+                      class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-neutral-800 text-neutral-10 transition-colors hover:bg-neutral-900"
                       title="Stop generating"
                     >
                       <Icon class="h-3 w-3" name="stop" />

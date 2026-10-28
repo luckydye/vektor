@@ -315,7 +315,12 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
         inputs,
         capabilities,
         onLog: (message) => {
-          logs = logs.then(() => call("log", [message])).then(() => {}, () => {});
+          logs = logs
+            .then(() => call("log", [message]))
+            .then(
+              () => {},
+              () => {},
+            );
         },
         timeoutMs: NO_DEADLINE_MS,
         signal: controller.signal,

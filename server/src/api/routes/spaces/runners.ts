@@ -62,7 +62,8 @@ export const POST: ApiRouteHandler = (context) =>
     );
     const body = await parseJsonBody<{ name?: unknown; url?: unknown }>(context.req.raw);
     const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name || name.length > 64) throw badRequestResponse("name must be 1–64 characters");
+    if (!name || name.length > 64)
+      throw badRequestResponse("name must be 1–64 characters");
     const url =
       typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
     if (!url || (url.protocol !== "https:" && url.protocol !== "http:")) {
