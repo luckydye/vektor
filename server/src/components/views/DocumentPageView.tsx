@@ -121,7 +121,10 @@ export function DocumentPageView(props: Props) {
     queryFn: async () => {
       const spaceId = currentSpace()?.id;
       if (!spaceId || !props.documentSlug) return null;
-      return await api.document.get(spaceId, props.documentSlug);
+      // A canvas loads its objects by region; the page needs its metadata only.
+      return await api.document.get(spaceId, props.documentSlug, {
+        canvasContent: false,
+      });
     },
     initialData: async () => {
       const spaceId = currentSpace()?.id;

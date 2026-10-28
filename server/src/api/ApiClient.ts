@@ -1538,8 +1538,12 @@ export class ApiClient {
     get: async (
       spaceId: string,
       documentId: string,
-      /** `live` reads the draft as the collaboration room currently holds it. */
-      query?: { rev?: number; draft?: boolean; live?: boolean },
+      /**
+       * `live` reads the draft as the collaboration room currently holds it.
+       * `canvasContent: false` leaves a canvas's content out, for a reader
+       * that needs its metadata only.
+       */
+      query?: { rev?: number; draft?: boolean; live?: boolean; canvasContent?: boolean },
     ) => {
       if (query?.rev) {
         const response = await this.apiGet<{ revision: RevisionWithContent }>(

@@ -5,7 +5,12 @@
  */
 
 import { bodyMarkdown } from "#canvas/document/bodyText.ts";
-import { type CanvasObject, objectToItem } from "#canvas/document/format/object.ts";
+import {
+  type CanvasObject,
+  EXTENSION_STATE_TYPE,
+  objectToItem,
+  objectType,
+} from "#canvas/document/format/object.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { writeBaseFromSnapshot } from "./canvasBase.ts";
 import {
@@ -24,6 +29,7 @@ export interface CanvasSnapshot {
 export function objectsToSnapshot(objects: readonly CanvasObject[]): CanvasSnapshot {
   const snapshot: CanvasSnapshot = { version: 1, shapes: [], strokes: [] };
   for (const object of objects) {
+    if (objectType(object) === EXTENSION_STATE_TYPE) continue;
     const { kind, item } = objectToItem(
       object,
       object.body ? bodyMarkdown(object.body) : undefined,

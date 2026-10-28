@@ -12,11 +12,13 @@ import {
   bodyDoc,
   type CanvasObject,
   createObject,
+  EXTENSION_STATE_TYPE,
   type FlattenedItem,
   flattenShape,
   flattenStroke,
   objectDeleted,
   objectRefs,
+  objectType,
 } from "#canvas/document/format/object.ts";
 import {
   createClock,
@@ -58,8 +60,11 @@ export async function writeCanvasSnapshot(
 ): Promise<string[]> {
   const store = await openSpaceStore(platform, spaceId);
   const ws = await canvasWorkingSet(store, documentId);
+  // The extensions' state is not in the snapshot, so a snapshot never deletes it.
   const current = new Map(
-    (await readAllCanvasObjects(ws)).map((object) => [object.id, object]),
+    (await readAllCanvasObjects(ws))
+      .filter((object) => objectType(object) !== EXTENSION_STATE_TYPE)
+      .map((object) => [object.id, object]),
   );
   const items = (value: unknown, kind: "shape" | "stroke") =>
     (Array.isArray(value) ? value : [])

@@ -31,6 +31,14 @@ export interface CanvasObject {
 /** The type of objects that are strokes rather than shapes. */
 export const STROKE_TYPE = "stroke";
 
+/**
+ * The one object per canvas whose body is the extensions' shared Y.Doc
+ * (`ctx.collaboration`). It has no geometry, is never drawn and is not part of
+ * the snapshot JSON.
+ */
+export const EXTENSION_STATE_ID = "extension-state";
+export const EXTENSION_STATE_TYPE = "extension-state";
+
 /** The `XmlFragment` of a body doc the rich-text editor binds to. */
 export const BODY_FIELD = "text";
 

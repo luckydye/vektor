@@ -4,6 +4,7 @@
  * docs/canvas-format.md, Client).
  */
 
+import type * as Y from "yjs";
 import { bodyFromMarkdown, writeBodyMarkdown } from "#canvas/document/bodyText.ts";
 import {
   type CanvasSync,
@@ -12,6 +13,8 @@ import {
 } from "#canvas/document/canvasSync.ts";
 import {
   dataRefs,
+  EXTENSION_STATE_ID,
+  EXTENSION_STATE_TYPE,
   type FlattenedItem,
   flattenShape,
   flattenStroke,
@@ -75,7 +78,9 @@ export function createCanvasDocument(options: CanvasDocumentOptions) {
     const result: Record<string, unknown>[] = [];
     for (const id of store.objects.keys()) {
       const object = store.view(id);
-      if (!object || !store.live(id) || objectType(object) === STROKE_TYPE) continue;
+      if (!object || !store.live(id)) continue;
+      const type = objectType(object);
+      if (type === STROKE_TYPE || type === EXTENSION_STATE_TYPE) continue;
       result.push(objectToItem(object, store.textOf(id)).item);
     }
     return result;
@@ -200,9 +205,25 @@ export function createCanvasDocument(options: CanvasDocumentOptions) {
     ]);
   }
 
+  /**
+   * The extensions' shared Y.Doc: the body of the canvas's one state object,
+   * synced and stored like any body. Created on first use; one a peer created
+   * meanwhile merges in when it loads.
+   */
+  function extensionState(): Y.Doc {
+    if (!store.live(EXTENSION_STATE_ID)) {
+      store.transact(
+        () => store.create(EXTENSION_STATE_ID, [["type", EXTENSION_STATE_TYPE]]),
+        "internal",
+      );
+    }
+    return store.editBody(EXTENSION_STATE_ID);
+  }
+
   return {
     store,
     sync,
+    extensionState,
     shapeItems,
     strokeEntries,
     has: (id: string) => store.live(id),

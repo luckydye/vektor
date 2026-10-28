@@ -159,7 +159,8 @@ export function useDocument(
       const docId = documentId();
       if (!id) throw new Error("No space ID");
       if (!docId) return null;
-      return await api.document.get(id, docId);
+      // A canvas loads its objects by region; here only its metadata is read.
+      return await api.document.get(id, docId, { canvasContent: false });
     },
     initialData: async () => {
       const id = spaceId();

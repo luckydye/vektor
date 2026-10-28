@@ -68,8 +68,6 @@ export function CanvasView(props: Props) {
   // An effect, not `onMount`: a canvas → canvas navigation swaps the props
   // without remounting, and extensions would keep acting on the old document.
   createEffect(() => {
-    // A canvas has no Y.Doc to hand extensions.
-    extensions.setActiveCollaboration(null);
     extensions.setActiveDocumentId(documentId() ?? null);
   });
 
@@ -93,6 +91,7 @@ export function CanvasView(props: Props) {
           plugins={extensions.canvasPlugins}
           presenceProfiles={presenceProfiles()}
           onPresence={handlePresence}
+          onCollaboration={(ydoc) => extensions.setActiveCollaboration(ydoc)}
         />
       </div>
     </Show>
