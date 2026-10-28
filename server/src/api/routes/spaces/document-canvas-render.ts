@@ -22,7 +22,7 @@ const MAX_SIDE = 2000;
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const { snapshot } = await canvasRequest(context, Permission.VIEWER);
+    const snapshot = await (await canvasRequest(context, Permission.VIEWER)).snapshot();
     const query = new URL(context.req.url).searchParams;
     const faces = await serverFonts();
     const shapes = sceneShapes(snapshot, faces);

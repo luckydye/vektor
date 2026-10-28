@@ -23,6 +23,7 @@ import type {
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import "#canvas/ui/CanvasHostElement.ts";
 import { type Accessor, createMemo, createSignal } from "solid-js";
+import type { CanvasTransport } from "#canvas/document/canvasSync.ts";
 import type { CanvasDocumentCollaboration } from "#canvas/document/collaboration.ts";
 import type { CanvasView } from "#canvas/runtime/controller.ts";
 import type { CanvasPlugins } from "#canvas/runtime/plugins.ts";
@@ -76,10 +77,12 @@ export function createCanvasChrome(
 interface Props {
   spaceId: string;
   documentId?: string;
-  ydoc: Y.Doc;
+  transport: CanvasTransport;
   plugins: CanvasPlugins;
   presenceProfiles?: CollaborationPresenceProfile<CanvasPresenceState>[];
   onPresence?: (states: CanvasPresenceState[]) => void;
+  /** The Y.Doc extensions share on this canvas, and null when it goes. */
+  onCollaboration?: (ydoc: Y.Doc | null) => void;
 }
 
 export function Canvas(props: Props) {
@@ -144,7 +147,7 @@ export function Canvas(props: Props) {
     host.spaceid = props.spaceId;
     host.documentid = props.documentId;
     host.plugins = props.plugins;
-    host.ydoc = props.ydoc;
+    host.transport = props.transport;
     host.presence = props.presenceProfiles ?? [];
     host.currentuserid = currentUser()?.id;
     host.cursorcolor = cursorColorOverride() ?? getAvatarColor(currentUser()?.id);
@@ -158,6 +161,7 @@ export function Canvas(props: Props) {
     host.save = (snapshot) => saveDocument(snapshot as string, { format: "serialized" });
     host.error = (message) => toast.error(message);
     host.onpresence = (states) => props.onPresence?.(states);
+    host.oncollaboration = (ydoc) => props.onCollaboration?.(ydoc);
     host.onframe = chrome.onFrame;
     host.changed();
   });

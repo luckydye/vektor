@@ -22,6 +22,7 @@ import { listActiveSpaceIds } from "./db/auth/spaceIndex.ts";
 import { initializeDatabases } from "./db/client/db.ts";
 import { openSpaceStore } from "./db/client/store.ts";
 import { failInterruptedAIChatTurns } from "./db/space/aiChatSessions.ts";
+import { migrateCanvases } from "./db/space/canvasMigration.ts";
 import { purgeExpiredSpaces } from "./db/space/spaces.ts";
 import { startDiscordBots, stopDiscordBots } from "./integrations/discordBot.ts";
 import { isEmailDeliveryAvailable } from "./notifications/email.ts";
@@ -32,6 +33,7 @@ import {
   renderPrometheusMetrics,
   startMetricsMonitor,
 } from "./observability/metrics.ts";
+import { flushAllCanvasRooms, startCanvasRoomSweep } from "./realtime/canvasRooms.ts";
 import { startYRoomSweep } from "./realtime/yjsRooms.ts";
 import { APP_CSP } from "./utils/csp.ts";
 import { every } from "./utils/every.ts";
@@ -218,6 +220,9 @@ export async function startServer(platform: Platform): Promise<void> {
     await failInterruptedAIChatTurns(await openSpaceStore(platform, spaceId));
   }
 
+  // Before listening: no canvas is served from its JSON snapshot any more.
+  await migrateCanvases(platform);
+
   // From source the route files may have changed since the last build, so the
   // OpenAPI document is regenerated; a compiled binary has no `scripts/` and embeds it.
   const generateOpenApiScript = join(import.meta.dir, "../scripts/generate-openapi.ts");
@@ -355,6 +360,7 @@ export async function startServer(platform: Platform): Promise<void> {
   startDiscordBots(platform);
   const stopMetricsMonitor = startMetricsMonitor();
   const stopYRoomSweep = startYRoomSweep();
+  const stopCanvasRoomSweep = startCanvasRoomSweep(platform);
   purgeExpiredSpacesLogged(platform);
   const stopRetentionSweep = every(SPACE_RETENTION_SWEEP_MS, () =>
     purgeExpiredSpacesLogged(platform),
@@ -373,6 +379,7 @@ export async function startServer(platform: Platform): Promise<void> {
 
     stopMetricsMonitor();
     stopYRoomSweep();
+    stopCanvasRoomSweep();
     stopRetentionSweep();
     stopDiscordBots();
     stopSerializationPool();
@@ -391,6 +398,8 @@ export async function startServer(platform: Platform): Promise<void> {
     try {
       realtimeWebSocketServer.close();
       nodeWebSocketServer.close();
+      // Clients see records before they are durable; a graceful stop keeps them.
+      await flushAllCanvasRooms(platform);
 
       await new Promise<void>((resolve, reject) => {
         server.close((error: unknown) => {

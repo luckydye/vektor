@@ -8,16 +8,10 @@
  * "Client-only API called on the server side" at import time.
  *
  * Nothing reachable from here may import from `render/`, `runtime/`, `extensions/`
- * or `ui/`. `yjs` is the only runtime dependency; keep it that way.
+ * or `ui/`.
  */
 
 export type {
   CanvasCollaborationFactory,
   CanvasDocumentCollaboration,
 } from "#canvas/document/collaboration.ts";
-export {
-  CANVAS_SHAPES_KEY,
-  CANVAS_STROKES_KEY,
-  parseCanvasContent,
-  seedCanvasDoc,
-} from "#canvas/document/yjs.ts";

@@ -33,7 +33,9 @@ export type ToolImage = {
 
 export function isToolImage(value: unknown): value is ToolImage {
   return (
-    typeof value === "object" && value !== null && (value as { kind?: unknown }).kind === "image"
+    typeof value === "object" &&
+    value !== null &&
+    (value as { kind?: unknown }).kind === "image"
   );
 }
 
@@ -1074,7 +1076,7 @@ export async function callTool(
         config,
         `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/canvas`,
         {
-          method: "POST",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ operations: args.operations }),
         },

@@ -1,9 +1,14 @@
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector, Doc as YDoc } from "yjs";
 import type { Attribution } from "#acl/apps.ts";
 import type { NodeSummary } from "#agent/nodes/protocol.ts";
+import { CanvasCatchUpRefused, type CanvasJoined } from "#canvas/document/canvasSync.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
 import {
+  type CanvasFlushedPayload,
+  type CanvasReloadPayload,
+  decodeCanvasOps,
+  encodeCanvasOps,
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
   type PresenceMessage,
@@ -20,9 +25,11 @@ import {
   WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
+  wsDecodeDocumentFrame,
   wsDecodeJson,
   wsDecodeYjsUpdate,
   wsEncode,
+  wsEncodeDocumentFrame,
   wsEncodeYjsUpdate,
   type YjsJoinPayload,
   type YjsRoomGenerationPayload,
@@ -759,6 +766,15 @@ interface YjsRoomEntry {
   onError?: (error: Error) => void;
 }
 
+/** A joined canvas room's frame handlers; see `joinCanvasRoom`. */
+interface CanvasRoomHandlers {
+  joined(payload: CanvasJoined): void;
+  ops(opId: string, records: Uint8Array[]): void;
+  flushed(payload: CanvasFlushedPayload): void;
+  reload(payload: CanvasReloadPayload): void;
+  error(error: Error): void;
+}
+
 interface RealtimeConnection {
   spaceId: string;
   socket: WebSocket;
@@ -769,6 +785,8 @@ interface RealtimeConnection {
   presenceSubscriptions: Set<PresenceSubscription<unknown>>;
   /** Active Yjs rooms keyed by documentId so they can be re-joined after a reconnect. */
   yjsRooms: Map<string, Set<YjsRoomEntry>>;
+  /** Joined canvas rooms keyed by documentId, re-joined after a reconnect. */
+  canvasRooms: Map<string, CanvasRoomHandlers>;
   /** Latest presence join payload per room/client, replayed on reconnect (state kept current via updates). */
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
@@ -1520,8 +1538,12 @@ export class ApiClient {
     get: async (
       spaceId: string,
       documentId: string,
-      /** `live` reads the draft as the collaboration room currently holds it. */
-      query?: { rev?: number; draft?: boolean; live?: boolean },
+      /**
+       * `live` reads the draft as the collaboration room currently holds it.
+       * `canvasContent: false` leaves a canvas's content out, for a reader
+       * that needs its metadata only.
+       */
+      query?: { rev?: number; draft?: boolean; live?: boolean; canvasContent?: boolean },
     ) => {
       if (query?.rev) {
         const response = await this.apiGet<{ revision: RevisionWithContent }>(
@@ -2935,6 +2957,7 @@ export class ApiClient {
       subscriptions: new Set(),
       presenceSubscriptions: new Set(),
       yjsRooms: new Map(),
+      canvasRooms: new Map(),
       presenceJoinPayloads: new Map(),
       closed: false,
       syncCursor: null,
@@ -3013,7 +3036,32 @@ export class ApiClient {
       console.error("Realtime error frame", { spaceId: connection.spaceId, detail });
       if (detail.documentId) {
         this.failYjsRoomJoins(connection, detail.documentId, detail.message);
+        connection.canvasRooms
+          .get(detail.documentId)
+          ?.error(new Error(detail.message || "The server refused the canvas"));
       }
+      return;
+    }
+
+    if (
+      type === WsMsgType.CanvasJoined ||
+      type === WsMsgType.CanvasOps ||
+      type === WsMsgType.CanvasFlushed ||
+      type === WsMsgType.CanvasReload
+    ) {
+      const frame = wsDecodeDocumentFrame(payload);
+      const room = connection.canvasRooms.get(frame.documentId);
+      if (!room) return;
+      if (type === WsMsgType.CanvasOps) {
+        const ops = decodeCanvasOps(frame.payload, false);
+        room.ops(ops.opId, ops.records);
+        return;
+      }
+      const json = JSON.parse(new TextDecoder().decode(frame.payload));
+      if (type === WsMsgType.CanvasJoined) room.joined(json as CanvasJoined);
+      else if (type === WsMsgType.CanvasFlushed)
+        room.flushed(json as CanvasFlushedPayload);
+      else room.reload(json as CanvasReloadPayload);
       return;
     }
 
@@ -3233,7 +3281,8 @@ export class ApiClient {
     if (
       connection.subscriptions.size === 0 &&
       connection.presenceSubscriptions.size === 0 &&
-      connection.yjsRooms.size === 0
+      connection.yjsRooms.size === 0 &&
+      connection.canvasRooms.size === 0
     ) {
       this.teardownRealtimeConnection(connection);
       return;
@@ -3282,6 +3331,12 @@ export class ApiClient {
       socket.send(wsEncode(WsMsgType.YjsJoin, payload));
     }
 
+    for (const documentId of connection.canvasRooms.keys()) {
+      socket.send(
+        wsEncodeDocumentFrame(WsMsgType.CanvasJoin, documentId, new Uint8Array(0)),
+      );
+    }
+
     for (const payload of connection.presenceJoinPayloads.values()) {
       socket.send(wsEncode(WsMsgType.PresenceJoin, payload));
     }
@@ -3313,7 +3368,8 @@ export class ApiClient {
     return (
       connection.subscriptions.size === 0 &&
       connection.presenceSubscriptions.size === 0 &&
-      connection.yjsRooms.size === 0
+      connection.yjsRooms.size === 0 &&
+      connection.canvasRooms.size === 0
     );
   }
 
@@ -3624,6 +3680,70 @@ export class ApiClient {
       }
       this.maybeCloseRealtimeConnection(connection);
     };
+  }
+
+  /**
+   * Joins a canvas room. `joined` fires on every (re)join, after which the
+   * caller catches up and resends; frames sent while the socket is down are
+   * dropped, because the caller's resend buffer replays them.
+   */
+  joinCanvasRoom(
+    spaceId: string,
+    documentId: string,
+    handlers: CanvasRoomHandlers,
+  ): { send(epoch: string, opId: string, records: Uint8Array[]): void; leave(): void } {
+    const connection = this.getRealtimeConnection(spaceId);
+    if (connection.canvasRooms.has(documentId)) {
+      throw new Error(`Canvas ${documentId} is already joined`);
+    }
+    connection.canvasRooms.set(documentId, handlers);
+    this.sendRealtimeState(
+      connection,
+      wsEncodeDocumentFrame(WsMsgType.CanvasJoin, documentId, new Uint8Array(0)),
+    );
+    return {
+      send: (epoch, opId, records) => {
+        if (connection.socket.readyState !== WebSocket.OPEN) return;
+        connection.socket.send(
+          wsEncodeDocumentFrame(
+            WsMsgType.CanvasOps,
+            documentId,
+            encodeCanvasOps({ epoch, opId, records }),
+          ),
+        );
+      },
+      leave: () => {
+        if (connection.canvasRooms.get(documentId) !== handlers) return;
+        connection.canvasRooms.delete(documentId);
+        this.sendRealtimeState(
+          connection,
+          wsEncodeDocumentFrame(WsMsgType.CanvasLeave, documentId, new Uint8Array(0)),
+        );
+        this.maybeCloseRealtimeConnection(connection);
+      },
+    };
+  }
+
+  /** A canvas load query, streamed as `application/vnd.vektor.canvas`. */
+  async loadCanvas(
+    spaceId: string,
+    documentId: string,
+    query: { view?: number[]; ids?: string[]; since?: number; epoch?: string },
+  ): Promise<ReadableStream<Uint8Array>> {
+    const response = await fetch(
+      `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}/canvas`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(query),
+      },
+    );
+    if (response.status === 409) throw new CanvasCatchUpRefused(await response.text());
+    if (!response.ok || !response.body) {
+      throw new Error(`Canvas load failed: ${response.status} ${await response.text()}`);
+    }
+    return response.body;
   }
 
   joinPresenceRoom<TState>(

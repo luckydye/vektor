@@ -32,7 +32,7 @@ import {
   yRooms,
 } from "./yjsRooms.ts";
 
-type RoomAccess = "edit" | "view" | "none" | "unknown";
+export type RoomAccess = "edit" | "view" | "none" | "unknown";
 
 interface JoinedRoom {
   canEdit: boolean;
@@ -42,7 +42,7 @@ interface JoinedRoom {
 }
 
 /** Avoid an ACL query for every Yjs update while bounding stale writes. */
-const ROOM_AUTH_TTL_MS = 5_000;
+export const ROOM_AUTH_TTL_MS = 5_000;
 
 const aclVersions = new Map<string, number>();
 
@@ -50,8 +50,84 @@ export function noteAclChange(spaceId: string): void {
   aclVersions.set(spaceId, (aclVersions.get(spaceId) ?? 0) + 1);
 }
 
-function aclVersion(spaceId: string): number {
+export function aclVersion(spaceId: string): number {
   return aclVersions.get(spaceId) ?? 0;
+}
+
+/** A document room's access for `userId`, retried when an ACL event lands during the query. */
+export async function authorizeDocumentRoom(
+  platform: Platform,
+  spaceId: string,
+  userId: string,
+  documentId: string,
+): Promise<{ access: RoomAccess; checkedAt: number; version: number }> {
+  while (true) {
+    const version = aclVersion(spaceId);
+    const checkedAt = Date.now();
+    const access = await documentRoomAccess(platform, spaceId, userId, documentId);
+    if (version === aclVersion(spaceId)) {
+      return { access, checkedAt, version };
+    }
+  }
+}
+
+async function documentRoomAccess(
+  platform: Platform,
+  spaceId: string,
+  userId: string,
+  documentId: string,
+): Promise<RoomAccess> {
+  const asEditor = await holdsRole(
+    platform,
+    spaceId,
+    userId,
+    documentId,
+    Permission.EDITOR,
+  );
+  if (asEditor === "unknown") return "unknown";
+  if (asEditor === "held") {
+    try {
+      return (await documentIsReadonlyById(
+        await openSpaceStore(platform, spaceId),
+        documentId,
+      ))
+        ? "view"
+        : "edit";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  const asViewer = await holdsRole(
+    platform,
+    spaceId,
+    userId,
+    documentId,
+    Permission.VIEWER,
+  );
+  if (asViewer === "unknown") return "unknown";
+  return asViewer === "held" ? "view" : "none";
+}
+
+async function holdsRole(
+  platform: Platform,
+  spaceId: string,
+  userId: string,
+  documentId: string,
+  role: Permission,
+): Promise<"held" | "denied" | "unknown"> {
+  try {
+    await verifyAccess(
+      platform,
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      userId,
+      role,
+    );
+    return "held";
+  } catch (error) {
+    return isAccessDenied(error) ? "denied" : "unknown";
+  }
 }
 
 function decodeStateVector(encoded: string | undefined): Uint8Array | null {
@@ -117,7 +193,12 @@ export class YjsConnection {
     clientGeneration: string | undefined,
     clientStateVector: Uint8Array | null,
   ): Promise<void> {
-    const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
+    const { access, checkedAt, version } = await authorizeDocumentRoom(
+      this.platform,
+      this.spaceId,
+      this.userId,
+      documentId,
+    );
     if (access !== "edit" && access !== "view") {
       // The client rejects the pending join on this, so the message is one a
       // person reads in a toast rather than a status word.
@@ -244,7 +325,12 @@ export class YjsConnection {
     if (!this.joinedRooms.has(roomKey)) return undefined;
 
     const documentId = roomKey.slice(this.spaceId.length + 1);
-    const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
+    const { access, checkedAt, version } = await authorizeDocumentRoom(
+      this.platform,
+      this.spaceId,
+      this.userId,
+      documentId,
+    );
 
     // A concurrent pass may already have evicted the room.
     const joined = this.joinedRooms.get(roomKey);
@@ -298,20 +384,6 @@ export class YjsConnection {
     return joined;
   }
 
-  /** Retry when an ACL event lands during the authorization query. */
-  private async authorizeCurrentRoom(
-    documentId: string,
-  ): Promise<{ access: RoomAccess; checkedAt: number; version: number }> {
-    while (true) {
-      const version = aclVersion(this.spaceId);
-      const checkedAt = Date.now();
-      const access = await this.authorizeRoom(documentId);
-      if (version === aclVersion(this.spaceId)) {
-        return { access, checkedAt, version };
-      }
-    }
-  }
-
   private leaveRoom(roomKey: string): void {
     if (!this.joinedRooms.delete(roomKey)) return;
 
@@ -323,45 +395,6 @@ export class YjsConnection {
       retireYRoom(this.platform, roomKey);
     } else {
       persistYRoomDraftBestEffort(this.platform, roomKey);
-    }
-  }
-
-  private async authorizeRoom(documentId: string): Promise<RoomAccess> {
-    const asEditor = await this.holdsRole(documentId, Permission.EDITOR);
-    if (asEditor === "unknown") return "unknown";
-    if (asEditor === "held") {
-      try {
-        return (await documentIsReadonlyById(
-          await openSpaceStore(this.platform, this.spaceId),
-          documentId,
-        ))
-          ? "view"
-          : "edit";
-      } catch {
-        return "unknown";
-      }
-    }
-
-    const asViewer = await this.holdsRole(documentId, Permission.VIEWER);
-    if (asViewer === "unknown") return "unknown";
-    return asViewer === "held" ? "view" : "none";
-  }
-
-  private async holdsRole(
-    documentId: string,
-    role: Permission,
-  ): Promise<"held" | "denied" | "unknown"> {
-    try {
-      await verifyAccess(
-        this.platform,
-        this.spaceId,
-        { type: ResourceType.DOCUMENT, id: documentId },
-        this.userId,
-        role,
-      );
-      return "held";
-    } catch (error) {
-      return isAccessDenied(error) ? "denied" : "unknown";
     }
   }
 }

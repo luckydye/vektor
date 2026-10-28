@@ -6,10 +6,18 @@ import {
   parseJsonPath,
 } from "#documents/edit.ts";
 import {
+  decodeObjectPayload,
+  type ObjectRecord,
+  recordPayload,
+} from "#canvas/document/format/records.ts";
+import {
+  decodeCanvasOps,
   WsMsgType,
   wsDecode,
+  wsDecodeDocumentFrame,
   wsDecodeYjsUpdate,
   wsEncode,
+  wsEncodeDocumentFrame,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
 import {
@@ -406,7 +414,7 @@ describe("Document edit operations", () => {
     ws.close();
   });
 
-  it("applies canvas edits through a live Yjs room", async () => {
+  it("applies canvas edits as records to the canvas room", async () => {
     const documentId = await createDocument(
       JSON.stringify({
         version: 1,
@@ -414,12 +422,9 @@ describe("Document edit operations", () => {
           {
             id: "shape-1",
             type: "note",
-            x: 0,
-            y: 0,
-            width: 240,
-            height: 150,
-            text: "existing",
-            color: "#fef3c7",
+            frame: { x: 0, y: 0, width: 240, height: 150, rotation: 0 },
+            style: { color: "#fef3c7" },
+            data: { text: "existing" },
             updatedAt: 1,
           },
         ],
@@ -430,23 +435,34 @@ describe("Document edit operations", () => {
 
     const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`);
     ws.binaryType = "arraybuffer";
-    const received: Uint8Array[] = [];
+    const records: ObjectRecord[] = [];
     const presenceFrames: Uint8Array[] = [];
+    let joined = false;
     ws.addEventListener("message", (event) => {
       const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
-      if (frame.type === WsMsgType.YjsUpdate) received.push(frame.payload);
-      else if (frame.type === WsMsgType.PresenceUpdate)
-        presenceFrames.push(frame.payload);
+      if (frame.type === WsMsgType.CanvasJoined) joined = true;
+      else if (frame.type === WsMsgType.CanvasOps) {
+        const ops = decodeCanvasOps(wsDecodeDocumentFrame(frame.payload).payload, false);
+        for (const record of ops.records) {
+          records.push(decodeObjectPayload(recordPayload(record)));
+        }
+      } else if (frame.type === WsMsgType.PresenceUpdate) presenceFrames.push(frame.payload);
     });
     await new Promise<void>((resolve, reject) => {
       ws.addEventListener("open", () => resolve());
       ws.addEventListener("error", () => reject(new Error("websocket error")));
     });
 
-    ws.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
-    while (received.length < 1) await new Promise((resolve) => setTimeout(resolve, 50));
-    const clientDoc = new Y.Doc();
-    Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(received[0]!).update);
+    ws.send(wsEncodeDocumentFrame(WsMsgType.CanvasJoin, documentId, new Uint8Array(0)));
+    // Presence lives in the document's presence room, which a canvas client joins too.
+    ws.send(
+      wsEncode(WsMsgType.PresenceJoin, {
+        room: documentId,
+        clientId: "canvas-client",
+        user: { id: "canvas-client", name: "Canvas Client" },
+      }),
+    );
+    while (!joined) await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Push a new note shape through the edit endpoint while the room is open.
     const response = await editDocument(documentId, [
@@ -456,38 +472,36 @@ describe("Document edit operations", () => {
         value: {
           id: "shape-story",
           type: "note",
-          x: 300,
-          y: 100,
-          width: 240,
-          height: 150,
-          text: "a short story",
-          color: "#fff7ed",
+          frame: { x: 300, y: 100, width: 240, height: 150, rotation: 0 },
+          style: { color: "#fff7ed" },
+          data: { text: "a short story" },
           updatedAt: 2,
         },
       },
-      { op: "set", path: ".shapes[0].text", value: "updated" },
+      { op: "set", path: ".shapes[0].style.color", value: "#000000" },
     ]);
     expect(response.status).toBe(200);
     expect((await response.json()).live).toBe(true);
 
-    // The change is broadcast to the connected client as a Yjs update.
-    while (received.length < 2) await new Promise((resolve) => setTimeout(resolve, 50));
-    for (const payload of received.slice(1)) {
-      Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(payload).update);
-    }
-    const clientShapes = clientDoc.getMap<Y.Map<unknown>>("canvas.shapes");
-    expect(clientShapes.get("shape-story")?.get("text")).toBe("a short story");
-    expect(clientShapes.get("shape-1")?.get("text")).toBe("updated");
+    // The change reaches the joined client as records: the new shape whole, the recolour as one key.
+    while (records.length < 2) await new Promise((resolve) => setTimeout(resolve, 50));
+    const story = records.find((record) => record.id === "shape-story");
+    expect(story?.full).toBe(true);
+    expect(story?.body.length).toBeGreaterThan(0);
+    const recolour = records.find((record) => record.id === "shape-1");
+    expect(recolour?.groups.flatMap((group) => group.entries)).toContainEqual([
+      "style.color",
+      "#000000",
+    ]);
 
-    // Persisted and live content both reflect the edit.
     const persisted = JSON.parse(await readContent(documentId));
     expect(persisted.shapes.map((shape: { id: string }) => shape.id).sort()).toEqual([
       "shape-1",
       "shape-story",
     ]);
-    expect(JSON.parse(await readContent(documentId, "?live=true")).shapes).toHaveLength(
-      2,
-    );
+    expect(
+      persisted.shapes.find((shape: { id: string }) => shape.id === "shape-story").data.text,
+    ).toBe("a short story");
 
     // An "Agent" canvas presence is broadcast, pointing at the changed shapes.
     while (presenceFrames.length < 1)
