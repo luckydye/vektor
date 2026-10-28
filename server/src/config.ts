@@ -250,12 +250,11 @@ export function config() {
       AI_WEEKLY_MAX_TOKENS: process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS,
 
       /**
-       * Where extension jobs and workflow scripts run: "vm", the platform's job
-       * VM (the default), or "runners", runners and nodes only
-       * (docs/runners.md), so no job code runs on this server. A run that
-       * names a runner runs there either way.
+       * The integrated runner, this server's own job VM, is on unless this is
+       * 0/false. Off, jobs and workflow scripts run only on runners and nodes
+       * (docs/runners.md), so no job code runs on this server.
        */
-      JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
+      INTEGRATED_RUNNER: process.env.VEKTOR_INTEGRATED_RUNNER,
       /**
        * Allow server-side fetches of user-configured URLs — job `fetch`, and an AI
        * provider base URL — to reach loopback and private address ranges. Off by
@@ -457,6 +456,12 @@ export function getLocalOrigin(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+/** Whether jobs that name no runner may run in this server's own job VM. */
+export function isIntegratedRunnerEnabled(): boolean {
+  const raw = config().INTEGRATED_RUNNER;
+  return raw !== "0" && raw !== "false";
+}
+
 export function isInMemoryDb(): boolean {
   return config().IN_MEMORY_DB === "1";
 }
@@ -521,15 +526,6 @@ if (typeof document === "undefined" && isNoAuthMode()) {
         `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local VEKTOR_SITE_URL (${siteUrl})`,
       );
     }
-  }
-}
-
-// Checked at boot like the above, so an unknown runtime fails the start rather
-// than the first job.
-if (typeof document === "undefined") {
-  const jobRuntime = config().JOB_RUNTIME?.trim();
-  if (jobRuntime && jobRuntime !== "vm" && jobRuntime !== "runners") {
-    throw new Error(`VEKTOR_JOB_RUNTIME must be "vm" or "runners", got "${jobRuntime}"`);
   }
 }
 

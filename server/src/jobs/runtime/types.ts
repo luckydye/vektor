@@ -35,7 +35,8 @@ export interface JobRunContext {
   /**
    * Runs the guest on the runner or node of this name (#runners/jobs.ts)
    * rather than on the server. Without it, it runs on one only when
-   * `VEKTOR_JOB_RUNTIME` is `runners`, and then on any the run may use.
+   * the integrated runner is off (`VEKTOR_INTEGRATED_RUNNER=0`), and then on
+   * any the run may use.
    */
   node?: string;
   onLog: (message: string) => void;

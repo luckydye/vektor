@@ -1,13 +1,13 @@
 # Runners
 
-A runner runs a space's extension jobs and workflow scripts outside the Vektor server, and, if it offers them, agents: sub-agents and chats. With `VEKTOR_JOB_RUNTIME=runners`, runners are the only place job code runs, so none of it runs in our environment.
+A runner runs a space's extension jobs and workflow scripts outside the Vektor server, and, if it offers them, agents: sub-agents and chats. With the integrated runner off (`VEKTOR_INTEGRATED_RUNNER=0`), runners are the only place job code runs, so none of it runs in our environment.
 
 There are two kinds, with one contract:
 
 - **HTTP runners.** An endpoint a space owner adds under Space settings → AI → Runners. The server POSTs each request to it.
 - **Nodes.** `vektor agent serve` on any device. The node dials in, so it needs no public address, and gets the same requests over its socket.
 
-A run names a runner or node by name: `node` on `POST /api/v1/spaces/:spaceId/jobs/run` and `POST /api/v1/spaces/:spaceId/workflows/runs`, `vektor workflow run --node <name>`, or the picker next to "Run workflow". Without one it runs on the server, or on the least busy runner when `VEKTOR_JOB_RUNTIME=runners`. A workflow's `runJob` calls run on the workflow's runner.
+A run names a runner or node by name: `node` on `POST /api/v1/spaces/:spaceId/jobs/run` and `POST /api/v1/spaces/:spaceId/workflows/runs`, `vektor workflow run --node <name>`, or the picker next to "Run workflow". Without one it runs on the server, or on the least busy runner when the integrated runner is off. A workflow's `runJob` calls run on the workflow's runner.
 
 ## The contract
 
