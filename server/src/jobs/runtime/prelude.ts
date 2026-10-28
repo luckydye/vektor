@@ -2,9 +2,10 @@
  * The JS runtime the guest sees inside the VM.
  *
  * This file holds *capabilities* — everything the guest can only do because the
- * host does it on its behalf, built on the single primitive the native VM
- * exposes, `__hostCall(name, ...args) -> Promise`, plus the fire-and-forget
- * `__log`.
+ * host does it on its behalf, built on a single primitive,
+ * `call(name, ...args) -> Promise`, with `call("log", line)` fire-and-forget.
+ * `JOB_SCOPE` is that surface as a function from `call` to the guest's globals,
+ * so the job VM and any other runner (`JOB_RUNNER`) share it.
  *
  * Platform primitives Boa lacks are deliberately NOT here. `URL`,
  * `URLSearchParams`, `crypto`, `structuredClone`, `TextEncoder`/`TextDecoder`
@@ -16,19 +17,19 @@
  * Two conventions matter:
  *
  * - **Bytes.** A `Uint8Array` crosses the boundary as a base64 envelope, encoded
- *   in Rust. Guest code just sees a real `Uint8Array`, so nothing here converts.
- * - **Globals.** The prelude and the guest are separate evals, so lexical
- *   bindings from one are not visible in the other. Everything is assigned to
- *   `globalThis` explicitly.
+ *   in Rust for the VM and by `JOB_RUNNER` elsewhere. Guest code just sees a
+ *   real `Uint8Array`, so the scope does not convert.
+ * - **Globals.** The scope is a plain object. The VM assigns it to
+ *   `globalThis`, since its prelude and the guest are separate evals; a JS
+ *   runner passes it to the guest as parameters, so concurrent jobs share none.
  *
  * Capabilities that take content accept a string *or* a `Uint8Array`, so jobs
  * rarely need to convert by hand. Where they do, `TextEncoder`/`TextDecoder` are
  * backed by native codecs rather than implemented here — see below.
  */
-export const PRELUDE = String.raw`
-(() => {
-  const g = globalThis;
-  const call = (name, ...args) => __hostCall(name, ...args);
+export const JOB_SCOPE = String.raw`
+(call) => {
+  const g = {};
 
   // ── logging ────────────────────────────────────────────────────────────────
   const format = (value) => {
@@ -45,7 +46,7 @@ export const PRELUDE = String.raw`
     }
     return String(value);
   };
-  g.log = (...parts) => { __log(parts.map(format).join(" ")); };
+  g.log = (...parts) => { call("log", parts.map(format).join(" ")); };
   g.console = { log: g.log, info: g.log, debug: g.log, warn: g.log, error: g.log, trace: g.log };
 
   // ── timers ─────────────────────────────────────────────────────────────────
@@ -66,35 +67,6 @@ export const PRELUDE = String.raw`
   };
   g.clearInterval = () => {};
   g.sleep = (ms) => call("sleep", Math.max(0, Number(ms) || 0));
-
-  // ── text encoding ──────────────────────────────────────────────────────────
-  // Thin wrappers over native codecs. The conversion itself must not happen in
-  // guest JS: a per-character loop in the interpreter costs seconds per megabyte,
-  // and jobs decode every entry of a downloaded archive.
-  g.TextEncoder = class TextEncoder {
-    get encoding() { return "utf-8"; }
-    encode(input = "") { return __utf8Encode(String(input)); }
-  };
-
-  g.TextDecoder = class TextDecoder {
-    constructor(encoding = "utf-8") {
-      this.encoding = String(encoding).toLowerCase();
-      if (this.encoding !== "utf-8" && this.encoding !== "utf8") {
-        throw new RangeError("Only utf-8 is supported, got " + encoding);
-      }
-    }
-    decode(bytes) {
-      if (bytes == null) return "";
-      return __utf8Decode(bytes);
-    }
-  };
-
-  // btoa/atob are native for the same reasons as the text codecs: a job may
-  // base64 an entire file, and the native side enforces the real semantics —
-  // these convert binary strings (one byte per code unit), and reject input that
-  // is not one rather than silently truncating it.
-  g.btoa = (input) => __b64Encode(String(input));
-  g.atob = (input) => __b64Decode(String(input));
 
   // ── fetch ──────────────────────────────────────────────────────────────────
   g.Headers = class Headers {
@@ -147,8 +119,8 @@ export const PRELUDE = String.raw`
       redirected: !!raw.redirected,
       url: raw.url || "",
       headers,
-      async text() { consume(); return new g.TextDecoder().decode(bytes); },
-      async json() { consume(); return JSON.parse(new g.TextDecoder().decode(bytes)); },
+      async text() { consume(); return new TextDecoder().decode(bytes); },
+      async json() { consume(); return JSON.parse(new TextDecoder().decode(bytes)); },
       async bytes() { consume(); return bytes; },
       async arrayBuffer() { consume(); return bytes.buffer; },
     };
@@ -269,5 +241,116 @@ export const PRELUDE = String.raw`
     mkdir: (path) => call("scratchMkdir", path),
   };
   g.exec = (command, args, options) => call("exec", command, args || [], options || {});
+  return g;
+}
+`;
+
+/**
+ * The job VM's prelude: the native text codecs, then the scope as globals.
+ * `log` is the VM's own `__log`, which renews the inactivity deadline.
+ */
+export const PRELUDE = String.raw`
+(() => {
+  const g = globalThis;
+
+  // ── text encoding ──────────────────────────────────────────────────────────
+  // Thin wrappers over native codecs. The conversion itself must not happen in
+  // guest JS: a per-character loop in the interpreter costs seconds per megabyte,
+  // and jobs decode every entry of a downloaded archive.
+  g.TextEncoder = class TextEncoder {
+    get encoding() { return "utf-8"; }
+    encode(input = "") { return __utf8Encode(String(input)); }
+  };
+
+  g.TextDecoder = class TextDecoder {
+    constructor(encoding = "utf-8") {
+      this.encoding = String(encoding).toLowerCase();
+      if (this.encoding !== "utf-8" && this.encoding !== "utf8") {
+        throw new RangeError("Only utf-8 is supported, got " + encoding);
+      }
+    }
+    decode(bytes) {
+      if (bytes == null) return "";
+      return __utf8Decode(bytes);
+    }
+  };
+
+  // btoa/atob are native for the same reasons as the text codecs: a job may
+  // base64 an entire file, and the native side enforces the real semantics —
+  // these convert binary strings (one byte per code unit), and reject input that
+  // is not one rather than silently truncating it.
+  g.btoa = (input) => __b64Encode(String(input));
+  g.atob = (input) => __b64Decode(String(input));
+
+  const call = (name, ...args) =>
+    name === "log" ? __log(args[0]) : __hostCall(name, ...args);
+  Object.assign(g, (${JOB_SCOPE})(call));
 })();
+`;
+
+/**
+ * What a JS runner evaluates to run a job (see docs/job-runners.md):
+ * `eval(prelude)(host, extra)(script, input)` resolves with the job's result.
+ * Capability calls go to `host.url` with `host.token`; bytes cross as base64
+ * envelopes, which this encodes and decodes. `extra` adds globals of the
+ * runner's own, and the guest's `fetch` and timers are the runner's.
+ */
+export const JOB_RUNNER = String.raw`
+(host, extra = {}) => {
+  const toBase64 = (bytes) => {
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(text);
+  };
+  const plain = (v) =>
+    v !== null && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype;
+  const map = (v, leaf) =>
+    Array.isArray(v)
+      ? v.map(leaf)
+      : plain(v)
+        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, leaf(x)]))
+        : v;
+  const encode = (v) => (v instanceof Uint8Array ? { __bytes: toBase64(v) } : map(v, encode));
+  const decode = (v) =>
+    plain(v) && typeof v.__bytes === "string"
+      ? Uint8Array.from(atob(v.__bytes), (c) => c.charCodeAt(0))
+      : map(v, decode);
+
+  const send = async (name, args) => {
+    const response = await fetch(host.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + host.token },
+      body: JSON.stringify({ name, args }),
+    });
+    const { value, error } = await response.json();
+    if (error !== undefined) throw new Error(error);
+    return value;
+  };
+  // Logs go in order, and all of them before the result.
+  let logs = Promise.resolve();
+  const call = (name, ...args) => {
+    if (name !== "log") return send(name, encode(args)).then(decode);
+    logs = logs.then(() => send("log", args)).catch(() => {});
+  };
+
+  const AsyncFunction = (async () => {}).constructor;
+  return async (script, input) => {
+    const scope = {
+      ...(${JOB_SCOPE})(call),
+      fetch: (...args) => fetch(...args),
+      setTimeout,
+      clearTimeout,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      ...extra,
+    };
+    try {
+      const run = new AsyncFunction(...Object.keys(scope), "input", script);
+      return encode(await run(...Object.values(scope), input));
+    } finally {
+      await logs;
+    }
+  };
+}
 `;

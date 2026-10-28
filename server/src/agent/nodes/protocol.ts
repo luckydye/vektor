@@ -4,11 +4,12 @@
  * Inbound messages for a running agent are not a frame: they wait in the
  * task's mailbox and the agent reads them through the `read_messages` MCP tool.
  *
- * A node also runs jobs and workflow scripts in its own VM. It handles the
- * portable capabilities, the scratch directory and `exec` itself, and asks the
- * server for every other capability with `job.call`, so it never holds a
- * credential for the space.
+ * A node is also a job runner (docs/job-runners.md): `job.run` carries the
+ * same request an HTTP runner gets, and `job.result` its answer. The job's
+ * capability calls go to the server over HTTP, as any runner's do.
  */
+
+import type { RunnerRequest, RunnerResponse } from "#jobs/runners.ts";
 
 /** How often each side pings, and how long silence may last before the node is offline. */
 export const NODE_PING_INTERVAL_MS = 15_000;
@@ -50,17 +51,7 @@ export type ServerToNodeFrame =
   | { type: "screen.open"; taskId: string; screenId: string }
   | { type: "screen.input"; screenId: string; events: ScreenInputEvent[] }
   | { type: "screen.close"; screenId: string }
-  | {
-      type: "job.run";
-      jobId: string;
-      script: string;
-      inputs: Record<string, unknown>;
-      timeoutMs?: number;
-    }
-  /** Answers a `job.call`: `error` when the capability threw, else its `value`. */
-  | { type: "job.reply"; jobId: string; callId: string; value?: unknown; error?: string }
-  /** Renews the job's inactivity deadline for progress the server saw. */
-  | { type: "job.touch"; jobId: string }
+  | { type: "job.run"; request: RunnerRequest }
   | { type: "job.cancel"; jobId: string }
   | { type: "ping" };
 
@@ -83,11 +74,7 @@ export type NodeToServerFrame =
   | { type: "screen.end"; screenId: string; error?: string }
   /** From the agent to the parent (`to: "parent"`) or a sibling sub-agent. */
   | { type: "message"; taskId: string; to: string; text: string }
-  | { type: "job.log"; jobId: string; message: string }
-  /** The job asks the server for a capability the node does not run itself. */
-  | { type: "job.call"; jobId: string; callId: string; name: string; args: unknown[] }
-  /** The job ended: `error` when it failed, else what it returned. */
-  | { type: "job.result"; jobId: string; output?: unknown; error?: string }
+  | ({ type: "job.result"; jobId: string } & RunnerResponse)
   | { type: "ping" };
 
 /**

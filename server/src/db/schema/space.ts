@@ -219,6 +219,26 @@ export const spaceSecret = sqliteTable(
   }),
 );
 
+/**
+ * A job runner a space owner registered: an HTTP endpoint that runs jobs and
+ * workflow scripts (docs/job-runners.md). The server authenticates to it with
+ * the encrypted secret.
+ */
+export const jobRunner = sqliteTable(
+  "job_runner",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    iv: text("iv").notNull(),
+    authTag: text("auth_tag").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [uniqueIndex("job_runner_name_unique").on(table.name)],
+);
+
 export const oauthIntegration = sqliteTable(
   "oauth_integration",
   {

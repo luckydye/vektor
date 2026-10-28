@@ -5,6 +5,7 @@ import * as authCli from "./routes/auth/cli.ts";
 import * as authCliToken from "./routes/auth/cli-token.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
+import * as jobCall from "./routes/jobs/call.ts";
 import * as marketplaceExtension from "./routes/marketplace/extension.ts";
 import * as marketplaceExtensions from "./routes/marketplace/extensions.ts";
 import * as mcp from "./routes/mcp.ts";
@@ -53,6 +54,8 @@ import * as permissions from "./routes/spaces/permissions.ts";
 import * as permissionsMe from "./routes/spaces/permissions-me.ts";
 import * as properties from "./routes/spaces/properties.ts";
 import * as propertyValues from "./routes/spaces/property-values.ts";
+import * as runner from "./routes/spaces/runner.ts";
+import * as runners from "./routes/spaces/runners.ts";
 import * as search from "./routes/spaces/search.ts";
 import * as searchRebuild from "./routes/spaces/search-rebuild.ts";
 import * as secret from "./routes/spaces/secret.ts";
@@ -105,6 +108,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/auth/cli/token", module: authCliToken },
 
   { pattern: "/api/v1/chat/acp", module: chatAcp },
+  { pattern: "/api/v1/jobs/[jobId]/call", module: jobCall },
   { pattern: "/api/v1/chat/completions", module: chatCompletions },
 
   { pattern: "/api/v1/spaces", module: spaces },
@@ -217,6 +221,8 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/search", module: search },
   { pattern: "/api/v1/spaces/[spaceId]/search/rebuild", module: searchRebuild },
 
+  { pattern: "/api/v1/spaces/[spaceId]/runners", module: runners },
+  { pattern: "/api/v1/spaces/[spaceId]/runners/[runnerId]", module: runner },
   { pattern: "/api/v1/spaces/[spaceId]/secrets", module: secrets },
   { pattern: "/api/v1/spaces/[spaceId]/secrets/[name]", module: secret },
 

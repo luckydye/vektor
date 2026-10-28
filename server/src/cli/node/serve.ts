@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { hostname, platform } from "node:os";
 import { resolve } from "node:path";
 import {
@@ -10,6 +9,7 @@ import {
   type ServerToNodeFrame,
 } from "#agent/nodes/protocol.ts";
 import { resolveConfig } from "#cli/resolve.ts";
+import type { RunnerRequest } from "#jobs/runners.ts";
 import { createPortableCapabilities } from "#jobs/runtime/portable.ts";
 import type { CapabilityTable } from "#jobs/runtime/types.ts";
 import { createBoaJobVm, JOB_EXEC_ALLOWLIST } from "#platform/bun/jobVm.ts";
@@ -57,7 +57,25 @@ export type ServeOptions = {
   managed: Omit<ManagedOptions, "manager" | "host">;
   /** Runs jobs for anyone in the space, not only for the logged-in user. */
   shared: boolean;
+  /** A module whose function exports are capabilities this node's jobs get as globals. */
+  capabilities?: string;
 };
+
+/**
+ * The function exports of `path`. Each takes the guest's arguments as JSON
+ * values, bytes as `{ __bytes: base64 }`, and returns one the same way.
+ */
+async function loadCapabilities(path: string): Promise<CapabilityTable> {
+  const exported = (await import(resolve(path))) as Record<string, unknown>;
+  const table: CapabilityTable = {};
+  for (const [name, value] of Object.entries(exported)) {
+    if (typeof value !== "function") {
+      throw new Error(`${path}: export "${name}" is not a function`);
+    }
+    table[name] = value as CapabilityTable[string];
+  }
+  return table;
+}
 
 /** Bun's WebSocket constructor also takes request headers, which the DOM typings lack. */
 type WebSocketInit = ConstructorParameters<typeof WebSocket>[1] & {
@@ -118,12 +136,8 @@ type Running = {
   cancelled: boolean;
 };
 
-type RunningJob = {
-  controller: AbortController;
-  touch(): void;
-  /** Capability calls waiting for the server's reply. */
-  calls: Map<string, PromiseWithResolvers<unknown>>;
-};
+/** The server keeps a job's deadline, so the node's VM keeps none of its own. */
+const NO_DEADLINE_MS = 2 ** 31 - 1;
 
 const log = (message: string) => process.stderr.write(`${message}\n`);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
@@ -148,8 +162,14 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   /** Frames that could not be sent because the server was away. */
   const outbox: NodeToServerFrame[] = [];
   const screens = new Map<string, ScreenSession>();
-  const jobs = new Map<string, RunningJob>();
-  const jobVm = createBoaJobVm({ execAllowlist: JOB_EXEC_ALLOWLIST });
+  const jobs = new Map<string, AbortController>();
+  const ownCapabilities = options.capabilities
+    ? await loadCapabilities(options.capabilities)
+    : {};
+  const jobVm = createBoaJobVm({
+    execAllowlist: JOB_EXEC_ALLOWLIST,
+    globals: Object.keys(ownCapabilities),
+  });
   let socket: WebSocket | null = null;
 
   function send(frame: NodeToServerFrame) {
@@ -270,68 +290,71 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
   }
 
   /**
-   * Runs a job in this node's VM. The portable capabilities, the scratch
-   * directory and `exec` run here; every other capability is asked of the
-   * server, which grants or refuses it.
+   * Runs a job in this node's VM, as any runner does (docs/job-runners.md).
+   * `fetch`, timers, the compute helpers, the scratch directory, `exec` and
+   * the node's own capabilities run here; every other capability, and each
+   * log line, is a call to the server.
    */
-  function runJob(frame: Extract<ServerToNodeFrame, { type: "job.run" }>) {
-    const { jobId } = frame;
+  async function runJob({ jobId, script, inputs, host }: RunnerRequest) {
     const controller = new AbortController();
-    const calls = new Map<string, PromiseWithResolvers<unknown>>();
-    const host = jobVm.hostCapabilities(controller.signal);
+    jobs.set(jobId, controller);
+    // To the server this node dialled, whichever origin the server named.
+    const callUrl = new URL(new URL(host.url).pathname, connection.host);
+    const call = async (name: string, args: unknown[]) => {
+      const response = await fetch(callUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${host.token}`,
+        },
+        body: JSON.stringify({ name, args }),
+        signal: controller.signal,
+      });
+      const { value, error } = (await response.json()) as {
+        value?: unknown;
+        error?: string;
+      };
+      if (error !== undefined) throw new Error(error);
+      return value;
+    };
+    let logs = Promise.resolve();
+    const scratch = jobVm.hostCapabilities(controller.signal);
     const local: CapabilityTable = {
       ...createPortableCapabilities((url, init) => fetch(url, init), controller.signal),
-      ...host.table,
+      ...scratch.table,
+      ...ownCapabilities,
     };
-    const relay =
-      (name: string) =>
-      (...args: unknown[]) => {
-        const callId = randomUUID();
-        const call = Promise.withResolvers<unknown>();
-        calls.set(callId, call);
-        send({ type: "job.call", jobId, callId, name, args });
-        return call.promise;
-      };
     const capabilities = new Proxy(local, {
       get: (table, name) =>
         typeof name !== "string"
           ? undefined
           : Object.hasOwn(table, name)
             ? table[name]
-            : relay(name),
+            : (...args: unknown[]) => call(name, args),
     });
-    const running = jobVm.run({
-      script: frame.script,
-      inputs: frame.inputs,
-      capabilities,
-      onLog: (message) => send({ type: "job.log", jobId, message }),
-      timeoutMs: frame.timeoutMs,
-      signal: controller.signal,
-    });
-    jobs.set(jobId, { controller, touch: running.touch, calls });
-    void running.result
-      .then(
-        (output) => send({ type: "job.result", jobId, output: output ?? null }),
-        (error) =>
-          send({
-            type: "job.result",
-            jobId,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-      )
-      .finally(() => {
-        jobs.delete(jobId);
-        void host.dispose();
-      });
-  }
 
-  function answerJobCall(frame: Extract<ServerToNodeFrame, { type: "job.reply" }>) {
-    const calls = jobs.get(frame.jobId)?.calls;
-    const call = calls?.get(frame.callId);
-    if (!call) return;
-    calls?.delete(frame.callId);
-    if (frame.error === undefined) call.resolve(frame.value ?? null);
-    else call.reject(new Error(frame.error));
+    let result: { output: unknown } | { error: string };
+    try {
+      const output = await jobVm.run({
+        script,
+        inputs,
+        capabilities,
+        onLog: (message) => {
+          logs = logs.then(() => call("log", [message])).then(() => {}, () => {});
+        },
+        timeoutMs: NO_DEADLINE_MS,
+        signal: controller.signal,
+      }).result;
+      result = { output: output ?? null };
+    } catch (error) {
+      result = { error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      jobs.delete(jobId);
+      await scratch.dispose();
+    }
+    // Every log line reaches the server before the result does.
+    await logs;
+    send({ type: "job.result", jobId, ...result });
   }
 
   function handle(frame: ServerToNodeFrame) {
@@ -343,10 +366,8 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     else if (frame.type === "screen.input")
       screens.get(frame.screenId)?.input(frame.events);
     else if (frame.type === "screen.close") screens.get(frame.screenId)?.close();
-    else if (frame.type === "job.run") runJob(frame);
-    else if (frame.type === "job.reply") answerJobCall(frame);
-    else if (frame.type === "job.touch") jobs.get(frame.jobId)?.touch();
-    else if (frame.type === "job.cancel") jobs.get(frame.jobId)?.controller.abort();
+    else if (frame.type === "job.run") void runJob(frame.request);
+    else if (frame.type === "job.cancel") jobs.get(frame.jobId)?.abort();
     else if (frame.type === "session.cancel") {
       const entry = running.get(frame.taskId);
       if (!entry) return;
@@ -404,7 +425,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
         clearInterval(heartbeat);
         if (socket === ws) socket = null;
         // The server has failed them; their capability calls would go unanswered.
-        for (const job of jobs.values()) job.controller.abort();
+        for (const controller of jobs.values()) controller.abort();
         done(event.code);
       };
     });

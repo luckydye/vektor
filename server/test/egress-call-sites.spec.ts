@@ -59,6 +59,12 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   },
   "src/jobs/runtime/agentCapability.ts": { calls: 1, why: "own API, /api/v1/chat/acp" },
 
+  // Not server code: `JOB_RUNNER` is source a job runner evaluates, in its own environment.
+  "src/jobs/runtime/prelude.ts": {
+    calls: 2,
+    why: "JOB_RUNNER's capability calls and guest fetch, run by external job runners",
+  },
+
   // Caller-influenced, and guarded by something other than the platform fetch.
   "src/api/routes/spaces/integration-proxy.ts": {
     calls: 1,

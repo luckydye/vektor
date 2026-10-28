@@ -225,6 +225,13 @@ async function aiChatSessionNode(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.aiChatSession.node);
 }
 
+async function jobRunners(db: Database): Promise<void> {
+  await createTables(db, [spaceSchema.jobRunner]);
+  await run(db, [
+    "CREATE UNIQUE INDEX IF NOT EXISTS job_runner_name_unique ON job_runner (name)",
+  ]);
+}
+
 async function documentContentKey(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.document.contentKey);
 }
@@ -311,4 +318,5 @@ export const spaceMigrations: Migration[] = [
   { id: 13, name: "document-content-key", up: documentContentKey },
   { id: 14, name: "agent-schedules", up: agentSchedules },
   { id: 15, name: "ai-chat-session-node", up: aiChatSessionNode },
+  { id: 16, name: "job-runners", up: jobRunners },
 ];
