@@ -111,7 +111,6 @@ export function UserPreferencesPanel(props: Props) {
   >([]);
   const [isLoadingIntegrations, setIsLoadingIntegrations] = createSignal(false);
   const [integrationsError, setIntegrationsError] = createSignal<string | null>(null);
-  const [integrationsMessage, setIntegrationsMessage] = createSignal<string | null>(null);
   const [connectingProvider, setConnectingProvider] =
     createSignal<OAuthIntegrationProvider | null>(null);
   const [disconnectingProvider, setDisconnectingProvider] =
@@ -340,7 +339,6 @@ export function UserPreferencesPanel(props: Props) {
     const provider = connection.provider;
     setConnectingProvider(provider);
     setIntegrationsError(null);
-    setIntegrationsMessage(null);
 
     try {
       const redirectTo = `${window.location.pathname}${window.location.search}`;
@@ -374,7 +372,6 @@ export function UserPreferencesPanel(props: Props) {
       return;
     setDisconnectingProvider(provider);
     setIntegrationsError(null);
-    setIntegrationsMessage(null);
 
     try {
       await api.integrations.disconnect(spaceId, provider);
@@ -393,18 +390,6 @@ export function UserPreferencesPanel(props: Props) {
     const savedPreference = getStoredThemePreference();
     setThemePreference(savedPreference);
     applyThemePreference(savedPreference);
-
-    const url = new URL(window.location.href);
-    const integrationStatus = url.searchParams.get("status");
-    const integrationName = url.searchParams.get("integration");
-    const integrationMessage = url.searchParams.get("message");
-    if (integrationStatus === "connected" && integrationName) {
-      setIntegrationsMessage(
-        t("{provider} connected successfully").replace("{provider}", integrationName),
-      );
-    } else if (integrationStatus === "error") {
-      setIntegrationsError(integrationMessage || t("Integration OAuth failed"));
-    }
 
     void loadIntegrations();
     void loadNotificationPreference();
@@ -645,11 +630,6 @@ export function UserPreferencesPanel(props: Props) {
                 <Show when={integrationsError()}>
                   <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
                     {integrationsError()}
-                  </div>
-                </Show>
-                <Show when={integrationsMessage()}>
-                  <div class="mb-3 rounded-md border border-green-200 bg-green-50 p-2.5 text-green-700 text-size-small">
-                    {integrationsMessage()}
                   </div>
                 </Show>
 

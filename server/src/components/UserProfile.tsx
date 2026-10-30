@@ -58,9 +58,26 @@ export function UserProfile() {
     window.location.reload();
   }
 
+  // The integration callback redirects back here with its result in the query.
+  // The preferences popover is closed after that reload, so the result is
+  // reported as a toast, and dropped from the address so a reload does not
+  // repeat it.
   onMount(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("integration") && params.get("status")) setOpenSection("integrations");
+    const url = new URL(window.location.href);
+    const integration = url.searchParams.get("integration");
+    const status = url.searchParams.get("status");
+    if (!integration || !status) return;
+
+    if (status === "connected") {
+      useToast().success(
+        t("{provider} connected successfully").replace("{provider}", integration),
+      );
+    } else {
+      useToast().error(url.searchParams.get("message") || t("Integration OAuth failed"));
+    }
+
+    for (const name of ["integration", "status", "message"]) url.searchParams.delete(name);
+    history.replaceState(history.state, "", url);
   });
 
   return (
