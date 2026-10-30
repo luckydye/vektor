@@ -360,8 +360,11 @@ export async function exchangeOAuthCode(options: {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    // The provider's request id is what its support can trace a refusal by.
+    const requestId = response.headers.get("x-request-id");
     throw new Error(
-      `OAuth token exchange failed (${response.status}): ${text.slice(0, 300)}`,
+      `OAuth token exchange failed (${response.status}): ${text.slice(0, 300)}` +
+        (requestId ? ` (request ${requestId})` : ""),
     );
   }
 
