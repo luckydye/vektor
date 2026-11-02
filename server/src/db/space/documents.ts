@@ -62,7 +62,8 @@ import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.t
 import { filterAccessibleFiles } from "./files.ts";
 import { syncPropertyTriggers } from "./propertyTriggers.ts";
 import { deleteRevisionSnapshots, getRevisionContent } from "./revisions.ts";
-import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
+import { nonArchivedDocumentCondition } from "./documentSql.ts";
+import { fileRowToDocument } from "./search.ts";
 
 export interface DocumentWithProperties {
   id: string;

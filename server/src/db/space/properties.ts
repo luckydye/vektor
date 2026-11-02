@@ -27,7 +27,7 @@ import { createAuditLog } from "./auditLogs.ts";
 import { touchDocument } from "./changeSeq.ts";
 import { generateUniqueSlug } from "./documents.ts";
 import { authorizeTriggerWrites, syncPropertyTriggers } from "./propertyTriggers.ts";
-import { nonArchivedDocumentCondition } from "./search.ts";
+import { nonArchivedDocumentCondition, STORED_ARRAY_SQL } from "./documentSql.ts";
 import { renamePropertyWorkflowSchedule } from "./workflowSchedules.ts";
 
 export interface PatchDocumentPropertiesResult {
@@ -495,18 +495,17 @@ export async function listPropertyValues(
     spellings.map((spelling) => sql`${spelling}`),
     sql`, `,
   );
-  const isArray = sql`(p.value LIKE '[%' AND json_valid(p.value) AND json_type(p.value) = 'array')`;
   const rows = await many<{ value: string }>(
     s.db,
     sql`
       SELECT value FROM (
         SELECT p.value AS value, p.document_id AS document_id FROM ${property} p
         JOIN ${document} ON ${document.id} = p.document_id
-        WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND NOT ${isArray}
+        WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND NOT ${STORED_ARRAY_SQL}
         UNION ALL
         SELECT CAST(j.value AS TEXT), p.document_id FROM ${property} p
         JOIN ${document} ON ${document.id} = p.document_id, json_each(p.value) j
-        WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND ${isArray}
+        WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND ${STORED_ARRAY_SQL}
       )
       WHERE trim(value) <> '' AND substr(lower(value), 1, ${prefix.length}) = ${prefix}
       GROUP BY value
