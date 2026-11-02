@@ -15,16 +15,30 @@ interface Props {
   inputTransitionName?: string;
 }
 
+type PinnedScreen = {
+  screen: NonNullable<AgentChat["messages"][number]["screen"]>;
+  task: string;
+};
+
 export function AIChatConversation(props: Props) {
   const chat = props.chat;
   /** Remote sessions' screens stay pinned above the transcript, like a screen share. */
-  const screens = createMemo(() =>
-    chat.messages.flatMap((message) =>
-      message.role === "screen" && message.screen
-        ? [{ screen: message.screen, task: message.content }]
-        : [],
-    ),
-  );
+  const screens = createMemo(() => {
+    // Each turn on a runner re-announces its session; one tile per session, labelled by the latest task.
+    const bySession = new Map<string, PinnedScreen>();
+    for (const message of chat.messages) {
+      if (message.role === "screen" && message.screen) {
+        bySession.set(message.screen.sessionId, {
+          screen: message.screen,
+          task: message.content,
+        });
+      }
+    }
+    return bySession;
+  });
+  const screenIds = createMemo(() => [...screens().keys()], [], {
+    equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
+  });
   const [screenHeight, setScreenHeight] = createSignal(320);
 
   function resizeScreen(event: PointerEvent) {
@@ -48,11 +62,19 @@ export function AIChatConversation(props: Props) {
 
   return (
   <div class={`flex h-full min-h-0 flex-col bg-neutral-10 ${props.class ?? ""}`}>
-    <Show when={screens().length && !chat.showSessionPicker()}>
+    <Show when={screenIds().length && !chat.showSessionPicker()}>
       <div class="shrink-0 px-3 pt-3">
         <div class="flex gap-2" style={{ height: `${screenHeight()}px` }}>
-          <For each={screens()}>
-            {(entry) => <RemoteScreen screen={entry.screen} task={entry.task} />}
+          {/* Keyed by session id so a new response does not remount (and reload) the streams. */}
+          <For each={screenIds()}>
+            {(id) => {
+              const entry = () => screens().get(id);
+              return (
+                <Show when={entry()}>
+                  {(pinned) => <RemoteScreen screen={pinned().screen} task={pinned().task} />}
+                </Show>
+              );
+            }}
           </For>
         </div>
         {/* biome-ignore lint/a11y/useSemanticElements: a drag handle, not a content separator */}
