@@ -1,3 +1,4 @@
+import { getOpenCodeSessionHeaders } from "./openaiCompatible.ts";
 import type { ChatMessage } from "./types.ts";
 import { type PartialToolCall, parseSSE } from "./utils.ts";
 
@@ -238,6 +239,8 @@ export function toAnthropicRequestBody(
 
 export async function callAnthropic(options: {
   provider: AnthropicCompatibleProvider;
+  /** Identifies the conversation to providers that route by it. */
+  sessionId?: string;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
@@ -270,6 +273,7 @@ export async function callAnthropic(options: {
       "Content-Type": "application/json",
       "x-api-key": options.provider.apiKey,
       "anthropic-version": "2023-06-01",
+      ...getOpenCodeSessionHeaders(options.provider.provider, options.sessionId),
     },
     body: JSON.stringify(body),
     signal: options.signal,

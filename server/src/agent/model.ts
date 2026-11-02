@@ -15,6 +15,8 @@ export async function callModel(options: {
   fetch: SafeFetch;
   spaceId: string;
   provider: AIProvider;
+  /** The chat's stable ID, sent to providers that route by conversation. */
+  sessionId?: string;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
@@ -91,6 +93,7 @@ async function callModelProvider(
           : "https://opencode.ai/zen/v1/responses",
       apiKey: provider.apiKey,
       model: provider.model,
+      sessionId: options.sessionId,
     });
   }
   if (

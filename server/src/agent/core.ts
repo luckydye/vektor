@@ -492,6 +492,8 @@ async function prepareAgentTurn(options: {
 }
 
 export async function runAgentPrompt(options: {
+  /** The chat's stable ID, sent to providers that route by conversation. */
+  chatId?: string;
   messages: ChatMessage[];
   apiUrl: string;
   spaceId: string;
@@ -531,6 +533,8 @@ export async function runAgentPrompt(options: {
   const { messages, spaceId, bash: providedBash, signal, onChunk, onEvent } = options;
 
   const provider = options.provider ?? getAIProvider();
+  /** A sub-agent has no chat of its own, so its run is the conversation. */
+  const runSessionId = crypto.randomUUID();
   const { host, fetch } = options;
   const runners = host?.runners;
   const modelCaller =
@@ -541,6 +545,7 @@ export async function runAgentPrompt(options: {
       if (!host) throw new Error("runAgentPrompt needs a host to call the model");
       return callModel({
         ...callOptions,
+        sessionId: options.chatId ?? runSessionId,
         fetch,
         reserveAITokens: (inputTokens) => host.reserveAITokens(spaceId, inputTokens),
       });

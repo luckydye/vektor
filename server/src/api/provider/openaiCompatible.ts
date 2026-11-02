@@ -35,12 +35,29 @@ export function getOpenAICompatibleChatCompletionsUrl(
   return CHAT_COMPLETIONS_URLS[provider.provider];
 }
 
+/**
+ * OpenCode Go routes and caches by conversation, and rejects requests without
+ * a stable session ID. Other providers never see the header.
+ */
+export function getOpenCodeSessionHeaders(
+  provider: string,
+  sessionId: string | undefined,
+): Record<string, string> {
+  if (provider !== "opencode-go") return {};
+  return {
+    "User-Agent": "vektor",
+    ...(sessionId ? { "x-opencode-session": sessionId } : {}),
+  };
+}
+
 export function getOpenAICompatibleHeaders(
   provider: OpenAICompatibleProvider,
+  sessionId?: string,
 ): Record<string, string> {
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${provider.apiKey}`,
+    ...getOpenCodeSessionHeaders(provider.provider, sessionId),
   };
 }
 
@@ -135,6 +152,8 @@ export function toOpenAICompatibleMessages(
 
 export async function callOpenAICompatible(options: {
   provider: OpenAICompatibleProvider;
+  /** Identifies the conversation to providers that route by it. */
+  sessionId?: string;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
@@ -142,7 +161,7 @@ export async function callOpenAICompatible(options: {
 }): Promise<{ message: ChatMessage; finishReason: string }> {
   const response = await fetch(getOpenAICompatibleChatCompletionsUrl(options.provider), {
     method: "POST",
-    headers: getOpenAICompatibleHeaders(options.provider),
+    headers: getOpenAICompatibleHeaders(options.provider, options.sessionId),
     body: JSON.stringify({
       model: options.provider.model,
       messages: toOpenAICompatibleMessages(options.messages),
@@ -232,6 +251,8 @@ export async function callOpenAIResponses(options: {
   url: string;
   apiKey: string;
   model: string;
+  /** Identifies the conversation to providers that route by it. */
+  sessionId?: string;
   /** False keeps the provider from retaining the conversation. */
   store?: false;
   messages: ChatMessage[];
@@ -244,6 +265,7 @@ export async function callOpenAIResponses(options: {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${options.apiKey}`,
+      ...getOpenCodeSessionHeaders(options.label, options.sessionId),
     },
     body: JSON.stringify({
       model: options.model,

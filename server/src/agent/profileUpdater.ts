@@ -86,6 +86,7 @@ async function runProfileUpdate(
     fetch: platform.fetch,
     spaceId: options.spaceId,
     provider,
+    sessionId: options.session.id,
     messages: [{ role: "user", content: prompt }],
     tools: [],
     reserveAITokens: (inputTokens) => reserveAITokens(store, inputTokens),
