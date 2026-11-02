@@ -90,14 +90,9 @@ export const revision = sqliteTable(
   "revision",
   {
     id: text("id").primaryKey(),
-    documentId: text("document_id").references(() => document.id, {
-      onDelete: "cascade",
-    }),
-    /**
-     * What the agent is told when the schedule fires, as a new chat session of
-     * `createdBy`. Set instead of `documentId` for an agent schedule.
-     */
-    prompt: text("prompt"),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
     rev: integer("rev").notNull(),
     slug: text("slug").notNull(),
     snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
@@ -348,9 +343,14 @@ export const workflowSchedule = sqliteTable(
   {
     id: text("id").primaryKey(),
     /** Workflow document id this schedule runs; null for an agent schedule. */
-    documentId: text("document_id")
-      .notNull()
-      .references(() => document.id, { onDelete: "cascade" }),
+    documentId: text("document_id").references(() => document.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * What the agent is told when the schedule fires, as a new chat session of
+     * `createdBy`. Set instead of `documentId` for an agent schedule.
+     */
+    prompt: text("prompt"),
     /** Null for a one-shot schedule; otherwise a standard 5-field cron expression. */
     cronExpression: text("cron_expression"),
     /** Document property that owns a one-shot schedule. */
