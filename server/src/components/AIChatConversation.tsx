@@ -1,9 +1,10 @@
-import { Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import type { AgentChat } from "#composeables/useAgentChat.ts";
 import { AIChatMessages } from "./AIChatMessages.tsx";
 import { AIChatSessions } from "./AIChatSessions.tsx";
 import { Icon } from "./Icon.tsx";
 import { MessageInput } from "./MessageInput.tsx";
+import { RemoteScreen } from "./RemoteScreen.tsx";
 import { RunnerPicker } from "./RunnerPicker.tsx";
 import "#editor/css/mentions.css";
 
@@ -16,8 +17,56 @@ interface Props {
 
 export function AIChatConversation(props: Props) {
   const chat = props.chat;
+  /** Remote sessions' screens stay pinned above the transcript, like a screen share. */
+  const screens = createMemo(() =>
+    chat.messages.flatMap((message) =>
+      message.role === "screen" && message.screen
+        ? [{ screen: message.screen, task: message.content }]
+        : [],
+    ),
+  );
+  const [screenHeight, setScreenHeight] = createSignal(320);
+
+  function resizeScreen(event: PointerEvent) {
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    const startY = event.clientY;
+    const startHeight = screenHeight();
+    const move = (moved: PointerEvent) =>
+      setScreenHeight(
+        Math.min(window.innerHeight * 0.8, Math.max(120, startHeight + moved.clientY - startY)),
+      );
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+  }
+
   return (
   <div class={`flex h-full min-h-0 flex-col bg-neutral-10 ${props.class ?? ""}`}>
+    <Show when={screens().length && !chat.showSessionPicker()}>
+      <div class="shrink-0 px-3 pt-3">
+        <div class="flex gap-2" style={{ height: `${screenHeight()}px` }}>
+          <For each={screens()}>
+            {(entry) => <RemoteScreen screen={entry.screen} task={entry.task} />}
+          </For>
+        </div>
+        {/* biome-ignore lint/a11y/useSemanticElements: a drag handle, not a content separator */}
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize screen"
+          class="group flex h-3 cursor-row-resize touch-none items-center justify-center"
+          onPointerDown={resizeScreen}
+        >
+          <div class="h-1 w-10 rounded-full bg-neutral-200 transition-colors group-hover:bg-neutral-400" />
+        </div>
+      </div>
+    </Show>
     <Show
       when={!chat.showSessionPicker()}
       fallback={

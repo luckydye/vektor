@@ -15,7 +15,6 @@ import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { RemoteScreen } from "./RemoteScreen.tsx";
 
 export interface AIChatMessagesHandle {
   scrollToBottom: () => void;
@@ -618,10 +617,6 @@ export function AIChatMessages(props: Props) {
                     {formatTime(message.timestamp, lang)}
                   </div>
                 </div>
-              </Show>
-
-              <Show when={message.role === "screen" && message.screen}>
-                {(screen) => <RemoteScreen screen={screen()} task={message.content} />}
               </Show>
 
               <Show when={message.role === "tool" && toolRuns().get(message)}>
