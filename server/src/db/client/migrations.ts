@@ -13,6 +13,7 @@ import type { Migration } from "./migrator.ts";
 import { exec, one } from "./query.ts";
 import {
   addColumnIfMissing,
+  columnExists,
   generateCreateTableSQL,
   renameColumnIfNeeded,
 } from "./schemaUtils.ts";
@@ -298,6 +299,15 @@ async function agentSchedules(db: Database): Promise<void> {
   ]);
 }
 
+/**
+ * Repairs databases stamped as having `agent-schedules` that never got its
+ * rebuilt table (no `prompt` column), which breaks every schedule query.
+ */
+async function repairAgentSchedules(db: Database): Promise<void> {
+  if (await columnExists(db, "workflow_schedule", "prompt")) return;
+  await agentSchedules(db);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -319,4 +329,5 @@ export const spaceMigrations: Migration[] = [
   { id: 14, name: "agent-schedules", up: agentSchedules },
   { id: 15, name: "ai-chat-session-node", up: aiChatSessionNode },
   { id: 16, name: "runners", up: runners },
+  { id: 17, name: "repair-agent-schedules", up: repairAgentSchedules },
 ];

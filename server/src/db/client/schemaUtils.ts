@@ -107,7 +107,7 @@ function columnConstraints(col: ColumnInfo): string {
  * Probed with a SELECT rather than the dialect's introspection table: every SQL
  * database rejects an unknown column, and none of them agree on how to ask.
  */
-async function columnExists(
+export async function columnExists(
   db: Database,
   table: string,
   column: string,
