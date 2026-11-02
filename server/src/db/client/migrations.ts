@@ -308,6 +308,19 @@ async function repairAgentSchedules(db: Database): Promise<void> {
   await agentSchedules(db);
 }
 
+/**
+ * `archived` is stored loosely (`'0'`, `'0.0'`, ...), so live documents are
+ * selected by `CAST(archived AS INTEGER) = 0` (see `nonArchivedDocumentCondition`).
+ * These partial indexes serve that predicate: newest-first listing, and the
+ * same per type, so a filtered listing reads its page instead of the space.
+ */
+async function liveDocumentIndexes(db: Database): Promise<void> {
+  await run(db, [
+    "CREATE INDEX IF NOT EXISTS document_live_updated_idx ON document (updated_at DESC, id) WHERE CAST(archived AS INTEGER) = 0",
+    "CREATE INDEX IF NOT EXISTS document_live_type_updated_idx ON document ((lower(coalesce(nullif(type, ''), 'document'))), updated_at DESC, id) WHERE CAST(archived AS INTEGER) = 0",
+  ]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -330,4 +343,5 @@ export const spaceMigrations: Migration[] = [
   { id: 15, name: "ai-chat-session-node", up: aiChatSessionNode },
   { id: 16, name: "runners", up: runners },
   { id: 17, name: "repair-agent-schedules", up: repairAgentSchedules },
+  { id: 18, name: "live-document-indexes", up: liveDocumentIndexes },
 ];

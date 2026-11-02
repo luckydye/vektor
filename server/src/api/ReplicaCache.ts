@@ -135,7 +135,10 @@ export class ReplicaCache {
   subscribeSpaces(callback: (spaces: Space[] | undefined) => void): () => void {
     return this.db.subscribe(
       [replicaStores.space, replicaStores.collection],
-      null,
+      // Spaces are stored under the root scope; `null` would match every
+      // space's collection writes (categories, documents, ...) and re-read the
+      // list, handing out new Space objects each time.
+      ROOT_SPACE,
       () => this.readSpaces(),
       callback,
     );

@@ -9,6 +9,7 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
+  canonicalPropertyKey,
   DATE_FILTER_KEY,
   DOCUMENT_TYPE_FILTER_KEY,
   type DocumentProperties,
@@ -30,23 +31,24 @@ import {
 // SQL helpers shared with documents.ts
 // ---------------------------------------------------------------------------
 
-/** `archived` is loosely typed in stored data: `0`, `'0'`, `'0.0'`, NULL, FALSE. */
-export const nonArchivedDocumentCondition = sql`
-  (
-    ${document.archived} = 0
-    OR ${document.archived} = '0'
-    OR ${document.archived} = '0.0'
-    OR ${document.archived} IS NULL
-    OR ${document.archived} = FALSE
-  )
-`;
+/**
+ * `archived` is loosely typed in stored data (`0`, `'0'`, `'0.0'`, `FALSE`), so
+ * it is read as the integer it means. The `document_live_*` indexes (migration
+ * `live-document-indexes`) are partial on this same expression: keep them in
+ * step, or queries stop using them.
+ */
+export const nonArchivedDocumentCondition = sql`CAST(${document.archived} AS INTEGER) = 0`;
 
 /** The same, for a raw `sql` selection with no column object. */
 export function nonArchivedColumnCondition(column: string) {
-  return sql.raw(
-    `(${column} = 0 OR ${column} = '0' OR ${column} = '0.0' OR ${column} IS NULL OR ${column} = FALSE)`,
-  );
+  return sql.raw(`CAST(${column} AS INTEGER) = 0`);
 }
+
+/**
+ * A document's type as filters see it: no type is a plain document. The
+ * `document_live_type_updated_idx` index is built on this expression.
+ */
+const DOCUMENT_TYPE_SQL = sql.raw("lower(coalesce(nullif(d.type, ''), 'document'))");
 
 // ---------------------------------------------------------------------------
 export type SearchResult = DocumentMeta & {
@@ -327,6 +329,249 @@ export interface SearchDocumentsOptions {
   queryEmbedding?: number[] | null;
 }
 
+/** The span of `updated_at` a `_date` filter value stands for, in epoch milliseconds. */
+interface DateWindow {
+  from: number;
+  before: number;
+}
+
+function dateFilterWindow(value: string | null, now: Date): DateWindow | null {
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const weekStart = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  const monthStart = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+  if (value?.includes("/")) {
+    const [startText, endText] = value.split("/");
+    const start = startText ? new Date(startText).getTime() : Number.NaN;
+    const end = endText ? new Date(endText) : null;
+    if (end) end.setDate(end.getDate() + 1);
+    const endTime = end?.getTime() ?? Number.NaN;
+    return {
+      from: Number.isNaN(start) ? -Infinity : start,
+      before: Number.isNaN(endTime) ? Infinity : endTime,
+    };
+  }
+  switch (value) {
+    case "today":
+      return { from: todayStart, before: Infinity };
+    case "week":
+      return { from: weekStart, before: todayStart };
+    case "month":
+      return { from: monthStart, before: weekStart };
+    case "older":
+      return { from: -Infinity, before: monthStart };
+    default:
+      return null;
+  }
+}
+
+function inDateWindows(time: number, windows: DateWindow[]): boolean {
+  return windows.every((window) => time >= window.from && time < window.before);
+}
+
+/** Case-insensitive matching in SQL is ASCII-only, so only an ASCII value is matched there. */
+function isSqlComparable(filter: PropertyValueFilter): boolean {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range
+  return filter.value === null || /^[\x00-\x7f]*$/.test(filter.value);
+}
+
+/** Stored property keys compare by `canonicalPropertyKey`, which this mirrors. */
+const PROPERTY_KEY_SQL = sql.raw(
+  "CASE WHEN substr(trim(p.key), 1, 1) = '_' THEN trim(p.key) ELSE lower(trim(p.key)) END",
+);
+
+/** Whether the document has a property under `key` (any value). */
+function hasPropertyCondition(key: string) {
+  return sql`EXISTS (
+    SELECT 1 FROM property p
+    WHERE p.document_id = d.id AND ${PROPERTY_KEY_SQL} = ${canonicalPropertyKey(key)}
+  )`;
+}
+
+/**
+ * `matchesFilters`' property rule in SQL. A stored value is plain text or a
+ * JSON array of strings; an array matches when any element does, and a value
+ * that merely starts with `[` is plain text.
+ */
+function propertyValueCondition(filter: PropertyValueFilter) {
+  const key = canonicalPropertyKey(filter.key);
+  if (filter.value === null) {
+    return sql`EXISTS (
+      SELECT 1 FROM property p
+      WHERE p.document_id = d.id AND ${PROPERTY_KEY_SQL} = ${key}
+        AND p.value != '' AND p.value != '[]'
+    )`;
+  }
+  const expected = filter.value.toLowerCase();
+  return sql`EXISTS (
+    SELECT 1 FROM property p
+    WHERE p.document_id = d.id AND ${PROPERTY_KEY_SQL} = ${key}
+      AND CASE
+        WHEN p.value LIKE '[%' AND json_valid(p.value) AND json_type(p.value) = 'array'
+          THEN EXISTS (
+            SELECT 1 FROM json_each(p.value) WHERE lower(CAST(value AS TEXT)) = ${expected}
+          )
+        ELSE lower(p.value) = ${expected}
+      END
+  )`;
+}
+
+/** A row behind a result, before its properties and document row are read. */
+interface RawResult {
+  id: string;
+  type: string | null;
+  userId: string;
+  parentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  rank: number;
+  snippet: string;
+  file?: FileRow;
+}
+
+interface FilterSearch {
+  /** The caller's readable documents, or null for an unrestricted view. */
+  readable: Set<string> | null;
+  /** Position in the result order to start from. */
+  startIndex: number;
+  limit: number;
+  parentId?: string;
+  typeFilters: PropertyValueFilter[];
+  propertyFilters: PropertyValueFilter[];
+  rangeFilters: { key: string }[];
+  dateWindows: DateWindow[];
+  /** The complete filter rule, for rows SQL does not decide on its own. */
+  matchesFilters: (properties: DocumentProperties, docType: string | null) => boolean;
+  excludeFiles: boolean;
+}
+
+/**
+ * Filter-only search: documents newest first, then files. The filters, the
+ * readable set and the page are all decided in SQL, so the cost follows the
+ * page and not the size of the space. Only what SQL cannot decide — date
+ * ranges, which are read from property text, and non-ASCII values — narrows
+ * to candidates there and is settled here, paging in memory over those few.
+ */
+async function searchByFilters(
+  s: SpaceStore,
+  search: FilterSearch,
+): Promise<{ rows: RawResult[]; total: number }> {
+  const { readable, startIndex, limit, parentId, matchesFilters } = search;
+  const sqlFilters = search.propertyFilters.filter(isSqlComparable);
+  const residualFilters = search.propertyFilters.filter(
+    (filter) => !isSqlComparable(filter),
+  );
+  const settledHere = search.rangeFilters.length > 0 || residualFilters.length > 0;
+
+  const conditions = [nonArchivedColumnCondition("d.archived")];
+  for (const filter of search.typeFilters) {
+    if (filter.value !== null) {
+      conditions.push(sql`${DOCUMENT_TYPE_SQL} = ${filter.value.toLowerCase()}`);
+    }
+  }
+  if (parentId !== undefined) conditions.push(sql`d.parent_id = ${parentId}`);
+  for (const window of search.dateWindows) {
+    if (window.from !== -Infinity) {
+      conditions.push(sql`CAST(d.updated_at AS REAL) >= ${window.from / 1000}`);
+    }
+    if (window.before !== Infinity) {
+      conditions.push(sql`CAST(d.updated_at AS REAL) < ${window.before / 1000}`);
+    }
+  }
+  if (readable) {
+    conditions.push(sql`d.id IN (SELECT value FROM json_each(${JSON.stringify([...readable])}))`);
+  }
+  for (const filter of sqlFilters) conditions.push(propertyValueCondition(filter));
+  for (const filter of [...residualFilters, ...search.rangeFilters]) {
+    conditions.push(hasPropertyCondition(filter.key));
+  }
+  const where = sql.join(conditions, sql` AND `);
+
+  const select = sql`
+    SELECT
+      d.id,
+      d.type,
+      d.created_by as userId,
+      d.parent_id as parentId,
+      d.created_at as createdAt,
+      d.updated_at as updatedAt,
+      0 as rank,
+      substr(d.content, 1, 200) as snippet
+    FROM document d
+    WHERE ${where}
+    ORDER BY d.updated_at DESC, d.id
+  `;
+  type Row = Omit<RawResult, "createdAt" | "updatedAt"> & {
+    createdAt: string | number;
+    updatedAt: string | number;
+  };
+  const toRaw = (row: Row): RawResult => ({
+    ...row,
+    createdAt: storedSecondsToDate(row.createdAt),
+    updatedAt: storedSecondsToDate(row.updatedAt),
+  });
+
+  let documents: RawResult[];
+  let documentTotal: number;
+  if (settledHere) {
+    const candidates = (await s.db.all<Row>(select)).map(toRaw);
+    const properties = await readProperties(
+      s,
+      candidates.map((row) => row.id),
+    );
+    const settled = candidates.filter((row) =>
+      matchesFilters(properties.get(row.id) ?? {}, row.type),
+    );
+    documentTotal = settled.length;
+    documents = settled.slice(startIndex, startIndex + limit);
+  } else {
+    const [counted] = await s.db.all<{ total: number }>(
+      sql`SELECT count(*) as total FROM document d WHERE ${where}`,
+    );
+    documentTotal = Number(counted?.total ?? 0);
+    documents =
+      startIndex < documentTotal
+        ? (
+            await s.db.all<Row>(sql`${select} LIMIT ${limit} OFFSET ${startIndex}`)
+          ).map(toRaw)
+        : [];
+  }
+
+  const files = await filterFiles(s, search);
+  const filesStart = Math.max(0, startIndex - documentTotal);
+  return {
+    rows: [...documents, ...files.slice(filesStart, filesStart + limit - documents.length)],
+    total: documentTotal + files.length,
+  };
+}
+
+/** The files a filter-only search returns, after the documents. */
+async function filterFiles(s: SpaceStore, search: FilterSearch): Promise<RawResult[]> {
+  // A file has no parent, so a parent filter leaves none.
+  if (search.excludeFiles || search.parentId !== undefined) return [];
+  const rows = await many(s.db.select().from(fileTable));
+  return rows
+    .filter(
+      (f) =>
+        (search.readable === null ||
+          f.documentId === null ||
+          search.readable.has(f.documentId)) &&
+        inDateWindows((f.updatedAt ?? new Date(0)).getTime(), search.dateWindows) &&
+        search.matchesFilters(fileRowToDocument(f).properties, "file"),
+    )
+    .map((f) => ({
+      id: f.path,
+      type: "file",
+      userId: "",
+      parentId: null,
+      createdAt: f.updatedAt ?? new Date(0),
+      updatedAt: f.updatedAt ?? new Date(0),
+      rank: 0,
+      snippet: "",
+      file: f,
+    }));
+}
+
 /**
  * Documents matching `query` and `filters`, ranked and paged. `docIds` is the
  * caller's readable set, or null for an unrestricted view. Reads the index as
@@ -407,39 +652,55 @@ export async function searchDocuments(
     return true;
   };
 
-  let allRawResults: {
-    id: string;
-    type: string | null;
-    userId: string;
-    parentId: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    rank: number;
-    snippet: string;
-    file?: FileRow;
-  }[];
+  // A Set: a space can have tens of thousands of documents, and `includes` per row is quadratic.
+  const readable = docIds === null ? null : new Set(docIds);
+  const now = new Date();
+  const dateWindows = dateFilters.flatMap((filter) => {
+    const window = dateFilterWindow(filter.value, now);
+    return window ? [window] : [];
+  });
+  const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
 
-  if (hasQuery) {
-    // The vector and the rows are independent; embedding is native compute.
-    const [candidates, queryEmbedding] = await Promise.all([
-      s.db.all<{
-        id: string;
-        slug: string;
-        type: string | null;
-        title: string | null;
-        scoringText: string;
-        searchEmbedding: string | null;
-        searchEmbeddingModel: string | null;
-        userId: string;
-        parentId: string | null;
-        currentRev: number;
-        changeSeq: number;
-        publishedRev: number | null;
-        readonly: boolean;
-        archived: boolean;
-        createdAt: string | number;
-        updatedAt: string | number;
-      }>(sql`
+  if (!hasQuery) {
+    const startIndex = cursor ? (decodeSearchCursor(cursor)?.index ?? 0) : 0;
+    const { rows, total } = await searchByFilters(s, {
+      readable,
+      startIndex,
+      limit,
+      parentId,
+      typeFilters,
+      propertyFilters,
+      rangeFilters,
+      dateWindows,
+      matchesFilters,
+      excludeFiles,
+    });
+    return {
+      results: await toSearchResults(s, rows),
+      nextCursor: startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
+    };
+  }
+
+  // The vector and the rows are independent; embedding is native compute.
+  const [candidates, queryEmbedding] = await Promise.all([
+    s.db.all<{
+      id: string;
+      slug: string;
+      type: string | null;
+      title: string | null;
+      scoringText: string;
+      searchEmbedding: string | null;
+      searchEmbeddingModel: string | null;
+      userId: string;
+      parentId: string | null;
+      currentRev: number;
+      changeSeq: number;
+      publishedRev: number | null;
+      readonly: boolean;
+      archived: boolean;
+      createdAt: string | number;
+      updatedAt: string | number;
+    }>(sql`
       SELECT
         d.id,
         d.slug,
@@ -461,67 +722,35 @@ export async function searchDocuments(
       LEFT JOIN property title ON title.document_id = d.id AND title.key = 'title'
       WHERE ${nonArchivedColumnCondition("d.archived")}
     `),
-      options.queryEmbedding === undefined
-        ? embedSearchQuery(s.platform, query)
-        : options.queryEmbedding,
-    ]);
+    options.queryEmbedding === undefined
+      ? embedSearchQuery(s.platform, query)
+      : options.queryEmbedding,
+  ]);
 
-    const ranked = await rankSearchCandidates(
-      s.platform,
-      query,
-      queryEmbedding,
-      candidates.map((candidate) => ({
-        ...candidate,
-        title: candidate.title
-          ? propertyValueToText(parseStoredPropertyValue(candidate.title))
-          : "",
-      })),
-      { strict },
-    );
+  const ranked = await rankSearchCandidates(
+    s.platform,
+    query,
+    queryEmbedding,
+    candidates.map((candidate) => ({
+      ...candidate,
+      title: candidate.title
+        ? propertyValueToText(parseStoredPropertyValue(candidate.title))
+        : "",
+    })),
+    { strict },
+  );
 
-    allRawResults = ranked.map(({ candidate, rank, snippet }) => ({
-      id: candidate.id,
-      type: candidate.type,
-      userId: candidate.userId,
-      parentId: candidate.parentId,
-      createdAt: storedSecondsToDate(candidate.createdAt),
-      updatedAt: storedSecondsToDate(candidate.updatedAt),
-      rank,
-      snippet,
-    }));
-  } else {
-    const rows = await s.db.all<{
-      id: string;
-      type: string | null;
-      userId: string;
-      parentId: string | null;
-      createdAt: string | number;
-      updatedAt: string | number;
-      rank: number;
-      snippet: string;
-    }>(sql`
-      SELECT
-        d.id,
-        d.type,
-        d.created_by as userId,
-        d.parent_id as parentId,
-        d.created_at as createdAt,
-        d.updated_at as updatedAt,
-        0 as rank,
-        substr(d.content, 1, 200) as snippet
-      FROM document d
-      WHERE ${nonArchivedColumnCondition("d.archived")}
-      ORDER BY d.updated_at DESC
-    `);
+  const allRawResults: RawResult[] = ranked.map(({ candidate, rank, snippet }) => ({
+    id: candidate.id,
+    type: candidate.type,
+    userId: candidate.userId,
+    parentId: candidate.parentId,
+    createdAt: storedSecondsToDate(candidate.createdAt),
+    updatedAt: storedSecondsToDate(candidate.updatedAt),
+    rank,
+    snippet,
+  }));
 
-    allRawResults = rows.map((row) => ({
-      ...row,
-      createdAt: storedSecondsToDate(row.createdAt),
-      updatedAt: storedSecondsToDate(row.updatedAt),
-    }));
-  }
-
-  const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
   if (!excludeFiles) {
     // Extracted text is as uncapped as a document body, and only ranking reads it.
     const indexedFiles = await many(
@@ -544,18 +773,12 @@ export async function searchDocuments(
     );
 
     for (const f of indexedFiles) {
-      let rank = 0;
-      let snippet = "";
-      if (hasQuery) {
-        const match = rankKeywordMatch(
-          query,
-          [f.originalName, f.extractedText].filter(Boolean).join("\n"),
-          { strict },
-        );
-        if (!match) continue;
-        rank = match.rank;
-        snippet = match.snippet;
-      }
+      const match = rankKeywordMatch(
+        query,
+        [f.originalName, f.extractedText].filter(Boolean).join("\n"),
+        { strict },
+      );
+      if (!match) continue;
       allRawResults.push({
         id: f.path,
         type: "file",
@@ -563,76 +786,46 @@ export async function searchDocuments(
         parentId: null,
         createdAt: f.updatedAt ?? new Date(0),
         updatedAt: f.updatedAt ?? new Date(0),
-        rank,
-        snippet,
+        rank: match.rank,
+        snippet: match.snippet,
         file: f,
       });
     }
 
-    if (hasQuery) allRawResults.sort((a, b) => a.rank - b.rank);
+    allRawResults.sort((a, b) => a.rank - b.rank);
   }
 
   let accessibleResults =
-    docIds === null
+    readable === null
       ? allRawResults
       : allRawResults.filter((r) =>
           r.file
-            ? r.file.documentId === null || docIds.includes(r.file.documentId)
-            : docIds.includes(r.id),
+            ? r.file.documentId === null || readable.has(r.file.documentId)
+            : readable.has(r.id),
         );
 
   if (parentId !== undefined) {
     accessibleResults = accessibleResults.filter((r) => r.parentId === parentId);
   }
 
-  if (dateFilters.length > 0 && accessibleResults.length > 0) {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    accessibleResults = accessibleResults.filter((r) => {
-      const ua = r.updatedAt;
-      for (const df of dateFilters) {
-        if (df.value?.includes("/")) {
-          const [startStr, endStr] = df.value.split("/");
-          const rangeStart = startStr ? new Date(startStr) : null;
-          const rangeEnd = endStr ? new Date(endStr) : null;
-          if (rangeStart && ua < rangeStart) return false;
-          if (rangeEnd) {
-            const dayAfterEnd = new Date(rangeEnd);
-            dayAfterEnd.setDate(dayAfterEnd.getDate() + 1);
-            if (ua >= dayAfterEnd) return false;
-          }
-          continue;
-        }
-        switch (df.value) {
-          case "today":
-            if (ua < todayStart) return false;
-            break;
-          case "week":
-            if (ua < weekStart || ua >= todayStart) return false;
-            break;
-          case "month":
-            if (ua < monthStart || ua >= weekStart) return false;
-            break;
-          case "older":
-            if (ua >= monthStart) return false;
-            break;
-        }
-      }
-      return true;
-    });
+  if (dateWindows.length > 0) {
+    accessibleResults = accessibleResults.filter((r) =>
+      inDateWindows(r.updatedAt.getTime(), dateWindows),
+    );
   }
 
   const hasPropertyOrTypeFilters =
     typeFilters.length > 0 || propertyFilters.length > 0 || rangeFilters.length > 0;
   if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
-    const propertiesByDocument = await readProperties(
-      s,
-      accessibleResults.filter((row) => !row.file).map((row) => row.id),
-    );
+    // The type is a column of the row; only property filters need the properties.
+    const needsProperties = propertyFilters.length > 0 || rangeFilters.length > 0;
+    const propertiesByDocument = needsProperties
+      ? await readProperties(
+          s,
+          accessibleResults.filter((row) => !row.file).map((row) => row.id),
+        )
+      : new Map<string, DocumentProperties>();
 
     for (const row of accessibleResults) {
       if (row.file) {
@@ -651,17 +844,22 @@ export async function searchDocuments(
   }
 
   const total = accessibleResults.length;
+  const startIndex = cursor ? (decodeSearchCursor(cursor)?.index ?? 0) : 0;
 
-  if (total === 0) {
-    return { results: [], nextCursor: null };
-  }
+  return {
+    results: await toSearchResults(
+      s,
+      accessibleResults.slice(startIndex, startIndex + limit),
+    ),
+    nextCursor: startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
+  };
+}
 
-  const pos = cursor ? decodeSearchCursor(cursor) : null;
-  const startIndex = pos?.index ?? 0;
-  const rawResults = accessibleResults.slice(startIndex, startIndex + limit);
-  const nextCursor =
-    startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null;
-
+/** Reads what a page of rows needs — properties and the document rows — and shapes the results. */
+async function toSearchResults(
+  s: SpaceStore,
+  rawResults: RawResult[],
+): Promise<SearchResult[]> {
   const results: SearchResult[] = [];
   const pageDocumentIds = rawResults.filter((row) => !row.file).map((row) => row.id);
   const [propertiesByDocument, documentsById] = await Promise.all([
@@ -701,5 +899,5 @@ export async function searchDocuments(
     });
   }
 
-  return { results, nextCursor };
+  return results;
 }

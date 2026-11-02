@@ -129,17 +129,26 @@ export function SpaceMembers() {
   const [tokenCopied, setTokenCopied] = createSignal(false);
   let nextInviteRowId = 0;
 
-  async function fetchAllDocuments(spaceId: string) {
-    const all: DocumentWithProperties[] = [];
-    let cursor: string | undefined;
-
-    do {
-      const response = await api.documents.get(spaceId, { limit: 500, cursor });
-      all.push(...response.documents);
-      cursor = response.nextCursor || undefined;
-    } while (cursor);
-
-    return all;
+  /**
+   * Titles for the documents that have a scoped grant, and only those. A space
+   * can hold tens of thousands of documents; paging through all of them to
+   * label a handful of grants (and to fill a scope picker) costs megabytes per
+   * refresh. Sharing one document is done from that document's share popover.
+   */
+  async function fetchGrantedDocuments(
+    spaceId: string,
+    grants: PermissionEntry[],
+  ): Promise<DocumentWithProperties[]> {
+    const ids = new Set(
+      grants
+        .filter(isScopedGrant)
+        .map((grant) => grant.permission.resourceId)
+        .filter((id): id is string => !!id),
+    );
+    const found = await Promise.all(
+      [...ids].map((id) => api.document.get(spaceId, id).catch(() => null)),
+    );
+    return found.filter((document): document is DocumentWithProperties => !!document);
   }
 
   async function fetchPermissions() {
@@ -150,14 +159,17 @@ export function SpaceMembers() {
     setError(null);
 
     try {
-      const [spaceResponse, categoryList, documentList] = await Promise.all([
+      const [spaceResponse, categoryList] = await Promise.all([
         api.permissions.list(spaceId, "role", { allResources: true }),
         api.categories.get(spaceId),
-        fetchAllDocuments(spaceId),
       ]);
+      const grantedDocuments = await fetchGrantedDocuments(
+        spaceId,
+        spaceResponse.permissions || [],
+      );
 
       setCategories(categoryList?.categories || []);
-      setDocuments(documentList);
+      setDocuments(grantedDocuments);
       setPermissions(spaceResponse.permissions || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch permissions");
@@ -480,23 +492,12 @@ export function SpaceMembers() {
     () => new Map(documents().map((document) => [document.id, document])),
   );
 
-  const documentScopeOptions = createMemo(() =>
-    documents()
-      .map((document) => ({ id: document.id, label: getDocumentLabel(document) }))
-      .sort((a, b) => a.label.localeCompare(b.label)),
-  );
-
   const scopeOptions = createMemo<FilterSelectOption[]>(() => [
     ...(userIsOwner() ? [{ value: "space", label: t("Entire space") }] : []),
     ...categories().map((category) => ({
       value: `${CATEGORY_SCOPE_PREFIX}${category.id}`,
       label: category.name,
       group: t("Category"),
-    })),
-    ...documentScopeOptions().map((document) => ({
-      value: `${DOCUMENT_SCOPE_PREFIX}${document.id}`,
-      label: document.label,
-      group: t("Document"),
     })),
   ]);
 
