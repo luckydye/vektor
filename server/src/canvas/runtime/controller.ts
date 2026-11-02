@@ -4298,34 +4298,8 @@ export function createCanvasController(
           }
         });
       },
-      revert(drag) {
-        doc.transact(() => {
-          for (const shape of drag.shapes) {
-            const reshape = extensionManager.get(shape.original.type).behavior.reshape;
-            if (reshape) {
-              updateShapeData(
-                shape.id,
-                reshape(shape.original, (point) => point),
-                {
-                  transform: true,
-                },
-              );
-              continue;
-            }
-            updateShapeFrame(shape.id, shape.frame);
-            if (shape.resizeMode === "font") {
-              updateShapeData(
-                shape.id,
-                { fontScale: shape.fontScale },
-                { transform: true },
-              );
-            }
-          }
-          for (const stroke of drag.strokes) {
-            updateStrokePoints(stroke.id, stroke.points);
-          }
-        });
-      },
+      // The gesture only previewed its shapes and strokes; ending it drops them.
+      revert() {},
     },
   };
 
@@ -4374,8 +4348,7 @@ export function createCanvasController(
       cancelStrokeTransformInteraction();
       return;
     }
-    const shape = shapesById().get(drag.elementId);
-    if (shape && canMoveShape(shape)) updateShapeFrame(drag.elementId, drag.initial);
+    // A shape was only previewed; ending the gesture drops it.
   }
 
   /** Ends the active drag, clearing the transient state every gesture leaves. */

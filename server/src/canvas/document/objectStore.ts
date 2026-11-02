@@ -73,6 +73,8 @@ export function createCanvasObjectStore(options: CanvasStoreOptions) {
 
   /** Gesture overlay: values shown but not written until the gesture commits. */
   let overlay: Map<string, Map<string, PropertyValue>> | null = null;
+  /** Set while a gesture runs: everything it commits becomes one undo step. */
+  let gestureUndo: UndoEntry | null = null;
   let pending: Map<string, PendingObject> | null = null;
   let pendingOrigin: ChangeOrigin = "local";
   let depth = 0;
@@ -130,9 +132,34 @@ export function createCanvasObjectStore(options: CanvasStoreOptions) {
       if (depth === 0) {
         const written = pending as Map<string, PendingObject>;
         pending = null;
-        commit(written, pendingOrigin);
+        if (!foldIntoOverlay(written, pendingOrigin)) commit(written, pendingOrigin);
       }
     }
+  }
+
+  /**
+   * During a gesture, a local property-only transaction is previewed in the
+   * overlay, so the gesture commits (and undoes) as one step. Creates and body
+   * edits still commit immediately.
+   */
+  function foldIntoOverlay(
+    written: Map<string, PendingObject>,
+    origin: ChangeOrigin,
+  ): boolean {
+    if (!overlay || origin !== "local") return false;
+    for (const change of written.values()) {
+      if (change.full || change.body.length > 0) return false;
+    }
+    for (const [id, change] of written) {
+      let shown = overlay.get(id);
+      if (!shown) {
+        shown = new Map();
+        overlay.set(id, shown);
+      }
+      for (const [key, value] of change.entries) shown.set(key, value);
+    }
+    notify(new Set(written.keys()), "local");
+    return true;
   }
 
   function pendingFor(id: string): PendingObject {
@@ -233,7 +260,9 @@ export function createCanvasObjectStore(options: CanvasStoreOptions) {
     }
     if (records.size === 0) return;
     if (undo.size > 0) {
-      if (origin === "local") {
+      if (origin === "local" && gestureUndo) {
+        mergeUndo(gestureUndo, undo);
+      } else if (origin === "local") {
         undoStack.push(undo);
         redoStack.length = 0;
       } else if (origin === "undo") {
@@ -329,22 +358,48 @@ export function createCanvasObjectStore(options: CanvasStoreOptions) {
     notify(changed, "remote");
   }
 
+  /** Folds `next` into `into`: the oldest `previous` is kept, the newest stamp wins. */
+  function mergeUndo(into: UndoEntry, next: UndoEntry): void {
+    for (const [id, keys] of next) {
+      const merged = into.get(id);
+      if (!merged) {
+        into.set(id, keys);
+        continue;
+      }
+      for (const [key, undoKey] of keys) {
+        const earlier = merged.get(key);
+        merged.set(key, earlier ? { previous: earlier.previous, stamp: undoKey.stamp } : undoKey);
+      }
+    }
+  }
+
   function beginGesture(): void {
     overlay ??= new Map();
+    gestureUndo ??= new Map();
   }
 
   /** Ends the gesture: its overlay becomes one transaction, or is dropped. */
   function endGesture(commitIt: boolean): void {
     const shown = overlay;
     overlay = null;
-    if (!shown || shown.size === 0) return;
-    if (!commitIt) {
-      notify(new Set(shown.keys()), "local");
-      return;
+    try {
+      if (!shown || shown.size === 0) return;
+      if (!commitIt) {
+        notify(new Set(shown.keys()), "local");
+        return;
+      }
+      transact(() => {
+        for (const [id, entries] of shown) write(id, entries);
+      });
+    } finally {
+      // What the gesture committed on its own (creates, bodies) stays undoable, as one step.
+      const committed = gestureUndo;
+      gestureUndo = null;
+      if (committed && committed.size > 0) {
+        undoStack.push(committed);
+        redoStack.length = 0;
+      }
     }
-    transact(() => {
-      for (const [id, entries] of shown) write(id, entries);
-    });
   }
 
   let pendingUndoTarget: UndoEntry[] | null = null;
