@@ -582,7 +582,7 @@ export function Search(props: Props) {
       {/* Negative margins cancel the view's gutter so the bar covers the results
           edge to edge as they scroll under it. Sticky already positions it, so the
           progress bar inside anchors here without a `relative` to fight it. */}
-      <div class="sticky top-0 z-10 -mx-xs mb-6 border-neutral-50 border-b bg-background px-xs pt-xs pb-3 lg:-mx-m lg:px-m">
+      <div class="sticky top-0 z-10 -mx-xs mb-6 border-neutral-50 border-b bg-neutral-10 px-xs pt-xs pb-3 lg:-mx-m lg:px-m">
         {/* On the bar's own border: the one indicator that stays in view once the
             reader has scrolled past the results being replaced. */}
         <Show when={isSearchBusy()}>
@@ -590,7 +590,7 @@ export function Search(props: Props) {
         </Show>
 
         <div class="mb-3 flex gap-3">
-          <div class="relative flex-1 rounded-lg bg-background">
+          <div class="relative flex-1 rounded-lg bg-neutral-10">
             <Icon
               class="pointer-events-none absolute top-1/2 left-4 z-10 h-5 w-5 -translate-y-1/2 text-neutral-400"
               name="search"
@@ -621,7 +621,7 @@ export function Search(props: Props) {
             type="button"
             onClick={handleSearch}
             disabled={isSearchBusy() || !canSearch()}
-            class="flex items-center gap-2 whitespace-nowrap rounded-lg bg-primary-500 px-5 py-3 font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+            class="flex items-center gap-2 whitespace-nowrap rounded-lg bg-primary-500 px-5 py-3 font-medium text-white transition-colors enabled:hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400"
           >
             <Show
               when={!isSearchBusy()}

@@ -144,7 +144,7 @@ export function AIChatConversation(props: Props) {
                       (!chat.messageInput().trim() &&
                         !chat.messageInputEl()?.pendingAttachments().length)
                     }
-                    class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:opacity-30"
+                    class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:bg-neutral-100 disabled:text-neutral-400"
                     title="Send (↵)"
                   >
                     <Icon class="h-3.5 w-3.5" name="send-message" />

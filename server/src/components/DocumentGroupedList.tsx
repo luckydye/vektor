@@ -409,7 +409,7 @@ export function DocumentGroupedList(props: Props) {
                           <Show when={group.previews.length > 0}>
                             {/* The inset lines the tiles up with the row icons below: pl-3 + checkbox + px-3. */}
                             <FilePreviews
-                              class="mb-4 rounded-lg border border-neutral-100 px-[2.375rem] py-4"
+                              class="mb-4 rounded-lg border border-neutral-100 bg-background px-[2.375rem] py-4"
                               items={group.previews}
                               selectedIds={selectedIds()}
                               onToggleSelect={toggleSelect}

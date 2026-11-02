@@ -98,6 +98,7 @@ export function SpaceHomeView() {
                     <div class="agent-chat-enter py-6">
                       <AgentSection
                         viewAllLabel={t("View all")}
+                        recentLabel={t("Recent chats")}
                         placeholder={t("What can I help with?")}
                         emptyLabel={t("No conversations yet.")}
                         lang={locale}
@@ -129,7 +130,7 @@ export function SpaceHomeView() {
               <div
                 class="agent-chat-enter flex min-h-0 flex-1 flex-col overflow-hidden"
               >
-                <div class="flex shrink-0 items-center gap-1 py-1.5">
+                <div class="flex shrink-0 items-center gap-1 px-3 py-1.5">
                   <IconButton
                     icon="arrow-left"
                     label={t("Back")}

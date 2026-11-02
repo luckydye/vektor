@@ -27,7 +27,7 @@ interface Props {
 const CHIP =
   "inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border px-3xs font-medium text-size-small transition-colors focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-1";
 const CHIP_IDLE =
-  "cursor-pointer border-neutral-200 bg-background text-neutral-600 hover:border-neutral-300 hover:bg-primary-10";
+  "cursor-pointer border-neutral-200 bg-neutral-10 text-neutral-600 hover:border-neutral-300 hover:bg-primary-10";
 const CHIP_ACTIVE = "border-primary-200 bg-primary-50 text-primary-700";
 const CHIP_REMOVE =
   "-mr-1 flex-none rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100";
@@ -237,7 +237,7 @@ export function SearchFilters(props: Props) {
           <button
             type="button"
             slot="trigger"
-            class={`${CHIP} cursor-pointer border-neutral-300 border-dashed bg-background text-neutral-500 hover:border-primary-300 hover:bg-primary-10 hover:text-primary-600`}
+            class={`${CHIP} cursor-pointer border-neutral-300 border-dashed bg-neutral-10 text-neutral-500 hover:border-primary-300 hover:bg-primary-10 hover:text-primary-600`}
           >
             <Icon class="h-3.5 w-3.5 flex-none" name="add" />
             <span>{t("Filter")}</span>

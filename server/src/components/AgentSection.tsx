@@ -6,6 +6,7 @@ import { Icon } from "./Icon.tsx";
 
 interface Props {
   viewAllLabel: string;
+  recentLabel: string;
   placeholder: string;
   emptyLabel: string;
   lang: string;
@@ -26,20 +27,20 @@ interface Props {
 export function AgentSection(props: Props) {
   return (
     <section>
-      <div class="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10">
-        <AskAgentInput
-          spaceId={props.spaceId}
-          disabled={props.disabled}
-          placeholder={props.placeholder}
-          transitionName={props.inputTransitionName}
-          runners={props.runners}
-          node={props.node}
-          onNodeChange={props.onNodeChange}
-          onSubmit={(message) => props.onAsk(message)}
-        />
-
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-neutral-500 text-size-medium">{props.recentLabel}</h2>
+        <button
+          type="button"
+          onClick={() => props.onViewAll()}
+          class="group inline-flex shrink-0 items-center gap-1.5 text-neutral-400 text-size-medium transition-colors hover:text-neutral-700"
+        >
+          {props.viewAllLabel}
+          <span class="transition-transform group-hover:translate-x-0.5">→</span>
+        </button>
+      </div>
+      <div class="flex flex-col gap-3">
         {/* Fixed height so loading and empty states never shift the page. */}
-        <div class="divide-y divide-neutral-100 bg-neutral-50" style={{ height: `${props.rows * 2.5}rem` }}>
+        <div class="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-100 bg-neutral-50" style={{ height: `${props.rows * 2.5}rem` }}>
           <Show
             when={props.sessions}
             fallback={
@@ -84,14 +85,18 @@ export function AgentSection(props: Props) {
           </Show>
         </div>
 
-        <button
-          type="button"
-          onClick={() => props.onViewAll()}
-          class="flex h-10 w-full items-center gap-4 bg-neutral-50 px-3.5 text-left hover:bg-neutral-100"
-        >
-          <span class="min-w-0 flex-1 text-neutral-400 text-size-small">{props.viewAllLabel}</span>
-          <Icon class="h-4 w-4 shrink-0 text-neutral-400" name="chevron-right-thin" />
-        </button>
+        <div class="overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10">
+        <AskAgentInput
+          spaceId={props.spaceId}
+          disabled={props.disabled}
+          placeholder={props.placeholder}
+          transitionName={props.inputTransitionName}
+          runners={props.runners}
+          node={props.node}
+          onNodeChange={props.onNodeChange}
+          onSubmit={(message) => props.onAsk(message)}
+        />
+        </div>
       </div>
     </section>
   );

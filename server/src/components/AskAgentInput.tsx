@@ -29,15 +29,13 @@ export function AskAgentInput(props: Props) {
 
   return (
     <div style={{ "view-transition-name": props.transitionName }}>
-    <div class="flex items-start gap-3 px-3.5 py-3">
-      <Icon class="mt-0.5 h-5 w-5 shrink-0 text-primary-500" name="agent-chat" />
-      <div class="min-w-0 flex-1">
+      <div class="px-3 pt-2.5 pb-2">
         <MessageInput
           value={value()}
           onInput={setValue}
           onSubmit={submit}
           placeholder={props.placeholder}
-          rows={2}
+          rows={3}
           autoGrow
           mentions
           inlineDocumentReferences
@@ -47,26 +45,25 @@ export function AskAgentInput(props: Props) {
             <button
               type="button"
               onClick={submit}
-              disabled={props.disabled}
-              class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500 disabled:opacity-40"
+              disabled={props.disabled || !value().trim()}
+              class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:bg-neutral-100 disabled:text-neutral-400"
               title="Send (↵)"
             >
-              <Icon class="h-4 w-4" name="send-message" />
+              <Icon class="h-3.5 w-3.5" name="send-message" />
             </button>
           }
         />
       </div>
-    </div>
-    <Show when={props.runners?.length}>
-      <div class="flex items-center gap-2 border-neutral-100 border-t bg-neutral-50 px-3 py-2">
-        <RunnerPicker
-          runners={props.runners ?? []}
-          value={props.node ?? null}
-          onChange={props.onNodeChange}
-          label="Run the agent on"
-        />
-      </div>
-    </Show>
+      <Show when={props.runners?.length}>
+        <div class="flex items-center gap-2 border-neutral-100 border-t bg-neutral-50 px-3 py-2">
+          <RunnerPicker
+            runners={props.runners ?? []}
+            value={props.node ?? null}
+            onChange={props.onNodeChange}
+            label="Run the agent on"
+          />
+        </div>
+      </Show>
     </div>
   );
 }

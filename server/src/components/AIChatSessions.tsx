@@ -38,16 +38,15 @@ export function AIChatSessions(props: Props) {
                 classList={{ "bg-neutral-50": current() }}
                 onClick={() => props.onResume?.(session)}
               >
-                <span
-                  class="h-1.5 w-1.5 shrink-0 rounded-full"
-                  classList={{
-                    "animate-pulse bg-primary-500": status() === "generating",
-                    "bg-amber-400": status() === "awaiting",
-                    "bg-primary-500": current() && status() !== "generating" && status() !== "awaiting",
-                    "bg-transparent":
-                      !current() && status() !== "generating" && status() !== "awaiting",
-                  }}
-                />
+                <Show when={status() === "generating" || status() === "awaiting"}>
+                  <span
+                    class="-ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                    classList={{
+                      "animate-pulse bg-primary-500": status() === "generating",
+                      "bg-amber-400": status() === "awaiting",
+                    }}
+                  />
+                </Show>
                 <span class="min-w-0 flex-1 truncate text-neutral-800 text-size-small">
                   {session.title}
                 </span>
