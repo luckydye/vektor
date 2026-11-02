@@ -15,6 +15,7 @@ import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { spacePath } from "#utils/utils.ts";
+import { withViewTransition } from "#utils/viewTransition.ts";
 
 export function SpaceHomeView() {
   const t = useTranslation();
@@ -30,21 +31,29 @@ export function SpaceHomeView() {
   const [chatActive, setChatActive] = createSignal(false);
   const chat = useAgentChat({ documentId: () => "", isActive: () => agentAvailable() !== false });
 
+  /** The dashboard input and the chat input share a transition name, so one moves into the other. */
+  function setActive(active: boolean) {
+    void withViewTransition(() => setChatActive(active));
+  }
+
   function ask(message: string) {
-    setChatActive(true);
-    chat.setShowSessionPicker(false);
-    chat.setMessageInput(message);
-    chat.startNewChat();
-    void chat.sendMessage();
+    // One callback, so the new frame is captured with the chat already started.
+    void withViewTransition(() => {
+      setChatActive(true);
+      chat.setShowSessionPicker(false);
+      chat.setMessageInput(message);
+      chat.startNewChat();
+      void chat.sendMessage();
+    });
   }
 
   function resume(session: AIChatSessionListEntry) {
-    setChatActive(true);
+    setActive(true);
     void chat.resumeSession(session);
   }
 
   function showHistory() {
-    setChatActive(true);
+    setActive(true);
     chat.setShowSessionPicker(true);
   }
 
@@ -83,7 +92,7 @@ export function SpaceHomeView() {
               fallback={
                 <>
                   <Show when={agentAvailable() !== false}>
-                    <div class="py-6">
+                    <div class="agent-chat-enter py-6">
                       <AgentSection
                         viewAllLabel={t("View all")}
                         placeholder={t("What can I help with?")}
@@ -96,11 +105,12 @@ export function SpaceHomeView() {
                         onAsk={ask}
                         onResume={resume}
                         onViewAll={showHistory}
+                        inputTransitionName="agent-input"
                       />
                     </div>
                   </Show>
 
-                  <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="agent-chat-enter flex min-h-0 flex-1 flex-col">
                     <SpaceActivityFeed
                       spaceId={space().id}
                       limit={30}
@@ -110,7 +120,9 @@ export function SpaceHomeView() {
                 </>
               }
             >
-              <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div
+                class="agent-chat-enter flex min-h-0 flex-1 flex-col overflow-hidden"
+              >
                 <div class="flex shrink-0 items-center gap-1 py-1.5">
                   <IconButton
                     icon="arrow-left"
@@ -139,7 +151,7 @@ export function SpaceHomeView() {
                     }}
                   />
                 </div>
-                <AIChatConversation chat={chat} class="flex-1" />
+                <AIChatConversation chat={chat} class="flex-1" inputTransitionName="agent-input" />
               </div>
             </Show>
           </inset-view>

@@ -17,6 +17,7 @@ interface Props {
   onAsk: (message: string) => void;
   onResume: (session: AIChatSessionListEntry) => void;
   onViewAll: () => void;
+  inputTransitionName?: string;
 }
 
 export function AgentSection(props: Props) {
@@ -27,6 +28,7 @@ export function AgentSection(props: Props) {
           spaceId={props.spaceId}
           disabled={props.disabled}
           placeholder={props.placeholder}
+          transitionName={props.inputTransitionName}
           onSubmit={(message) => props.onAsk(message)}
         />
 
@@ -59,7 +61,7 @@ export function AgentSection(props: Props) {
                     <button
                       type="button"
                       onClick={() => props.onResume(session)}
-                      class="flex h-10 w-full items-center gap-4 px-3.5 text-left transition-colors hover:bg-neutral-100"
+                      class="flex h-10 w-full items-center gap-4 px-3.5 text-left hover:bg-neutral-100"
                     >
                       <span class="min-w-0 flex-1 truncate text-neutral-600 text-size-small">
                         {session.title}
@@ -79,7 +81,7 @@ export function AgentSection(props: Props) {
         <button
           type="button"
           onClick={() => props.onViewAll()}
-          class="flex h-10 w-full items-center gap-4 bg-neutral-50 px-3.5 text-left transition-colors hover:bg-neutral-100"
+          class="flex h-10 w-full items-center gap-4 bg-neutral-50 px-3.5 text-left hover:bg-neutral-100"
         >
           <span class="min-w-0 flex-1 text-neutral-400 text-size-small">{props.viewAllLabel}</span>
           <Icon class="h-4 w-4 shrink-0 text-neutral-400" name="chevron-right-thin" />

@@ -10,6 +10,8 @@ import "#editor/css/mentions.css";
 interface Props {
   chat: AgentChat;
   class?: string;
+  /** Shared `view-transition-name` for the input box. */
+  inputTransitionName?: string;
 }
 
 export function AIChatConversation(props: Props) {
@@ -20,9 +22,7 @@ export function AIChatConversation(props: Props) {
       when={!chat.showSessionPicker()}
       fallback={
         <AIChatSessions
-          sessions={chat.visibleSessions()}
-          showJobSessions={chat.showJobSessions()}
-          onUpdateShowJobSessions={chat.setShowJobSessions}
+          sessions={chat.sessions()}
           currentSessionId={chat.currentSessionId()}
           getSessionStatus={chat.getSessionStatus}
           onResume={chat.resumeSession}
@@ -39,7 +39,10 @@ export function AIChatConversation(props: Props) {
     </Show>
 
     <div class="shrink-0 px-3 pb-3">
-      <div class="rounded-xl border border-neutral-200 bg-neutral-10 px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-neutral-300">
+      <div
+      class="rounded-xl border border-neutral-200 bg-neutral-10 px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-neutral-300"
+      style={{ "view-transition-name": props.inputTransitionName }}
+    >
         <MessageInput
           ref={chat.setMessageInputEl}
           value={chat.messageInput()}

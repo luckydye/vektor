@@ -82,11 +82,6 @@ export function useChatSessionHandling(options: {
   const [chatNode, setChatNode] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<AIChatSessionListEntry[]>([]);
   const [showSessionPicker, setShowSessionPicker] = createSignal(false);
-  /** Sessions opened by jobs, such as workflow runs, are listed only on request. */
-  const [showJobSessions, setShowJobSessions] = createSignal(false);
-  const visibleSessions = createMemo(() =>
-    sessions().filter((session) => showJobSessions() || session.source === "chat"),
-  );
   const sessionStartedAt = createMemo(() => {
     const session = sessions().find((item) => item.id === currentSessionId());
     return session?.createdAt ?? options.messages()[0]?.timestamp ?? null;
@@ -233,9 +228,6 @@ export function useChatSessionHandling(options: {
   return {
     currentSessionId,
     sessions,
-    visibleSessions,
-    showJobSessions,
-    setShowJobSessions,
     showSessionPicker,
     setShowSessionPicker,
     sessionStartedAt,

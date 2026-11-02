@@ -540,6 +540,23 @@
   pointer-events: none;
 }
 
+/* The dashboard's ask box travelling to the chat's input. Only the input is
+ * named: the rest of the page stays live and is animated with plain CSS. */
+::view-transition-group(agent-input) {
+  animation-duration: 300ms;
+  animation-timing-function: var(--emphasized-curve, ease-out);
+}
+
+.agent-chat-enter {
+  animation: agent-chat-enter 300ms var(--emphasized-curve, ease-out);
+}
+
+@keyframes agent-chat-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 /**
  * A comment thread growing out of the bubble that opened it.
  *
