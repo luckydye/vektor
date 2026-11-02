@@ -34,6 +34,7 @@ export type InstanceAIProvider =
   | { provider: "openai"; apiKey: string; model: string }
   | { provider: "openrouter"; apiKey: string; model: string }
   | { provider: "opencode-zen"; apiKey: string; model: string }
+  | { provider: "opencode-go"; apiKey: string; model: string }
   | { provider: "ollama"; baseUrl: string; model: string };
 
 /** A model API a connected extension integration pays for with the user's token. */

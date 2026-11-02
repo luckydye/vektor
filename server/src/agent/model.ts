@@ -64,7 +64,7 @@ async function callModelProvider(
   const provider = options.provider;
   if (
     provider.provider === "anthropic" ||
-    (provider.provider === "opencode-zen" && isOpenCodeZenClaudeModel(provider.model))
+    (isOpenCodeProvider(provider) && isOpenCodeZenClaudeModel(provider.model))
   ) {
     return callAnthropic({ ...options, provider });
   }
@@ -81,17 +81,20 @@ async function callModelProvider(
       store: false,
     });
   }
-  if (provider.provider === "opencode-zen" && isOpenCodeZenGPTModel(provider.model)) {
+  if (isOpenCodeProvider(provider) && isOpenCodeZenGPTModel(provider.model)) {
     return callOpenAIResponses({
       ...options,
       label: provider.provider,
-      url: "https://opencode.ai/zen/v1/responses",
+      url:
+        provider.provider === "opencode-go"
+          ? "https://opencode.ai/inference/go/openai/v1/responses"
+          : "https://opencode.ai/zen/v1/responses",
       apiKey: provider.apiKey,
       model: provider.model,
     });
   }
   if (
-    provider.provider === "opencode-zen" &&
+    isOpenCodeProvider(provider) &&
     isOpenCodeZenTextOnlyModel(provider.model)
   ) {
     const hasImages = options.messages.some((message) => message.images?.length);
@@ -100,6 +103,12 @@ async function callModelProvider(
     }
   }
   return callOpenAICompatible({ ...options, provider });
+}
+
+function isOpenCodeProvider(provider: {
+  provider: string;
+}): provider is { provider: "opencode-zen" | "opencode-go" } {
+  return provider.provider === "opencode-zen" || provider.provider === "opencode-go";
 }
 
 /** Zen serves Claude models from its Anthropic-compatible `/messages` endpoint. */

@@ -1439,7 +1439,7 @@ curl -sS -I -b "$COOKIE" "$VEKTOR/spaces/$SPACE/secrets/GITHUB_TOKEN"
 ## Settings — AI usage
 
 The instance operator configures the provider for every space with
-`VEKTOR_AI_PROVIDER` (`anthropic`, `openai`, `openrouter`, `opencode-zen`, or
+`VEKTOR_AI_PROVIDER` (`anthropic`, `openai`, `openrouter`, `opencode-zen`, `opencode-go`, or
 `ollama`), `VEKTOR_AI_MODEL`, and either `VEKTOR_AI_API_KEY` or
 `VEKTOR_AI_BASE_URL` for Ollama. `VEKTOR_AI_WEEKLY_MAX_TOKENS` caps each
 space's weekly budget; it defaults to 1,000,000 estimated tokens.

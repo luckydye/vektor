@@ -387,7 +387,7 @@ export function getPublicEnv(): App.PublicEnv {
     VEKTOR_AI_ENABLED:
       appConfig.AI_MODEL?.trim() &&
       ((appConfig.AI_PROVIDER === "ollama" && appConfig.AI_BASE_URL?.trim()) ||
-        (["anthropic", "openai", "openrouter", "opencode-zen"].includes(
+        (["anthropic", "openai", "openrouter", "opencode-zen", "opencode-go"].includes(
           appConfig.AI_PROVIDER ?? "",
         ) &&
           appConfig.AI_API_KEY?.trim()))

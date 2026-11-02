@@ -6,7 +6,7 @@ import { type PartialToolCall, parseSSE } from "./utils.ts";
  * those requests on this wire format is especially important for image blocks.
  */
 export type AnthropicCompatibleProvider = {
-  provider: "anthropic" | "opencode-zen";
+  provider: "anthropic" | "opencode-zen" | "opencode-go";
   apiKey: string;
   model: string;
 };
@@ -14,6 +14,9 @@ export type AnthropicCompatibleProvider = {
 function getAnthropicMessagesUrl(provider: AnthropicCompatibleProvider): string {
   if (provider.provider === "opencode-zen") {
     return "https://opencode.ai/zen/v1/messages";
+  }
+  if (provider.provider === "opencode-go") {
+    return "https://opencode.ai/inference/go/anthropic/v1/messages";
   }
   return "https://api.anthropic.com/v1/messages";
 }

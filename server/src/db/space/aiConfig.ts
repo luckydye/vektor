@@ -16,7 +16,8 @@ export function getAIProvider(): InstanceAIProvider {
     provider === "anthropic" ||
     provider === "openai" ||
     provider === "openrouter" ||
-    provider === "opencode-zen"
+    provider === "opencode-zen" ||
+    provider === "opencode-go"
   ) {
     const apiKey = process.env.VEKTOR_AI_API_KEY?.trim();
     if (!apiKey) throw new Error("VEKTOR_AI_API_KEY is required for this AI provider.");
