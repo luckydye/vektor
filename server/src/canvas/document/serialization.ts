@@ -1,22 +1,17 @@
-import * as Y from "yjs";
 import type { CanvasSerializedShape, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { normalizeRotation, toNumber } from "#canvas/runtime/geometry.ts";
 import type { CanvasExtensionManager } from "#canvas/runtime/registry.ts";
 
 /**
- * Reading and writing canvas shapes as Yjs structures.
+ * Canvas shapes as the snapshot items objects flatten to and from (see
+ * `#canvas/document/format/object.ts`).
  *
- * Deliberately **not** in `yjs.ts`: that module is reachable from the server
- * roots `test/server-frontend-imports.spec.ts` guards, and this needs the
- * extension manager. Keeping them apart stops the extension graph following the
- * seeder onto the server.
- *
- * The manager is per-canvas rather than a module singleton, hence threaded
- * through as a parameter.
+ * Needs the extension manager, so it stays out of the server-safe document
+ * entry. The manager is per-canvas rather than a module singleton, hence
+ * threaded through as a parameter.
  */
 
 function readNested(value: unknown, key: string): unknown {
-  if (value instanceof Y.Map) return value.get(key);
   if (value && typeof value === "object") {
     return (value as Record<string, unknown>)[key];
   }
@@ -24,7 +19,7 @@ function readNested(value: unknown, key: string): unknown {
 }
 
 /**
- * Builds a shape from a Yjs map or a plain serialized shape.
+ * Builds a shape from a serialized shape.
  *
  * Returns null for a type no extension claims — a document written by a newer
  * build, or an extension that has been removed. Skipping it keeps the rest of
@@ -32,7 +27,7 @@ function readNested(value: unknown, key: string): unknown {
  */
 export function shapeFromSource(
   id: string,
-  source: Y.Map<unknown> | CanvasSerializedShape,
+  source: CanvasSerializedShape | Record<string, unknown>,
   context: {
     extensions: CanvasExtensionManager;
     /** Page origin, for resolving relative URLs stored in shape data. */
@@ -40,10 +35,7 @@ export function shapeFromSource(
     defaultSpaceId: string;
   },
 ): CanvasShape | null {
-  const read = (key: string): unknown =>
-    source instanceof Y.Map
-      ? source.get(key)
-      : (source as unknown as Record<string, unknown>)[key];
+  const read = (key: string): unknown => (source as Record<string, unknown>)[key];
 
   const typeValue = read("type");
   if (!context.extensions.has(typeValue)) return null;
@@ -57,11 +49,9 @@ export function shapeFromSource(
   const dataValue = read("data");
 
   const storedData =
-    dataValue instanceof Y.Map
-      ? Object.fromEntries(dataValue.entries())
-      : dataValue && typeof dataValue === "object"
-        ? { ...(dataValue as Record<string, unknown>) }
-        : {};
+    dataValue && typeof dataValue === "object"
+      ? { ...(dataValue as Record<string, unknown>) }
+      : {};
   const rawData = { ...extension.defaults.data, ...storedData };
 
   return {
@@ -100,43 +90,35 @@ export function shapeFromSource(
 }
 
 /**
- * Builds the Yjs map for a shape.
+ * The snapshot item for a shape.
  *
  * Size is written only for types that persist it — text sizes itself from its
  * content, so storing a stale box would fight the measurement on reload.
  */
-export function shapeToYMap(
+export function shapeToItem(
   shape: CanvasSerializedShape,
   extensions: CanvasExtensionManager,
-): Y.Map<unknown> {
-  const map = new Y.Map<unknown>();
-  map.set("type", shape.type);
-
-  const frame = new Y.Map<unknown>();
-  frame.set("x", shape.frame.x);
-  frame.set("y", shape.frame.y);
-  if (extensions.persistsSize(shape.type)) {
-    frame.set("width", shape.frame.width);
-    frame.set("height", shape.frame.height);
-  }
-  frame.set("rotation", shape.frame.rotation);
-  map.set("frame", frame);
-
-  const style = new Y.Map<unknown>();
-  style.set("color", shape.style.color);
-  map.set("style", style);
-
-  const data = new Y.Map<unknown>();
-  const serializedData =
+): Record<string, unknown> {
+  const data =
     extensions.get(shape.type).storage?.serializeData?.(shape.data) ?? shape.data;
-  for (const [key, value] of Object.entries(serializedData)) {
-    if (value !== undefined) data.set(key, value);
-  }
-  map.set("data", data);
-
-  if (shape.authorId) map.set("authorId", shape.authorId);
-  if (shape.locked) map.set("locked", true);
-  map.set("updatedAt", shape.updatedAt);
-  map.set("z", shape.z ?? shape.updatedAt);
-  return map;
+  return {
+    id: shape.id,
+    type: shape.type,
+    frame: {
+      x: shape.frame.x,
+      y: shape.frame.y,
+      ...(extensions.persistsSize(shape.type)
+        ? { width: shape.frame.width, height: shape.frame.height }
+        : {}),
+      rotation: shape.frame.rotation,
+    },
+    style: { color: shape.style.color },
+    data: Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined),
+    ),
+    ...(shape.authorId ? { authorId: shape.authorId } : {}),
+    ...(shape.locked ? { locked: true } : {}),
+    updatedAt: shape.updatedAt,
+    z: shape.z ?? shape.updatedAt,
+  };
 }

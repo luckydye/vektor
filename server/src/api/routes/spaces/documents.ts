@@ -17,6 +17,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
+import { storeCanvasContent } from "#db/space/canvasSnapshot.ts";
 import { deleteSpilledContent, storeDocumentContent } from "#db/space/documentContent.ts";
 import {
   createDocument,
@@ -381,7 +382,11 @@ export const POST: ApiRouteHandler = (context) =>
       throw error;
     }
 
-    const stored = await storeDocumentContent(store, createId("document"), content);
+    const documentId = createId("document");
+    const stored =
+      type === "canvas"
+        ? await storeCanvasContent(store, documentId, content)
+        : await storeDocumentContent(store, documentId, content);
     const created = await store
       .tx(async (tx) => {
         // Held back from the create so a refusal rolls the document back.

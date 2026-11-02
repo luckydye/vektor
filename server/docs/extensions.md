@@ -133,7 +133,7 @@ The context object passed to `activate` and `deactivate`:
 | `panels` | `Panels` | Open, close or toggle `"panel"` routes |
 | `suggestions` | `Suggestions` | Suggestion provider registration |
 | `getActiveEditor()` | `() => Editor \| null` | Returns the active TipTap editor instance |
-| `collaboration` | `{ ydoc: Y.Doc; clientId: number } \| null` | Active Yjs document and peer ID; null outside canvas/editor |
+| `collaboration` | `{ ydoc: Y.Doc; clientId: number } \| null` | Active Yjs document (on a canvas, its shared extension state) and peer ID; null outside canvas/editor |
 | `presence` | `Presence` | Ephemeral extension presence rooms |
 | `canvas` | `Canvas` | Inspector panels and image processors for canvas elements |
 
@@ -497,6 +497,11 @@ export function activate({ collaboration }: ExtensionContext): void {
 ```
 
 `collaboration` is `null` when no canvas or document is open. Always guard against it.
+
+On a canvas, the Y.Doc is the body of one object the canvas keeps for
+extensions: it syncs to every peer and is stored with the canvas, but it is not
+the canvas's shapes, which live in the canvas's own object store. A canvas
+restored from a revision replaces it, and `collaboration` then holds a new doc.
 
 ## Canvas
 

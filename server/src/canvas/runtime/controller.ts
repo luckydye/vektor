@@ -1,23 +1,21 @@
-import * as Y from "yjs";
+import type * as Y from "yjs";
+import type { CanvasTransport } from "#canvas/document/canvasSync.ts";
 import type { CanvasCollaborationFactory } from "#canvas/document/collaboration.ts";
-import { shapeFromSource, shapeToYMap } from "#canvas/document/serialization.ts";
-import {
-  cloneFreehandPoint,
-  createStrokeMap,
-  strokeStyleFromUnknown,
-  toCanvasStroke,
-} from "#canvas/document/strokes.ts";
+import { dataRefs } from "#canvas/document/format/object.ts";
+import type { BBox } from "#canvas/document/format/records.ts";
+import { shapeFromSource } from "#canvas/document/serialization.ts";
+import { cloneFreehandPoint, toCanvasStroke } from "#canvas/document/strokes.ts";
 import type { DocumentPreviewSource } from "#canvas/extensions/documentLink.ts";
 import { PEN_COLORS } from "#canvas/extensions/drawTool.ts";
-import type { CanvasUploader } from "#canvas/extensions/media.ts";
 import {
   activeShapeId,
   type CanvasShapeLibraryItem,
   setActiveShapeId,
 } from "#canvas/extensions/geo.ts";
+import type { CanvasUploader } from "#canvas/extensions/media.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
-import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
+import { FREEHAND_STYLE, maxStrokeWidth } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
 import { pendingImageLoads } from "#canvas/render/images.ts";
 import { drawActiveStroke, drawStrokes, type InkOffset } from "#canvas/render/ink.ts";
@@ -45,6 +43,7 @@ import {
   flattenAccessibilityTree,
   navigateAccessibilityTree,
 } from "#canvas/runtime/accessibility.ts";
+import { createCanvasDocument } from "#canvas/runtime/canvasDocument.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
 import type {
   CanvasClientPoint,
@@ -229,7 +228,8 @@ function shapeIsContainer(
 export interface CanvasHost {
   readonly spaceId: string;
   readonly documentId: string | undefined;
-  readonly ydoc: Y.Doc;
+  /** Where the canvas's objects come from; `localCanvasTransport` when no document backs it. */
+  readonly transport: CanvasTransport;
   readonly presenceProfiles: CollaborationPresenceProfile<CanvasPresenceState>[];
   readonly extensions: readonly CanvasElementExtension[] | undefined;
   readonly tools: readonly CanvasToolExtension[] | undefined;
@@ -255,6 +255,8 @@ export interface CanvasHost {
   save(snapshot: unknown): Promise<unknown>;
   error(message: string): void;
   presenceChanged(states: CanvasPresenceState[]): void;
+  /** The Y.Doc extensions share on this canvas, or null once it is gone. */
+  collaborationChanged(ydoc: Y.Doc | null): void;
   requestRender(): void;
 }
 
@@ -475,20 +477,36 @@ export function createCanvasController(
 
   let localPointer: { x: number; y: number } | null = null;
 
-  const ydoc = host.ydoc;
-  const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
-  const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
-
   const currentOrigin =
     typeof window === "undefined" ? "http://localhost" : window.location.origin;
 
-  // Tracks only local edits (default trackedOrigins = {null}); remote/agent
-  // updates arrive with origin "remote" and are excluded, so undo/redo only
-  // reverts this user's own changes.
-  const undoManager = new Y.UndoManager([yShapes, yStrokes]);
+  /** The document's bounds as the server last reported them; the client may not hold every object. */
+  let documentBounds: BBox | null = null;
+
+  const doc = createCanvasDocument({
+    transport: host.transport,
+    extensions: extensionManager,
+    bounds: summaryBounds,
+    pinned: () =>
+      new Set([
+        ...state.selectedIds,
+        ...(state.activeEditSession ? [state.activeEditSession.shapeId] : []),
+      ]),
+    onBounds: (bounds) => {
+      documentBounds = bounds;
+      fitInitialViewIfNeeded(true);
+    },
+    onReload: () => {
+      clearSelection();
+      stopActiveEdit();
+      // The restore dropped the old state doc with everything else.
+      host.collaborationChanged(doc.extensionState());
+    },
+    onError: (error) => host.error(error.message),
+  });
 
   function insertNewShape(shape: CanvasShape) {
-    yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
+    doc.putShape(shape);
     selectOnly(shape.id);
     state.activeTool = "select";
     saveImmediately();
@@ -513,8 +531,8 @@ export function createCanvasController(
     current: null,
   };
   let isReady = false;
-  let savePrunedInvalidShapesWhenReady = false;
   let viewportControls: ViewportControls | null = null;
+  let unsubscribeStore: (() => void) | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let unsubscribePlugins: (() => void) | null = null;
   let themeObserver: MutationObserver | null = null;
@@ -562,7 +580,7 @@ export function createCanvasController(
       }
       return host.createCollaboration(collaborationOptions);
     },
-    persistShape: (shape) => yShapes.set(shape.id, shapeToYMap(shape, extensionManager)),
+    persistShape: (shape) => doc.putShape(shape),
     insertNewShape,
     selectShape: selectOnly,
     selectShapes: (ids) => setSelection(new Set(ids)),
@@ -586,7 +604,7 @@ export function createCanvasController(
         host.error(error instanceof Error ? error.message : String(error)),
       );
     },
-    updateData: (id, patch) => ydoc.transact(() => hostContext.updateData(id, patch)),
+    updateData: (id, patch) => doc.transact(() => hostContext.updateData(id, patch)),
     editText: (edit) => {
       if (shapesById().get(edit.shapeId)?.locked) return;
       selectOnly(edit.shapeId);
@@ -595,7 +613,7 @@ export function createCanvasController(
     },
     resizeShape: (id, size) => resizeShape(id, size),
     updateShape: (id, patch) =>
-      ydoc.transact(() => {
+      doc.transact(() => {
         const shape = shapesById().get(id);
         if (!shape || !canMoveShape(shape)) return;
         if (patch.frame) updateShapeFrame(id, patch.frame);
@@ -625,7 +643,7 @@ export function createCanvasController(
     const shape = shapesById().get(id);
     if (!shape) return;
     const { minSize } = extensionManager.get(shape.type).defaults;
-    ydoc.transact(() =>
+    doc.transact(() =>
       updateShapeFrame(id, {
         width: Math.round(Math.max(minSize.width, size.width)),
         height: Math.round(Math.max(minSize.height, size.height)),
@@ -852,7 +870,9 @@ export function createCanvasController(
     updateData: (id, patch) => {
       const shape = shapesById().get(id);
       if (!shape || shape.locked) return;
-      updateShapeData(id, patch);
+      // Text travels in the body the editor is bound to; the rest is properties.
+      const { text: _text, ...properties } = patch;
+      if (Object.keys(properties).length > 0) updateShapeData(id, properties);
       const fitted = extensionManager
         .get(shape.type)
         .behavior.measurement?.fit?.({ ...shape, data: { ...shape.data, ...patch } });
@@ -864,9 +884,10 @@ export function createCanvasController(
     },
     removeShape: (id) => {
       if (shapesById().get(id)?.locked) return;
-      yShapes.delete(id);
+      doc.remove(id);
       deselect(id);
     },
+    body: (id) => doc.store.editBody(id),
     selectShape: (id) => selectOnly(id),
     setFormattingEditor: (editor) => {
       const toolbar = dom.canvasToolbar;
@@ -874,7 +895,7 @@ export function createCanvasController(
     },
     reportSize: (id, size) => {
       const shape = shapesById().get(id);
-      if (!shape || !yShapes.has(id)) return;
+      if (!shape || !doc.has(id)) return;
       const extension = extensionManager.get(shape.type);
       const minimum = extension.defaults.minSize;
       if (extension.behavior.transform.resize === "font") {
@@ -890,6 +911,11 @@ export function createCanvasController(
         next.set(id, measured);
         state.intrinsicShapeSizes = next;
         renderScene();
+        // Only a client lays out text: a summary computed without it gets corrected.
+        if (host.canEdit) {
+          const bounds = summaryBounds(id);
+          if (bounds) doc.sync.checkExtent(id, bounds);
+        }
         return;
       }
       if (!host.canEdit || draggingElementId() === id || !canMoveShape(shape)) {
@@ -1079,10 +1105,39 @@ export function createCanvasController(
     return boundsOfPoints(stroke.points);
   }
 
+  /**
+   * The bbox a record's summary carries: the shape as laid out, a connector's
+   * route with its endpoints, a stroke's points with their width.
+   */
+  function summaryBounds(id: string): BBox | null {
+    const shape = shapesById().get(id);
+    if (shape) {
+      const boxes = [shapeAabb(shape)];
+      for (const ref of Object.values(
+        dataRefs(shape.type, shape.data as Record<string, unknown>),
+      )) {
+        const endpoint = ref ? shapesById().get(ref) : undefined;
+        if (endpoint) boxes.push(shapeAabb(endpoint));
+      }
+      const box = unionBounds(boxes) as Rect;
+      return [box.x, box.y, box.x + box.width, box.y + box.height];
+    }
+    const stroke = strokesById().get(id);
+    const points = stroke && strokeBounds(stroke);
+    if (!stroke || !points) return null;
+    const reach = maxStrokeWidth(stroke.style) / 2;
+    return [
+      points.x - reach,
+      points.y - reach,
+      points.x + points.width + reach,
+      points.y + points.height + reach,
+    ];
+  }
+
   /** Binds the ambient page origin and space id; the parsing itself is shared. */
   function toShape(
     id: string,
-    source: Y.Map<unknown> | CanvasSerializedShape,
+    source: CanvasSerializedShape | Record<string, unknown>,
   ): CanvasShape | null {
     return shapeFromSource(id, source, {
       extensions: extensionManager,
@@ -1093,24 +1148,17 @@ export function createCanvasController(
 
   function toStroke(
     id: string,
-    source: Y.Map<unknown> | CanvasStrokeSnapshot,
+    source: CanvasStrokeSnapshot | Record<string, unknown>,
   ): CanvasStroke {
     return toCanvasStroke(id, source);
   }
 
-  function syncShapesFromY() {
-    let removedInvalid = false;
-    for (const [id, value] of yShapes.entries()) {
-      const shape = toShape(id, value);
-      if (!shape || !extensionManager.isValid(shape)) {
-        yShapes.delete(id);
-        removedInvalid = true;
-      }
-    }
-
+  /** Rebuilds the shapes from the store. A type no extension claims is left out, not deleted. */
+  function syncShapesFromStore() {
     state.shapes = resolveShapes(
-      [...yShapes.entries()]
-        .map(([id, value]) => toShape(id, value))
+      doc
+        .shapeItems()
+        .map((item) => toShape(String(item.id), item))
         .filter((shape): shape is CanvasShape =>
           Boolean(shape && extensionManager.isValid(shape)),
         )
@@ -1123,10 +1171,6 @@ export function createCanvasController(
     );
 
     pruneSelection();
-    if (removedInvalid) {
-      if (isReady) scheduleSave();
-      else savePrunedInvalidShapesWhenReady = true;
-    }
 
     // Drop cached measured sizes for shapes that no longer exist (text elements
     // report their intrinsic size via reportSize; the element can't clean up
@@ -1162,16 +1206,33 @@ export function createCanvasController(
     });
   }
 
-  function syncStrokesFromY() {
+  /** What each stroke was decoded from; the same values give the same stroke. */
+  const strokeSources = new WeakMap<
+    CanvasStroke,
+    { points: unknown; updatedAt: unknown }
+  >();
+
+  function syncStrokesFromStore() {
     const previous = new Map(state.strokes.map((stroke) => [stroke.id, stroke]));
     // Unchanged strokes keep their object identity: `strokePointBounds` memoizes
     // against it, and culling asks for those bounds on every frame.
-    const next = [...yStrokes.entries()]
-      .map(([id, value]) => {
-        const existing = previous.get(id);
-        return existing && existing.updatedAt === value.get("updatedAt")
-          ? existing
-          : toStroke(id, value);
+    const next = doc
+      .strokeEntries()
+      .map((entry) => {
+        const existing = previous.get(entry.id);
+        const source = existing && strokeSources.get(existing);
+        // Every stroke write moves `updatedAt`; the points are compared as well
+        // because a gesture can rewrite them within one millisecond.
+        if (
+          source &&
+          source.points === entry.points &&
+          source.updatedAt === entry.updatedAt
+        ) {
+          return existing;
+        }
+        const stroke = toStroke(entry.id, entry.item());
+        strokeSources.set(stroke, { points: entry.points, updatedAt: entry.updatedAt });
+        return stroke;
       })
       .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
 
@@ -1311,9 +1372,12 @@ export function createCanvasController(
 
   /** Frames in reading order: rows top to bottom, each left to right. */
   function slides(): CanvasShape[] {
-    const frames = state.shapes.filter((shape) => extensionManager.get(shape.type).behavior.container);
+    const frames = state.shapes.filter(
+      (shape) => extensionManager.get(shape.type).behavior.container,
+    );
     return frames.sort((a, b) => {
-      const sameRow = Math.abs(a.frame.y - b.frame.y) < Math.min(a.frame.height, b.frame.height) / 2;
+      const sameRow =
+        Math.abs(a.frame.y - b.frame.y) < Math.min(a.frame.height, b.frame.height) / 2;
       return sameRow ? a.frame.x - b.frame.x : a.frame.y - b.frame.y;
     });
   }
@@ -1327,7 +1391,10 @@ export function createCanvasController(
       state.screen.width / FIT_REFERENCE.width,
       state.screen.height / FIT_REFERENCE.height,
     );
-    const scale = Math.min(state.screen.width / frame.frame.width, state.screen.height / frame.frame.height);
+    const scale = Math.min(
+      state.screen.width / frame.frame.width,
+      state.screen.height / frame.frame.height,
+    );
     state.camera = {
       centerX: frame.frame.x + frame.frame.width / 2,
       centerY: frame.frame.y + frame.frame.height / 2,
@@ -1378,6 +1445,18 @@ export function createCanvasController(
     return true;
   }
 
+  /** The server's document bounds, or null for an empty document or none known yet. */
+  function documentContentBounds(): BBox | null {
+    const bounds = documentBounds;
+    return bounds && (bounds[2] > bounds[0] || bounds[3] > bounds[1]) ? bounds : null;
+  }
+
+  /** Loads the objects around what the viewport shows, and lets go of those far away. */
+  function loadViewport() {
+    const rect = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE);
+    doc.sync.setViewport([rect.x, rect.y, rect.x + rect.width, rect.y + rect.height]);
+  }
+
   function fitView(maxZoom = 5) {
     // Accumulated rather than spread into Math.min/max: a freehand stroke can
     // carry tens of thousands of points, which overflows the argument stack.
@@ -1386,6 +1465,13 @@ export function createCanvasController(
     let maxX = Number.NEGATIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
     let hasContent = false;
+
+    // The client holds only the objects around its view; the document's extent is the server's.
+    const known = documentContentBounds();
+    if (known) {
+      [minX, minY, maxX, maxY] = known;
+      hasContent = true;
+    }
 
     for (const shape of state.shapes) {
       const bounds = shapeAabb(shape);
@@ -1444,7 +1530,13 @@ export function createCanvasController(
    */
   function fitInitialView(isInitialContent: boolean) {
     if (hasFitInitialView || !isReady) return;
-    if (state.shapes.length === 0 && state.strokes.length === 0) return;
+    if (
+      !documentContentBounds() &&
+      state.shapes.length === 0 &&
+      state.strokes.length === 0
+    ) {
+      return;
+    }
     hasFitInitialView = true;
     // Frame the content but never magnify past 100% on load.
     if (isInitialContent) fitView(1);
@@ -1670,57 +1762,56 @@ export function createCanvasController(
     const now = Date.now();
     const pastedShapeIds = new Set<string>();
     const pastedStrokeIds = new Set<string>();
-    const copies = new Map(payload.shapes.map((shape) => [shape.id, `shape-${crypto.randomUUID()}`]));
+    const copies = new Map(
+      payload.shapes.map((shape) => [shape.id, `shape-${crypto.randomUUID()}`]),
+    );
 
-    ydoc.transact(() => {
+    doc.transact(() => {
       payload.shapes.forEach((shape, index) => {
         const id = copies.get(shape.id) as string;
         pastedShapeIds.add(id);
         const behavior = extensionManager.get(shape.type).behavior;
-        const rebound = { ...shape, data: { ...shape.data, ...behavior.rebind?.(shape as CanvasShape, copies) } } as CanvasShape;
-        const moved = behavior.reshape?.(rebound, (point) => ({ x: point.x + dx, y: point.y + dy }));
-        yShapes.set(
+        const rebound = {
+          ...shape,
+          data: { ...shape.data, ...behavior.rebind?.(shape as CanvasShape, copies) },
+        } as CanvasShape;
+        const moved = behavior.reshape?.(rebound, (point) => ({
+          x: point.x + dx,
+          y: point.y + dy,
+        }));
+        doc.putShape({
+          ...rebound,
           id,
-          shapeToYMap(
-            {
-              ...rebound,
-              id,
-              frame: {
-                ...shape.frame,
-                x: Math.round(shape.frame.x + dx),
-                y: Math.round(shape.frame.y + dy),
-              },
-              data: { ...rebound.data, ...moved },
-              // A pasted personal element belongs to the person who pasted it,
-              // never the author of the source clipboard item.
-              authorId: shape.authorId ? host.currentUserId : undefined,
-              updatedAt: now,
-              // On top of everything, in the order they were copied.
-              z: now + index,
-            },
-            extensionManager,
-          ),
-        );
+          frame: {
+            ...shape.frame,
+            x: Math.round(shape.frame.x + dx),
+            y: Math.round(shape.frame.y + dy),
+          },
+          data: { ...rebound.data, ...moved },
+          // A pasted personal element belongs to the person who pasted it,
+          // never the author of the source clipboard item.
+          authorId: shape.authorId ? host.currentUserId : undefined,
+          updatedAt: now,
+          // On top of everything, in the order they were copied.
+          z: now + index,
+        });
       });
       for (const stroke of payload.strokes) {
         const id = `stroke-${crypto.randomUUID()}`;
         pastedStrokeIds.add(id);
-        yStrokes.set(
+        doc.putStroke({
           id,
-          createStrokeMap({
-            id,
-            points: stroke.points.map((point) => ({
-              ...point,
-              x: point.x + dx,
-              y: point.y + dy,
-            })),
-            style: { ...stroke.style },
-            kind: stroke.kind,
-            rotation: stroke.rotation,
-            authorId: stroke.authorId ? host.currentUserId : undefined,
-            updatedAt: now,
-          }),
-        );
+          points: stroke.points.map((point) => ({
+            ...point,
+            x: point.x + dx,
+            y: point.y + dy,
+          })),
+          style: { ...stroke.style },
+          kind: stroke.kind,
+          rotation: stroke.rotation,
+          authorId: stroke.authorId ? host.currentUserId : undefined,
+          updatedAt: now,
+        });
       }
     });
 
@@ -1732,13 +1823,10 @@ export function createCanvasController(
     if (nextShapes.length === 0) return false;
     const pastedShapeIds = new Set<string>();
 
-    ydoc.transact(() => {
+    doc.transact(() => {
       for (const shape of nextShapes) {
         pastedShapeIds.add(shape.id);
-        yShapes.set(
-          shape.id,
-          shapeToYMap({ ...shape, updatedAt: Date.now() }, extensionManager),
-        );
+        doc.putShape({ ...shape, updatedAt: Date.now() });
       }
     });
 
@@ -2392,7 +2480,7 @@ export function createCanvasController(
     selectStroke: selectOnly,
     createElement: (type, at, size) => addShape(type, at, size),
     insertShape: (shape) => {
-      yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
+      doc.putShape(shape);
       selectOnly(shape.id);
     },
     host: extHost,
@@ -2406,7 +2494,7 @@ export function createCanvasController(
   };
 
   function insertCanvasStroke(stroke: CanvasStrokeSnapshot) {
-    yStrokes.set(stroke.id, createStrokeMap(stroke));
+    doc.putStroke(stroke);
   }
 
   function pointerGestureEvent(event: PointerEvent): CanvasPointerGestureEvent {
@@ -2485,7 +2573,7 @@ export function createCanvasController(
           },
         }
       : created;
-    yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
+    doc.putShape(shape);
     selectOnly(shape.id);
     state.activeTool = "select";
 
@@ -2590,13 +2678,9 @@ export function createCanvasController(
   }
 
   function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: number) {
-    const stroke = yStrokes.get(id);
-    if (!stroke) return;
     const currentStroke = strokesById().get(id);
-    if (currentStroke && !canMoveStroke(currentStroke)) return;
-    stroke.set("updatedAt", Date.now());
-    stroke.set("points", points.map(cloneFreehandPoint));
-    if (rotation !== undefined) stroke.set("rotation", rotation);
+    if (!currentStroke || !canMoveStroke(currentStroke)) return;
+    doc.setStrokePoints(id, points, rotation);
   }
 
   // Sets the swatch used by the active creation tool. This deliberately does not
@@ -2673,40 +2757,31 @@ export function createCanvasController(
   }
 
   function setSelectedStrokeColor(color: string) {
-    ydoc.transact(() => {
+    doc.transact(() => {
       for (const id of state.selectedIds) {
-        const stroke = yStrokes.get(id);
-        if (!stroke) continue;
-        const style = strokeStyleFromUnknown(stroke.get("style"));
-        stroke.set("style", { ...style, color });
-        stroke.set("updatedAt", Date.now());
+        if (strokesById().has(id)) doc.setStrokeStyle(id, { color });
       }
     });
   }
 
   function updateShapeFrame(id: string, patch: Partial<CanvasFrame>) {
-    const shape = yShapes.get(id);
-    if (!shape) return;
     const currentShape = shapesById().get(id);
-    if (currentShape && !canMoveShape(currentShape)) return;
-    shape.set("updatedAt", Date.now());
-    const persistsSize = extensionManager.persistsSize(
-      shape.get("type") as CanvasShapeType,
+    if (!currentShape || !canMoveShape(currentShape)) return;
+    const persistsSize = extensionManager.persistsSize(currentShape.type);
+    doc.patchShape(
+      id,
+      "frame",
+      Object.fromEntries(
+        Object.entries(patch).filter(
+          ([key]) => persistsSize || (key !== "width" && key !== "height"),
+        ),
+      ),
     );
-    const frame = shape.get("frame");
-    if (!(frame instanceof Y.Map)) return;
-    for (const [key, value] of Object.entries(patch)) {
-      if (!persistsSize && (key === "width" || key === "height")) continue;
-      frame.set(key, value);
-    }
   }
 
   function updateShapeStyle(id: string, patch: Partial<CanvasShape["style"]>) {
-    const shape = yShapes.get(id);
-    const style = shape?.get("style");
-    if (!shape || !(style instanceof Y.Map)) return;
-    shape.set("updatedAt", Date.now());
-    for (const [key, value] of Object.entries(patch)) style.set(key, value);
+    if (!shapesById().has(id)) return;
+    doc.patchShape(id, "style", patch);
   }
 
   function updateShapeData(
@@ -2714,24 +2789,15 @@ export function createCanvasController(
     patch: Record<string, unknown>,
     options: { transform?: boolean } = {},
   ) {
-    const shape = yShapes.get(id);
-    const data = shape?.get("data");
-    if (!shape || !(data instanceof Y.Map)) return;
     const currentShape = shapesById().get(id);
-    if (options.transform && currentShape && !canMoveShape(currentShape)) return;
-    shape.set("updatedAt", Date.now());
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined) data.delete(key);
-      else data.set(key, value);
-    }
+    if (!currentShape) return;
+    if (options.transform && !canMoveShape(currentShape)) return;
+    doc.patchShape(id, "data", patch);
   }
 
   function setElementLocked(id: string, locked: boolean) {
-    const entry = yShapes.get(id) ?? yStrokes.get(id);
-    if (!entry) return;
-    entry.set("updatedAt", Date.now());
-    if (locked) entry.set("locked", true);
-    else entry.delete("locked");
+    if (!doc.has(id)) return;
+    doc.setLocked(id, locked);
   }
 
   function lockSelectedElements() {
@@ -2753,7 +2819,7 @@ export function createCanvasController(
       for (const stroke of contents.strokes) strokeIds.add(stroke.id);
     }
 
-    ydoc.transact(() => {
+    doc.transact(() => {
       for (const id of [...shapeIds, ...strokeIds]) setElementLocked(id, true);
     });
     clearSelection();
@@ -2770,7 +2836,17 @@ export function createCanvasController(
    * Selects the contents of the innermost section under the pointer, or
    * everything when there is none or its contents are already selected.
    */
+  /** Every object is loaded first: the client holds only those around its view. */
   function selectAll() {
+    void doc.sync
+      .loadAll()
+      .then(selectAllHeld)
+      .catch((error: unknown) =>
+        host.error(error instanceof Error ? error.message : String(error)),
+      );
+  }
+
+  function selectAllHeld() {
     const selectable = new Set(
       [...state.shapes, ...state.strokes]
         .filter((element) => !element.locked)
@@ -2801,11 +2877,10 @@ export function createCanvasController(
 
   function deleteSelection() {
     if (state.selectedIds.size === 0) return;
-    ydoc.transact(() => {
+    doc.transact(() => {
       for (const id of state.selectedIds) {
         if (isElementLocked(id)) continue;
-        yShapes.delete(id);
-        yStrokes.delete(id);
+        doc.remove(id);
       }
     });
     clearSelection();
@@ -2873,7 +2948,7 @@ export function createCanvasController(
       items.map((item) => item.bounds),
       32,
     );
-    ydoc.transact(() => {
+    doc.transact(() => {
       items.forEach((item, index) => {
         const target = positions[index];
         moveElement(item.id, target.x - item.bounds.x, target.y - item.bounds.y);
@@ -3952,6 +4027,8 @@ export function createCanvasController(
     }
 
     const drag = dragState;
+    // A gesture is previewed locally and written once, when the pointer is released.
+    if (drag.type !== "pan" && drag.type !== "marquee") doc.store.beginGesture();
     dragBehavior(drag).move(drag, {
       event,
       screen: point,
@@ -4041,7 +4118,7 @@ export function createCanvasController(
           world.y - drag.startPointer.y,
           event.metaKey,
         );
-        ydoc.transact(() => {
+        doc.transact(() => {
           for (const moved of drag.shapes) {
             const shape = shapesById().get(moved.id);
             if (!shape || !canMoveShape(shape)) continue;
@@ -4058,7 +4135,7 @@ export function createCanvasController(
         if (!preview) return;
         // Only the strokes this drag captured move; `state.strokes` would sweep
         // up every stroke on the canvas.
-        ydoc.transact(() => {
+        doc.transact(() => {
           for (const stroke of drag.strokes) {
             translateStroke(stroke.id, stroke.points, preview.dx, preview.dy);
           }
@@ -4173,7 +4250,7 @@ export function createCanvasController(
           aspect: drag.startBounds.width / drag.startBounds.height,
         });
         const scale = resized.width / drag.startBounds.width;
-        ydoc.transact(() => {
+        doc.transact(() => {
           for (const shape of drag.shapes) {
             const reshape = extensionManager.get(shape.original.type).behavior.reshape;
             if (reshape) {
@@ -4222,13 +4299,17 @@ export function createCanvasController(
         });
       },
       revert(drag) {
-        ydoc.transact(() => {
+        doc.transact(() => {
           for (const shape of drag.shapes) {
             const reshape = extensionManager.get(shape.original.type).behavior.reshape;
             if (reshape) {
-              updateShapeData(shape.id, reshape(shape.original, (point) => point), {
-                transform: true,
-              });
+              updateShapeData(
+                shape.id,
+                reshape(shape.original, (point) => point),
+                {
+                  transform: true,
+                },
+              );
               continue;
             }
             updateShapeFrame(shape.id, shape.frame);
@@ -4277,7 +4358,7 @@ export function createCanvasController(
   ) {
     const stroke = takeStrokePreview()?.strokes[0];
     if (!stroke || drag.target.store !== "stroke") return;
-    ydoc.transact(() => {
+    doc.transact(() => {
       updateStrokePoints(
         drag.elementId,
         stroke.points,
@@ -4299,6 +4380,8 @@ export function createCanvasController(
 
   /** Ends the active drag, clearing the transient state every gesture leaves. */
   function endDrag(drag: DragState) {
+    // An interrupted gesture commits nothing; a committed one has already ended.
+    doc.store.endGesture(false);
     dragBehavior(drag).end?.(drag);
     dragState = null;
     if (activeSnapGuides.length > 0) {
@@ -4312,6 +4395,7 @@ export function createCanvasController(
     if (dragState && dragState.pointerId === event.pointerId) {
       const drag = dragState;
       dragBehavior(drag).commit?.(drag);
+      doc.store.endGesture(true);
       endDrag(drag);
     }
     releasePress(event);
@@ -4467,16 +4551,16 @@ export function createCanvasController(
   // null), which only disarms the one-shot rather than recentering their view.
 
   function refreshUndoState() {
-    state.canUndo = undoManager.canUndo();
-    state.canRedo = undoManager.canRedo();
+    state.canUndo = doc.store.canUndo();
+    state.canRedo = doc.store.canRedo();
   }
 
   function undo() {
-    if (undoManager.canUndo()) undoManager.undo();
+    doc.store.undo();
   }
 
   function redo() {
-    if (undoManager.canRedo()) undoManager.redo();
+    doc.store.redo();
   }
 
   /**
@@ -4540,11 +4624,31 @@ export function createCanvasController(
       if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
       cameraMoveTimer = setTimeout(() => {
         state.isCameraMoving = false;
+        loadViewport();
         invalidate();
       }, 150);
     });
 
     watch("selection", state.selectedIds, (ids) => {
+      // Before an edit: a partial object brings in what references it, and a
+      // section brings in everything inside it, which moves with it.
+      const sections = [...ids].flatMap((id) => {
+        const shape = shapesById().get(id);
+        return shape && isContainerShape(shape) ? [shapeAabb(shape)] : [];
+      });
+      void Promise.all([
+        doc.sync.complete([...ids].filter((id) => doc.sync.isPartial(id))),
+        ...sections.map((rect) =>
+          doc.sync.ensureRegion([
+            rect.x,
+            rect.y,
+            rect.x + rect.width,
+            rect.y + rect.height,
+          ]),
+        ),
+      ]).catch((error: unknown) =>
+        host.error(error instanceof Error ? error.message : String(error)),
+      );
       const edit = state.textEdit;
       if (edit && (ids.size !== 1 || !ids.has(edit.shapeId))) finishTextEdit(true);
       const mode = state.editMode;
@@ -4743,29 +4847,22 @@ export function createCanvasController(
     void import("#editor/document.ts");
     refreshCssVars();
 
-    const observe = (transaction: Y.Transaction, sync: () => void) => {
-      sync();
+    unsubscribeStore = doc.store.listen((_ids, origin) => {
+      syncShapesFromStore();
+      syncStrokesFromStore();
       // Nobody touched the canvas — the document changed underneath it, whether
-      // from a peer, an undo, or the room state arriving on load.
+      // from a peer, an undo, or a load arriving.
       invalidate();
-      // Persist only this client's own edits (local edits have origin null; undo/
-      // redo carry the UndoManager origin). Remote changes are persisted by their
-      // originator — the peer that made them, or the server for agent edits — so
-      // re-saving them here would mean every client rewrites the doc on every
-      // change, including the initial room state that arrives as "remote" on load.
-      if (transaction.origin !== "remote" && transaction.origin !== "seed")
-        scheduleSave();
+      // Only this client's own edits report a save; the server persists every record.
+      if (origin !== "remote") scheduleSave();
       refreshUndoState();
-      fitInitialViewIfNeeded(transaction.origin !== null);
-    };
-    yShapes.observeDeep((_events, transaction) => observe(transaction, syncShapesFromY));
-    yStrokes.observeDeep((_events, transaction) =>
-      observe(transaction, syncStrokesFromY),
-    );
+      fitInitialViewIfNeeded(origin === "remote");
+    });
 
-    syncShapesFromY();
-    syncStrokesFromY();
+    syncShapesFromStore();
+    syncStrokesFromStore();
     resize();
+    loadViewport();
 
     viewportControls = createViewportControls({
       target: dom.viewport ?? window,
@@ -4817,11 +4914,8 @@ export function createCanvasController(
 
     updatePresence();
     registerCanvasActions();
+    host.collaborationChanged(doc.extensionState());
     isReady = true;
-    if (savePrunedInvalidShapesWhenReady) {
-      savePrunedInvalidShapesWhenReady = false;
-      saveImmediately();
-    }
     // If the room state already arrived before mount, frame it now that the
     // screen has been measured; otherwise the Yjs observer frames it on first
     // sync. Either way the first content to land counts as initial.
@@ -4840,8 +4934,10 @@ export function createCanvasController(
     themeObserver?.disconnect();
     colorSchemeMedia?.removeEventListener("change", updateThemeMode);
     host.presenceChanged([]);
+    host.collaborationChanged(null);
     disposeCanvasActions();
-    undoManager.destroy();
+    unsubscribeStore?.();
+    doc.destroy();
     for (const [type, handler] of windowHandlers) {
       window.removeEventListener(type, handler);
     }
@@ -4932,7 +5028,7 @@ export function createCanvasController(
     setSelectedStrokeColor,
     /** One undoable edit; locked shapes are left alone. */
     updateShapeData: (id: string, patch: Record<string, unknown>) =>
-      ydoc.transact(() => hostContext.updateData(id, patch)),
+      doc.transact(() => hostContext.updateData(id, patch)),
     resizeShape,
     pickShapeLibraryItem,
     startPresenting,

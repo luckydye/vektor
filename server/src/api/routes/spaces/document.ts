@@ -53,6 +53,7 @@ import { getUploadImageAspectRatio } from "#db/space/files.ts";
 import { patchDocumentProperties } from "#db/space/properties.ts";
 import {
   createRevision,
+  getCanvasRevisionBaseKey,
   getRevisionContent,
   getRevisionMetadata,
   resolvePublishedDocumentContent,
@@ -72,6 +73,11 @@ import { parseJobToken } from "#jobs/jobToken.ts";
 import { enqueueDocumentPublishedEmails } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import {
+  restoreCanvasRevision,
+  setCanvasRoomWriteBlocked,
+  settleCanvasRoom,
+} from "#realtime/canvasRooms.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import {
@@ -194,8 +200,13 @@ async function handlePublishedRevisionPatch(
   if (revToPublish !== null && revisionContent === null) {
     throw notFoundResponse("Revision");
   }
+  // Publishing a canvas revision loads it into the draft by restoring its base, after the write below.
+  const canvasKey =
+    revToPublish === null
+      ? null
+      : await getCanvasRevisionBaseKey(store, documentId, revToPublish);
   const storedContent =
-    revisionContent === null
+    revisionContent === null || canvasKey !== null
       ? null
       : await storeDocumentContent(store, documentId, revisionContent);
 
@@ -246,6 +257,9 @@ async function handlePublishedRevisionPatch(
   }
 
   if (revisionContent === null) throw notFoundResponse("Revision");
+  if (canvasKey !== null) {
+    await restoreCanvasRevision(store.platform, spaceId, documentId, canvasKey);
+  }
 
   // An open room outranks the stored content for every reader and persists
   // itself back over this write, so the draft only really changes once the live
@@ -275,6 +289,17 @@ async function handlePublishedRevisionPatch(
   return { ok: true, next: [changeSeq] };
 }
 
+/** Blocks or unblocks writes to the document's open rooms; returns whether any was blocked. */
+function setDocumentWriteBlocked(
+  spaceId: string,
+  documentId: string,
+  blocked: boolean,
+): boolean {
+  const yjs = setYRoomWriteBlocked(spaceId, documentId, blocked);
+  const canvas = setCanvasRoomWriteBlocked(spaceId, documentId, blocked);
+  return yjs || canvas;
+}
+
 async function handleReadonlyPatch(
   store: SpaceStore,
   documentId: string,
@@ -288,11 +313,14 @@ async function handleReadonlyPatch(
   }
 
   const previousWriteBlock = readonly
-    ? setYRoomWriteBlocked(spaceId, documentId, true)
+    ? setDocumentWriteBlocked(spaceId, documentId, true)
     : false;
 
   try {
-    if (readonly) await persistYRoomDraft(store.platform, roomKey(spaceId, documentId));
+    if (readonly) {
+      await persistYRoomDraft(store.platform, roomKey(spaceId, documentId));
+      await settleCanvasRoom(store.platform, spaceId, documentId);
+    }
 
     const written = await store.tx(async (tx) => {
       const result = await touchDocument(tx, documentId, { readonly }, expected);
@@ -312,15 +340,15 @@ async function handleReadonlyPatch(
 
     // A refused condition unwinds the write block the same way a throw does.
     if (!written.ok) {
-      if (readonly) setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+      if (readonly) setDocumentWriteBlocked(spaceId, documentId, previousWriteBlock);
       return { ok: false };
     }
 
-    if (!readonly) setYRoomWriteBlocked(spaceId, documentId, false);
+    if (!readonly) setDocumentWriteBlocked(spaceId, documentId, false);
     return { ok: true, next: [written.changeSeq] };
   } catch (error) {
     if (readonly) {
-      setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+      setDocumentWriteBlocked(spaceId, documentId, previousWriteBlock);
     }
     throw error;
   }
@@ -333,6 +361,7 @@ async function handleReadonlyPatch(
  * @jobToken
  * @param documentId Document id or slug.
  * @query draft:boolean Read the current draft instead of the published revision. Requires editor permission.
+ * @query canvasContent:boolean `false` leaves a canvas's content out: it is the whole canvas, which the canvas itself loads by region.
  * @response #/components/schemas/DocumentResponse
  */
 export const GET: ApiRouteHandler = (context) =>
@@ -344,6 +373,8 @@ export const GET: ApiRouteHandler = (context) =>
     // live=true returns the draft content as currently held in the document's
     // collaboration room (if open), so partial edits reference the same state.
     const live = new URL(context.req.url).searchParams.get("live") === "true";
+    const canvasContent =
+      new URL(context.req.url).searchParams.get("canvasContent") !== "false";
 
     // The index carries id, slug and name, all this response needs of the space.
     const space =
@@ -443,7 +474,10 @@ export const GET: ApiRouteHandler = (context) =>
     // getDocument is metadata-only; this route returns the body, so load it
     // explicitly (from the live room when there is one, else the stored column).
     let document: DocumentMeta & { content: string };
-    if (live) {
+    if (meta.type === "canvas" && !canvasContent) {
+      // Metadata only: reading the content would merge every object of the canvas.
+      document = { ...meta, content: "" };
+    } else if (live) {
       document = {
         ...meta,
         content: getLiveDocumentContent(

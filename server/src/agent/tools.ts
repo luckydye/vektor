@@ -1076,7 +1076,7 @@ export async function callTool(
         config,
         `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/canvas`,
         {
-          method: "POST",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ operations: args.operations }),
         },

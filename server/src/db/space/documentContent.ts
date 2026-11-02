@@ -1,6 +1,8 @@
 import type { SpaceStore } from "#db/client/store.ts";
 import { deletePrefix } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import { isCanvasBaseKey } from "./canvasBase.ts";
+import { readCanvasSnapshot } from "./canvasSnapshot.ts";
 
 /** Content over this many UTF-8 bytes lives in the blob store, and the row's `content` is empty. */
 const INLINE_CONTENT_BYTES = 1024 * 1024;
@@ -49,14 +51,23 @@ export async function readDocumentContent(
   row: { content: string; contentKey: string | null },
 ): Promise<string> {
   if (row.contentKey === null) return row.content;
+  // A canvas lives in the object store; whole-document readers get its snapshot JSON.
+  if (isCanvasBaseKey(row.contentKey)) {
+    const documentId = row.contentKey.split("/")[1];
+    return JSON.stringify(await readCanvasSnapshot(s, documentId));
+  }
   const stored = await s.platform.blobStore.read(s.spaceId, row.contentKey);
   if (!stored)
     throw new Error(`Document content ${row.contentKey} is missing from storage`);
   return stored.toString("utf-8");
 }
 
-/** Remove a spilled content blob no row points at any more. */
+/**
+ * Remove a spilled content blob no row points at any more. A canvas base is
+ * left to the canvas GC, which keeps it while a revision names it.
+ */
 export function deleteSpilledContent(s: SpaceStore, contentKey: string): Promise<void> {
+  if (isCanvasBaseKey(contentKey)) return Promise.resolve();
   return s.platform.blobStore.delete(s.spaceId, contentKey).catch((error) => {
     appLogger.warn("Failed to delete spilled document content", {
       error,

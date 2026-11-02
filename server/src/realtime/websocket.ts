@@ -8,6 +8,7 @@ import { getExtension } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { requestScope } from "#utils/requestScope.ts";
+import { CanvasConnection } from "./canvasConnection.ts";
 import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
@@ -145,12 +146,14 @@ export async function acceptRealtimeConnection(
 
   // Teardown order matters because presence and Yjs share room membership.
   const yjs = new YjsConnection(platform, spaceId, userId, websocket);
+  const canvas = new CanvasConnection(platform, spaceId, userId, websocket);
   const handlers: FrameHandler[] = [
     new TopicSubscriptions(platform, spaceId, userId, websocket),
     yjs,
+    canvas,
     new PresenceConnection(platform, spaceId, websocket, {
       authorizeRoom: (room) => authorizePresenceRoom(platform, spaceId, userId, room),
-      holdsYjsRoom: (room) => yjs.holdsRoom(room),
+      holdsYjsRoom: (room) => yjs.holdsRoom(room) || canvas.holdsRoom(room),
     }),
   ];
 

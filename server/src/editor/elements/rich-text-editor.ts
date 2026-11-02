@@ -1,6 +1,8 @@
 import { type Editor, Extension } from "@tiptap/core";
 import { history, redo, undo } from "@tiptap/pm/history";
+import type * as Y from "yjs";
 import { Heading } from "#editor/extensions/baseExtensions.ts";
+import { Collaboration } from "#editor/extensions/Collaboration.ts";
 import {
   isMentionSuggestionOpen,
   MentionSuggestions,
@@ -20,6 +22,11 @@ type FormatCommandChain = {
 
 export interface RichTextEditorElementApi extends HTMLElement {
   value: string;
+  /**
+   * A fragment to edit collaboratively, set before the element connects. The
+   * content then follows the fragment and `value` only reports it.
+   */
+  fragment: Y.XmlFragment | null;
   readonly el: HTMLElement | null;
   readonly editorInstance: Editor | null;
   focus(options?: FocusOptions): void;
@@ -142,6 +149,7 @@ if (
     class RichTextEditorElement extends HTMLElement implements RichTextEditorElementApi {
       private editor: Editor | null = null;
       private lastValue = "";
+      fragment: Y.XmlFragment | null = null;
       private shadow: ShadowRoot;
       private _mount: HTMLDivElement;
 
@@ -249,6 +257,7 @@ if (
 
       private mountEditor() {
         const headingsEnabled = this.headingsEnabled;
+        const fragment = this.fragment;
 
         // Bold/Italic/Underline shortcuts ship on the marks themselves
         // (baseExtensions.ts). List and heading toggles don't have a home on
@@ -257,9 +266,15 @@ if (
           name: "richTextKeyboardShortcuts",
           addKeyboardShortcuts() {
             const shortcuts: Record<string, () => boolean> = {
-              "Mod-z": () => undo(this.editor.state, this.editor.view.dispatch),
-              "Mod-Shift-z": () => redo(this.editor.state, this.editor.view.dispatch),
-              "Mod-y": () => redo(this.editor.state, this.editor.view.dispatch),
+              // A bound fragment undoes through the collaboration UndoManager.
+              ...(fragment
+                ? {}
+                : {
+                    "Mod-z": () => undo(this.editor.state, this.editor.view.dispatch),
+                    "Mod-Shift-z": () =>
+                      redo(this.editor.state, this.editor.view.dispatch),
+                    "Mod-y": () => redo(this.editor.state, this.editor.view.dispatch),
+                  }),
               "Mod-Shift-8": () => this.editor.chain().focus().toggleBulletList().run(),
               "Mod-Shift-7": () => this.editor.chain().focus().toggleOrderedList().run(),
             };
@@ -272,15 +287,16 @@ if (
             return shortcuts;
           },
           addProseMirrorPlugins() {
-            return [history()];
+            return fragment ? [] : [history()];
           },
         });
 
         this.editor = createBaseEditor({
           element: this._mount,
-          content: renderMessageMarkdown(this.lastValue),
+          ...(fragment ? {} : { content: renderMessageMarkdown(this.lastValue) }),
           injectCSS: false,
           extensions: [
+            ...(fragment ? [Collaboration.configure({ fragment })] : []),
             Placeholder.configure({ placeholder: this.placeholderText }),
             KeyboardShortcuts,
             // Opt-in (canvas text/notes): enables the `## `→H2 markdown input
@@ -422,7 +438,7 @@ if (
       set value(v: string) {
         if (v === this.lastValue) return;
         this.lastValue = v;
-        if (!this.editor) return;
+        if (!this.editor || this.fragment) return;
         // External value changes aren't the user's edits, so they stay out of undo.
         this.editor
           .chain()
