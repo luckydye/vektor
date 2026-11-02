@@ -1,6 +1,7 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { Icon } from "./Icon.tsx";
 import { MessageInput } from "./MessageInput.tsx";
+import { RunnerPicker } from "./RunnerPicker.tsx";
 
 interface Props {
   spaceId: string;
@@ -9,6 +10,11 @@ interface Props {
   onSubmit: (message: string) => void;
   /** Shared `view-transition-name`, so the box can morph into another element. */
   transitionName?: string;
+  /** Nodes and runners to offer besides the server; none hides the picker. */
+  runners?: string[];
+  /** The chosen node; null is the server. */
+  node?: string | null;
+  onNodeChange?: (node: string | null) => void;
 }
 
 export function AskAgentInput(props: Props) {
@@ -22,10 +28,8 @@ export function AskAgentInput(props: Props) {
   }
 
   return (
-    <div
-      class="flex items-start gap-3 px-3.5 py-3"
-      style={{ "view-transition-name": props.transitionName }}
-    >
+    <div style={{ "view-transition-name": props.transitionName }}>
+    <div class="flex items-start gap-3 px-3.5 py-3">
       <Icon class="mt-0.5 h-5 w-5 shrink-0 text-primary-500" name="agent-chat" />
       <div class="min-w-0 flex-1">
         <MessageInput
@@ -52,6 +56,17 @@ export function AskAgentInput(props: Props) {
           }
         />
       </div>
+    </div>
+    <Show when={props.runners?.length}>
+      <div class="flex items-center gap-2 border-neutral-100 border-t bg-neutral-50 px-3 py-2">
+        <RunnerPicker
+          runners={props.runners ?? []}
+          value={props.node ?? null}
+          onChange={props.onNodeChange}
+          label="Run the agent on"
+        />
+      </div>
+    </Show>
     </div>
   );
 }

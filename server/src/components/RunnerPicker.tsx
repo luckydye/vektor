@@ -17,7 +17,7 @@ export function RunnerPicker(props: Props) {
     <Show
       when={props.onChange}
       fallback={
-        <span class="truncate px-1.5 text-neutral-500 text-size-small" title="Runs on">
+        <span class="truncate rounded-full border border-neutral-200 bg-neutral-10 px-3 py-1 text-neutral-600 text-size-small" title="Runs on">
           {props.value}
         </span>
       }
@@ -28,7 +28,7 @@ export function RunnerPicker(props: Props) {
           title={props.label}
           value={props.value ?? ""}
           onChange={(event) => onChange()(event.currentTarget.value || null)}
-          class="focus-ring min-w-0 max-w-[10rem] truncate rounded-md bg-transparent px-1.5 py-1 text-neutral-600 text-size-small hover:bg-neutral-100"
+          class="focus-ring min-w-0 max-w-[12rem] truncate rounded-full border border-neutral-200 bg-neutral-10 px-3 py-1 text-neutral-600 text-size-small hover:bg-neutral-100"
         >
           <option value="">Vektor</option>
           <For each={props.runners}>

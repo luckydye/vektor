@@ -37,12 +37,15 @@ export function SpaceHomeView() {
   }
 
   function ask(message: string) {
+    // Starting a chat resets the node, so carry the dashboard's choice over.
+    const node = chat.chatNode();
     // One callback, so the new frame is captured with the chat already started.
     void withViewTransition(() => {
       setChatActive(true);
       chat.setShowSessionPicker(false);
       chat.setMessageInput(message);
       chat.startNewChat();
+      chat.setChatNode(node);
       void chat.sendMessage();
     });
   }
@@ -106,6 +109,9 @@ export function SpaceHomeView() {
                         onResume={resume}
                         onViewAll={showHistory}
                         inputTransitionName="agent-input"
+                        runners={chat.agentRunners() ?? []}
+                        node={chat.chatNode()}
+                        onNodeChange={chat.setChatNode}
                       />
                     </div>
                   </Show>

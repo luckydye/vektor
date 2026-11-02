@@ -40,9 +40,10 @@ export function AIChatConversation(props: Props) {
 
     <div class="shrink-0 px-3 pb-3">
       <div
-      class="rounded-xl border border-neutral-200 bg-neutral-10 px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-neutral-300"
+      class="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-10 shadow-sm transition-colors focus-within:border-neutral-300"
       style={{ "view-transition-name": props.inputTransitionName }}
     >
+      <div class="px-3 pt-2.5 pb-2">
         <MessageInput
           ref={chat.setMessageInputEl}
           value={chat.messageInput()}
@@ -61,14 +62,6 @@ export function AIChatConversation(props: Props) {
           onSubmit={() => void chat.sendMessage()}
           actions={
             <div class="flex min-w-0 items-center gap-1">
-              <Show when={chat.showRunnerPicker()}>
-                <RunnerPicker
-                  runners={chat.agentRunners() ?? []}
-                  value={chat.chatNode()}
-                  onChange={chat.currentSessionId() ? undefined : chat.setChatNode}
-                  label="Run the agent on"
-                />
-              </Show>
               <Show
                 when={chat.isGenerating()}
                 fallback={
@@ -100,6 +93,17 @@ export function AIChatConversation(props: Props) {
           }
         />
       </div>
+      <Show when={chat.showRunnerPicker()}>
+        <div class="flex items-center gap-2 border-neutral-100 border-t bg-neutral-50 px-3 py-2">
+          <RunnerPicker
+            runners={chat.agentRunners() ?? []}
+            value={chat.chatNode()}
+            onChange={chat.currentSessionId() ? undefined : chat.setChatNode}
+            label="Run the agent on"
+          />
+        </div>
+      </Show>
+    </div>
     </div>
   </div>
   );

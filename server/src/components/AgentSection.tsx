@@ -18,6 +18,9 @@ interface Props {
   onResume: (session: AIChatSessionListEntry) => void;
   onViewAll: () => void;
   inputTransitionName?: string;
+  runners?: string[];
+  node?: string | null;
+  onNodeChange?: (node: string | null) => void;
 }
 
 export function AgentSection(props: Props) {
@@ -29,6 +32,9 @@ export function AgentSection(props: Props) {
           disabled={props.disabled}
           placeholder={props.placeholder}
           transitionName={props.inputTransitionName}
+          runners={props.runners}
+          node={props.node}
+          onNodeChange={props.onNodeChange}
           onSubmit={(message) => props.onAsk(message)}
         />
 
