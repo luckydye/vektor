@@ -6,70 +6,32 @@ on:
       - "v*"
 
 jobs:
+  # Built as its own job so deploy can start as soon as it finishes, without
+  # waiting for the other platforms.
+  build-linux-x64:
+    uses: ./.github/workflows/build.yml
+    with:
+      # ONNX Runtime rc.12 uses glibc's C23 conversion symbols, available in
+      # the Ubuntu 24.04 runtime baseline.
+      runner: ubuntu-24.04
+      artifact: vektor-linux-x64
+
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ONNX Runtime rc.12 uses glibc's C23 conversion symbols, available in
-          # the Ubuntu 24.04 runtime baseline.
-          - runner: ubuntu-24.04
-            artifact: vektor-linux-x64
           - runner: ubuntu-24.04-arm
             artifact: vektor-linux-arm64
           - runner: macos-latest
             artifact: vektor-darwin-arm64
-    runs-on: ${{ matrix.runner }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      # Build native N-API addons on each target platform so their architecture
-      # matches the compiled Bun binary.
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dependencies
-        run: |
-          bun i
-          cd server && bun i
-
-      - name: Build native image addon
-        working-directory: server/native/image
-        run: |
-          bun i
-          bun run build
-
-      - name: Build native JavaScript runtime
-        working-directory: server/native/exec
-        run: |
-          bun i
-          bun run build
-
-      - name: Build native embedding runtime
-        working-directory: server/native/embedding
-        run: |
-          bun i
-          bun run build
-
-      - name: Build Astro assets + compile binary
-        working-directory: server
-        run: |
-          bunx --bun astro build
-          bun run ./build.ts
-          mv ./vektor ./${{ matrix.artifact }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: server/${{ matrix.artifact }}
-          if-no-files-found: error
+    uses: ./.github/workflows/build.yml
+    with:
+      runner: ${{ matrix.runner }}
+      artifact: ${{ matrix.artifact }}
 
   release:
-    needs: build
+    needs: [build-linux-x64, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -88,7 +50,7 @@ jobs:
             artifacts/vektor-darwin-arm64
 
   deploy:
-    needs: release
+    needs: build-linux-x64
     runs-on: ubuntu-latest
     environment: Production
     steps:
