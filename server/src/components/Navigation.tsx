@@ -20,6 +20,7 @@ import {
   useQuickSearch,
 } from "#composeables/useQuickSearch.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
+import { useSpaceSettingsActions } from "#composeables/useSpaceSettingsActions.ts";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
 import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
@@ -191,6 +192,8 @@ export function Navigation() {
   });
 
   Actions.mapShortcut("mod-shift-f", "find:open");
+
+  useSpaceSettingsActions();
 
   return (
     <div class="z-1 flex h-full flex-col">

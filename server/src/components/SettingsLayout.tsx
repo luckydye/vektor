@@ -1,4 +1,4 @@
-import { createSignal, For, type JSX, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, type JSX, on, onMount, Show } from "solid-js";
 import { animateTabPanel } from "#utils/animate.ts";
 import "@atrium-ui/elements/tabs";
 import { Tab as TabItem, TabsList } from "./Tabs.tsx";
@@ -10,7 +10,10 @@ interface Tab {
 
 interface Props {
   tabs: readonly Tab[];
-  initialTab?: string;
+  /** The tab to show; changing it switches tabs, as a link into the settings does. */
+  activeTab?: string;
+  /** The id of a section to scroll to once its tab shows. */
+  activeSection?: string;
   panels: Record<string, () => JSX.Element>;
   class?: string;
   /** Background of the sticky tab bar; must match the surface the layout sits on. */
@@ -26,7 +29,7 @@ export function SettingsLayout(props: Props) {
   let tabsEl: ATabsEl | undefined;
   let stickyEl: HTMLDivElement | undefined;
   const initialIndex = Math.max(
-    props.tabs.findIndex((tab) => tab.id === props.initialTab),
+    props.tabs.findIndex((tab) => tab.id === props.activeTab),
     0,
   );
   const [ready, setReady] = createSignal(false);
@@ -49,8 +52,7 @@ export function SettingsLayout(props: Props) {
     if (stuck) tabsEl.scrollIntoView({ block: "start" });
   }
 
-  function onTabSelected(event: Event) {
-    const { index } = (event as CustomEvent<{ index: number }>).detail;
+  function showTab(index: number) {
     tabsEl?.selectTabByIndex(index, false);
     if (index !== selectedIndex()) {
       const direction = index > selectedIndex() ? "next" : "previous";
@@ -58,9 +60,36 @@ export function SettingsLayout(props: Props) {
       setSelectedIndex(index);
       animatePanel(index, direction);
     }
+  }
+
+  function onTabSelected(event: Event) {
+    const { index } = (event as CustomEvent<{ index: number }>).detail;
+    showTab(index);
     const tab = props.tabs[index];
     if (tab) props.onTabChange?.(tab.id);
   }
+
+  function scrollToSection(id: string) {
+    // A frame later, so the panel holding the section is on screen.
+    requestAnimationFrame(() => {
+      tabsEl
+        ?.querySelector(`#${CSS.escape(id)}`)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }
+
+  // Follows links into the settings, including ones followed while already here.
+  createEffect(
+    on(
+      [ready, () => props.activeTab, () => props.activeSection],
+      ([isReady, tabId, section]) => {
+        if (!isReady) return;
+        const index = props.tabs.findIndex((tab) => tab.id === tabId);
+        if (index >= 0) showTab(index);
+        if (section) scrollToSection(section);
+      },
+    ),
+  );
 
   onMount(async () => {
     await customElements.whenDefined("a-tabs");

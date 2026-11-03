@@ -106,6 +106,7 @@ export function SpaceAIUsage() {
 
   return (
     <SettingsSection
+      id="ai-usage"
       title="AI usage"
       description="Track this space's estimated AI token usage and set its weekly budget."
     >

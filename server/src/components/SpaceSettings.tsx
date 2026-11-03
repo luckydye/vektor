@@ -1,3 +1,4 @@
+import { useLocation } from "@solidjs/router";
 import { createMemo, Show } from "solid-js";
 import { Permission } from "#acl/permissions.ts";
 import { useRunners } from "#composeables/useRunners.ts";
@@ -11,23 +12,10 @@ import { SpaceAIUsage } from "./SpaceAIUsage.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
 import { SpaceRunners } from "./SpaceRunners.tsx";
 import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
-
-const tabs = [
-  { id: "general", label: "General" },
-  { id: "integrations", label: "Integrations" },
-  { id: "ai", label: "AI" },
-  { id: "jobs", label: "Workflows" },
-  { id: "archive", label: "Archive" },
-] as const;
-
-type TabId = (typeof tabs)[number]["id"];
-const validTabIds = tabs.map((tab) => tab.id) as string[];
-
-function tabFromHash(): TabId {
-  if (typeof window === "undefined") return "general";
-  const hash = window.location.hash.slice(1);
-  return validTabIds.includes(hash) ? (hash as TabId) : "general";
-}
+import {
+  resolveSpaceSettingsHash,
+  SPACE_SETTINGS_TABS,
+} from "#utils/spaceSettingsDestinations.ts";
 
 function setTab(id: string) {
   window.location.hash = id;
@@ -37,17 +25,22 @@ export function SpaceSettings() {
   const { currentSpace } = useSpace();
   const isOwner = createMemo(() => currentSpace()?.userRole === Permission.OWNER);
   const runners = useRunners(isOwner);
+  // From the router, so a jump into settings while already here switches tabs.
+  const location = useLocation();
+  const target = createMemo(() => resolveSpaceSettingsHash(location.hash));
 
   return (
     <SettingsLayout
-      tabs={tabs}
-      initialTab={tabFromHash()}
+      tabs={SPACE_SETTINGS_TABS}
+      activeTab={target().tab}
+      activeSection={target().section}
       onTabChange={setTab}
       panels={{
         general: () => <SpaceGeneralSettings />,
         integrations: () => (
           <>
             <SettingsSection
+              id="extensions"
               title="Extensions"
               description="Install and manage extensions to add functionality."
             >
@@ -69,6 +62,7 @@ export function SpaceSettings() {
           >
             <SpaceAIUsage />
             <SettingsSection
+              id="runners"
               title="Runners"
               description="Where this space's jobs, workflows and your agents can run instead of the server."
             >
@@ -85,6 +79,7 @@ export function SpaceSettings() {
         jobs: () => <JobsSettings />,
         archive: () => (
           <SettingsSection
+            id="archived-documents"
             title="Archived Documents"
             description="Restore or permanently delete archived documents."
           >

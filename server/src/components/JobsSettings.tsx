@@ -208,6 +208,7 @@ export function JobsSettings() {
   return (
     <>
       <SettingsSection
+        id="scheduled-workflows"
         title="Scheduled Workflows"
         description="Workflows that run automatically on a schedule."
         actions={
@@ -422,6 +423,7 @@ export function JobsSettings() {
       </SettingsSection>
 
       <SettingsSection
+        id="workflow-runs"
         title="Recent Workflow Runs"
         description="The latest runs across all workflows in this space."
         actions={

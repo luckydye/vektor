@@ -124,6 +124,7 @@ export function SpaceGeneralSettings(props: Props) {
     <>
       <div>
         <SettingsSection
+          id="general-profile"
           title="Space Settings"
           description="Personalize your space with settings and preferences."
         >
@@ -199,6 +200,7 @@ export function SpaceGeneralSettings(props: Props) {
         </SettingsSection>
 
         <SettingsSection
+          id="features"
           title="Features"
           description="Choose which document types members can create."
         >
@@ -245,6 +247,7 @@ export function SpaceGeneralSettings(props: Props) {
         </SettingsSection>
 
         <SettingsSection
+          id="access"
           title="Access"
           description="Members, groups and tokens with access to this space."
         >
@@ -252,13 +255,14 @@ export function SpaceGeneralSettings(props: Props) {
         </SettingsSection>
 
         <SettingsSection
+          id="share-links"
           title="Share links"
           description="Review every read-only link created for pages in this space."
         >
           <SpaceShareLinks />
         </SettingsSection>
 
-        <SettingsSection title="Danger Zone">
+        <SettingsSection id="danger-zone" title="Danger Zone">
           <div class="flex items-center justify-between gap-4 rounded-lg border border-primary-200 p-4">
             <div>
               <p class="font-medium text-neutral-900 text-size-medium">

@@ -1,6 +1,8 @@
 import { type JSX, Show } from "solid-js";
 
 interface Props {
+  /** An anchor for links into the settings, as `/settings#<id>`. */
+  id?: string;
   title: string;
   description?: string;
   /** Header controls, placed under the description. */
@@ -10,7 +12,11 @@ interface Props {
 
 export function SettingsSection(props: Props) {
   return (
-    <section class="@container border-neutral-100 border-t py-8 first:border-t-0 first:pt-0">
+    // The scroll margin keeps a linked section clear of the sticky tab bar.
+    <section
+      id={props.id}
+      class="@container scroll-mt-16 border-neutral-100 border-t py-8 first:border-t-0 first:pt-0"
+    >
       <div class="grid @3xl:grid-cols-[14rem_minmax(0,1fr)] @3xl:gap-10 gap-4">
         <div>
           <h2 class="font-semibold text-neutral-900 text-size-large">{props.title}</h2>

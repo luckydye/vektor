@@ -145,6 +145,7 @@ export function SpaceSecretsSettings() {
 
   return (
     <SettingsSection
+      id="secrets"
       title="Secrets"
       description="Values that workflows and extensions in this space can read."
       actions={
