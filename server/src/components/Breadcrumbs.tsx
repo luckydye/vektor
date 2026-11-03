@@ -25,6 +25,10 @@ interface Props {
   parents?: BreadcrumbItem[];
   currentTitle: string;
   documentId?: string;
+  /** With `documentUrl`, makes the current page draggable, as the page title is. */
+  documentType?: string | null;
+  /** Unset for a draft, which has nowhere to link to yet. */
+  documentUrl?: string;
   spaceId?: string;
   canEdit?: boolean;
   class?: string;
@@ -39,6 +43,16 @@ export function Breadcrumbs(props: Props) {
     categorySlot() || props.category || parents().length > 0;
 
   let olRef: HTMLOListElement | undefined;
+
+  const currentTitle = () => (
+    <TitleEditor
+      variant="breadcrumb"
+      title={props.currentTitle}
+      documentId={props.documentId}
+      spaceId={props.spaceId}
+      canEdit={props.canEdit}
+    />
+  );
 
   createEffect(() => {
     void props.category;
@@ -103,13 +117,24 @@ export function Breadcrumbs(props: Props) {
           </For>
 
           <li class="shrink-0">
-            <TitleEditor
-              variant="breadcrumb"
-              title={props.currentTitle}
-              documentId={props.documentId}
-              spaceId={props.spaceId}
-              canEdit={props.canEdit}
-            />
+            <Show
+              when={props.documentId && props.documentUrl ? props.documentUrl : undefined}
+              fallback={currentTitle()}
+            >
+              {(url) => (
+                // Dragged like the page title: onto a document to nest under it, or
+                // into the editor as a link. Other documents dropped here nest under it.
+                <page-target
+                  class="block rounded-sm [&[data-drag-over]]:bg-primary-100 [&[data-dragging]]:opacity-50"
+                  attr:data-document-id={props.documentId}
+                  attr:data-document-type={props.documentType ?? undefined}
+                  attr:data-space-id={props.spaceId}
+                  attr:data-document-url={url()}
+                >
+                  {currentTitle()}
+                </page-target>
+              )}
+            </Show>
           </li>
         </ol>
       </nav>

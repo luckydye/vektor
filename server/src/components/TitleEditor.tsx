@@ -88,11 +88,11 @@ export function TitleEditor(props: Props) {
   const titleTag = () => (variant() === "breadcrumb" ? "span" : "h1");
   const displayClasses = () =>
     variant() === "breadcrumb"
-      ? "block px-1 font-medium text-neutral-900"
+      ? "block px-1 font-normal text-neutral-900"
       : "flex items-center gap-3 px-1 font-bold text-neutral-900 text-size-display";
   const inputClasses = () =>
     variant() === "breadcrumb"
-      ? "[field-sizing:content] bg-neutral-50 px-1 font-medium text-neutral-900 outline-none transition-colors placeholder:text-[#9ca3af] focus:border-blue-500 focus:ring-0"
+      ? "[field-sizing:content] bg-neutral-50 px-1 font-normal text-neutral-900 outline-none transition-colors placeholder:text-[#9ca3af] focus:border-blue-500 focus:ring-0"
       : "flex-1 bg-neutral-50 px-1 font-bold text-neutral-900 text-size-display outline-none transition-colors placeholder:text-[#9ca3af] focus:border-blue-500 focus:ring-0";
 
   return (

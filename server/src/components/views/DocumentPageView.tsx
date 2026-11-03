@@ -510,6 +510,8 @@ export function DocumentPageView(props: Props) {
             parents={parentBreadcrumbs()}
             currentTitle={title()}
             documentId={doc()?.id}
+            documentType={doc()?.type}
+            documentUrl={isDraft() ? undefined : titleDragUrl()}
             spaceId={currentSpace()?.id}
             canEdit={userCanEdit()}
             categorySlot={documentPropertiesBlock("toolbar", "category")}
