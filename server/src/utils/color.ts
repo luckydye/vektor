@@ -180,6 +180,14 @@ export function getTextColor(bgColor: string | undefined) {
   return brightness > 155 ? "#1F2937" : "#FFFFFF";
 }
 
+/** A category with no background colour: its badge shows only the icon or initial. */
+export const TRANSPARENT_COLOR = "transparent";
+
+/** What a category colour may be: a `#rrggbb` hex, or `TRANSPARENT_COLOR`. */
+export function isCategoryColor(value: string | null): value is string {
+  return value === TRANSPARENT_COLOR || isHexColor(value);
+}
+
 /** True for a full 6-digit hex color (`#rrggbb`), the only format we persist. */
 export function isHexColor(value: string | null): value is string {
   return /^#[0-9a-f]{6}$/i.test(value ?? "");

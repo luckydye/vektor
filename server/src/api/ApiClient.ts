@@ -4,6 +4,7 @@ import type { NodeSummary } from "#agent/nodes/protocol.ts";
 import { CanvasCatchUpRefused, type CanvasJoined } from "#canvas/document/canvasSync.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
+import type { CategoryDocumentSort } from "#documents/categorySort.ts";
 import {
   type CanvasFlushedPayload,
   type CanvasReloadPayload,
@@ -202,6 +203,10 @@ export interface Category {
   description?: string;
   color?: string;
   icon?: string;
+  /** Unset is alphanumeric. */
+  documentSort?: CategoryDocumentSort;
+  /** How many root documents the sidebar shows before "Show more"; unset shows all. */
+  documentLimit?: number;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1281,6 +1286,8 @@ export class ApiClient {
         description?: string;
         color?: string;
         icon?: string;
+        documentSort?: CategoryDocumentSort;
+        documentLimit?: number;
       },
     ) => {
       const response = await this.apiPost<{ category: Category }>(
@@ -1325,6 +1332,8 @@ export class ApiClient {
         description?: string;
         color?: string;
         icon?: string;
+        documentSort?: CategoryDocumentSort;
+        documentLimit?: number;
       },
     ) => {
       const response = await this.withOptimisticReplica(

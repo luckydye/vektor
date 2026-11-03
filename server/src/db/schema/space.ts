@@ -135,6 +135,10 @@ export const category = sqliteTable("category", {
   description: text("description"),
   color: text("color"),
   icon: text("icon"),
+  /** A `CategoryDocumentSort`; null is the default, alphanumeric. */
+  documentSort: text("document_sort"),
+  /** How many root documents the sidebar shows before "Show more"; null shows all. */
+  documentLimit: integer("document_limit"),
   order: integer("order").default(0).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

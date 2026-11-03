@@ -3,6 +3,10 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { category } from "#db/schema/space.ts";
+import {
+  type CategoryDocumentSort,
+  isCategoryDocumentSort,
+} from "#documents/categorySort.ts";
 
 export interface Category {
   id: string;
@@ -11,6 +15,10 @@ export interface Category {
   description?: string;
   color?: string;
   icon?: string;
+  /** Unset is alphanumeric. */
+  documentSort?: CategoryDocumentSort;
+  /** How many root documents the sidebar shows before "Show more"; unset shows all. */
+  documentLimit?: number;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -22,6 +30,8 @@ export interface CategoryInput {
   description?: string;
   color?: string;
   icon?: string;
+  documentSort?: CategoryDocumentSort;
+  documentLimit?: number;
 }
 
 export class CategorySlugTakenError extends Error {
@@ -38,6 +48,10 @@ function rowToCategory(result: typeof category.$inferSelect): Category {
     description: result.description || undefined,
     color: result.color || undefined,
     icon: result.icon || undefined,
+    documentSort: isCategoryDocumentSort(result.documentSort)
+      ? result.documentSort
+      : undefined,
+    documentLimit: result.documentLimit || undefined,
     order: result.order,
     createdAt: new Date(result.createdAt),
     updatedAt: new Date(result.updatedAt),
@@ -65,6 +79,8 @@ export async function createCategory(
       description: input.description || null,
       color: input.color || null,
       icon: input.icon || null,
+      documentSort: input.documentSort ?? null,
+      documentLimit: input.documentLimit || null,
       order,
       createdAt: now,
       updatedAt: now,
@@ -120,6 +136,8 @@ export async function updateCategory(
         description: input.description || null,
         color: input.color || null,
         icon: input.icon || null,
+        documentSort: input.documentSort ?? null,
+        documentLimit: input.documentLimit || null,
         updatedAt: now,
       })
       .where(eq(category.id, id));

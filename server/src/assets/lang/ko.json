@@ -753,5 +753,15 @@
   "Drawing": "그림",
   "File": "파일",
   "Audio": "오디오",
-  "Model": "3D 모델"
+  "Model": "3D 모델",
+  "Sort documents by": "문서 정렬 기준",
+  "Alphabetical": "이름순",
+  "Last modified": "최근 수정",
+  "Last created": "최근 생성",
+  "Documents to show": "표시할 문서 수",
+  "All": "전체",
+  "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "사이드바에 표시할 최상위 문서 수를 제한합니다. 나머지는 \"더 보기\"로 볼 수 있습니다.",
+  "Show {count} more": "{count}개 더 보기",
+  "Show less": "간략히 보기",
+  "Transparent": "투명"
 }

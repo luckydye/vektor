@@ -85,6 +85,10 @@ export interface Category {
   description?: string | null;
   color?: string | null;
   icon?: string | null;
+  /** How the sidebar orders the category's documents; unset is alphanumeric. */
+  documentSort?: "alphanumeric" | "updated" | "created" | null;
+  /** How many root documents the sidebar shows before "Show more"; unset shows all. */
+  documentLimit?: number | null;
   /** Sort position within the space; listings arrive already ordered by it. */
   order: number;
   createdAt: string;

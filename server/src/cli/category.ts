@@ -12,8 +12,19 @@ type Category = {
   description?: string;
   color?: string;
   icon?: string;
+  documentSort?: string;
+  documentLimit?: number;
   order: number;
 };
+
+/** `--limit` as sent: a count, or 0 to show every document. */
+function parseLimit(limit: string): number | undefined {
+  const value = Number(limit);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error("--limit must be a whole number (0 shows every document)");
+  }
+  return value || undefined;
+}
 
 async function fetchCategory(
   host: string,
@@ -53,6 +64,8 @@ export async function commandCategoryCreate(flags: {
   description?: string;
   color?: string;
   icon?: string;
+  sort?: string;
+  limit?: string;
 }): Promise<void> {
   const { host, token, spaceId } = await resolveConfig();
   const slug = flags.slug ?? slugify(flags.name);
@@ -68,6 +81,8 @@ export async function commandCategoryCreate(flags: {
         description: flags.description,
         color: flags.color,
         icon: flags.icon,
+        documentSort: flags.sort,
+        documentLimit: flags.limit === undefined ? undefined : parseLimit(flags.limit),
       }),
     },
   );
@@ -85,6 +100,8 @@ export async function commandCategoryEdit(
     description?: string;
     color?: string;
     icon?: string;
+    sort?: string;
+    limit?: string;
   },
 ): Promise<void> {
   const { host, token, spaceId } = await resolveConfig();
@@ -104,6 +121,10 @@ export async function commandCategoryEdit(
         description: flags.description ?? existing.description,
         color: flags.color ?? existing.color,
         icon: flags.icon ?? existing.icon,
+        // A PUT replaces the category, so unchanged settings are sent back as they were.
+        documentSort: flags.sort ?? existing.documentSort,
+        documentLimit:
+          flags.limit === undefined ? existing.documentLimit : parseLimit(flags.limit),
       }),
     },
   );

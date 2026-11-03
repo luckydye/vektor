@@ -787,5 +787,15 @@
   "Style": "Style",
   "Present": "Present",
   "Add a frame or slide to present": "Add a frame or slide to present",
-  "Show the frames full screen, one after another": "Show the frames full screen, one after another"
+  "Show the frames full screen, one after another": "Show the frames full screen, one after another",
+  "Sort documents by": "Sort documents by",
+  "Alphabetical": "Alphabetical",
+  "Last modified": "Last modified",
+  "Last created": "Last created",
+  "Documents to show": "Documents to show",
+  "All": "All",
+  "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".",
+  "Show {count} more": "Show {count} more",
+  "Show less": "Show less",
+  "Transparent": "Transparent"
 }

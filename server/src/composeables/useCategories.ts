@@ -5,6 +5,11 @@ import { useMutation, useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 
+export type CategoryFields = Pick<
+  Category,
+  "name" | "slug" | "description" | "color" | "icon" | "documentSort" | "documentLimit"
+>;
+
 export function useCategories() {
   const { currentSpaceId: spaceId } = useSpace();
 
@@ -42,13 +47,7 @@ export function useCategories() {
   );
 
   const createCategoryMutation = useMutation({
-    mutationFn: async (params: {
-      name: string;
-      slug: string;
-      description?: string;
-      color?: string;
-      icon?: string;
-    }) => {
+    mutationFn: async (params: CategoryFields) => {
       const spaceIdValue = spaceId();
       if (!spaceIdValue) {
         throw new Error("No space ID");
@@ -58,14 +57,7 @@ export function useCategories() {
   });
 
   const updateCategoryMutation = useMutation({
-    mutationFn: async (params: {
-      categoryId: string;
-      name: string;
-      slug: string;
-      description?: string;
-      color?: string;
-      icon?: string;
-    }) => {
+    mutationFn: async (params: CategoryFields & { categoryId: string }) => {
       const spaceIdValue = spaceId();
       if (!spaceIdValue) {
         throw new Error("No space ID");
@@ -86,39 +78,12 @@ export function useCategories() {
     },
   });
 
-  const createCategory = async (
-    name: string,
-    slug: string,
-    description?: string,
-    color?: string,
-    icon?: string,
-  ) => {
-    return await createCategoryMutation.mutateAsync({
-      name,
-      slug,
-      description,
-      color,
-      icon,
-    });
-  };
+  const createCategory = async (fields: CategoryFields) =>
+    await createCategoryMutation.mutateAsync(fields);
 
-  const updateCategory = async (
-    categoryId: string,
-    name: string,
-    slug: string,
-    description?: string,
-    color?: string,
-    icon?: string,
-  ) => {
-    return await updateCategoryMutation.mutateAsync({
-      categoryId,
-      name,
-      slug,
-      description,
-      color,
-      icon,
-    });
-  };
+  /** Replaces every field: one left unset is cleared. */
+  const updateCategory = async (categoryId: string, fields: CategoryFields) =>
+    await updateCategoryMutation.mutateAsync({ categoryId, ...fields });
 
   const deleteCategory = async (categoryId: string) => {
     await deleteCategoryMutation.mutateAsync(categoryId);

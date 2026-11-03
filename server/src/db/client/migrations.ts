@@ -321,6 +321,11 @@ async function liveDocumentIndexes(db: Database): Promise<void> {
   ]);
 }
 
+async function categoryDocumentListing(db: Database): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.category.documentSort);
+  await addColumnIfMissing(db, spaceSchema.category.documentLimit);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -344,4 +349,5 @@ export const spaceMigrations: Migration[] = [
   { id: 16, name: "runners", up: runners },
   { id: 17, name: "repair-agent-schedules", up: repairAgentSchedules },
   { id: 18, name: "live-document-indexes", up: liveDocumentIndexes },
+  { id: 19, name: "category-document-listing", up: categoryDocumentListing },
 ];

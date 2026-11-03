@@ -20,7 +20,13 @@ import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
-import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
+import {
+  CATEGORY_DOCUMENT_SORTS,
+  type CategoryDocumentSort,
+  categoryDocumentComparator,
+  DEFAULT_CATEGORY_DOCUMENT_SORT,
+} from "#documents/categorySort.ts";
+import { propertyValueIncludes } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { slugify } from "#utils/slug.ts";
@@ -47,6 +53,27 @@ type PopoverTriggerEl = HTMLElement & { show?: () => void; hide?: () => void };
 
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
+
+const CATEGORY_SORT_LABELS: Record<CategoryDocumentSort, string> = {
+  alphanumeric: "Alphabetical",
+  updated: "Last modified",
+  created: "Last created",
+};
+
+const DEFAULT_CATEGORY_COLOR = "#4ECDC4";
+
+function emptyCategoryForm() {
+  return {
+    name: "",
+    slug: "",
+    description: "",
+    color: DEFAULT_CATEGORY_COLOR,
+    icon: "",
+    documentSort: DEFAULT_CATEGORY_DOCUMENT_SORT as CategoryDocumentSort,
+    /** Empty shows every document. */
+    documentLimit: "",
+  };
+}
 
 const EXPANDED_ITEMS_CODEC = {
   parse: (raw: string) => new Set<string>(JSON.parse(raw)),
@@ -90,16 +117,28 @@ export function DocumentTree(props: Props) {
 
   const { documentsBySlug, isSlugLoading } = useCategoryDocuments(expandedCategorySlugs);
 
-  const documentTitleCollator = new Intl.Collator(lang, {
-    numeric: true,
-    sensitivity: "base",
-  });
+  /** Categories whose root documents are all shown, past their `documentLimit`. */
+  const [revealedCategories, setRevealedCategories] = createSignal(new Set<string>());
 
+  function setCategoryRevealed(categoryId: string, revealed: boolean) {
+    const next = new Set(revealedCategories());
+    if (revealed) next.add(categoryId);
+    else next.delete(categoryId);
+    setRevealedCategories(next);
+  }
+
+  /**
+   * The category's documents in its sort order, and the root documents to list.
+   * Only the roots are cut to `documentLimit`; nested documents follow their
+   * parent. `hiddenCount` is how many roots the limit holds back, and
+   * `collapsible` whether "Show more" was used and can be undone.
+   */
   function categoryDocuments(category: Category) {
-    const docs = [...(documentsBySlug().get(category.slug) || [])].sort((left, right) =>
-      documentTitleCollator.compare(
-        documentTitle(left, lang),
-        documentTitle(right, lang),
+    const docs = [...(documentsBySlug().get(category.slug) || [])].sort(
+      categoryDocumentComparator(
+        category.documentSort,
+        (doc: DocumentWithProperties) => documentTitle(doc, lang),
+        lang,
       ),
     );
 
@@ -121,7 +160,19 @@ export function DocumentTree(props: Props) {
       return !parent;
     });
 
-    return { docs, rootDocs };
+    const limit = category.documentLimit;
+    if (!limit || rootDocs.length <= limit) {
+      return { docs, rootDocs, hiddenCount: 0, collapsible: false };
+    }
+    if (revealedCategories().has(category.id)) {
+      return { docs, rootDocs, hiddenCount: 0, collapsible: true };
+    }
+    return {
+      docs,
+      rootDocs: rootDocs.slice(0, limit),
+      hiddenCount: rootDocs.length - limit,
+      collapsible: false,
+    };
   }
 
   const [isEditMode, setIsEditMode] = createSignal(false);
@@ -139,13 +190,7 @@ export function DocumentTree(props: Props) {
   });
   let draggedCategory: Category | null = null;
 
-  const [formData, setFormData] = createSignal({
-    name: "",
-    slug: "",
-    description: "",
-    color: "#4ECDC4",
-    icon: "",
-  });
+  const [formData, setFormData] = createSignal(emptyCategoryForm());
   const patchForm = (patch: Partial<ReturnType<typeof formData>>) =>
     setFormData({ ...formData(), ...patch });
 
@@ -223,7 +268,7 @@ export function DocumentTree(props: Props) {
   }
 
   function resetForm() {
-    setFormData({ name: "", slug: "", description: "", color: "#4ECDC4", icon: "" });
+    setFormData(emptyCategoryForm());
     setFormError(null);
     setEditingId(null);
     setShowAddForm(false);
@@ -245,8 +290,10 @@ export function DocumentTree(props: Props) {
       name: category.name,
       slug: category.slug,
       description: category.description || "",
-      color: category.color || "#4ECDC4",
+      color: category.color || DEFAULT_CATEGORY_COLOR,
       icon: category.icon || "",
+      documentSort: category.documentSort ?? DEFAULT_CATEGORY_DOCUMENT_SORT,
+      documentLimit: category.documentLimit ? String(category.documentLimit) : "",
     });
     setFormError(null);
   }
@@ -269,24 +316,24 @@ export function DocumentTree(props: Props) {
 
     const form = formData();
     const name = form.name.trim();
+    const limit = Number.parseInt(form.documentLimit, 10);
+    const fields = {
+      name,
+      description: form.description?.trim() || undefined,
+      color: form.color || undefined,
+      icon: form.icon?.trim() || undefined,
+      documentSort:
+        form.documentSort === DEFAULT_CATEGORY_DOCUMENT_SORT
+          ? undefined
+          : form.documentSort,
+      documentLimit: limit > 0 ? limit : undefined,
+    };
     try {
-      if (editingId()) {
-        await updateCategory(
-          editingId() as string,
-          name,
-          form.slug.trim(),
-          form.description?.trim() || undefined,
-          form.color || undefined,
-          form.icon?.trim() || undefined,
-        );
+      const id = editingId();
+      if (id) {
+        await updateCategory(id, { ...fields, slug: form.slug.trim() });
       } else {
-        await createCategory(
-          name,
-          slugify(name),
-          form.description?.trim() || undefined,
-          form.color || undefined,
-          form.icon?.trim() || undefined,
-        );
+        await createCategory({ ...fields, slug: slugify(name) });
       }
 
       resetForm();
@@ -524,7 +571,9 @@ export function DocumentTree(props: Props) {
                       next.docs.length === 0 && !isCategoryOpen(category());
                     return isClosing ? prev : next;
                   },
-                  { docs: [], rootDocs: [] } as ReturnType<typeof categoryDocuments>,
+                  { docs: [], rootDocs: [], hiddenCount: 0, collapsible: false } as ReturnType<
+                    typeof categoryDocuments
+                  >,
                 );
 
                 const isEmpty = createMemo(
@@ -674,6 +723,40 @@ export function DocumentTree(props: Props) {
                             />
                           )}
                         </For>
+
+                        <Show
+                          when={documents().hiddenCount > 0 || documents().collapsible}
+                        >
+                          <div class="pt-0.5 pl-[calc(0.535rem+1.25rem)]">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCategoryRevealed(
+                                  category().id,
+                                  documents().hiddenCount > 0,
+                                )
+                              }
+                              class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium text-neutral-400 text-size-extra-small transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                              aria-expanded={documents().collapsible}
+                            >
+                              <span>
+                                {documents().hiddenCount > 0
+                                  ? t("Show {count} more").replace(
+                                      "{count}",
+                                      String(documents().hiddenCount),
+                                    )
+                                  : t("Show less")}
+                              </span>
+                              <Icon
+                                class={twMerge(
+                                  "h-3 w-3 flex-none transition-transform",
+                                  documents().collapsible && "rotate-180",
+                                )}
+                                name="chevron-down"
+                              />
+                            </button>
+                          </div>
+                        </Show>
 
                         <Show when={isEmpty()}>
                           <div class="pl-[0.535rem]">
@@ -838,7 +921,7 @@ export function DocumentTree(props: Props) {
           >
             <CategoryAppearance
               name={formData().name}
-              color={formData().color || "#4ECDC4"}
+              color={formData().color || DEFAULT_CATEGORY_COLOR}
               icon={formData().icon || ""}
               onUpdateColor={(color) => patchForm({ color })}
               onUpdateIcon={(icon) => patchForm({ icon })}
@@ -862,22 +945,56 @@ export function DocumentTree(props: Props) {
               />
             </div>
 
-            <div>
-              <label
-                for="category-description"
-                class="mb-1 block font-medium text-neutral-900 text-size-small"
-              >
-                {t("Description")}
-              </label>
-              <textarea
-                id="category-description"
-                value={formData().description}
-                onInput={(e) => patchForm({ description: e.currentTarget.value })}
-                rows="2"
-                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                placeholder={t("Description (optional)")}
-              />
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label
+                  for="category-document-sort"
+                  class="mb-1 block font-medium text-neutral-900 text-size-small"
+                >
+                  {t("Sort documents by")}
+                </label>
+                <select
+                  id="category-document-sort"
+                  value={formData().documentSort}
+                  onChange={(e) =>
+                    patchForm({
+                      documentSort: e.currentTarget.value as CategoryDocumentSort,
+                    })
+                  }
+                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
+                >
+                  <For each={CATEGORY_DOCUMENT_SORTS}>
+                    {(sort) => (
+                      <option value={sort}>{t(CATEGORY_SORT_LABELS[sort])}</option>
+                    )}
+                  </For>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  for="category-document-limit"
+                  class="mb-1 block font-medium text-neutral-900 text-size-small"
+                >
+                  {t("Documents to show")}
+                </label>
+                <input
+                  id="category-document-limit"
+                  value={formData().documentLimit}
+                  onInput={(e) => patchForm({ documentLimit: e.currentTarget.value })}
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
+                  placeholder={t("All")}
+                />
+              </div>
             </div>
+            <p class="-mt-2 text-neutral-500 text-size-extra-small">
+              {t(
+                "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".",
+              )}
+            </p>
 
             <Show when={formError()}>
               <div class="rounded-md border border-red-200 bg-red-50 p-3">

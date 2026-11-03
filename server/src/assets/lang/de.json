@@ -787,5 +787,15 @@
   "Style": "Stil",
   "Present": "Präsentieren",
   "Add a frame or slide to present": "Füge einen Rahmen oder eine Folie hinzu, um zu präsentieren",
-  "Show the frames full screen, one after another": "Rahmen nacheinander im Vollbild zeigen"
+  "Show the frames full screen, one after another": "Rahmen nacheinander im Vollbild zeigen",
+  "Sort documents by": "Dokumente sortieren nach",
+  "Alphabetical": "Alphabetisch",
+  "Last modified": "Zuletzt geändert",
+  "Last created": "Zuletzt erstellt",
+  "Documents to show": "Angezeigte Dokumente",
+  "All": "Alle",
+  "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "Begrenzt die Dokumente der obersten Ebene in der Seitenleiste; der Rest liegt hinter „Mehr anzeigen“.",
+  "Show {count} more": "{count} weitere anzeigen",
+  "Show less": "Weniger anzeigen",
+  "Transparent": "Transparent"
 }

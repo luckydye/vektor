@@ -18,7 +18,8 @@ import {
   reorderCategories,
 } from "#db/space/categories.ts";
 import type { Platform } from "#platform/platform.ts";
-import { isHexColor } from "#utils/color.ts";
+import { parseCategoryDocumentListing } from "#documents/categorySort.ts";
+import { isCategoryColor } from "#utils/color.ts";
 
 /**
  * The categories the caller may see: `null` when a space-wide role carries all
@@ -108,9 +109,14 @@ export const POST: ApiRouteHandler = (context) =>
       }
 
       // A category colour is rendered into a style attribute for every member.
-      if (color && !isHexColor(color)) {
-        throw badRequestResponse("color must be a hex color, e.g. #4ecdc4");
+      if (color && !isCategoryColor(color)) {
+        throw badRequestResponse(
+          'color must be a hex color, e.g. #4ecdc4, or "transparent"',
+        );
       }
+
+      const listing = parseCategoryDocumentListing(body);
+      if ("error" in listing) throw badRequestResponse(listing.error);
 
       const store = await openSpaceStore(context.var.platform, spaceId);
       const categoryData = await createCategory(store, {
@@ -119,6 +125,7 @@ export const POST: ApiRouteHandler = (context) =>
         description,
         color,
         icon,
+        ...listing,
       });
       return createdResponse({ category: categoryData });
     },

@@ -1,6 +1,7 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { createSignal, For, Show } from "solid-js";
+import { TRANSPARENT_COLOR } from "#utils/color.ts";
 import { imageFileAsDataUrl } from "#utils/image.ts";
 import { CategoryBadge } from "./CategoryBadge.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -103,6 +104,18 @@ export function CategoryAppearance(props: Props) {
 
         <div class="flex flex-wrap items-center gap-1">
           <span class="mr-0.5 text-neutral-500 text-size-small">{t("Color")}</span>
+          <button
+            type="button"
+            title={t("Transparent")}
+            aria-label={t("Transparent")}
+            aria-pressed={props.color === TRANSPARENT_COLOR}
+            onClick={() => props.onUpdateColor?.(TRANSPARENT_COLOR)}
+            class="h-5 w-5 rounded-full border border-neutral-300 outline-offset-2 hover:scale-110 hover:shadow-sm active:scale-95 aria-pressed:outline-2 aria-pressed:outline-neutral-900"
+            style={{
+              background:
+                "linear-gradient(135deg, transparent calc(50% - 1px), #E8746C calc(50% - 1px), #E8746C calc(50% + 1px), transparent calc(50% + 1px))",
+            }}
+          />
           <For each={PRESET_COLORS}>
             {(color) => (
               <button
@@ -133,7 +146,9 @@ export function CategoryAppearance(props: Props) {
                 <div class="origin-top-right scale-95 rounded-lg border border-neutral-100 bg-background p-2 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100">
                   <a-color-picker
                     class="w-[220px]"
-                    attr:value={props.color}
+                    attr:value={
+                      props.color === TRANSPARENT_COLOR ? PRESET_COLORS[0] : props.color
+                    }
                     on:change={(event: Event) =>
                       props.onUpdateColor?.(
                         (event.target as HTMLElement & { value: string }).value,

@@ -753,5 +753,15 @@
   "Drawing": "Dibujo",
   "File": "Archivo",
   "Audio": "Audio",
-  "Model": "Modelo 3D"
+  "Model": "Modelo 3D",
+  "Sort documents by": "Ordenar documentos por",
+  "Alphabetical": "Alfabético",
+  "Last modified": "Última modificación",
+  "Last created": "Creación más reciente",
+  "Documents to show": "Documentos a mostrar",
+  "All": "Todos",
+  "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "Limita los documentos de primer nivel de la barra lateral; el resto queda tras «Mostrar más».",
+  "Show {count} more": "Mostrar {count} más",
+  "Show less": "Mostrar menos",
+  "Transparent": "Transparente"
 }

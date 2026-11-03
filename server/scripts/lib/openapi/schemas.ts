@@ -144,8 +144,23 @@ export const SCHEMAS: Record<string, JsonSchema> = {
       name: { type: "string" },
       slug: { type: "string" },
       description: { type: ["string", "null"] },
-      color: { type: ["string", "null"] },
+      color: {
+        type: ["string", "null"],
+        description: 'A `#rrggbb` hex color, or "transparent" for no badge background.',
+      },
       icon: { type: ["string", "null"] },
+      documentSort: {
+        type: ["string", "null"],
+        enum: ["alphanumeric", "updated", "created", null],
+        description:
+          "How the sidebar orders the category's documents; unset is alphanumeric.",
+      },
+      documentLimit: {
+        type: ["integer", "null"],
+        minimum: 1,
+        description:
+          "How many root documents the sidebar shows before \"Show more\"; unset shows all.",
+      },
       order: { type: "integer", description: "Sort position within the space." },
       createdAt: timestamp,
       updatedAt: timestamp,

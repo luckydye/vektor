@@ -23,7 +23,8 @@ import {
   updateCategory,
 } from "#db/space/categories.ts";
 import type { Platform } from "#platform/platform.ts";
-import { isHexColor } from "#utils/color.ts";
+import { parseCategoryDocumentListing } from "#documents/categorySort.ts";
+import { isCategoryColor } from "#utils/color.ts";
 
 async function verifyCategoryRead(
   platform: Platform,
@@ -132,9 +133,14 @@ export const PUT: ApiRouteHandler = (context) =>
       }
 
       // A category colour is rendered into a style attribute for every member.
-      if (color && !isHexColor(color)) {
-        throw badRequestResponse("color must be a hex color, e.g. #4ecdc4");
+      if (color && !isCategoryColor(color)) {
+        throw badRequestResponse(
+          'color must be a hex color, e.g. #4ecdc4, or "transparent"',
+        );
       }
+
+      const listing = parseCategoryDocumentListing(body);
+      if ("error" in listing) throw badRequestResponse(listing.error);
 
       const store = await openSpaceStore(context.var.platform, spaceId);
       const categoryData = await updateCategory(store, id, {
@@ -143,6 +149,7 @@ export const PUT: ApiRouteHandler = (context) =>
         description,
         color,
         icon,
+        ...listing,
       });
 
       if (!categoryData) {

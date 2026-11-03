@@ -1,6 +1,6 @@
 import { type JSX, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
-import { getTextColor } from "#utils/color.ts";
+import { getTextColor, TRANSPARENT_COLOR } from "#utils/color.ts";
 
 /** What a badge needs from a category — the sidebar and the chips all have it. */
 export interface CategoryBadgeData {
@@ -21,6 +21,7 @@ interface Props {
  */
 export function CategoryBadge(props: Props) {
   const isImageIcon = () => props.category.icon?.startsWith("data:image/") ?? false;
+  const isTransparent = () => props.category.color === TRANSPARENT_COLOR;
 
   return (
     <div
@@ -30,7 +31,8 @@ export function CategoryBadge(props: Props) {
       )}
       style={{
         "background-color": props.category.color || "#E5E7EB",
-        color: getTextColor(props.category.color),
+        // Without a background the text sits on the row itself, so it takes the row's ink.
+        color: isTransparent() ? undefined : getTextColor(props.category.color),
       }}
     >
       {props.children}

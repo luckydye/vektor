@@ -753,5 +753,15 @@
   "Drawing": "描画",
   "File": "ファイル",
   "Audio": "音声",
-  "Model": "3Dモデル"
+  "Model": "3Dモデル",
+  "Sort documents by": "ドキュメントの並び順",
+  "Alphabetical": "名前順",
+  "Last modified": "最終更新日",
+  "Last created": "作成日の新しい順",
+  "Documents to show": "表示するドキュメント数",
+  "All": "すべて",
+  "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "サイドバーに表示する最上位ドキュメントの数を制限します。残りは「さらに表示」から表示できます。",
+  "Show {count} more": "さらに {count} 件表示",
+  "Show less": "表示を減らす",
+  "Transparent": "透明"
 }

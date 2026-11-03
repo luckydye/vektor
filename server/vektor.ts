@@ -23,8 +23,8 @@
  *   vektor query <query>
  *   vektor set <docId> [key=value ...] [-key ...] [--title <title>] [--category <slug>] [--parent <docId|->]
  *   vektor category ls
- *   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
- *   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+ *   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>] [--sort <alphanumeric|updated|created>] [--limit <n>] [--sort <alphanumeric|updated|created>] [--limit <n>]
+ *   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>] [--sort <alphanumeric|updated|created>] [--limit <n>] [--sort <alphanumeric|updated|created>] [--limit <n>]
  *   vektor category rm <slug>
  *   vektor space register <libsql-url> [--token <auth-token>]
  *   vektor space attach <libsql-url> [--token <auth-token>]
@@ -212,8 +212,8 @@ Commands:
   vektor query <query>
   vektor set <docId> [key=value ...] [-key ...] [--title <title>] [--category <slug>] [--parent <docId|->]
   vektor category ls
-  vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
-  vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+  vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>] [--sort <alphanumeric|updated|created>] [--limit <n>]
+  vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>] [--sort <alphanumeric|updated|created>] [--limit <n>]
   vektor category rm <slug>
   vektor space register <libsql-url> [--token <auth-token>]
   vektor space attach <libsql-url> [--token <auth-token>]
@@ -490,6 +490,8 @@ async function main(): Promise<void> {
         description: flags.description,
         color: flags.color,
         icon: flags.icon,
+        sort: flags.sort,
+        limit: flags.limit,
       });
       return;
     }
@@ -503,6 +505,8 @@ async function main(): Promise<void> {
         description: flags.description,
         color: flags.color,
         icon: flags.icon,
+        sort: flags.sort,
+        limit: flags.limit,
       });
       return;
     }
