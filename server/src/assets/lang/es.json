@@ -763,5 +763,7 @@
   "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "Limita los documentos de primer nivel de la barra lateral; el resto queda tras «Mostrar más».",
   "Show {count} more": "Mostrar {count} más",
   "Show less": "Mostrar menos",
-  "Transparent": "Transparente"
+  "Transparent": "Transparente",
+  "Search results": "Resultados de búsqueda",
+  "Search documents and actions": "Buscar documentos y acciones"
 }

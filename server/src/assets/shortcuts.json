@@ -1,6 +1,6 @@
 {
   "mod-shift-b": "ui:toggle:sidebar",
-  "mod-k": "ui:toggle:palatte",
+  "mod-k": "search:quick",
   "mod-shift-k": "format:link",
   "e": "document:edit",
   "escape": "document:cancel",

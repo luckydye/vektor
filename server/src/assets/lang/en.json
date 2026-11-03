@@ -797,5 +797,7 @@
   "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".",
   "Show {count} more": "Show {count} more",
   "Show less": "Show less",
-  "Transparent": "Transparent"
+  "Transparent": "Transparent",
+  "Search results": "Search results",
+  "Search documents and actions": "Search documents and actions"
 }

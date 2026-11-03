@@ -763,5 +763,7 @@
   "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "サイドバーに表示する最上位ドキュメントの数を制限します。残りは「さらに表示」から表示できます。",
   "Show {count} more": "さらに {count} 件表示",
   "Show less": "表示を減らす",
-  "Transparent": "透明"
+  "Transparent": "透明",
+  "Search results": "検索結果",
+  "Search documents and actions": "ドキュメントとアクションを検索"
 }

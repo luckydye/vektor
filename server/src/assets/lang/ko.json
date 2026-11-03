@@ -763,5 +763,7 @@
   "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "사이드바에 표시할 최상위 문서 수를 제한합니다. 나머지는 \"더 보기\"로 볼 수 있습니다.",
   "Show {count} more": "{count}개 더 보기",
   "Show less": "간략히 보기",
-  "Transparent": "투명"
+  "Transparent": "투명",
+  "Search results": "검색 결과",
+  "Search documents and actions": "문서 및 작업 검색"
 }

@@ -1,173 +1,45 @@
-import { useNavigate } from "@solidjs/router";
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
-import { useDocumentContext } from "#composeables/useDocument.ts";
-import { useDocuments } from "#composeables/useDocuments.ts";
-import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
+import {
+  focusInlineQuickSearch,
+  PALETTE_ACTION_ID,
+  QUICK_SEARCH_ACTION_ID,
+  type QuickSearchResult,
+  quickSearchResultDescription,
+  quickSearchResultIcon,
+  quickSearchResultLabel,
+  quickSearchSectionLabel,
+  useQuickSearch,
+} from "#composeables/useQuickSearch.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import {
   useVisualViewport,
   viewportLayerStyle,
 } from "#composeables/useVisualViewport.ts";
-import { documentTypeIcon } from "#documents/icons.ts";
-import { propertyValueToText } from "#documents/properties.ts";
-import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
-import { history } from "#utils/history.ts";
-import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
-import { Icon, type IconName } from "./Icon.tsx";
-
-type HistoryEntry = { url: string; lastVisited: number };
-// biome-ignore lint/suspicious/noExplicitAny: documents are untyped at this layer.
-type Doc = any;
-type Result =
-  | { type: "document"; data: Doc; id?: undefined }
-  | { type: "action"; id: string; data: { title?: string; description?: string } }
-  | { type: "search"; title: string; space: string; id?: undefined }
-  | { type: "create"; title: string; id?: undefined }
-  | { type: "agent"; title: string; id?: undefined };
-
-function sectionLabel(type: Result["type"], lang: string): string {
-  if (type === "document") return t("Documents", lang);
-  if (type === "action") return t("Actions", lang);
-  if (type === "search") return t("Search", lang);
-  if (type === "agent") return t("Agent", lang);
-  return t("Create", lang);
-}
-
-const RESULT_ICONS: Record<Exclude<Result["type"], "document">, IconName> = {
-  action: "bolt",
-  search: "search",
-  create: "new-document",
-  agent: "agent-chat",
-};
-
-function resultIcon(result: Result): IconName {
-  if (result.type === "document") return documentTypeIcon(result.data.type);
-  return RESULT_ICONS[result.type];
-}
-
-const MAX_DOCUMENT_RESULTS = 50;
-
-function resultLabel(result: Result, lang: string): string {
-  if (result.type === "document") return documentTitle(result.data, lang);
-  if (result.type === "action") return result.data.title || result.id;
-  if (result.type === "search")
-    return t('Search "{query}" in {space}', lang)
-      .replace("{query}", result.title)
-      .replace("{space}", result.space);
-  if (result.type === "agent")
-    return t('Ask the agent "{query}"', lang).replace("{query}", result.title);
-  return t('Create Document with title "{title}"', lang).replace("{title}", result.title);
-}
-
-function resultDescription(result: Result, lang: string): string | undefined {
-  if (result.type === "action") return result.data.description;
-  if (result.type === "search") return t("Search the full text of every document", lang);
-  if (result.type === "create") return t("Open a new document with this title", lang);
-  if (result.type === "agent") return t("Start a new agent chat with this message", lang);
-  return undefined;
-}
+import { Icon } from "./Icon.tsx";
 
 export function CommandPalatte() {
   const t = useTranslation();
   const lang = useLocale();
   const viewport = useVisualViewport();
 
-  const navigate = useNavigate();
-  const { documents } = useDocuments();
-  const { documentContext } = useDocumentContext();
   const { currentSpace } = useSpace();
-  const agentAvailable = useAgentAvailable();
 
   const [isOpen, setIsOpen] = createSignal(false);
   const [searchQuery, setSearchQuery] = createSignal("");
   const [selectedIndex, setSelectedIndex] = createSignal(0);
-  const [historyEntries, setHistoryEntries] = createSignal<HistoryEntry[]>([]);
   let searchInput: HTMLInputElement | undefined;
   let resultsContainer: HTMLDivElement | undefined;
 
-  const lastVisitedByUrl = createMemo(
-    () => new Map(historyEntries().map((entry) => [entry.url, entry.lastVisited])),
-  );
-
-  const getLastVisited = (doc: Doc) => lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
-
+  const quickSearch = useQuickSearch({ query: searchQuery, active: isOpen });
   // Closed keeps the last list so it fades out with the overlay instead of emptying first.
-  const filteredResults = createMemo<Result[]>((previous) => {
-    if (!isOpen()) return previous;
-
-    const typed = searchQuery().trim();
-    const query = typed.toLowerCase();
-    const results: Result[] = [];
-
-    let docs: Doc[] = documents();
-    if (query) {
-      docs = docs.filter((doc: Doc) => {
-        const titleValue = doc.properties?.title;
-        const title = titleValue
-          ? propertyValueToText(titleValue).toLowerCase()
-          : "untitled";
-        return title.includes(query) || (doc.slug?.toLowerCase() || "").includes(query);
-      });
-    }
-
-    const visited = lastVisitedByUrl();
-    const sorted = [...docs].sort((a: Doc, b: Doc) => {
-      const aVisited = visited.get(`/doc/${a.slug}`);
-      const bVisited = visited.get(`/doc/${b.slug}`);
-      if (aVisited !== undefined && bVisited !== undefined) return bVisited - aVisited;
-      if (aVisited !== undefined) return -1;
-      if (bVisited !== undefined) return 1;
-      return 0;
-    });
-
-    for (const doc of sorted.slice(0, MAX_DOCUMENT_RESULTS))
-      results.push({ type: "document", data: doc });
-
-    for (const [id, action] of Actions.entries()) {
-      if (id === "ui:toggle:palatte") continue;
-      if (!query || Actions.rank(id, query) > 0) {
-        results.push({ type: "action", id, data: action });
-      }
-    }
-
-    // Nothing matched, so the input reads as a question: offer the agent first.
-    const askFirst = results.length === 0;
-    if (typed && askFirst && agentAvailable()) results.push({ type: "agent", title: typed });
-
-    const space = currentSpace();
-    if (typed && space) {
-      results.push({ type: "search", title: typed, space: space.name || "this space" });
-    }
-
-    if (typed && space) results.push({ type: "create", title: typed });
-
-    if (typed && !askFirst && agentAvailable()) results.push({ type: "agent", title: typed });
-
-    return results;
-  }, []);
-
-  const sectionStarts = createMemo(() => {
-    const starts = new Map<Result["type"], number>();
-    filteredResults().forEach((result, index) => {
-      if (!starts.has(result.type)) starts.set(result.type, index);
-    });
-    return starts;
-  });
-
-  async function loadHistory() {
-    try {
-      setHistoryEntries((await history.getAll()) as HistoryEntry[]);
-    } catch (error) {
-      console.error("Failed to load history:", error);
-      setHistoryEntries([]);
-    }
-  }
+  const filteredResults = quickSearch.results;
+  const sectionStarts = quickSearch.sectionStarts;
 
   function closePalette() {
     setIsOpen(false);
@@ -182,7 +54,7 @@ export function CommandPalatte() {
       if (open) {
         setSearchQuery("");
         setSelectedIndex(0);
-        void loadHistory();
+        void quickSearch.loadHistory();
         requestAnimationFrame(() => searchInput?.focus());
       } else if (searchInput && document.activeElement === searchInput) {
         searchInput.blur();
@@ -196,52 +68,14 @@ export function CommandPalatte() {
       ?.scrollIntoView({ block: "nearest" });
   }
 
-  async function navigateToDocument(doc: Doc) {
-    if (doc?.slug) {
-      const url = `/doc/${doc.slug}`;
-      try {
-        await history.log(url, documentTitle(doc, lang));
-      } catch (error) {
-        console.error("Failed to log history:", error);
-      }
-      if (url.startsWith("/") && !url.startsWith("//")) navigate(url);
-      else window.location.href = url;
-    }
-    closePalette();
-  }
-
-  function executeAction(actionId: string) {
-    closePalette();
-    Actions.run(actionId);
-  }
-
-  function createDocumentWithTitle(title: string) {
-    closePalette();
-    const query = new URLSearchParams({ title });
-    // The draft lands where the user already is: under the open document, or in
-    // the space root from anywhere without one.
-    const parentId = documentContext().documentId;
-    if (parentId) query.set("parent", parentId);
-    navigate(`/new?${query.toString()}`);
-  }
-
-  function askAgent(message: string) {
-    closePalette();
-    Actions.emit("ai-chat:ask", { detail: message });
-  }
-
   function searchSpace(query: string) {
     closePalette();
-    const trimmed = query.trim();
-    navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
+    quickSearch.searchSpace(query);
   }
 
-  function runResult(result: Result) {
-    if (result.type === "document") void navigateToDocument(result.data);
-    else if (result.type === "action") executeAction(result.id);
-    else if (result.type === "search") searchSpace(result.title);
-    else if (result.type === "agent") askAgent(result.title);
-    else createDocumentWithTitle(result.title);
+  function runResult(result: QuickSearchResult) {
+    closePalette();
+    quickSearch.runResult(result);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -266,11 +100,20 @@ export function CommandPalatte() {
 
   createEffect(on(searchQuery, () => setSelectedIndex(0), { defer: true }));
 
-  Actions.register("ui:toggle:palatte", {
+  Actions.register(PALETTE_ACTION_ID, {
     title: t("Toggle Command Palatte"),
     description: t("Open or close the command menu"),
     group: "navigation",
     run: async () => togglePalette(),
+  });
+
+  Actions.register(QUICK_SEARCH_ACTION_ID, {
+    title: t("Quick Search"),
+    description: t("Search documents and actions"),
+    group: "navigation",
+    run: async () => {
+      if (isOpen() || !focusInlineQuickSearch()) togglePalette();
+    },
   });
 
   return (
@@ -332,7 +175,7 @@ export function CommandPalatte() {
                   <Show when={sectionStarts().get(result.type) === index()}>
                     <div class="px-3 pt-2 pb-0.5">
                       <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
-                        {sectionLabel(result.type, lang)}
+                        {quickSearchSectionLabel(result.type, lang)}
                       </span>
                     </div>
                   </Show>
@@ -372,14 +215,17 @@ export function CommandPalatte() {
                             ? "text-primary-600"
                             : "text-neutral-400",
                         )}
-                        name={resultIcon(result)}
+                        name={quickSearchResultIcon(result)}
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
                         <span class="truncate font-normal text-size-medium">
-                          {resultLabel(result, lang)}
+                          {quickSearchResultLabel(result, lang)}
                         </span>
                         <Show
-                          when={result.type === "document" && getLastVisited(result.data)}
+                          when={
+                            result.type === "document" &&
+                            quickSearch.lastVisited(result.data)
+                          }
                         >
                           {(visited) => (
                             <span class="flex-none text-neutral text-size-small opacity-50">
@@ -387,7 +233,7 @@ export function CommandPalatte() {
                             </span>
                           )}
                         </Show>
-                        <Show when={resultDescription(result, lang)}>
+                        <Show when={quickSearchResultDescription(result, lang)}>
                           {(description) => (
                             <span class="truncate text-neutral text-size-small opacity-50">
                               {description()}
@@ -436,7 +282,7 @@ export function CommandPalatte() {
             <span class="flex pointer-coarse:hidden items-center gap-1">
               <a-shortcut
                 attr:data-shortcut={
-                  Actions.getShortcutsForAction("ui:toggle:palatte")?.values().next()
+                  Actions.getShortcutsForAction(QUICK_SEARCH_ACTION_ID)?.values().next()
                     .value
                 }
               />

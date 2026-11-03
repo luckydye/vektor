@@ -797,5 +797,7 @@
   "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".": "Begrenzt die Dokumente der obersten Ebene in der Seitenleiste; der Rest liegt hinter „Mehr anzeigen“.",
   "Show {count} more": "{count} weitere anzeigen",
   "Show less": "Weniger anzeigen",
-  "Transparent": "Transparent"
+  "Transparent": "Transparent",
+  "Search results": "Suchergebnisse",
+  "Search documents and actions": "Dokumente und Aktionen durchsuchen"
 }
