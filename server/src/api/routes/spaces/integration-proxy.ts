@@ -9,6 +9,7 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
+import { resolveProviderUrl } from "#api/provider/ollama.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getOAuthIntegrationCredentialForUser } from "#db/space/oauthIntegrations.ts";
@@ -19,6 +20,7 @@ import {
 } from "#integrations/oauthProviders.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import type { Platform } from "#platform/platform.ts";
+import { parseHttpUrl } from "#utils/ssrf.ts";
 
 type IntegrationProxyRequest = {
   method?: string;
@@ -80,14 +82,16 @@ function normalizeProxyHeaders(rawHeaders: Record<string, unknown> | undefined):
 
 function getProviderBaseUrl(providerConfig: OAuthProviderConfiguration): URL {
   if (providerConfig.instanceUrl) {
-    return new URL(providerConfig.instanceUrl);
+    return parseHttpUrl(providerConfig.instanceUrl);
   }
   if (!providerConfig.userInfoUrl) {
     throw badRequestResponse(
       `${providerConfig.id} declares neither an instance URL nor a userinfo URL to send requests to`,
     );
   }
-  return new URL(providerConfig.userInfoUrl);
+  // Never another scheme: `file:` URLs share the opaque origin "null", so the
+  // origin check below would hold and the server would read its own files.
+  return parseHttpUrl(providerConfig.userInfoUrl);
 }
 
 /**
@@ -217,8 +221,10 @@ export const POST: ApiRouteHandler = (context) =>
     const headers = normalizeProxyHeaders(body.headers);
     headers.set("Authorization", `Bearer ${accessToken}`);
 
-    const response = await fetch(
-      buildIntegrationApiUrl(providerConfig.config, body.path),
+    // The base URL comes from a space-installed manifest, so the target has to
+    // pass the provider egress policy like any other space-chosen URL.
+    const response = await context.var.platform.fetch(
+      buildIntegrationApiUrl(providerConfig.config, body.path).href,
       {
         method,
         headers,
@@ -227,6 +233,7 @@ export const POST: ApiRouteHandler = (context) =>
         // the upstream points, so the 3xx is relayed to the caller instead.
         redirect: "manual",
       },
+      resolveProviderUrl,
     );
 
     const responseText = await response.text();

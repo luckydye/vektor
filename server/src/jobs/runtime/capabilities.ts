@@ -136,7 +136,7 @@ export function createCapabilities(
 ): Capabilities {
   const { spaceId, jobId, initiatedByUserId, attribution, onLog, signal } = context;
   const host = context.onRunner ? null : platform.jobVm.hostCapabilities(signal);
-  const cache = new JobCache(platform.jobCache, jobId);
+  const cache = new JobCache(platform.jobCache, { kind: "job", spaceId, jobId });
 
   // Space operations authenticate exactly as they did from the sandbox: a
   // short-lived token scoped to this space and the initiating user.

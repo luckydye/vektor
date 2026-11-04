@@ -1,3 +1,5 @@
+import type { SafeFetch } from "#utils/ssrf.ts";
+import { resolveProviderUrl } from "./ollama.ts";
 import type { ChatMessage } from "./types.ts";
 import { type PartialToolCall, parseSSE } from "./utils.ts";
 
@@ -246,6 +248,8 @@ export async function callOpenAICompatible(options: {
  * model APIs extension integrations provide.
  */
 export async function callOpenAIResponses(options: {
+  /** Integration URLs come from space-installed manifests, so never a bare `fetch`. */
+  fetch: SafeFetch;
   /** Names the provider in errors. */
   label: string;
   url: string;
@@ -260,24 +264,28 @@ export async function callOpenAIResponses(options: {
   signal?: AbortSignal;
   onText?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
-  const response = await fetch(options.url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${options.apiKey}`,
-      ...getOpenCodeSessionHeaders(options.label, options.sessionId),
+  const response = await options.fetch(
+    options.url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.apiKey}`,
+        ...getOpenCodeSessionHeaders(options.label, options.sessionId),
+      },
+      body: JSON.stringify({
+        model: options.model,
+        input: toOpenAIResponsesInput(options.messages),
+        tools: toOpenAIResponsesTools(options.tools),
+        stream: true,
+        ...(options.store === false ? { store: false } : {}),
+      }),
+      signal: options.signal,
+      // Following a redirect would re-send the bearer token wherever it points.
+      redirect: "manual",
     },
-    body: JSON.stringify({
-      model: options.model,
-      input: toOpenAIResponsesInput(options.messages),
-      tools: toOpenAIResponsesTools(options.tools),
-      stream: true,
-      ...(options.store === false ? { store: false } : {}),
-    }),
-    signal: options.signal,
-    // Following a redirect would re-send the bearer token wherever it points.
-    redirect: "manual",
-  });
+    resolveProviderUrl,
+  );
 
   if (!response.ok || !response.body) {
     throw new Error(`${options.label} ${response.status}: ${await response.text()}`);

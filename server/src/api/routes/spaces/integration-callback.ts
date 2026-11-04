@@ -153,6 +153,7 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const tokenSet = await exchangeOAuthCode({
+        fetch: context.var.platform.fetch,
         providerConfig: configured.config,
         clientId: getOAuthClientId(configured.config, { clientId }),
         code,
@@ -160,7 +161,11 @@ export const GET: ApiRouteHandler = (context) =>
         redirectUri: getOAuthRedirectUri(spaceId, configured.config),
       });
 
-      const externalUser = await fetchOAuthExternalUser(configured.config, tokenSet);
+      const externalUser = await fetchOAuthExternalUser(
+        context.var.platform.fetch,
+        configured.config,
+        tokenSet,
+      );
 
       await upsertOAuthIntegrationForUser(
         store,

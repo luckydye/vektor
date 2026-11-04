@@ -330,6 +330,28 @@ function validateAI(integration: ExtensionIntegration): void {
 }
 
 /**
+ * The server fetches these endpoints itself, so a `file:` or `data:` value would
+ * make it read whatever that scheme resolves to.
+ */
+function validateEndpointSchemes(integration: ExtensionIntegration): void {
+  for (const field of [
+    "authorizationUrl",
+    "tokenUrl",
+    "userInfoUrl",
+    "defaultInstanceUrl",
+  ] as const) {
+    const value = integration[field];
+    if (value === undefined) continue;
+    const resolved = value.replaceAll("{instance}", "https://instance.invalid");
+    if (!/^https?:\/\//i.test(resolved)) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' '${field}' must be an http(s) URL`,
+      );
+    }
+  }
+}
+
+/**
  * Integrations are how a provider reaches the OAuth routes, so a malformed one
  * has to fail the install rather than surface as a half-configured provider.
  */
@@ -383,10 +405,12 @@ function validateIntegrations(manifest: ExtensionManifest): void {
 
     validateOptionalStrings(integration, [
       "userInfoUrl",
+      "defaultInstanceUrl",
       "clientId",
       "redirectUri",
       "manageUrl",
     ]);
+    validateEndpointSchemes(integration);
     validateParams(integration, "authorizationParams", RESERVED_AUTHORIZATION_PARAMS);
     validateParams(integration, "tokenParams", RESERVED_TOKEN_PARAMS);
     validateRegistration(integration);

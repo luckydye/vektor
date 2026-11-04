@@ -21,7 +21,10 @@ import { JobCache } from "./runtime/jobCache.ts";
 
 /** One cache scope for every run's blobs; ids are unguessable, not sequential. */
 function blobCache(platform: Platform): JobCache {
-  return new JobCache(platform.jobCache, "__job-output-blobs");
+  return new JobCache(platform.jobCache, {
+    kind: "internal",
+    name: "job-output-blobs",
+  });
 }
 
 /** How long a published blob stays fetchable, absent an earlier eviction. */

@@ -33,6 +33,20 @@ function fileSource(shape: CanvasShape) {
   return typeof shape.data.src === "string" ? shape.data.src : "";
 }
 
+/**
+ * Shape data is stored as any editor wrote it, so a `javascript:` src would run
+ * in the app origin once assigned to the un-sandboxed preview frame. Uploaded
+ * PDFs are same-origin (`parseData` resolves their relative paths), so nothing
+ * else needs to load there.
+ */
+function pdfFrameSource(shape: CanvasShape): string | null {
+  const src = fileSource(shape);
+  if (!src) return null;
+  const url = new URL(src, location.href);
+  const isHttp = url.protocol === "https:" || url.protocol === "http:";
+  return isHttp && url.origin === location.origin ? url.href : null;
+}
+
 function fileName(shape: CanvasShape) {
   return typeof shape.data.alt === "string" ? shape.data.alt : "";
 }
@@ -290,7 +304,7 @@ class CanvasPdfElement extends CanvasElementBase {
   protected update() {
     const shape = this.shapeData;
     if (!shape || !this.frame || !this.header) return;
-    const src = fileSource(shape);
+    const src = pdfFrameSource(shape);
     if (src && this.frame.getAttribute("src") !== src) this.frame.src = src;
     this.header.textContent = fileName(shape) || "PDF";
     this.header.title = fileName(shape) || "PDF";
