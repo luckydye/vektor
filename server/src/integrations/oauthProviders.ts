@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { resolveProviderUrl } from "#api/provider/ollama.ts";
 import { config, integrationOAuthEnv } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
 import { listExtensions } from "#db/space/extensions.ts";
@@ -11,6 +12,7 @@ import {
 import type { ExtensionIntegration } from "#extensions/manifest.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
+import type { SafeFetch } from "#utils/ssrf.ts";
 
 export interface OAuthProviderConfiguration {
   id: string;
@@ -334,13 +336,15 @@ function tokenRequestBody(
 }
 
 export async function exchangeOAuthCode(options: {
+  /** Manifest-declared endpoints are space-controlled, so never a bare `fetch`. */
+  fetch: SafeFetch;
   providerConfig: OAuthProviderConfiguration;
   clientId: string;
   code: string;
   codeVerifier: string;
   redirectUri: string;
 }): Promise<OAuthTokenExchangeResult> {
-  const { providerConfig, clientId, code, codeVerifier, redirectUri } = options;
+  const { fetch, providerConfig, clientId, code, codeVerifier, redirectUri } = options;
   const body = tokenRequestBody(providerConfig, {
     grant_type: "authorization_code",
     code,
@@ -349,14 +353,18 @@ export async function exchangeOAuthCode(options: {
     code_verifier: codeVerifier,
   });
 
-  const response = await fetch(providerConfig.tokenUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
+  const response = await fetch(
+    providerConfig.tokenUrl,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: body.toString(),
     },
-    body: body.toString(),
-  });
+    resolveProviderUrl,
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -370,25 +378,31 @@ export async function exchangeOAuthCode(options: {
 }
 
 export async function refreshOAuthToken(options: {
+  /** Manifest-declared endpoints are space-controlled, so never a bare `fetch`. */
+  fetch: SafeFetch;
   providerConfig: OAuthProviderConfiguration;
   clientId: string;
   refreshToken: string;
 }): Promise<OAuthTokenExchangeResult> {
-  const { providerConfig, clientId, refreshToken } = options;
+  const { fetch, providerConfig, clientId, refreshToken } = options;
   const body = tokenRequestBody(providerConfig, {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
     client_id: clientId,
   });
 
-  const response = await fetch(providerConfig.tokenUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
+  const response = await fetch(
+    providerConfig.tokenUrl,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: body.toString(),
     },
-    body: body.toString(),
-  });
+    resolveProviderUrl,
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -456,6 +470,7 @@ export async function resolveIntegrationAccessToken(
     }
 
     const refreshed = await refreshOAuthToken({
+      fetch: platform.fetch,
       providerConfig,
       clientId: getOAuthClientId(providerConfig, current),
       refreshToken,
@@ -502,6 +517,7 @@ function decodeIdTokenClaims(idToken: string): Record<string, unknown> {
 }
 
 async function fetchOAuthProfile(
+  fetch: SafeFetch,
   providerConfig: OAuthProviderConfiguration,
   tokenSet: OAuthTokenExchangeResult,
 ): Promise<Record<string, unknown>> {
@@ -512,12 +528,17 @@ async function fetchOAuthProfile(
     return decodeIdTokenClaims(tokenSet.idToken);
   }
 
-  const response = await fetch(providerConfig.userInfoUrl, {
-    headers: {
-      Authorization: `Bearer ${tokenSet.accessToken}`,
-      Accept: "application/json",
+  const response = await fetch(
+    providerConfig.userInfoUrl,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        Accept: "application/json",
+      },
     },
-  });
+    resolveProviderUrl,
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -530,10 +551,11 @@ async function fetchOAuthProfile(
 }
 
 export async function fetchOAuthExternalUser(
+  fetch: SafeFetch,
   providerConfig: OAuthProviderConfiguration,
   tokenSet: OAuthTokenExchangeResult,
 ): Promise<OAuthExternalUser> {
-  const profile = await fetchOAuthProfile(providerConfig, tokenSet);
+  const profile = await fetchOAuthProfile(fetch, providerConfig, tokenSet);
   const accountId = pickProfileField(profile, providerConfig.profile.accountId);
   if (!accountId) {
     throw new Error(

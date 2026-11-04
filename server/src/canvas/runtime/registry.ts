@@ -404,7 +404,14 @@ function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
     wasDragged: options.wasDragged,
     beginEdit: options.beginEdit,
     createCollaboration: options.createCollaboration,
-    openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
+    // Shape data is editor-written: only open web URLs, never `javascript:`.
+    openUrl: (url) => {
+      const { protocol } = new URL(url, location.href);
+      if (protocol !== "https:" && protocol !== "http:") {
+        throw new Error(`Refusing to open ${protocol} URL from canvas shape`);
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
     processedImage: options.processedImage,
     openMenu: options.openMenu,
     exportRegion: options.exportRegion,

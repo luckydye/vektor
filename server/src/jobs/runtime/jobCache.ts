@@ -78,15 +78,31 @@ function parseHeader(file: Buffer): { header: EntryHeader; payload: Buffer } | n
   }
 }
 
-/** Cache scoped to one job id, persisted in a platform's job cache store. */
+/**
+ * Which entries a {@link JobCache} sees. Job ids are chosen by extension
+ * authors and repeat across spaces, so a job's scope includes its space; the
+ * host's own scopes are a separate kind no job id can reach.
+ */
+export type JobCacheScope =
+  | { kind: "job"; spaceId: string; jobId: string }
+  | { kind: "internal"; name: string };
+
+/** Cache scoped to one job in one space, persisted in a platform's job cache store. */
 export class JobCache {
   readonly scope: string;
 
   constructor(
     readonly store: JobCacheStore,
-    jobId: string,
+    scope: JobCacheScope,
   ) {
-    this.scope = createHash("sha256").update(jobId).digest("hex").slice(0, 16);
+    const parts =
+      scope.kind === "job"
+        ? [scope.kind, scope.spaceId, scope.jobId]
+        : [scope.kind, scope.name];
+    this.scope = createHash("sha256")
+      .update(JSON.stringify(parts))
+      .digest("hex")
+      .slice(0, 16);
   }
 
   name(key: string): string {
