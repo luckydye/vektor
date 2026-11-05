@@ -222,6 +222,7 @@ export function DocumentPageView(props: Props) {
     () =>
       isDatabase() ||
       isCanvas() ||
+      isApp() ||
       isWorkflow() ||
       documentType() === repositoryDocumentType,
   );
@@ -234,7 +235,9 @@ export function DocumentPageView(props: Props) {
         (key) => key === templatePropertyKey || !isHiddenDocumentPropertyKey(key),
       ),
   );
-  const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
+  const isFullHeightView = createMemo(
+    () => isApp() || isDatabase() || isWorkflow(),
+  );
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
   );

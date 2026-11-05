@@ -1,5 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js";
-import type { AIChatSessionListEntry } from "#api/client.ts";
+import { api, type AIChatSessionListEntry } from "#api/client.ts";
 import { canEdit } from "#acl/permissions.ts";
 import { AgentSection } from "#components/AgentSection.tsx";
 import { AIChatConversation } from "#components/AIChatConversation.tsx";
@@ -11,11 +11,21 @@ import { useRecentChatSessions } from "#composeables/useChatSessionHandling.ts";
 import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { spacePath } from "#utils/utils.ts";
 import { withViewTransition } from "#utils/viewTransition.ts";
+
+function isHtmlFile(file: File): boolean {
+  return file.type === "text/html" || /\.html?$/i.test(file.name);
+}
+
+function titleFromFilename(filename: string): string {
+  const name = filename.replace(/\.html?$/i, "").replace(/[-_]+/g, " ").trim();
+  return name || filename;
+}
 
 export function SpaceHomeView() {
   const t = useTranslation();
@@ -23,6 +33,7 @@ export function SpaceHomeView() {
 
   const { currentSpace } = useSpace();
   const { uploadFile } = useUploads();
+  const toast = useToast();
   const userCanUpload = createMemo(() => canEdit(currentSpace()?.userRole));
   const agentAvailable = useAgentAvailable();
   const recentSessions = useRecentChatSessions(3);
@@ -67,6 +78,16 @@ export function SpaceHomeView() {
     if (!spaceId || !userCanUpload()) return;
 
     try {
+      if (isHtmlFile(file)) {
+        await api.documents.post(spaceId, {
+          content: await file.text(),
+          type: "app",
+          properties: { title: titleFromFilename(file.name) },
+        });
+        toast.success(t("App document created"));
+        return;
+      }
+
       await uploadFile(file, {
         spaceId,
         successToast: {
