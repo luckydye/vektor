@@ -1,8 +1,16 @@
 import { useNavigate } from "@solidjs/router";
-import { type Accessor, createMemo, createSignal } from "solid-js";
+import {
+  type Accessor,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from "solid-js";
+import { api } from "#api/client.ts";
 import type { IconName } from "#components/Icon.tsx";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
+import { useQuery } from "#composeables/query.ts";
 import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
@@ -34,6 +42,8 @@ export const PALETTE_ACTION_ID = "ui:toggle:palatte";
 export const QUICK_SEARCH_ACTION_ID = "search:quick";
 
 const MAX_DOCUMENT_RESULTS = 50;
+const SERVER_SEARCH_DEBOUNCE_MS = 200;
+const SERVER_SEARCH_LIMIT = 10;
 
 const RESULT_ICONS: Record<Exclude<QuickSearchResult["type"], "document">, IconName> = {
   action: "bolt",
@@ -109,23 +119,62 @@ export function useQuickSearch(options: Options) {
   const lastVisited = (doc: QuickSearchDocument) =>
     lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
 
+  const typedQuery = createMemo(() => options.query().trim());
+
+  const localDocuments = createMemo<QuickSearchDocument[]>(() => {
+    const query = typedQuery().toLowerCase();
+    const docs: QuickSearchDocument[] = documents();
+    if (!query) return docs;
+    return docs.filter((doc: QuickSearchDocument) => {
+      const titleValue = doc.properties?.title;
+      const title = titleValue
+        ? propertyValueToText(titleValue).toLowerCase()
+        : "untitled";
+      return title.includes(query) || (doc.slug?.toLowerCase() || "").includes(query);
+    });
+  });
+
+  // The cached list can lag behind (a document created a moment ago), so when
+  // it has no match the typed text is asked of the server instead.
+  const [serverQuery, setServerQuery] = createSignal("");
+  createEffect(() => {
+    const wanted =
+      options.active() && typedQuery() && localDocuments().length === 0
+        ? typedQuery()
+        : "";
+    if (!wanted) {
+      setServerQuery("");
+      return;
+    }
+    const timer = setTimeout(() => setServerQuery(wanted), SERVER_SEARCH_DEBOUNCE_MS);
+    onCleanup(() => clearTimeout(timer));
+  });
+
+  const { data: serverResults } = useQuery({
+    queryKey: createMemo(() => ["quick_search", currentSpace()?.id, serverQuery()]),
+    queryFn: async (): Promise<QuickSearchDocument[]> => {
+      const space = currentSpace();
+      if (!space) return [];
+      const response = await api.search.get(space.id, {
+        q: serverQuery(),
+        limit: SERVER_SEARCH_LIMIT,
+      });
+      return response.results.filter((result) => !result.fileUrl);
+    },
+    enabled: createMemo(() => !!serverQuery() && !!currentSpace()),
+  });
+
   const results = createMemo<QuickSearchResult[]>((previous) => {
     if (!options.active()) return previous;
 
-    const typed = options.query().trim();
+    const typed = typedQuery();
     const query = typed.toLowerCase();
     const results: QuickSearchResult[] = [];
 
-    let docs: QuickSearchDocument[] = documents();
-    if (query) {
-      docs = docs.filter((doc: QuickSearchDocument) => {
-        const titleValue = doc.properties?.title;
-        const title = titleValue
-          ? propertyValueToText(titleValue).toLowerCase()
-          : "untitled";
-        return title.includes(query) || (doc.slug?.toLowerCase() || "").includes(query);
-      });
-    }
+    const docs: QuickSearchDocument[] =
+      localDocuments().length > 0 || !serverQuery() || serverQuery() !== typed
+        ? localDocuments()
+        : (serverResults() ?? []);
 
     const visited = lastVisitedByUrl();
     const sorted = [...docs].sort((a: QuickSearchDocument, b: QuickSearchDocument) => {
