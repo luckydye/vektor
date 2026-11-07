@@ -1,4 +1,4 @@
-import { useLocation } from "@solidjs/router";
+import { useLocation, useNavigate } from "@solidjs/router";
 import { createMemo, Show } from "solid-js";
 import { Permission } from "#acl/permissions.ts";
 import { useRunners } from "#composeables/useRunners.ts";
@@ -17,16 +17,13 @@ import {
   SPACE_SETTINGS_TABS,
 } from "#utils/spaceSettingsDestinations.ts";
 
-function setTab(id: string) {
-  window.location.hash = id;
-}
-
 export function SpaceSettings() {
   const { currentSpace } = useSpace();
   const isOwner = createMemo(() => currentSpace()?.userRole === Permission.OWNER);
   const runners = useRunners(isOwner);
   // From the router, so a jump into settings while already here switches tabs.
   const location = useLocation();
+  const navigate = useNavigate();
   const target = createMemo(() => resolveSpaceSettingsHash(location.hash));
 
   return (
@@ -34,7 +31,7 @@ export function SpaceSettings() {
       tabs={SPACE_SETTINGS_TABS}
       activeTab={target().tab}
       activeSection={target().section}
-      onTabChange={setTab}
+      onTabChange={(id) => navigate(`${location.pathname}${location.search}#${id}`)}
       panels={{
         general: () => <SpaceGeneralSettings />,
         integrations: () => (
