@@ -1,7 +1,7 @@
 /**
  * Who a request is, resolved the same way at every door.
  *
- * Three places turn a session into an identity — the API router, the Astro
+ * Three places turn a session into an identity — the API router, the page
  * middleware and the websocket upgrade — and each used to read it for itself,
  * so anything that has to hold for all three only held where it was remembered.
  */

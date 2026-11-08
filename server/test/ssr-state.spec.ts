@@ -21,20 +21,17 @@ describe("SSR state isolation", () => {
   /**
    * A source scan, because the alternative is rendering the whole space island
    * on the server. The failure it guards is silent and was real: with only
-   * `Astro.url.pathname` handed to the island, `useSearchParams()` is empty
+   * the pathname handed to the island, `useSearchParams()` is empty
    * during SSR, so a route parameterised by a search param alone (`/new?title=`
    * seeds a draft title) renders its default. The client router does read the
    * query, but a component that snapshots props on setup — `TitleEditor` — has
    * already taken the wrong value by then.
    */
   it("hands the space island a url that carries the query string", () => {
-    const page = readFileSync(
-      resolve(process.cwd(), "src/pages/[spaceSlug]/[...all].astro"),
-      "utf8",
-    );
-    const url = page.match(/^\s*url=\{(.+)\}$/m)?.[1];
+    const routes = readFileSync(resolve(process.cwd(), "src/web/routes.ts"), "utf8");
+    const url = routes.match(/^\s*url: (.+),$/m)?.[1];
 
     expect(url).toBeDefined();
-    expect(url).toContain("Astro.url.search");
+    expect(url).toContain("url.search");
   });
 });

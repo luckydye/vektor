@@ -136,7 +136,7 @@ describe("opening a share link", () => {
     expect(html).toContain("Shared paragraph");
     expect(html).toContain("<document-view");
     // The element reads it with `hasAttribute`, so any serialization of the
-    // attribute counts — Astro writes a bare boolean out as `readonly="true"`.
+    // attribute counts, bare or valued.
     expect(html).toMatch(/<document-view[^>]*\sreadonly(?:=|\s|>)/);
     expect(html).toContain('part="content"');
     expect(html).toContain("max-w-(--document-width)");

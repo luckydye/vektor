@@ -33,7 +33,7 @@ RUN PANDOC_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") \
 WORKDIR /app
 
 # The binary is compiled natively before the image build so Rust, ONNX Runtime,
-# Astro, and Bun compilation can use the CI/local build cache.
+# Vite, and Bun compilation can use the CI/local build cache.
 COPY server/vektor /app/vektor
 
 RUN mkdir -p /app/data

@@ -38,7 +38,7 @@ let privateDocumentSlug: string;
 /**
  * A page body with the two things that cannot carry an authorization verdict
  * removed: the address the caller typed, which the shell echoes back as the
- * router's initial url, and Astro's per-render hydration id.
+ * router's initial url, and any per-render hydration id.
  */
 function maskVolatile(body: string, slug: string): string {
   return body.replaceAll(slug, "<addr>").replace(/uid="[^"]*"/g, 'uid="<uid>"');

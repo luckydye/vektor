@@ -1,7 +1,7 @@
 ## Tech Stack
 
 - **Runtime:** Bun
-- **Frontend:** Astro + SolidJS (`@solidjs/router`) + Tailwind CSS v4
+- **Frontend:** SolidJS (`@solidjs/router`) server-rendered by Hono, built with Vite, + Tailwind CSS v4
 - **Editor:** Tiptap (ProseMirror-based)
 - **Canvas:** own WebGL2 renderer (`server/src/canvas`)
 - **Spreadsheets:** IronCalc (wasm)
@@ -15,7 +15,7 @@
 
 ## Repo Layout
 
-- `server/` — the app (Astro frontend + Hono API), compiled into the single `vektor` binary
+- `server/` — the app (Solid SSR frontend in `src/web` + Hono API), compiled into the single `vektor` binary
 - `app/` — native desktop app (Rust)
 - `api/` — API client package
 - `extensions/` — first-party extensions
@@ -45,4 +45,4 @@ Always run vitest as `bunx --bun vitest`, never `bun test`.
 
 ## Logs
 
-`task dev` starts the dev server (`bun --watch ./src/server.ts`) and writes its stdout/stderr to `dev.log` in the repo root while the process is running. Read that file to inspect logs.
+`task dev` starts the dev server (`bun --watch ./src/server.ts`, with Vite in middleware mode for the frontend) and writes its stdout/stderr to `dev.log` in the repo root while the process is running. Read that file to inspect logs.

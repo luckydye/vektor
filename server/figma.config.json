@@ -5,7 +5,6 @@
     ],
     "exclude": [
       "dist/**",
-      ".astro/**",
       "node_modules/**"
     ],
     "parser": "html",

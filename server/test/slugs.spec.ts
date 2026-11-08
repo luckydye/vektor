@@ -16,7 +16,7 @@ import {
 } from "#utils/slug.ts";
 
 // The runner's cwd is `server/`, see test/helpers/server.ts.
-const PAGES_DIR = path.resolve("src/pages");
+const WEB_ROUTES_FILE = path.resolve("src/web/routes.ts");
 const PUBLIC_DIR = path.resolve("public");
 const SERVER_FILE = path.resolve("src/server.ts");
 
@@ -65,7 +65,7 @@ describe("slugify", () => {
 
 describe("reservedSpaceSlugs", () => {
   it("covers the slugs the audit found shadowed", () => {
-    for (const slug of ["api", "docs", "login", "new", "404", "_astro", ".well-known"]) {
+    for (const slug of ["api", "docs", "login", "new", "404", "assets", ".well-known"]) {
       expect(isReservedSpaceSlug(slug)).toBe(true);
     }
     expect(isReservedSpaceSlug("favicon.ico")).toBe(true);
@@ -82,34 +82,22 @@ describe("reservedSpaceSlugs", () => {
     expect(isReservedSpaceSlug("docs-team")).toBe(false);
   });
 
-  // The list cannot be derived at runtime — a compiled binary has no
-  // `src/pages/` — so this is what keeps it honest.
-  it("covers every top-level route in src/pages", () => {
-    const routes = readdirSync(PAGES_DIR, { withFileTypes: true })
-      .map((entry) =>
-        entry.isDirectory() ? entry.name : entry.name.replace(/\.(astro|ts|md)$/, ""),
-      )
-      // `index` is the root route and `[…]` is the space catch-all itself.
-      .filter((name) => name !== "index" && !name.startsWith("["));
-
-    expect(routes.length).toBeGreaterThan(0);
-    for (const route of routes) {
-      expect(isReservedSpaceSlug(route), `src/pages/${route} is not reserved`).toBe(true);
-    }
-  });
-
-  // `src/pages/` is only half of it: a space on `metrics` serves Prometheus
-  // output at its root, and no page file records that route.
-  it("covers every top-level route src/server.ts registers", () => {
+  // The list cannot be derived at runtime — a compiled binary has no source
+  // tree — so this is what keeps it honest. A space on `metrics` serves
+  // Prometheus output at its root, and no page route records that one.
+  it.each([
+    ["src/server.ts", SERVER_FILE],
+    ["src/web/routes.ts", WEB_ROUTES_FILE],
+  ])("covers every top-level route %s registers", (name, file) => {
     const routes = [
-      ...readFileSync(SERVER_FILE, "utf8").matchAll(
+      ...readFileSync(file, "utf8").matchAll(
         /\bapp\.(?:get|post|put|patch|delete|all|use)\(\s*"\/([^/"*:]+)/g,
       ),
     ].map(([, segment]) => segment);
 
     expect(routes.length).toBeGreaterThan(0);
     for (const route of routes) {
-      expect(isReservedSpaceSlug(route), `src/server.ts owns /${route}`).toBe(true);
+      expect(isReservedSpaceSlug(route), `${name} owns /${route}`).toBe(true);
     }
   });
 

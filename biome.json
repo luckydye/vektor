@@ -80,7 +80,7 @@
   "overrides": [
     {
       "includes": [
-        "**/astro.config.mjs",
+        "**/vite.config.ts",
         "**/vitest.config.ts",
         "**/playwright.config.ts"
       ],
@@ -88,23 +88,6 @@
         "rules": {
           "style": {
             "noDefaultExport": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": [
-        "**/*.astro"
-      ],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noUnusedVariables": "off",
-            "noUnusedFunctionParameters": "off",
-            "noUnusedImports": "off"
-          },
-          "style": {
-            "useImportType": "off"
           }
         }
       }
@@ -141,7 +124,6 @@
       "**",
       "!**/package.json",
       "!**/.mise",
-      "!**/.astro",
       "!**/.nuxt",
       "!**/.output",
       "!**/vendor",

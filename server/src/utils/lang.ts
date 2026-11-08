@@ -4,7 +4,7 @@ import es from "#assets/lang/es.json";
 import ja from "#assets/lang/ja.json";
 import ko from "#assets/lang/ko.json";
 
-const FALLBACK_LANG = "en";
+export const FALLBACK_LANG = "en";
 
 // The English file is the canonical catalogue. API messages may also be
 // passed through `t()`; unknown strings fall back to their original value.
@@ -14,6 +14,9 @@ export type TranslationKey = keyof typeof en;
 // register it here to make that language available. Static imports (rather
 // than Vite's `import.meta.glob`) keep this working under plain runtimes.
 const translations: Record<string, Record<string, string>> = { de, en, es, ja, ko };
+
+/** The languages with a catalogue, which is what a visitor's preference is matched against. */
+export const SUPPORTED_LANGS = Object.keys(translations);
 
 export function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;

@@ -140,7 +140,7 @@ export function config() {
       /** Days a workflow run's log series is kept (`30`). */
       WORKFLOW_LOG_RETENTION_DAYS: process.env.VEKTOR_WORKFLOW_LOG_RETENTION_DAYS,
 
-      /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
+      /** Set to "1"/"true" to run a headless API server without the web frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */
       SERVER_HOST: process.env.HOST,
@@ -372,7 +372,7 @@ export function isTrustProxyEnabled(): boolean {
 
 /**
  * Runtime environment exposed to the browser. Single source of truth for the
- * Astro middleware and the Hono API adapter — only ever add non-secret
+ * page routes and the Hono API adapter — only ever add non-secret
  * values here.
  */
 export function getPublicEnv(): App.PublicEnv {

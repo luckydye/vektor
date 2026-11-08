@@ -1,4 +1,4 @@
-/// <reference path="../.astro/types.d.ts" />
+/// <reference types="vite/client" />
 /// <reference types="@webgpu/types" />
 
 declare namespace App {
@@ -21,7 +21,7 @@ declare namespace App {
     user: import("better-auth").User | null;
     session: import("better-auth").Session | null;
     publicEnv: PublicEnv;
-    /** Handed in by the server with every request; see `src/server.ts`. */
+    /** Set on every request by the API router; see `createApiRouter`. */
     platform: import("#platform/platform.ts").Platform;
   }
 }

@@ -2,7 +2,6 @@
 dist/
 src/generated/
 # generated types
-.astro/
 
 # native image addon (Rust) build artifacts — built per platform in CI / setup
 native/image/target/

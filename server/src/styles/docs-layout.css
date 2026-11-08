@@ -1,53 +1,47 @@
----
-/**
- * The docs sidebar: page links, and under the current page its section outline.
- * Rendered twice by DocsLayout — once for the sticky sidebar, once inside the
- * mobile disclosure — so the markup lives here rather than being duplicated.
- */
-export interface OutlineEntry {
-  slug: string;
-  text: string;
+/* The docs site chrome: header logo and sidebar. */
+.docs-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--color-neutral-900);
 }
 
-export interface Props {
-  title: string;
-  links: { href: string; label: string }[];
-  currentPath: string;
-  outline?: OutlineEntry[];
+.docs-logo-mark {
+  display: block;
+  height: 1.75rem;
+  width: 1.75rem;
+  object-fit: contain;
 }
 
-const { title, links, currentPath, outline = [] } = Astro.props;
----
+.docs-logo-mark-dark {
+  display: none;
+}
 
-<p class="docs-nav-title">{title}</p>
-<ul class="mt-3 space-y-0.5">
-  {links.map((link) => (
-      <li>
-        <a
-          href={link.href}
-          class:list={[
-            "docs-nav-link",
-            currentPath === link.href && "docs-nav-link-active",
-          ]}
-        >
-          {link.label}
-        </a>
-        {currentPath === link.href && outline.length > 0 && (
-          <ul class="docs-nav-outline">
-            {outline.map((section) => (
-              <li>
-                <a href={`#${section.slug}`} class="docs-nav-outline-link">
-                  {section.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </li>
-    ))}
-</ul>
+@media (prefers-color-scheme: dark) {
+  .docs-logo-mark-light {
+    display: none;
+  }
 
-<style>
+  .docs-logo-mark-dark {
+    display: block;
+  }
+}
+
+/* The sidebar scrolls with a long outline: it owns the horizontal inset the
+   active pill is drawn into, since a scroll container clips what sits outside
+   its padding box. */
+.docs-nav {
+  margin-left: -0.7rem;
+  padding-left: 0.7rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-neutral-300) 60%, transparent)
+    transparent;
+}
+
+/* The docs sidebar. */
 .docs-nav-title {
   /* Aligns the label with the text inside the nav links, whose own padding is
      what the active pill is drawn around. */
@@ -111,4 +105,3 @@ const { title, links, currentPath, outline = [] } = Astro.props;
   font-weight: 600;
   background-color: color-mix(in srgb, var(--color-primary-600) 8%, transparent);
 }
-</style>

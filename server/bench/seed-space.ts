@@ -27,7 +27,7 @@
  *   --no-auth            seed as, and serve without auth for, the local super-user
  *   --serve              start the server on the seeded data when seeding is done
  *   --port <n>           port for --serve (default 8080, parsed by src/server.ts)
- *   --api-only           serve the API without the Astro frontend (auto-enabled
+ *   --api-only           serve the API without the web frontend (auto-enabled
  *                        when there is no client build to serve)
  *   --reset              delete the auth db, spaces and uploads under <dir>/data first
  *   --name <name>        space name (default "Bench Space")
@@ -899,9 +899,9 @@ async function main(): Promise<void> {
   }
 
   // Without a client build there is nothing to serve the frontend from, and the
-  // Astro entry throws on import — run headless instead of failing after a
+  // page renderer throws on import — run headless instead of failing after a
   // multi-minute seed.
-  const hasClientBuild = existsSync(path.join(appDir, "dist", "server", "entry.mjs"));
+  const hasClientBuild = existsSync(path.join(appDir, "dist", "server", "render.js"));
   if (options.apiOnly || !hasClientBuild) {
     if (!options.apiOnly) {
       console.log("No client build found (dist/server) — serving the API only.");

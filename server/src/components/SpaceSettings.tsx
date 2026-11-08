@@ -31,7 +31,11 @@ export function SpaceSettings() {
       tabs={SPACE_SETTINGS_TABS}
       activeTab={target().tab}
       activeSection={target().section}
-      onTabChange={(id) => navigate(`${location.pathname}${location.search}#${id}`)}
+      // `location.pathname` already carries the router base, so it is not resolved
+      // against it again.
+      onTabChange={(id) =>
+        navigate(`${location.pathname}${location.search}#${id}`, { resolve: false })
+      }
       panels={{
         general: () => <SpaceGeneralSettings />,
         integrations: () => (

@@ -1,7 +1,7 @@
 /**
  * Environment setup for the frontend suite, run before every spec file.
  *
- * Astro injects a `<script id="env">` carrying the public runtime config, and
+ * The page shell injects a `<script id="env">` carrying the public runtime config, and
  * `#config` throws without it — so any component that transitively imports the
  * API client (most of them) cannot render in a bare happy-dom document. This
  * stands in for that script rather than mocking `#config`, so the specs

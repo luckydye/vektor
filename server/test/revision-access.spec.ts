@@ -160,7 +160,7 @@ beforeAll(async () => {
   serverProcess = startTestServer(PORT, {
     VEKTOR_IN_MEMORY_DB: "1",
     VEKTOR_EMAIL_AUTH: "1",
-    // Every request here is an API request; the Astro frontend would only add a
+    // Every request here is an API request; the web frontend would only add a
     // build dependency to a spec that never renders a page.
     VEKTOR_API_ONLY: "1",
     AUTH_SECRET: process.env.AUTH_SECRET,

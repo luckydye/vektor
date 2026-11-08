@@ -1,10 +1,10 @@
 @media print {
   /*
-   * Keep the app shell's ancestors visible. Astro wraps the app in an
-   * <astro-island>; hiding it also hides .main-content and therefore the
-   * document, even though .main-content itself is excluded below.
+   * Keep the app shell's ancestors visible. The page shell wraps the app in
+   * #app; hiding it also hides .main-content and therefore the document, even
+   * though .main-content itself is excluded below.
    */
-  astro-island > :not(#root),
+  #app > :not(#root),
   #root > :not(.main-content) {
     display: none !important;
   }

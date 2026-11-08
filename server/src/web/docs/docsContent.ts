@@ -1,24 +1,3 @@
----
-/**
- * Renders a markdown docs page inside a shadow root, so the editor's document
- * styles can be reused without leaking into the surrounding site chrome. The
- * markdown is passed as children and ends up *inside* the declarative template
- * (Astro slots are template composition, not `<slot>` projection), which is what
- * puts it under these styles.
- */
-import docStyles from "#editor/css/document.css?inline";
-import docsProseStyles from "#styles/docs.css?inline";
----
-
-<docs-content>
-  <template shadowrootmode="open">
-    <style set:html={docStyles}></style>
-    <style set:html={docsProseStyles}></style>
-    <slot />
-  </template>
-</docs-content>
-
-<script>
 const HTTP_METHODS = new Set([
   "GET",
   "POST",
@@ -218,4 +197,5 @@ if (shadowRoot) {
   groupEndpoints(shadowRoot);
   handleAnchorClicks(shadowRoot);
 }
-</script>
+
+export {};

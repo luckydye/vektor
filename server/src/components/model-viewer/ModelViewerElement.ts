@@ -26,7 +26,7 @@ const AUTO_SPIN_PER_SECOND = 0.5; // radians
 export const MODEL_VIEWER_TAG = "model-viewer-3d";
 
 // Guarded so the class body — which extends the DOM `HTMLElement` — is only
-// evaluated in the browser. During Astro SSR `HTMLElement` is undefined and
+// evaluated in the browser. During SSR `HTMLElement` is undefined and
 // merely loading this module would otherwise throw.
 if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined") {
   class ModelViewer3DElement extends HTMLElement {

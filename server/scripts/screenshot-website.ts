@@ -50,7 +50,7 @@ const OUT_DIR =
 const KANBAN_DIR = `${APP_DIR}../../vektor-cloud/data/extensions/kanban`;
 
 /**
- * The website uses these as plain `<img>` with no Astro image pipeline behind
+ * The website uses these as plain `<img>` with no image pipeline behind
  * them, so the encoded bytes are the shipped bytes. 1x keeps the geometry the
  * page already lays out against; `VEKTOR_SHOT_SCALE=2` doubles the resolution
  * without changing the aspect ratio.
@@ -876,12 +876,12 @@ async function seed(baseUrl: string): Promise<Seeded> {
  * static import would compile even when `VEKTOR_SKIP_BUILD` asked not to.
  */
 async function buildClient(): Promise<void> {
-  const build = Bun.spawn(["bunx", "--bun", "astro", "build"], {
+  const build = Bun.spawn(["bun", "./scripts/build-web.ts"], {
     cwd: APP_DIR,
     stdout: "ignore",
     stderr: "inherit",
   });
-  if ((await build.exited) !== 0) throw new Error("astro build failed");
+  if ((await build.exited) !== 0) throw new Error("web build failed");
   await import("#build");
 }
 

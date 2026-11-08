@@ -131,7 +131,7 @@ const ROUTE_RULES: readonly RouteRule[] = [
     authenticatedMax: 10_000,
     windowMs: MINUTE,
   },
-  // Astro route; password verification makes this more expensive than a normal page.
+  // Page route; password verification makes this more expensive than a normal page.
   { pattern: SHARE_LINK_ROUTE_PATTERN, max: 120, windowMs: MINUTE },
 ];
 

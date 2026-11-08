@@ -297,9 +297,8 @@ export function useQuery<TData = unknown>(
     // result: the render is not waiting on it (a query is signals, not a
     // resource, so `Suspense` does not track it) and there is no dehydration
     // step, so the answer lands in a cache that is thrown away with the
-    // request. Astro's Solid renderer also renders every island twice — once in
-    // `check()` to detect the framework, once for real — so each query fired
-    // twice per page for markup that always rendered its loading state anyway.
+    // request. Rendering the page more than once would fire each query that many times
+    // for markup that always renders its loading state anyway.
     // Measured on a space home: 13 API calls per SSR, every one of them waste.
     if (enabled && !isServer) {
       void fetchEntry(entry).catch(() => undefined);

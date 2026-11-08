@@ -48,10 +48,10 @@ jobs:
           bun i
           bun run build
 
-      - name: Build Astro assets + compile binary
+      - name: Build web assets + compile binary
         working-directory: server
         run: |
-          bunx --bun astro build
+          bun ./scripts/build-web.ts
           bun run ./build.ts
           mv ./vektor ./${{ inputs.artifact }}
 

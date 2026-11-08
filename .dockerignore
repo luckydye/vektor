@@ -3,7 +3,6 @@
 **/.git
 **/data
 **/dist
-**/.astro
 **/src/files/native/*.node
 **/src/exec/native/*.node
 

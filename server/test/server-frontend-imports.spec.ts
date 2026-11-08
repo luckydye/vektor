@@ -18,7 +18,7 @@ import { subpathImports } from "./helpers/subpathImports.ts";
  * reaches them.
  *
  * Scope is deliberately the document/serialization path, not the whole server:
- * Astro server-renders components, so `server.ts` legitimately loads Solid.
+ * the page routes server-render components, so `server.ts` legitimately loads Solid.
  */
 
 const APP_ROOT = resolve(import.meta.dirname, "..");

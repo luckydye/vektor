@@ -19,12 +19,12 @@ import { seed } from "./seed.ts";
  */
 async function buildClient(): Promise<void> {
   const appDir = new URL("../..", import.meta.url).pathname;
-  const build = Bun.spawn(["bunx", "--bun", "astro", "build"], {
+  const build = Bun.spawn(["bun", "./scripts/build-web.ts"], {
     cwd: appDir,
     stdout: "ignore",
     stderr: "inherit",
   });
-  if ((await build.exited) !== 0) throw new Error("astro build failed");
+  if ((await build.exited) !== 0) throw new Error("web build failed");
   await generateClientAssetsModule();
 }
 

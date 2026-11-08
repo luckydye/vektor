@@ -67,29 +67,25 @@ export function isReservedDocumentSlug(slug: string): boolean {
 /**
  * First path segments the app itself owns, which a space slug must not claim.
  *
- * Each of these wins over the space catch-all `[spaceSlug]/[...all].astro`, so a
+ * Each of these wins over the space catch-all in `src/web/routes.ts`, so a
  * space sitting on one is created, listed in the switcher, and unreachable
- * forever. `test/slugs.spec.ts` fails on a new `src/pages/` route, `public/`
- * asset or `src/server.ts` route that is missing here.
+ * forever. `test/slugs.spec.ts` fails on a new page route, `public/` asset or
+ * `src/server.ts` route that is missing here.
  */
 export const reservedSpaceSlugs: readonly string[] = [
-  // src/pages/
+  // src/web/routes.ts
   "404",
   "desktop-login",
   "docs",
   "login",
   "new",
   "spaces",
-  // Answered by Hono before the Astro fallback, which only runs on a 404, so no
-  // page file records them.
+  // Answered by Hono before the page routes, so no page route records them.
   "api",
   ".well-known",
   "metrics",
-  // Astro's own output namespaces
-  "_astro",
-  "_image",
-  "_server-islands",
-  "_actions",
+  // The web build's hashed files
+  "assets",
   // public/
   "onboarding",
   "favicon.ico",

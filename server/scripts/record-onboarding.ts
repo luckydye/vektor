@@ -357,12 +357,12 @@ async function encode(frames: Frame[], out: string): Promise<void> {
  * static import would compile even when `VEKTOR_SKIP_BUILD` asked not to.
  */
 async function buildClient(): Promise<void> {
-  const build = Bun.spawn(["bunx", "--bun", "astro", "build"], {
+  const build = Bun.spawn(["bun", "./scripts/build-web.ts"], {
     cwd: APP_DIR,
     stdout: "ignore",
     stderr: "inherit",
   });
-  if ((await build.exited) !== 0) throw new Error("astro build failed");
+  if ((await build.exited) !== 0) throw new Error("web build failed");
   await import("#build");
 }
 

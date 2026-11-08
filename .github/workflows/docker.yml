@@ -60,7 +60,7 @@ jobs:
       - name: Compile binary
         working-directory: server
         run: |
-          bunx --bun astro build
+          bun ./scripts/build-web.ts
           bun run ./build.ts
 
       - uses: docker/setup-buildx-action@v3

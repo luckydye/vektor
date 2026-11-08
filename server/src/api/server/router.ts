@@ -89,8 +89,8 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
  * whose own slug is `git` both fall out of the arithmetic rather than needing a
  * case of their own.
  *
- * Part of `isApiPath`, which the server also asks before falling back to Astro:
- * miss it and a clone either 404s as an unknown API path or reaches Astro.
+ * Part of `isApiPath`: miss it and a clone either 404s as an unknown API path
+ * or reaches the space page route.
  */
 export function isGitPath(pathname: string): boolean {
   const spaceEnd = pathname.indexOf("/", 1);

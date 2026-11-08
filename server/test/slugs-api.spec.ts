@@ -156,7 +156,7 @@ describe("space creation", () => {
   it("rejects the reserved names no slug could spell anyway", async () => {
     // Refused as malformed before the reserved list is consulted; they are
     // listed there for completeness.
-    for (const slug of ["_astro", ".well-known", "favicon.ico"]) {
+    for (const slug of [".well-known", "favicon.ico"]) {
       expect((await createSpace("Reserved", slug)).status).toBe(400);
     }
   });

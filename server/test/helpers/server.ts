@@ -65,9 +65,9 @@ export function testServerCommand(port: number): string[] {
  *
  * The runner puts these in `process.env`, and spreading it into the child hands
  * the server `DEV=1` — Bun reads that into `import.meta.env.DEV`, so
- * `src/server.ts` takes its dev branch and boots `astro dev` instead of loading
- * the built SSR handler. The API keeps answering and every frontend route
- * returns 404, which reads like an ACL bug rather than a runner artefact.
+ * `src/server.ts` takes its dev branch and boots Vite instead of loading the
+ * built SSR bundle. The API keeps answering while every page is rendered from
+ * source, which reads like a frontend bug rather than a runner artefact.
  */
 const VITE_INJECTED = new Set([
   "BASE_URL",

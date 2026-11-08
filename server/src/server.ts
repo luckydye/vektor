@@ -1,12 +1,8 @@
 import { existsSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
-import type { dev } from "astro";
 import { Hono } from "hono";
-import {
-  createEmbeddedClientAssetMiddleware,
-  createFileSystemClientAssetMiddleware,
-} from "#platform/bun/clientAssets.ts";
+import { createEmbeddedClientAssetMiddleware } from "#platform/bun/clientAssets.ts";
 import { createBunPlatform } from "#platform/bun/index.ts";
 import { attachNodeWebSocketServer } from "#platform/bun/nodeServer.ts";
 import { attachRealtimeWebSocketServer } from "#platform/bun/realtimeServer.ts";
@@ -37,13 +33,9 @@ import { flushAllCanvasRooms, startCanvasRoomSweep } from "./realtime/canvasRoom
 import { startYRoomSweep } from "./realtime/yjsRooms.ts";
 import { APP_CSP } from "./utils/csp.ts";
 import { every } from "./utils/every.ts";
-
-type AstroMiddleware = (
-  req: IncomingMessage,
-  res: ServerResponse,
-  next: (error?: unknown) => void,
-  locals: Pick<App.Locals, "platform">,
-) => void | Promise<void>;
+import type { DevWeb } from "./web/dev.ts";
+import { createWebRuntime } from "./web/runtime.ts";
+import { registerWebRoutes } from "./web/routes.ts";
 
 function buildHeaders(req: IncomingMessage): Headers {
   const headers = new Headers();
@@ -96,6 +88,13 @@ function createHonoRequest(req: IncomingMessage): Request {
 }
 
 /**
+ * Where Vite serves source modules from in development. Checked ahead of the API
+ * test because a repository URL is `/<space>/git/...`, which `/src/git/graph.ts`
+ * would otherwise be taken for.
+ */
+const VITE_MODULE_PATH = /^\/(?:src|node_modules|@id|@fs|@vite)\//;
+
+/**
  * How often deleted spaces past their retention window are reclaimed. A space
  * that waited 30 days can wait another hour.
  */
@@ -146,47 +145,10 @@ function logRequest(req: IncomingMessage, res: ServerResponse): void {
   });
 }
 
-function shouldRunAstroFallback(
-  astroHandler: AstroMiddleware | undefined,
-  response: Response,
-  req: IncomingMessage,
-  res: ServerResponse,
-): boolean {
-  if (!astroHandler || response.status !== 404 || res.headersSent || res.writableEnded) {
-    return false;
-  }
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-  return !isApiPath(pathname);
-}
-
-async function runAstroHandler(
-  platform: Platform,
-  handler: AstroMiddleware,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const done = (error?: unknown) => {
-      if (settled) return;
-      settled = true;
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve();
-    };
-
-    Promise.resolve(handler(req, res, done, { platform })).then(() => {
-      if (!settled) resolve();
-    }, reject);
-  });
-}
-
 // A client that disconnects mid-response (e.g. navigating away while the SSR
 // stream is still being written) surfaces as an `aborted` / `ECONNRESET` error
-// on the Node request socket. Astro's node adapter lets this reach the process
-// as an unhandled rejection. It is a benign network condition, not a server
+// on the Node request socket, which can reach the process as an unhandled
+// rejection. It is a benign network condition, not a server
 // bug, so it must NOT take the whole process (and every live WebSocket) down.
 // Genuine errors still crash so we notice real issues.
 function isBenignConnectionError(reason: unknown): boolean {
@@ -208,7 +170,8 @@ function isBenignConnectionError(reason: unknown): boolean {
  * everything below that touches a database, a blob or a timer is handed.
  */
 export async function startServer(platform: Platform): Promise<void> {
-  const app = new Hono<ApiBindings>();
+  // Not strict: `/docs/` and `/login/` are the pages, not a space slug.
+  const app = new Hono<ApiBindings>({ strict: false });
 
   // Database schema preparation and local-file reconciliation must complete
   // before requests or background workers can observe the space index.
@@ -240,7 +203,7 @@ export async function startServer(platform: Platform): Promise<void> {
     }),
   );
 
-  // Serve the API directly from Hono so it can operate without the Astro
+  // Serve the API directly from Hono so it can operate without the web
   // frontend. Hono retains ownership of request bodies for JSON, multipart,
   // and binary uploads.
   app.use(
@@ -251,52 +214,26 @@ export async function startServer(platform: Platform): Promise<void> {
     ),
   );
 
-  // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
-  // server (no client assets, no Astro dev server, no SSR handler).
+  // The web frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
+  // server (no client assets, no page rendering).
   const apiOnly = config().API_ONLY === "1" || config().API_ONLY === "true";
 
-  let devServer: Awaited<ReturnType<typeof dev>> | undefined;
-  let astroHandler: AstroMiddleware | undefined;
+  let devWeb: DevWeb | undefined;
 
   if (!apiOnly) {
     if (import.meta.env.DEV) {
-      app.use("*", createFileSystemClientAssetMiddleware("dist/client"));
+      // Vite serves the browser modules and public files itself, ahead of Hono.
+      const { startDevWeb } = await import("./web/dev.ts");
+      devWeb = await startDevWeb();
+      registerWebRoutes(app, createWebRuntime(devWeb.source));
     } else {
       const { embeddedClientAssets } = await import("#generated/client-assets.ts");
       app.use("*", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
-    }
-
-    if (import.meta.env.DEV) {
-      const { dev } = await import("astro");
-
-      devServer = await dev({
-        root: "./",
-        logLevel: "error",
-        server: {
-          host: true,
-        },
-        vite: {
-          plugins: [
-            {
-              name: "vektor-platform",
-              // Astro's dev server reads a request's initial locals from this symbol,
-              // which is how pages get the platform the production handler passes.
-              configureServer(server) {
-                server.middlewares.use((req, _res, next) => {
-                  Reflect.set(req, Symbol.for("astro.locals"), { platform });
-                  next();
-                });
-              },
-            },
-          ],
-        },
-      });
-    } else {
-      const { handler } = await import("#dist/server/entry.mjs");
-      astroHandler = handler as AstroMiddleware;
+      const { createProductionSource } = await import("./web/production.ts");
+      registerWebRoutes(app, createWebRuntime(await createProductionSource()));
     }
   } else {
-    appLogger.info("Starting in API-only mode (Astro frontend disabled)");
+    appLogger.info("Starting in API-only mode (web frontend disabled)");
   }
 
   const runtimeArgv = globalThis.process?.argv ?? [];
@@ -307,21 +244,13 @@ export async function startServer(platform: Platform): Promise<void> {
       : runtimeArgv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
   const port = Number.parseInt(portArg ?? "8080", 10);
   const host = config().SERVER_HOST ?? "0.0.0.0";
-  const server = createServer(async (req, res) => {
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader("Content-Security-Policy", APP_CSP);
     logRequest(req, res);
     try {
       const response = await app.fetch(createHonoRequest(req), {
         clientAddress: req.socket.remoteAddress ?? null,
       });
-
-      if (astroHandler && shouldRunAstroFallback(astroHandler, response, req, res)) {
-        await runAstroHandler(platform, astroHandler, req, res);
-        if (!res.writableEnded) {
-          await sendWebResponse(res, new Response(null, { status: 404 }));
-        }
-        return;
-      }
 
       if (!res.writableEnded) {
         await sendWebResponse(res, response);
@@ -339,6 +268,35 @@ export async function startServer(platform: Platform): Promise<void> {
         res.end();
       }
     }
+  };
+  const server = createServer((req, res) => {
+    // A malformed request target must not throw out of this callback: it is
+    // outside any handler, so it would take the whole process down.
+    let pathname = "/";
+    try {
+      pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    } catch {
+      void handleRequest(req, res);
+      return;
+    }
+    if (!devWeb || (isApiPath(pathname) && !VITE_MODULE_PATH.test(pathname))) {
+      void handleRequest(req, res);
+      return;
+    }
+    // Vite answers its own module and public-file requests, and passes
+    // everything else on. The API never goes through it: its CORS handling
+    // would answer API preflights.
+    devWeb.middleware(req, res, (error?: unknown) => {
+      if (error) {
+        appLogger.error("Dev server middleware failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (!res.headersSent) res.statusCode = 500;
+        res.end();
+        return;
+      }
+      void handleRequest(req, res);
+    });
   });
 
   const realtimeWebSocketServer = attachRealtimeWebSocketServer(platform, server);
@@ -391,8 +349,8 @@ export async function startServer(platform: Platform): Promise<void> {
     }, 10_000);
     forcedShutdownTimer.unref();
 
-    if (devServer) {
-      await devServer.stop();
+    if (devWeb) {
+      await devWeb.stop();
     }
 
     try {

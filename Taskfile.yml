@@ -70,11 +70,12 @@ tasks:
       HOST: 0.0.0.0
       VEKTOR_SITE_URL: http://127.0.0.1:4321
       VEKTOR_API_URL: http://127.0.0.1:4321
-      VEKTOR_COLLABORATION_HOST: 127.0.0.1:8080
+      VEKTOR_COLLABORATION_HOST: 127.0.0.1:4321
       VEKTOR_NO_AUTH: "1"
     cmds:
       - defer: rm ../dev.log
-      - bun --watch ./src/server.ts 2>&1 | tee ../dev.log
+      # One server for the API, the pages and Vite's dev middleware.
+      - bun --watch ./src/server.ts --port 4321 2>&1 | tee ../dev.log
 
   app:
     desc: Run the native desktop app against VEKTOR_URL (defaults to the dev server).
@@ -110,7 +111,7 @@ tasks:
     dotenv:
       - ../.env
     cmds:
-      - bunx --bun astro build
+      - bun ./scripts/build-web.ts
 
   compile:
     dir: ./server
@@ -119,7 +120,7 @@ tasks:
     dotenv:
       - ../.env
     cmds:
-      - bunx --bun astro build
+      - bun ./scripts/build-web.ts
       - bun run ./build.ts
 
   install:

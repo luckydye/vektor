@@ -1,9 +1,8 @@
 /**
  * Default Content-Security-Policy applied to every HTML document the app
  * serves. Set on the outgoing Node response up front (see `server.ts`),
- * so it covers both Hono-handled responses (whose `Response` headers are
- * copied onto `res` afterwards by `sendWebResponse`) and Astro-handled
- * responses (where the Astro handler writes directly to `res`).
+ * so it covers every response, API and page alike (their `Response` headers
+ * are copied onto `res` afterwards by `sendWebResponse`).
  *
  * Routes that need a stricter / different policy (served user uploads,
  * image transforms, extension assets) set `Content-Security-Policy` on
@@ -11,14 +10,12 @@
  * via `res.setHeader`, so those take effect verbatim.
  *
  * Notes / limitations:
- *  - `script-src` needs `'unsafe-inline'` because Astro's astro-island
- *    hydration bootstrap (per-page `<script>` that wires the islands)
- *    and `maps.astro`'s inline module script are inlined into the
- *    document. Inline handlers (`<img onerror>…`) therefore STILL
- *    execute under this policy. Until per-request nonces (or hashed
- *    inline scripts) are plumbed end-to-end through Astro, this
- *    policy is defence-in-depth against cross-origin exfiltration /
- *    resource loading, NOT a full XSS fix.
+ *  - `script-src` needs `'unsafe-inline'` because Solid's hydration
+ *    bootstrap (`generateHydrationScript`) is inlined into the document.
+ *    Inline handlers (`<img onerror>…`) therefore STILL execute under
+ *    this policy. Until per-request nonces are plumbed through the page
+ *    shell (`src/web/shell.ts`), this policy is defence-in-depth against
+ *    cross-origin exfiltration / resource loading, NOT a full XSS fix.
  *  - `'wasm-unsafe-eval'` permits WebAssembly modules used by the app and
  *    extensions to compile. It does not permit JavaScript `eval` or
  *    `new Function`; those would require the broader `'unsafe-eval'` source.

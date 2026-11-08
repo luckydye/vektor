@@ -27,7 +27,7 @@ export const DIMENSION_READABLE_EXTENSIONS = new Set([
 /**
  * Read pixel dimensions from an image's header bytes. Null for unknown formats.
  * Not the native addon: its `metadata()` fully decodes, and the addon's `.node`
- * require breaks in Astro's separate SSR bundle.
+ * require breaks in the separate SSR bundle.
  */
 export function readImageDimensions(buffer: Buffer): ImageDimensions | null {
   // PNG: dimensions are the first two fields in the IHDR chunk.
