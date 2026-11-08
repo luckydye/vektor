@@ -101,7 +101,6 @@ function propertyValueCondition(filter: PropertyValueFilter) {
   )`;
 }
 
-
 export interface DocumentFilters {
   /** The caller's readable documents, or null for an unrestricted view. */
   readable: Set<string> | null;

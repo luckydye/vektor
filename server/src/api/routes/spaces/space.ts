@@ -107,10 +107,9 @@ export const PATCH: ApiRouteHandler = (context) =>
       const validated = validateSpacePreferences(preferences);
       if ("error" in validated) throw badRequestResponse(validated.error);
       const requestedLimit = validated.preferences?.aiWeeklyTokenLimit;
-      if (requestedLimit && Number(requestedLimit) > maxWeeklyAITokens()) {
-        throw badRequestResponse(
-          `aiWeeklyTokenLimit cannot exceed ${maxWeeklyAITokens()}`,
-        );
+      const maxLimit = maxWeeklyAITokens();
+      if (requestedLimit && maxLimit !== null && Number(requestedLimit) > maxLimit) {
+        throw badRequestResponse(`aiWeeklyTokenLimit cannot exceed ${maxLimit}`);
       }
 
       // Preferences are open, so the role follows what is being written rather

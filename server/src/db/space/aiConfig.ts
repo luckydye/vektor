@@ -26,10 +26,10 @@ export function getAIProvider(): InstanceAIProvider {
   throw new Error(`Unknown VEKTOR_AI_PROVIDER: ${provider}`);
 }
 
-/** A missing cap defaults to one million estimated tokens per space per week. */
-export function maxWeeklyAITokens(): number {
+/** A missing cap means unlimited (`null`): estimated tokens per space per week. */
+export function maxWeeklyAITokens(): number | null {
   const raw = process.env.VEKTOR_AI_WEEKLY_MAX_TOKENS;
-  if (raw === undefined || raw === "") return 1_000_000;
+  if (raw === undefined || raw === "") return null;
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new Error("VEKTOR_AI_WEEKLY_MAX_TOKENS must be a positive integer.");

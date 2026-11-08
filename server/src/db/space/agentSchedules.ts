@@ -64,7 +64,10 @@ export async function listAgentSchedules(
       .select()
       .from(workflowSchedule)
       .where(
-        and(isNotNull(workflowSchedule.prompt), eq(workflowSchedule.createdBy, createdBy)),
+        and(
+          isNotNull(workflowSchedule.prompt),
+          eq(workflowSchedule.createdBy, createdBy),
+        ),
       )
       .orderBy(desc(workflowSchedule.createdAt)),
   );

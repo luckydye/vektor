@@ -500,8 +500,10 @@ export interface SpaceSecret {
 export interface AIUsage {
   weekStart: string;
   used: number;
-  limit: number;
-  maxLimit: number;
+  /** `null` when neither the space nor the instance sets a limit. */
+  limit: number | null;
+  /** `null` when the instance sets no cap. */
+  maxLimit: number | null;
 }
 
 /** Provider ids are declared by installed extensions, not by the app. */

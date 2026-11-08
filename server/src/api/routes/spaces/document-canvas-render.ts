@@ -38,15 +38,36 @@ export const GET: ApiRouteHandler = (context) =>
     if (frameId) {
       const frame = shapes.find((shape) => shape.id === frameId);
       if (!frame) throw notFoundResponse(`Element ${frameId}`);
-      region = { x: frame.frame.x, y: frame.frame.y, width: frame.frame.width, height: frame.frame.height };
+      region = {
+        x: frame.frame.x,
+        y: frame.frame.y,
+        width: frame.frame.width,
+        height: frame.frame.height,
+      };
     } else if (number("w") !== undefined) {
-      region = { x: number("x") ?? 0, y: number("y") ?? 0, width: number("w") ?? 0, height: number("h") ?? 0 };
+      region = {
+        x: number("x") ?? 0,
+        y: number("y") ?? 0,
+        width: number("w") ?? 0,
+        height: number("h") ?? 0,
+      };
     } else {
-      const bounds = describeCanvas(snapshot, faces).bounds ?? { x: 0, y: 0, w: 800, h: 600 };
+      const bounds = describeCanvas(snapshot, faces).bounds ?? {
+        x: 0,
+        y: 0,
+        w: 800,
+        h: 600,
+      };
       // Room above for frame titles, which sit outside their frame.
-      region = { x: bounds.x - 40, y: bounds.y - 60, width: bounds.w + 80, height: bounds.h + 100 };
+      region = {
+        x: bounds.x - 40,
+        y: bounds.y - 60,
+        width: bounds.w + 80,
+        height: bounds.h + 100,
+      };
     }
-    if (region.width <= 0 || region.height <= 0) throw badRequestResponse("The region is empty");
+    if (region.width <= 0 || region.height <= 0)
+      throw badRequestResponse("The region is empty");
     const scale = Math.min(
       number("scale") ?? Math.min(1, 1600 / region.width, 1200 / region.height),
       MAX_SIDE / region.width,

@@ -89,10 +89,9 @@ export const POST: ApiRouteHandler = (context) =>
       const validated = validateSpacePreferences(preferences);
       if ("error" in validated) throw badRequestResponse(validated.error);
       const requestedLimit = validated.preferences?.aiWeeklyTokenLimit;
-      if (requestedLimit && Number(requestedLimit) > maxWeeklyAITokens()) {
-        throw badRequestResponse(
-          `aiWeeklyTokenLimit cannot exceed ${maxWeeklyAITokens()}`,
-        );
+      const maxLimit = maxWeeklyAITokens();
+      if (requestedLimit && maxLimit !== null && Number(requestedLimit) > maxLimit) {
+        throw badRequestResponse(`aiWeeklyTokenLimit cannot exceed ${maxLimit}`);
       }
 
       // The two halves go to different stores, here as on the update path: the

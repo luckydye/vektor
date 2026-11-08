@@ -36,7 +36,10 @@ export const GET: ApiRouteHandler = (context) =>
         limit: 1,
         order: "desc",
       });
-      return jsonResponse({ series: publicSeries(series), latestPoint: points[0] ?? null });
+      return jsonResponse({
+        series: publicSeries(series),
+        latestPoint: points[0] ?? null,
+      });
     },
     { fallbackMessage: "Failed to read series", onError: seriesErrorResponse },
   );

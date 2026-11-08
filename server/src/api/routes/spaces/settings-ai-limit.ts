@@ -54,14 +54,17 @@ export const PUT: ApiRouteHandler = (context) =>
     );
     const body = await parseJsonBody<{ limit?: number }>(context.req.raw);
     const limit = body && typeof body === "object" ? body.limit : undefined;
+    const maxLimit = maxWeeklyAITokens();
     if (
       limit === undefined ||
       !Number.isSafeInteger(limit) ||
       limit < 1 ||
-      limit > maxWeeklyAITokens()
+      (maxLimit !== null && limit > maxLimit)
     ) {
       throw badRequestResponse(
-        `limit must be a positive integer at most ${maxWeeklyAITokens()}`,
+        maxLimit === null
+          ? "limit must be a positive integer"
+          : `limit must be a positive integer at most ${maxLimit}`,
       );
     }
     const store = await openSpaceStore(context.var.platform, spaceId);

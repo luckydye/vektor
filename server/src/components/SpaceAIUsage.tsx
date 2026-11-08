@@ -7,14 +7,17 @@ import { Button } from "./Button.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
 
 function formatAIUsage(usage: AIUsage) {
-  const percent = Math.round((usage.used / usage.limit) * 100);
+  const { limit } = usage;
   return {
     used: usage.used.toLocaleString(),
-    limit: usage.limit.toLocaleString(),
-    maxLimit: usage.maxLimit.toLocaleString(),
-    remaining: Math.max(0, usage.limit - usage.used).toLocaleString(),
-    percentLabel: `${percent}% used`,
-    progressWidth: `${Math.min(100, (usage.used / usage.limit) * 100)}%`,
+    limit: limit === null ? "unlimited" : limit.toLocaleString(),
+    maxLimit: usage.maxLimit === null ? "any number of" : usage.maxLimit.toLocaleString(),
+    remaining:
+      limit === null ? "Unlimited" : Math.max(0, limit - usage.used).toLocaleString(),
+    percentLabel:
+      limit === null ? "No limit" : `${Math.round((usage.used / limit) * 100)}% used`,
+    progressWidth:
+      limit === null ? "0%" : `${Math.min(100, (usage.used / limit) * 100)}%`,
   };
 }
 
@@ -68,7 +71,7 @@ export function SpaceAIUsage() {
       .then((usage) => {
         if (cancelled) return;
         setAIUsage(usage);
-        setWeeklyLimit(String(usage.limit));
+        setWeeklyLimit(usage.limit === null ? "" : String(usage.limit));
       })
       .catch((err) => {
         if (!cancelled) {
@@ -82,9 +85,16 @@ export function SpaceAIUsage() {
     const space = currentSpace();
     if (!space) return;
     const limit = Number(weeklyLimit());
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > (aiUsage()?.maxLimit ?? 0)) {
+    const maxLimit = aiUsage()?.maxLimit ?? null;
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      (maxLimit !== null && limit > maxLimit)
+    ) {
       setAILimitError(
-        `Enter a limit between 1 and ${aiUsage()?.maxLimit.toLocaleString() ?? "the instance maximum"}.`,
+        maxLimit === null
+          ? "Enter a positive whole number."
+          : `Enter a limit between 1 and ${maxLimit.toLocaleString()}.`,
       );
       return;
     }
@@ -94,7 +104,7 @@ export function SpaceAIUsage() {
       const usage = await api.aiLimit.put(space.id, limit);
       if (currentSpace()?.id === space.id) {
         setAIUsage(usage);
-        setWeeklyLimit(String(usage.limit));
+        setWeeklyLimit(usage.limit === null ? "" : String(usage.limit));
       }
       toast.success("Weekly AI limit saved");
     } catch (err) {
@@ -128,8 +138,10 @@ export function SpaceAIUsage() {
                     <Pending value={aiUsageDisplay()?.used} class="w-8" />
                   </span>
                   <span class="text-neutral-500 text-size-medium">
-                    / <Pending value={aiUsageDisplay()?.limit} class="w-20" /> estimated
-                    tokens
+                    / <Pending value={aiUsageDisplay()?.limit} class="w-20" />
+                    {aiUsage()?.limit === null
+                      ? " (estimated tokens)"
+                      : " estimated tokens"}
                   </span>
                 </div>
               </div>
@@ -143,8 +155,11 @@ export function SpaceAIUsage() {
               role="progressbar"
               aria-label="Weekly AI token usage"
               aria-valuemin="0"
-              aria-valuemax={aiUsage()?.limit ?? 0}
-              aria-valuenow={Math.min(aiUsage()?.used ?? 0, aiUsage()?.limit ?? 0)}
+              aria-valuemax={aiUsage()?.limit ?? undefined}
+              aria-valuenow={Math.min(
+                aiUsage()?.used ?? 0,
+                aiUsage()?.limit ?? Number.POSITIVE_INFINITY,
+              )}
               aria-valuetext={
                 aiUsageDisplay()
                   ? `${aiUsageDisplay()?.used} of ${aiUsageDisplay()?.limit} tokens used`
@@ -186,7 +201,7 @@ export function SpaceAIUsage() {
                 id="ai-weekly-limit"
                 type="number"
                 min="1"
-                max={aiUsage()?.maxLimit}
+                max={aiUsage()?.maxLimit ?? undefined}
                 required
                 disabled={!aiUsageDisplay()}
                 value={weeklyLimit()}

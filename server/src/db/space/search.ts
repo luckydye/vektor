@@ -366,7 +366,9 @@ async function searchByFilters(
     parentId,
     typeFilters: search.typeFilters,
     propertyFilters: sqlFilters,
-    requiredKeys: [...residualFilters, ...search.rangeFilters].map((filter) => filter.key),
+    requiredKeys: [...residualFilters, ...search.rangeFilters].map(
+      (filter) => filter.key,
+    ),
     dateWindows: search.dateWindows,
   });
   const where = sql.join(conditions, sql` AND `);
@@ -415,16 +417,19 @@ async function searchByFilters(
     documentTotal = Number(counted?.total ?? 0);
     documents =
       startIndex < documentTotal
-        ? (
-            await s.db.all<Row>(sql`${select} LIMIT ${limit} OFFSET ${startIndex}`)
-          ).map(toRaw)
+        ? (await s.db.all<Row>(sql`${select} LIMIT ${limit} OFFSET ${startIndex}`)).map(
+            toRaw,
+          )
         : [];
   }
 
   const files = await filterFiles(s, search);
   const filesStart = Math.max(0, startIndex - documentTotal);
   return {
-    rows: [...documents, ...files.slice(filesStart, filesStart + limit - documents.length)],
+    rows: [
+      ...documents,
+      ...files.slice(filesStart, filesStart + limit - documents.length),
+    ],
     total: documentTotal + files.length,
   };
 }
@@ -561,7 +566,8 @@ export async function searchDocuments(
     });
     return {
       results: await toSearchResults(s, rows),
-      nextCursor: startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
+      nextCursor:
+        startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
     };
   }
 
@@ -735,7 +741,8 @@ export async function searchDocuments(
       s,
       accessibleResults.slice(startIndex, startIndex + limit),
     ),
-    nextCursor: startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
+    nextCursor:
+      startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
   };
 }
 

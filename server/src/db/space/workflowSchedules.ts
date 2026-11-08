@@ -73,8 +73,7 @@ export async function syncPropertyWorkflowSchedules(
       }
       continue;
     }
-    const createdBy =
-      current && !entry.triggerWritten ? current.createdBy : userId;
+    const createdBy = current && !entry.triggerWritten ? current.createdBy : userId;
     if (!createdBy) {
       throw new InvalidDocumentPropertyPatchError(
         `Trigger "${entry.propertyKey}" needs a user to run its workflow as`,
@@ -359,8 +358,8 @@ export async function listWorkflowSchedules(
         ),
       ),
   );
-  return schedules.filter((schedule): schedule is WorkflowDocumentSchedule =>
-    schedule.documentId !== null,
+  return schedules.filter(
+    (schedule): schedule is WorkflowDocumentSchedule => schedule.documentId !== null,
   );
 }
 
@@ -438,13 +437,15 @@ export async function nextWorkflowScheduleAt(s: SpaceStore): Promise<Date | null
 }
 
 export async function deleteWorkflowSchedule(s: SpaceStore, id: string): Promise<void> {
-  await s.db.delete(workflowSchedule).where(
-    and(
-      eq(workflowSchedule.id, id),
-      isNotNull(workflowSchedule.cronExpression),
-      isNotNull(workflowSchedule.documentId),
-    ),
-  );
+  await s.db
+    .delete(workflowSchedule)
+    .where(
+      and(
+        eq(workflowSchedule.id, id),
+        isNotNull(workflowSchedule.cronExpression),
+        isNotNull(workflowSchedule.documentId),
+      ),
+    );
 }
 
 /**

@@ -52,7 +52,9 @@ export async function getAIUsage(store: SpaceStore) {
   const configured = Number(pref?.value);
   const limit =
     pref && Number.isSafeInteger(configured) && configured > 0
-      ? Math.min(configured, maxLimit)
+      ? maxLimit === null
+        ? configured
+        : Math.min(configured, maxLimit)
       : maxLimit;
   const week = weekStart();
   const [row] = await store.db
@@ -73,11 +75,15 @@ export async function reserveAITokens(
   await store.tx(async (tx) => {
     const usage = await getAIUsage(tx);
     week = usage.weekStart;
-    const remaining = usage.limit - usage.used;
-    if (input >= remaining) {
-      throw new AIWeeklyLimitError(usage.limit, usage.used);
+    if (usage.limit === null) {
+      amount = input + 4096;
+    } else {
+      const remaining = usage.limit - usage.used;
+      if (input >= remaining) {
+        throw new AIWeeklyLimitError(usage.limit, usage.used);
+      }
+      amount = input + Math.min(4096, remaining - input);
     }
-    amount = input + Math.min(4096, remaining - input);
     await tx.db
       .insert(aiWeeklyUsage)
       .values({ weekStart: week, tokens: amount })
