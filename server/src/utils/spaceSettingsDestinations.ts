@@ -109,6 +109,10 @@ export function resolveSpaceSettingsHash(hash: string): {
   section?: string;
 } {
   const id = hash.replace(/^#/, "");
+  // A tab's own id opens it, whether or not a destination is listed under that
+  // name: `integrations` has none, since its sections are listed individually.
+  const tab = SPACE_SETTINGS_TABS.find((entry) => entry.id === id);
+  if (tab) return { tab: tab.id };
   const destination = SPACE_SETTINGS_DESTINATIONS.find((entry) => entry.id === id);
   if (!destination) return { tab: "general" };
   return destination.id === destination.tab
