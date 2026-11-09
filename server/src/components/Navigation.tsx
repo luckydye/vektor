@@ -236,7 +236,7 @@ export function Navigation() {
           <Icon name="search" />
         </button>
 
-        <label class="button-with-icon mb-xs flex min-h-[36px] max-md:hidden @max-xs:hidden w-full cursor-text items-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none focus-within:border-primary-300 focus-within:bg-background">
+        <label class="button-with-icon mb-xs flex min-h-[36px] @max-xs:hidden w-full cursor-text items-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none focus-within:border-primary-300 focus-within:bg-background">
           <Icon name="search" />
           <input
             ref={searchInput}

@@ -45,7 +45,6 @@ import { SpaceHomeView } from "./views/SpaceHomeView.tsx";
 import { SpaceSearchView } from "./views/SpaceSearchView.tsx";
 import { SpaceSettingsView } from "./views/SpaceSettingsView.tsx";
 import "#utils/insets.ts";
-import { Icon } from "./Icon.tsx";
 
 type InitialSpace = Record<string, unknown> & { id?: string; slug?: string };
 
@@ -282,16 +281,6 @@ export function SpaceApp(props: Props) {
 
         <Sidebar initialWidth={initialSidebarWidth} />
       </div>
-
-      <button
-        type="button"
-        class="fixed right-xs bottom-s z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary-100 text-white shadow-lg transition-colors hover:bg-primary-200 active:bg-primary-300 md:hidden"
-        aria-label="Open command palette"
-        title="Open command palette"
-        onClick={() => Actions.run("ui:toggle:palatte")}
-      >
-        <Icon class="h-7 w-7" name="command-palette" />
-      </button>
 
       <Show when={hasMounted()}>
         <DocumentOrganizationTour

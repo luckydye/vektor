@@ -912,6 +912,8 @@ export async function listDocuments(
   options: {
     limit?: number;
     type?: string;
+    /** Leave out documents of this type, e.g. "record" (database rows). */
+    excludeType?: string;
     /** Required: pass null only where the caller has already authorised. */
     viewer: AclViewer | null;
     cursor?: string;
@@ -928,10 +930,12 @@ export async function listDocuments(
   total: number;
   nextCursor: string | null;
 }> {
-  const { limit, type, viewer, cursor, includeFiles = false } = options;
-  const baseCondition = type
-    ? and(nonArchivedDocumentCondition, eq(document.type, type))
-    : nonArchivedDocumentCondition;
+  const { limit, type, excludeType, viewer, cursor, includeFiles = false } = options;
+  const baseCondition = and(
+    nonArchivedDocumentCondition,
+    type ? eq(document.type, type) : undefined,
+    excludeType ? sql`${document.type} IS NOT ${excludeType}` : undefined,
+  );
 
   let docs: DocumentMetaRow[];
   let total = 0;

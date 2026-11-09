@@ -233,7 +233,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "list_documents",
       description:
-        "List documents in the current Vektor space, newest first. " +
+        "Browse documents in the current Vektor space by recency, newest first. Database rows (type \"record\") are left out unless type or parentId asks for them; to find something by content use search_documents. " +
         "Pass nextCursor from a prior result as cursor to fetch the next page.",
       inputSchema: {
         type: "object",
@@ -1008,6 +1008,7 @@ export async function callTool(
           limit: expectNumber(args, "limit", { optional: true }) ?? 100,
           cursor: expectString(args, "cursor", { optional: true }),
           type: expectString(args, "type", { optional: true }),
+          excludeType: args.type === undefined ? "record" : undefined,
           parentId,
           categorySlugs: expectString(args, "categorySlugs", { optional: true }),
         })}`,
