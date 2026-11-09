@@ -413,6 +413,58 @@ export async function renameDatabaseColumn(
   return schemaJson;
 }
 
+/** How long the set of keys held only by archived documents is reused. */
+const ARCHIVED_ONLY_KEYS_TTL_MS = 60_000;
+const archivedOnlyKeysCache = new Map<
+  string,
+  { at: number; checked: Set<string>; archivedOnly: Set<string> }
+>();
+
+/**
+ * Keys that only archived documents hold. Proving a key has no live document
+ * scans every archived row of it, which dominates listing a large space's
+ * properties, so the answer is reused briefly. Keys not seen at the last check
+ * are checked now, so a new key is never hidden by a stale answer.
+ */
+async function archivedOnlyKeys(
+  s: SpaceStore,
+  rows: StoredPropertyKeyRow[],
+): Promise<Set<string>> {
+  const cached = archivedOnlyKeysCache.get(s.spaceId);
+  const fresh = cached && Date.now() - cached.at < ARCHIVED_ONLY_KEYS_TTL_MS;
+  const unchecked = rows.map((row) => row.key).filter((key) => !fresh || !cached.checked.has(key));
+  if (unchecked.length === 0 && cached) return cached.archivedOnly;
+
+  const keys = sql.join(
+    unchecked.map((key) => sql`${key}`),
+    sql`, `,
+  );
+  const live = new Set(
+    (
+      await many<{ key: string }>(
+        s.db,
+        sql`
+          SELECT k.key AS key FROM (SELECT DISTINCT key FROM ${property} WHERE key IN (${keys})) k
+          WHERE EXISTS (
+            SELECT 1 FROM ${property} p JOIN ${document} ON ${document.id} = p.document_id
+            WHERE p.key = k.key AND ${nonArchivedDocumentCondition}
+          )
+        `,
+      )
+    ).map((row) => row.key),
+  );
+  const entry = fresh
+    ? cached
+    : { at: Date.now(), checked: new Set<string>(), archivedOnly: new Set<string>() };
+  for (const key of unchecked) {
+    entry.checked.add(key);
+    if (live.has(key)) entry.archivedOnly.delete(key);
+    else entry.archivedOnly.add(key);
+  }
+  archivedOnlyKeysCache.set(s.spaceId, entry);
+  return entry.archivedOnly;
+}
+
 /**
  * The property keys used in a space, with their types. A key only archived
  * documents hold is left out; spellings are weighed over every stored row.
@@ -437,20 +489,13 @@ export async function listSpaceProperties(
 
   const rows = await many<StoredPropertyKeyRow>(
     s.db,
-    sql`
-      SELECT k.key AS key, k.count AS count,
-        (SELECT min(t.type) FROM ${property} t WHERE t.key = k.key AND t.type IS NOT NULL) AS type
-      FROM (SELECT key, count(*) AS count FROM ${property} GROUP BY key) k
-      WHERE EXISTS (
-        SELECT 1 FROM ${property} p JOIN ${document} ON ${document.id} = p.document_id
-        WHERE p.key = k.key AND ${nonArchivedDocumentCondition}
-      )
-    `,
+    sql`SELECT key, count(*) AS count, min(type) AS type FROM ${property} GROUP BY key`,
   );
+  const archivedOnly = await archivedOnlyKeys(s, rows);
 
   return [
     { name: DOCUMENT_TYPE_FILTER_KEY, type: "select" },
-    ...aggregateStoredProperties(rows),
+    ...aggregateStoredProperties(rows.filter((row) => !archivedOnly.has(row.key))),
   ].sort((a, b) => a.name.localeCompare(b.name));
 }
 
