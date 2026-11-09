@@ -90,6 +90,7 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
  * @jobToken
  * @paginated
  * @query type Only documents of this document type.
+ * @query excludeType Leave out documents of this document type.
  * @query categorySlugs Comma-separated category slugs to list documents from.
  * @query grouped:boolean With `categorySlugs`, group the result by category.
  * @query parentId List the children of this document instead of the space.
@@ -128,6 +129,8 @@ export const GET: ApiRouteHandler = (context) =>
     );
     const typeParam =
       new URL(context.req.url).searchParams.get("type")?.trim() || undefined;
+    const excludeTypeParam =
+      new URL(context.req.url).searchParams.get("excludeType")?.trim() || undefined;
     const categorySlugsParam = new URL(context.req.url).searchParams.get("categorySlugs");
     const grouped = new URL(context.req.url).searchParams.get("grouped") === "true";
     // Uploaded files are unpaginated, so a listing only gets them on request.
@@ -230,6 +233,7 @@ export const GET: ApiRouteHandler = (context) =>
     const { documents, total, nextCursor } = await listDocuments(store, {
       limit,
       type: typeParam,
+      excludeType: excludeTypeParam,
       viewer,
       cursor,
       includeFiles,
