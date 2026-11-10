@@ -44,7 +44,7 @@ Standalone or document-side view:
       "path": "my-ext",
       "title": "My Extension",
       "menuItem": { "title": "My Extension" },
-      "placements": ["standalone", "inline", "document", "database", "panel"]
+      "placements": ["standalone", "inline", "document", "database", "workflow", "panel"]
     }
   ]
 }
@@ -57,8 +57,12 @@ Standalone or document-side view:
   available through the Add Content menu, or `"document"` to render beside
   standard documents on desktop. Add `"database"` to expose it as a database
   view tab; `ctx.documentId` is the current database while that view is mounted.
-  Add `"panel"` to render it in a dockable floating panel (like the AI chat),
-  toggled from the command palette or `ctx.panels.open/close/toggle(path)`.
+  Add `"workflow"` to render a workflow run's result body; `ctx.documentId` is
+  the workflow document and the render function's second argument is the
+  prepared result (`{ runId, status, title, html, data, resultUrl,
+  documentHref, documentTitle, fileUrl, fileName }`). Add `"panel"` to render it
+  in a dockable floating panel (like the AI chat), toggled from the command
+  palette or `ctx.panels.open/close/toggle(path)`.
 - Every entry path declared in the manifest must exist in the ZIP.
 
 ## Frontend entry
@@ -86,7 +90,7 @@ The registered path must exactly match `routes[n].path`:
 
 ```js
 export function activate(ctx) {
-  ctx.views.register('my-ext', (container) => {
+  ctx.views.register('my-ext', (container, data) => {
     container.innerHTML = '<h1>My Extension</h1>';
     return () => { container.innerHTML = ''; };
   });

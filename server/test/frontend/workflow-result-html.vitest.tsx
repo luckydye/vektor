@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionInfo } from "#api/ApiClient.ts";
 import { renderWithLocale } from "./renderWithLocale.tsx";
 
 /**
@@ -8,6 +9,29 @@ import { renderWithLocale } from "./renderWithLocale.tsx";
  */
 
 const RESULT_URL = "/uploads/artifacts/workflow/run_1/result.json";
+
+const EXTENSIONS: ExtensionInfo[] = [
+  {
+    id: "workflow-builder",
+    name: "Workflow Builder",
+    version: "1.0.0",
+    enabled: true,
+    source: "system",
+    sourceRef: null,
+    sourcePublisher: null,
+    entries: { view: "dist/view.js" },
+    routes: [
+      {
+        path: "workflow-result",
+        title: "Workflow Result",
+        placements: ["workflow"],
+      },
+    ],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    createdBy: "system",
+  },
+];
 
 const XSS_HTML = [
   "<p>Quarterly report</p>",
@@ -37,6 +61,54 @@ vi.mock("#composeables/useSpace.ts", () => ({
     currentSpaceId: () => "space_1",
     currentSpace: () => ({ id: "space_1", slug: "first", userRole: "owner" }),
   }),
+}));
+
+/**
+ * The result body moved into the workflow-builder extension. This stand-in
+ * mirrors the slice of that view the test cares about: sanitized HTML, table
+ * rows as text, and the run's links. What remains under test here is the host
+ * contract — the data it prepares and hands to the view.
+ */
+vi.mock("#components/ExtensionView.tsx", () => ({
+  ExtensionView: (props: { data?: Record<string, unknown> | null }) => {
+    const wrapper = document.createElement("div");
+    const data = props.data ?? {};
+
+    if (typeof data.html === "string" && data.html) {
+      const content = document.createElement("div");
+      content.className = "p-2";
+      content.innerHTML = data.html;
+      wrapper.append(content);
+    }
+
+    if (data.data) {
+      const content = document.createElement("div");
+      content.className = "p-2";
+      content.textContent = JSON.stringify(data.data);
+      wrapper.append(content);
+    }
+
+    if (typeof data.resultUrl === "string") {
+      const link = document.createElement("a");
+      link.href = data.resultUrl;
+      link.textContent = "Result JSON";
+      wrapper.append(link);
+    }
+
+    if (typeof data.documentHref === "string") {
+      const link = document.createElement("a");
+      link.href = data.documentHref;
+      wrapper.append(link);
+    }
+
+    if (typeof data.fileUrl === "string") {
+      const link = document.createElement("a");
+      link.href = data.fileUrl;
+      wrapper.append(link);
+    }
+
+    return wrapper;
+  },
 }));
 
 vi.mock("#api/client.ts", () => ({
@@ -104,7 +176,12 @@ afterEach(() => {
 async function mount() {
   host = document.createElement("div");
   document.body.append(host);
-  dispose = renderWithLocale(() => <WorkflowView documentId="doc_1" spaceId="space_1" />, host);
+  dispose = renderWithLocale(
+    () => (
+      <WorkflowView documentId="doc_1" spaceId="space_1" extensions={EXTENSIONS} />
+    ),
+    host,
+  );
   // List query, run detail and artifact fetch each resolve on their own tick.
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 }

@@ -18,6 +18,7 @@ export interface ExtensionRoute {
     | "inline"
     | "document"
     | "database"
+    | "workflow"
     | "panel"
     | DeprecatedPageExtensionPlacement
   >;

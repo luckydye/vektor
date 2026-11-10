@@ -45,6 +45,8 @@ export type AgentTurnRequest = {
   userProfile?: string;
   timeZone?: string;
   systemPrompt?: string;
+  /** The space's own instructions, resolved on the main thread. */
+  spaceSystemPrompt?: string;
   userId?: string | null;
   provider?: AgentWorkerProvider;
   jobToken: string;

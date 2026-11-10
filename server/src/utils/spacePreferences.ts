@@ -25,6 +25,7 @@ import { isSafeUploadedImageUrl } from "#utils/html.ts";
  * hold — the store is open — just the ones this codebase names.
  */
 export const spacePreferenceKeys = {
+  aiSystemPrompt: "aiSystemPrompt",
   aiWeeklyTokenLimit: "aiWeeklyTokenLimit",
   brandColor: "brandColor",
   description: "description",
@@ -50,6 +51,9 @@ export function isRepositoryCreationEnabled(
 /** Longest a free-text preference may be. */
 const MAX_DESCRIPTION_LENGTH = 2000;
 
+/** Longest text a space may add to every agent session's system prompt. */
+export const MAX_AI_SYSTEM_PROMPT_LENGTH = 20000;
+
 /**
  * The value a preference is stored as, or why it was refused.
  *
@@ -74,6 +78,15 @@ type PreferenceRule = (value: string) => { value: string } | { error: string };
  * `"__proto__"` is a lookup an object would answer with something truthy.
  */
 const PREFERENCE_RULES = new Map<string, PreferenceRule>([
+  [
+    spacePreferenceKeys.aiSystemPrompt,
+    (value) =>
+      value.length <= MAX_AI_SYSTEM_PROMPT_LENGTH
+        ? { value }
+        : {
+            error: `aiSystemPrompt must be at most ${MAX_AI_SYSTEM_PROMPT_LENGTH} characters`,
+          },
+  ],
   [
     spacePreferenceKeys.aiWeeklyTokenLimit,
     (value) => {
@@ -223,6 +236,7 @@ const PREFERENCE_NAMESPACES = new Map<string, PreferenceNamespaceRules>([
 
 /** Core preferences that decide something for the space rather than a member. */
 const OWNER_ONLY_CORE_PREFERENCES = new Set<string>([
+  spacePreferenceKeys.aiSystemPrompt,
   spacePreferenceKeys.aiWeeklyTokenLimit,
   spacePreferenceKeys.repositoryCreationEnabled,
   spacePreferenceKeys.workflowCreationEnabled,

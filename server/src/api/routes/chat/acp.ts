@@ -929,7 +929,8 @@ export const POST: ApiRouteHandler = (context) =>
           return createStreamingResponse(turn, requestId, sessionId);
         }
 
-        // The system message is fixed for the session: every turn resends the stored one.
+        // The system message is stored with the session: every turn resends it,
+        // and the agent core layers the space's current instructions on top.
         const storedHistory = session.conversationHistory as ChatMessage[];
         const storedSystem = storedHistory.filter((message) => message.role === "system");
         const history = storedHistory.filter((message) => message.role !== "system");

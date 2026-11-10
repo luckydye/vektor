@@ -1,5 +1,7 @@
 import type { AgentSpace } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getSpaceSystemPrompt } from "#db/space/aiSystemPrompt.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import type { AgentEvent, AgentHost, AgentResult, AgentTurnSetup } from "./core.ts";
@@ -204,11 +206,10 @@ export async function runAgentInWorker(
   },
 ): Promise<AgentResult> {
   const { signal, onEvent, onSetup, provider, ...request } = options;
-  const integrationSurface = await getIntegrationAgentSurface(
-    platform,
-    options.spaceId,
-    options.connectedProviders,
-  );
+  const [integrationSurface, spaceSystemPrompt] = await Promise.all([
+    getIntegrationAgentSurface(platform, options.spaceId, options.connectedProviders),
+    getSpaceSystemPrompt(await openSpaceStore(platform, options.spaceId)),
+  ]);
   signal?.throwIfAborted();
 
   const turnId = nextTurnId++;
@@ -224,6 +225,7 @@ export async function runAgentInWorker(
         request: {
           ...request,
           integrationSurface,
+          spaceSystemPrompt,
           provider: toWorkerProvider(provider),
         },
       };

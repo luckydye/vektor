@@ -81,7 +81,11 @@ const documentViews: Readonly<Record<string, Component<Props>>> = {
     <RepositoryView documentId={props.documentId} spaceId={props.spaceId} />
   ),
   workflow: (props) => (
-    <WorkflowView documentId={props.documentId} spaceId={props.spaceId} />
+    <WorkflowView
+      documentId={props.documentId}
+      spaceId={props.spaceId}
+      extensions={props.extensions}
+    />
   ),
 };
 

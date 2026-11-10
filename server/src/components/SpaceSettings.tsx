@@ -8,6 +8,7 @@ import { ExtensionSettings } from "./ExtensionSettings.tsx";
 import { JobsSettings } from "./JobsSettings.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
+import { SpaceAISystemPrompt } from "./SpaceAISystemPrompt.tsx";
 import { SpaceAIUsage } from "./SpaceAIUsage.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
 import { SpaceRunners } from "./SpaceRunners.tsx";
@@ -57,11 +58,12 @@ export function SpaceSettings() {
             when={isOwner()}
             fallback={
               <p class="text-neutral-500 text-size-small">
-                Only space owners manage AI usage and runners.
+                Only space owners manage AI settings and runners.
               </p>
             }
           >
             <SpaceAIUsage />
+            <SpaceAISystemPrompt />
             <SettingsSection
               id="runners"
               title="Runners"

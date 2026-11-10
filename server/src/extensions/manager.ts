@@ -64,6 +64,7 @@ export function extensionPanelId(extensionId: string, path: string): string {
  */
 export type ViewRenderFn = (
   container: HTMLElement,
+  data?: unknown,
 ) => void | (() => void) | Promise<undefined | (() => void)>;
 
 export type VektorGlobal = Omit<ExtensionContext, "extensionId"> & {
@@ -775,12 +776,14 @@ export class Extensions {
   /**
    * Render an extension view into a container without tracking cleanup globally.
    * Returns a cleanup function, or null if the view could not be rendered.
-   * Suitable for rendering multiple independent inline instances.
+   * Suitable for rendering multiple independent inline instances. `data` is
+   * handed to the render function for placements that provide a context.
    */
   async renderInlineView(
     extensionId: string,
     routePath: string,
     container: HTMLElement,
+    data?: unknown,
   ): Promise<(() => void) | null> {
     const loaded = this.loaded.get(extensionId);
     if (!loaded) {
@@ -819,7 +822,7 @@ export class Extensions {
 
     try {
       this.currentRoute = routePath;
-      const cleanup = await renderFn(container);
+      const cleanup = await renderFn(container, data);
       return typeof cleanup === "function" ? cleanup : () => {};
     } catch (err) {
       console.error(

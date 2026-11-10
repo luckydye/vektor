@@ -61,9 +61,11 @@ the default, `"inline"` makes it available through the Add Content menu, and
 `"document"` renders it beside standard documents on desktop. `"database"` adds
 it to the database's **+ View** picker; after a user adds and selects it,
 `ctx.documentId` is the current database document ID while the view is mounted.
-`"panel"` renders it in a dockable floating panel like the AI chat — see
-[Panels](#panels).
-`"page"` remains accepted as a deprecated alias for `"standalone"`.
+`"workflow"` replaces the result body of a workflow run: `ctx.documentId` is the
+workflow document and the render function's second argument is the prepared
+result. `"panel"` renders it in a dockable floating panel like the AI chat — see
+[Panels](#panels). `"page"` remains accepted as a deprecated alias for
+`"standalone"`.
 
 For example, a Kanban view that is only available on databases uses one
 placement:
@@ -73,6 +75,17 @@ placement:
   "path": "kanban",
   "title": "Kanban",
   "placements": ["database"]
+}
+```
+
+A workflow result renderer takes over the Results pane body for every workflow
+run in the space:
+
+```json
+{
+  "path": "workflow-result",
+  "title": "Workflow Result",
+  "placements": ["workflow"]
 }
 ```
 
@@ -213,11 +226,33 @@ The render function receives a container `HTMLElement` and can optionally return
 ```ts
 type ViewRenderFn = (
   container: HTMLElement,
+  data?: unknown,
 ) => void | (() => void) | Promise<void | (() => void)>;
 ```
 
+`data` is set by the placement that mounts the view. A `"workflow"` view
+receives the selected run's prepared result. The first enabled extension route
+with the `"workflow"` placement renders the result body; other extensions keep
+their route for other placements:
+
+```ts
+{
+  runId: string;
+  status: string;
+  title: string | null;
+  html: string | null; // sanitized HTML output
+  data: Record<string, unknown>[] | null; // table rows from `data` or `result`
+  resultUrl: string | null; // result JSON artifact
+  documentHref: string | null; // produced document, resolved
+  documentTitle: string | null;
+  fileUrl: string | null; // produced file
+  fileName: string | null;
+}
+```
+
 Views are rendered when navigating to `/:spaceSlug/x/:routePath` or when a host
-placement such as `"inline"`, `"document"`, or `"database"` selects the route.
+placement such as `"inline"`, `"document"`, `"database"` or `"workflow"` selects
+the route.
 The extension is activated if not already loaded, then the registered view
 renderer is called.
 

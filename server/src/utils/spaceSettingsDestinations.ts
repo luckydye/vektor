@@ -77,6 +77,13 @@ export const SPACE_SETTINGS_DESTINATIONS: readonly SpaceSettingsDestination[] = 
     ownerOnly: true,
   },
   {
+    id: "ai-system-prompt",
+    tab: "ai",
+    title: "AI System Prompt",
+    description: "Instructions added to every agent session in the space",
+    ownerOnly: true,
+  },
+  {
     id: "runners",
     tab: "ai",
     title: "AI Runners",

@@ -295,12 +295,13 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, "document" beside standard documents, "database" as a selectable database view, or "panel" as a dockable floating panel. */
+  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, "document" beside standard documents, "database" as a selectable database view, "workflow" as a workflow run's result renderer, or "panel" as a dockable floating panel. */
   placements?: Array<
     | "standalone"
     | "inline"
     | "document"
     | "database"
+    | "workflow"
     | "panel"
     | DeprecatedPageExtensionPlacement
   >;

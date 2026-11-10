@@ -6,6 +6,7 @@ interface Props {
   routePath: string;
   spaceId: string;
   documentId: string | null;
+  data?: unknown;
   fill?: boolean;
 }
 
@@ -14,6 +15,7 @@ interface RenderTarget {
   routePath: string;
   spaceId: string;
   documentId: string | null;
+  data: unknown;
 }
 
 export function ExtensionView(props: Props) {
@@ -29,6 +31,7 @@ export function ExtensionView(props: Props) {
       routePath: props.routePath,
       spaceId: props.spaceId,
       documentId: props.documentId,
+      data: props.data,
     }),
     undefined,
     {
@@ -36,7 +39,8 @@ export function ExtensionView(props: Props) {
         previous.extensionId === next.extensionId &&
         previous.routePath === next.routePath &&
         previous.spaceId === next.spaceId &&
-        previous.documentId === next.documentId,
+        previous.documentId === next.documentId &&
+        previous.data === next.data,
     },
   );
 
@@ -78,6 +82,7 @@ export function ExtensionView(props: Props) {
         target.extensionId,
         target.routePath,
         mount,
+        target.data,
       );
 
       if (version !== renderVersion) {

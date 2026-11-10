@@ -176,7 +176,7 @@ function columnIndex(ref: string | undefined): number | null {
 // Writing
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Named fills preserve the status colours used by the data-table export. */
+/** Named fills preserve the status colours table exports use. */
 export type ExcelCellFill = "red" | "yellow" | "green" | string;
 
 export type ExcelCellAlignment = "left" | "center" | "right";

@@ -10,7 +10,7 @@ import {
   Show,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { WorkflowRunStatus } from "#api/ApiClient.ts";
+import type { ExtensionInfo, WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -27,7 +27,7 @@ import { viewTransitionName } from "#utils/viewTransition.ts";
 import { workflowRunSeriesName } from "#utils/workflowRunLogs.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import "@atrium-ui/elements/tabs";
-import { DataTable } from "./DataTable.tsx";
+import { ExtensionView } from "./ExtensionView.tsx";
 import { Icon } from "./Icon.tsx";
 import { Tab, TabsList } from "./Tabs.tsx";
 import { WorkflowRunHistory } from "./WorkflowRunHistory.tsx";
@@ -35,6 +35,7 @@ import { WorkflowRunHistory } from "./WorkflowRunHistory.tsx";
 interface Props {
   documentId: string;
   spaceId: string;
+  extensions: ExtensionInfo[];
 }
 
 type RunSummary = {
@@ -45,6 +46,40 @@ type RunSummary = {
   sourceExtensionId: string | null;
   runtimeInputs: Record<string, unknown>;
 };
+
+/** What a "workflow" placement view receives from the selected run. */
+export type WorkflowResultViewData = {
+  runId: string;
+  status: string;
+  title: string | null;
+  html: string | null;
+  data: Record<string, unknown>[] | null;
+  resultUrl: string | null;
+  documentHref: string | null;
+  documentTitle: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+};
+
+function sameWorkflowViewData(
+  previous: WorkflowResultViewData | null,
+  next: WorkflowResultViewData | null,
+): boolean {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  return (
+    previous.runId === next.runId &&
+    previous.status === next.status &&
+    previous.title === next.title &&
+    previous.html === next.html &&
+    previous.data === next.data &&
+    previous.resultUrl === next.resultUrl &&
+    previous.documentHref === next.documentHref &&
+    previous.documentTitle === next.documentTitle &&
+    previous.fileUrl === next.fileUrl &&
+    previous.fileName === next.fileName
+  );
+}
 
 type ATabsEl = HTMLElement & {
   selectTabByIndex: (index: number, focus?: boolean) => void;
@@ -273,8 +308,16 @@ export function WorkflowView(props: Props) {
         setSelectedRunError(null);
         return;
       }
+      const previousDetail = selectedRunDetail();
       setSelectedRunDetail(detail);
       setSelectedRunError(null);
+      const resultChanged =
+        previousDetail?.runId !== detail.runId ||
+        previousDetail?.status !== detail.status ||
+        (previousDetail?.resultArtifact?.key ?? null) !==
+          (detail.resultArtifact?.key ?? null) ||
+        selectedRunResult() === null;
+      if (!resultChanged) return;
       try {
         setSelectedRunResult(await fetchResultArtifact(detail));
       } catch (err) {
@@ -523,6 +566,40 @@ export function WorkflowView(props: Props) {
     }),
   );
 
+  // A "workflow" route owns the result body. Core keeps the plain links only
+  // when no enabled extension provides one.
+  const workflowView = createMemo(() => {
+    for (const extension of props.extensions) {
+      if (!extension.enabled) continue;
+      const route = (extension.routes ?? []).find((candidate) =>
+        candidate.placements?.includes("workflow"),
+      );
+      if (route) return { extensionId: extension.id, route };
+    }
+    return null;
+  });
+
+  const workflowViewData = createMemo<WorkflowResultViewData | null>(
+    () => {
+      const run = selectedRunDetail();
+      if (!run) return null;
+      return {
+        runId: run.runId ?? selectedRunId() ?? "",
+        status: run.status,
+        title: selectedRunTitle(),
+        html: outputHtml(),
+        data: outputData(),
+        resultUrl: run.resultArtifact?.url ?? null,
+        documentHref: outputDocumentHref(),
+        documentTitle: outputDocumentTitle(),
+        fileUrl: selectedRunFileUrl(),
+        fileName: selectedRunFileName(),
+      };
+    },
+    null,
+    { equals: sameWorkflowViewData },
+  );
+
   const isSelectedRunActive = createMemo(
     () =>
       selectedRunDetail()?.status === "pending" ||
@@ -736,86 +813,82 @@ export function WorkflowView(props: Props) {
                       selectedRunDetail()?.status === "completed"
                     }
                   >
-                    <Show when={outputHtml()}>
-                      {(html) => (
-                        <div class="overflow-hidden rounded-xl border border-neutral-200">
-                          <div innerHTML={html()} class="p-2" />
-                        </div>
-                      )}
-                    </Show>
-
-                    <Show when={outputData()}>
-                      {(data) => (
-                        <DataTable
-                          data={data()}
+                    <Show when={workflowView()}>
+                      {(view) => (
+                        <ExtensionView
+                          extensionId={view().extensionId}
+                          routePath={view().route.path}
+                          spaceId={props.spaceId}
                           documentId={props.documentId}
-                          exportFileName={selectedRunTitle() ?? "data"}
+                          data={workflowViewData()}
                         />
                       )}
                     </Show>
 
-                    <div class="flex flex-wrap items-center gap-2">
-                      <Show when={selectedRunDetail()?.resultArtifact}>
-                        {(artifact) => (
+                    <Show when={!workflowView()}>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <Show when={selectedRunDetail()?.resultArtifact}>
+                          {(artifact) => (
+                            <a
+                              href={artifact().url}
+                              target="_blank"
+                              rel="noreferrer"
+                              class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
+                            >
+                              <Icon class="h-4 w-4 text-neutral-400" name="download" />
+                              Result JSON
+                            </a>
+                          )}
+                        </Show>
+
+                        <Show when={outputDocumentId() && outputDocumentHref()}>
                           <a
-                            href={artifact().url}
+                            href={outputDocumentHref() as string}
+                            class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
+                          >
+                            <Icon class="h-4 w-4 text-neutral-400" name="document" />
+                            {outputDocumentTitle() ?? "Open document"}
+                          </a>
+                        </Show>
+
+                        <Show when={selectedRunFileUrl() && selectedRunFileName()}>
+                          <a
+                            href={selectedRunFileUrl() as string}
                             target="_blank"
                             rel="noreferrer"
                             class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
                           >
-                            <Icon class="h-4 w-4 text-neutral-400" name="download" />
-                            Result JSON
+                            <Icon class="h-4 w-4 text-neutral-400" name="file-attachment" />
+                            {selectedRunFileName()}
                           </a>
-                        )}
-                      </Show>
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-neutral-500 text-size-medium transition-colors hover:border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-100"
+                            title="Download"
+                            onClick={() =>
+                              void downloadFile(
+                                selectedRunFileUrl() as string,
+                                selectedRunFileName() as string,
+                                selectedRunTitle() ?? (selectedRunFileName() as string),
+                              )
+                            }
+                          >
+                            <Icon class="h-4 w-4" name="download" />
+                          </button>
+                        </Show>
+                      </div>
 
-                      <Show when={outputDocumentId() && outputDocumentHref()}>
-                        <a
-                          href={outputDocumentHref() as string}
-                          class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
-                        >
-                          <Icon class="h-4 w-4 text-neutral-400" name="document" />
-                          {outputDocumentTitle() ?? "Open document"}
-                        </a>
+                      <Show
+                        when={
+                          !outputHtml() &&
+                          !outputData() &&
+                          !outputDocumentId() &&
+                          !selectedRunFileUrl() &&
+                          !selectedRunDetail()?.resultArtifact
+                        }
+                      >
+                        <p class="text-neutral-400 text-size-medium">No output</p>
                       </Show>
-
-                      <Show when={selectedRunFileUrl() && selectedRunFileName()}>
-                        <a
-                          href={selectedRunFileUrl() as string}
-                          target="_blank"
-                          rel="noreferrer"
-                          class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
-                        >
-                          <Icon class="h-4 w-4 text-neutral-400" name="file-attachment" />
-                          {selectedRunFileName()}
-                        </a>
-                        <button
-                          type="button"
-                          class="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-neutral-500 text-size-medium transition-colors hover:border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-100"
-                          title="Download"
-                          onClick={() =>
-                            void downloadFile(
-                              selectedRunFileUrl() as string,
-                              selectedRunFileName() as string,
-                              selectedRunTitle() ?? (selectedRunFileName() as string),
-                            )
-                          }
-                        >
-                          <Icon class="h-4 w-4" name="download" />
-                        </button>
-                      </Show>
-                    </div>
-
-                    <Show
-                      when={
-                        !outputHtml() &&
-                        !outputData() &&
-                        !outputDocumentId() &&
-                        !selectedRunFileUrl() &&
-                        !selectedRunDetail()?.resultArtifact
-                      }
-                    >
-                      <p class="text-neutral-400 text-size-medium">No output</p>
                     </Show>
                   </Show>
 

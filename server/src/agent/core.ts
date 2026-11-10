@@ -109,7 +109,11 @@ function describeNow(timeZone: string): string {
   return `It is ${weekday}, ${date} ${time} in the user's time zone ${timeZone} (${offset}), epoch ms ${now.getTime()}; give times in it.`;
 }
 
-/** Fixed for a session: what changes between turns goes in the turn context instead. */
+/**
+ * The session's own system prompt. What changes between turns goes in the turn
+ * context instead, except the space's instructions, which `withSpaceInstructions`
+ * layers on from the current preference.
+ */
 function buildCoreAgentSystemPrompt(
   integrationInstructions: string[],
   userProfile?: string,
@@ -119,6 +123,21 @@ function buildCoreAgentSystemPrompt(
       ? `\n## Integrations\n${integrationInstructions.map((line) => `- ${line}\n`).join("")}`
       : "";
   return `${systemPromptRaw}${integrationLines}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+}
+
+const spaceInstructionsHeader = "\n\n## Space Instructions\n";
+
+/**
+ * Replaces the space's section of a system prompt with its current text. A
+ * session stores the prompt it first sent, so a space that changes its
+ * instructions replaces the old section on the next turn instead of appending
+ * a second one.
+ */
+function withSpaceInstructions(systemPrompt: string, instructions?: string): string {
+  const index = systemPrompt.indexOf(spaceInstructionsHeader);
+  const base = index === -1 ? systemPrompt : systemPrompt.slice(0, index);
+  const trimmed = instructions?.trim();
+  return trimmed ? `${base}${spaceInstructionsHeader}${trimmed}` : base;
 }
 
 const turnContextHeader = "Context for this message, from Vektor:\n";
@@ -505,6 +524,8 @@ export async function runAgentPrompt(options: {
   timeZone?: string;
   /** The session's system prompt from its first turn; unset builds a new one. */
   systemPrompt?: string;
+  /** The space's own instructions, added to the system prompt on every turn. */
+  spaceSystemPrompt?: string;
   /** Whose credentials a contributed integration command runs under. */
   userId?: string | null;
   jobToken: string;
@@ -595,7 +616,10 @@ export async function runAgentPrompt(options: {
       ? provider
       : undefined;
   const tools = imageProvider ? [...prepared.tools, generateImageTool] : prepared.tools;
-  const systemPrompt = options.systemPrompt ?? prepared.systemPrompt;
+  const systemPrompt = withSpaceInstructions(
+    options.systemPrompt ?? prepared.systemPrompt,
+    options.spaceSystemPrompt,
+  );
   options.onSetup?.({ model: provider.model, systemPrompt, tools });
   const bash =
     providedBash ??
