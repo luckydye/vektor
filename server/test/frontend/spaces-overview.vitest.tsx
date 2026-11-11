@@ -49,6 +49,10 @@ function deleteItem() {
   return queryByText(document.body, "Delete space");
 }
 
+function leaveItem() {
+  return queryByText(document.body, "Leave space");
+}
+
 describe("SpacesOverview", () => {
   it("keeps delete behind the actions menu rather than on the card", async () => {
     mount({ spaces: [space({ role: "owner" })], onDelete: vi.fn() });
@@ -59,12 +63,31 @@ describe("SpacesOverview", () => {
     expect(deleteItem()?.closest("a-popover")).toBeTruthy();
   });
 
-  it("offers no actions menu to a non-owner", async () => {
+  it("offers a non-owner leave but not delete", async () => {
     mount({ spaces: [space({ role: "editor" })], onDelete: vi.fn() });
     await settle();
 
-    expect(document.body.querySelector('[aria-label="Space actions"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Space actions"]')).toBeTruthy();
+    expect(leaveItem()?.closest("a-popover")).toBeTruthy();
     expect(deleteItem()).toBeNull();
+  });
+
+  it("reports the chosen space when leave is clicked", async () => {
+    const onLeave = vi.fn();
+    mount({ spaces: [space({ role: "viewer" })], onLeave });
+    await settle();
+
+    leaveItem()?.closest("button")?.click();
+    expect(onLeave).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: "engineering" }),
+    );
+  });
+
+  it("does not offer leave to an owner", async () => {
+    mount({ spaces: [space({ role: "owner" })] });
+    await settle();
+
+    expect(leaveItem()).toBeNull();
   });
 
   it("reports the chosen space when the menu item is clicked", async () => {

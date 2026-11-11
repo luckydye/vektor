@@ -231,6 +231,40 @@ export async function grantPermission(
   };
 }
 
+/**
+ * Remove every grant that names `userId` directly, as when they leave a space.
+ * Grants held by a group are the group's, and are left alone.
+ */
+export async function revokeAllUserGrants(
+  store: SpaceStore,
+  userId: string,
+  actorUserId?: string,
+  targetName?: string,
+): Promise<AclEntry[]> {
+  const { db, spaceId } = store;
+  const conditions = [eq(acl.userId, userId), isNull(acl.groupId), isNull(acl.kind)];
+
+  const removed = await many(db.select().from(acl).where(and(...conditions)));
+  if (removed.length === 0) return [];
+
+  await db.delete(acl).where(and(...conditions));
+
+  for (const entry of removed) {
+    await logAclChange(store, spaceId, {
+      event: "acl_revoke",
+      kind: entry.kind,
+      resourceType: entry.resourceType as ResourceType,
+      resourceId: entry.resourceId,
+      userId: entry.userId ?? undefined,
+      previousPermission: entry.permission,
+      actorUserId,
+      targetName,
+    });
+  }
+
+  return removed.map(toAclEntry);
+}
+
 /** An empty `grantee` revokes every grant on the resource. */
 export async function revokePermission(
   store: SpaceStore,

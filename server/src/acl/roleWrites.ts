@@ -6,17 +6,21 @@
  */
 
 import { resolveGranteeName } from "#acl/directory.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import {
   highestPermission,
   meetsPermissionLevel,
   Permission,
   permissionLevel,
+  PUBLIC_GROUP,
   ResourceType,
 } from "#acl/permissions.ts";
 import {
   type AclEntry,
   grantPermission,
   listPermissions,
+  listUserPermissions,
+  revokeAllUserGrants,
   revokePermission,
 } from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -216,4 +220,55 @@ export async function writeRolePermission(
     );
     return { outcome: "revoked" };
   });
+}
+
+/** What {@link leaveSpace} did, and why it did nothing when it did not. */
+export type LeaveSpaceResult =
+  | { outcome: "left" }
+  | { outcome: "owner" }
+  | { outcome: "group-member" }
+  | { outcome: "not-a-member" };
+
+/**
+ * Take `userId` out of a space by revoking every grant that names them. A
+ * group's grant is not theirs to leave, and ownership is not shed this way: an
+ * owner transfers the space or deletes it. Refusals are outcomes, like the role
+ * writes above, so the route can say which of the three happened.
+ */
+export async function leaveSpace(
+  platform: Platform,
+  spaceId: string,
+  userId: string,
+): Promise<LeaveSpaceResult> {
+  const store = await openSpaceStore(platform, spaceId);
+  const identity = await resolveIdentity(platform, userId);
+  const targetName = await resolveGranteeName(platform, userId);
+  const grants = (
+    await listUserPermissions(platform, spaceId, userId, identity.groups)
+  ).filter((entry) => entry.resourceType !== ResourceType.FEATURE);
+
+  const spaceRole = highestPermission(
+    grants
+      .filter(
+        (entry) =>
+          entry.resourceType === ResourceType.SPACE && entry.resourceId === spaceId,
+      )
+      .map((entry) => entry.permission),
+  );
+  if (spaceRole === Permission.OWNER) return { outcome: "owner" };
+
+  // The synthetic public group is every caller, not a membership: it neither
+  // makes leaving impossible nor keeps the space in their list.
+  if (grants.some((entry) => entry.groupId && entry.groupId !== PUBLIC_GROUP)) {
+    return { outcome: "group-member" };
+  }
+
+  if (!grants.some((entry) => entry.userId === userId && !entry.kind)) {
+    return { outcome: "not-a-member" };
+  }
+
+  await store.tx(async (transaction) => {
+    await revokeAllUserGrants(transaction, userId, userId, targetName);
+  });
+  return { outcome: "left" };
 }

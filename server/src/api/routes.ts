@@ -48,6 +48,7 @@ import * as integrationProxy from "./routes/spaces/integration-proxy.ts";
 import * as integrations from "./routes/spaces/integrations.ts";
 import * as jobBlob from "./routes/spaces/job-blob.ts";
 import * as jobsRun from "./routes/spaces/jobs-run.ts";
+import * as leave from "./routes/spaces/leave.ts";
 import * as members from "./routes/spaces/members.ts";
 import * as spaceNotificationPreference from "./routes/spaces/notification-preference.ts";
 import * as permissions from "./routes/spaces/permissions.ts";
@@ -115,6 +116,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces", module: spaces },
   { pattern: "/api/v1/spaces/[spaceId]", module: space },
   { pattern: "/api/v1/spaces/[spaceId]/audit-logs", module: spaceAuditLogs },
+  { pattern: "/api/v1/spaces/[spaceId]/leave", module: leave },
   { pattern: "/api/v1/spaces/[spaceId]/members", module: members },
   {
     pattern: "/api/v1/spaces/[spaceId]/notification-preference",

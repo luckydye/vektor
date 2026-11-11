@@ -28,7 +28,17 @@ interface Props {
   onCreate?: () => void;
   onDelete?: (space: OverviewSpace) => void;
   onGainAccess?: (space: OverviewSpace) => void;
+  onLeave?: (space: OverviewSpace) => void;
   canCreate?: boolean;
+}
+
+function runMenuAction(event: Event, action: () => void) {
+  // Close the menu before the action can raise a dialog; a popover left open
+  // sits above it and swallows the dialog's own clicks.
+  (event.target as Element | null)?.dispatchEvent(
+    new CustomEvent("exit", { bubbles: true }),
+  );
+  action();
 }
 
 function SpaceCard(props: {
@@ -36,9 +46,15 @@ function SpaceCard(props: {
   onTogglePin?: (spaceId: string) => void;
   onDelete?: (space: OverviewSpace) => void;
   onGainAccess?: (space: OverviewSpace) => void;
+  onLeave?: (space: OverviewSpace) => void;
 }) {
   const t = useTranslation();
   const lang = useLocale();
+
+  const canDelete = () => props.space.role === "owner";
+  // A space reached through admin rights is not one the viewer belongs to, so
+  // there is nothing for them to leave.
+  const canLeave = () => !canDelete() && !props.space.adminAccess;
 
   return (
     <div class="group relative flex flex-col rounded-xl border border-neutral-400/25 bg-neutral-25 transition-colors hover:border-neutral-400/70">
@@ -65,10 +81,10 @@ function SpaceCard(props: {
         <Icon name="pin-to-home" class="block h-4 w-4" />
       </button>
 
-      {/* Owner only, which an instance admin is on every space. Deleting from
-          the overview rather than from inside the space: an admin administering
-          one they are not a member of has no reason to open it first. */}
-      <Show when={props.space.role === "owner"}>
+      {/* Owners delete from the overview rather than from inside the space: an
+          admin administering one they are not a member of has no reason to open
+          it first. A non-owner gets the one action that is theirs — leaving. */}
+      <Show when={canDelete() || canLeave()}>
         <div class="absolute top-2 right-11 z-10">
           <ContextMenu
             trigger={
@@ -83,20 +99,41 @@ function SpaceCard(props: {
               </button>
             }
           >
-            {/* Only on a space the admin has no grant in: elsewhere the role
-                they already hold is the access. */}
-            <Show when={props.space.adminAccess}>
-              <ContextMenuItem onClick={() => props.onGainAccess?.(props.space)}>
-                <Icon class="h-4 w-4 flex-none" name="unlock-element" />
-                <span>{t("Gain access")}</span>
+            <Show when={canDelete()}>
+              {/* Only on a space the admin has no grant in: elsewhere the role
+                  they already hold is the access. */}
+              <Show when={props.space.adminAccess}>
+                <ContextMenuItem
+                  onClick={(event) =>
+                    runMenuAction(event, () => props.onGainAccess?.(props.space))
+                  }
+                >
+                  <Icon class="h-4 w-4 flex-none" name="unlock-element" />
+                  <span>{t("Gain access")}</span>
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+              </Show>
+
+              <ContextMenuItem
+                onClick={(event) =>
+                  runMenuAction(event, () => props.onDelete?.(props.space))
+                }
+              >
+                <Icon class="h-4 w-4 flex-none text-red-600" name="delete-entry" />
+                <span class="text-red-600">{t("Delete space")}</span>
               </ContextMenuItem>
-              <ContextMenuSeparator />
             </Show>
 
-            <ContextMenuItem onClick={() => props.onDelete?.(props.space)}>
-              <Icon class="h-4 w-4 flex-none text-red-600" name="delete-entry" />
-              <span class="text-red-600">{t("Delete space")}</span>
-            </ContextMenuItem>
+            <Show when={canLeave()}>
+              <ContextMenuItem
+                onClick={(event) =>
+                  runMenuAction(event, () => props.onLeave?.(props.space))
+                }
+              >
+                <Icon class="h-4 w-4 flex-none text-red-600" name="sign-out" />
+                <span class="text-red-600">{t("Leave space")}</span>
+              </ContextMenuItem>
+            </Show>
           </ContextMenu>
         </div>
       </Show>
@@ -160,6 +197,7 @@ function SpaceGrid(props: {
   onTogglePin?: (spaceId: string) => void;
   onDelete?: (space: OverviewSpace) => void;
   onGainAccess?: (space: OverviewSpace) => void;
+  onLeave?: (space: OverviewSpace) => void;
 }) {
   return (
     <div class="grid grid-cols-1 gap-2xs sm:grid-cols-2 xl:grid-cols-3">
@@ -170,6 +208,7 @@ function SpaceGrid(props: {
             onTogglePin={props.onTogglePin}
             onDelete={props.onDelete}
             onGainAccess={props.onGainAccess}
+            onLeave={props.onLeave}
           />
         )}
       </For>
@@ -229,6 +268,7 @@ export function SpacesOverview(props: Props) {
             onTogglePin={props.onTogglePin}
             onDelete={props.onDelete}
             onGainAccess={props.onGainAccess}
+            onLeave={props.onLeave}
           />
         </section>
       </Show>
@@ -245,6 +285,7 @@ export function SpacesOverview(props: Props) {
             onTogglePin={props.onTogglePin}
             onDelete={props.onDelete}
             onGainAccess={props.onGainAccess}
+            onLeave={props.onLeave}
           />
         </section>
       </Show>
