@@ -24,9 +24,12 @@ interface Props {
   current?: SelectorSpace | null;
   allSpacesHref?: string;
   canCreateSpaces?: boolean;
+  /** Whether the current space is one the viewer may leave. */
+  canLeave?: boolean;
   loading?: boolean;
   onSelect?: (space: SelectorSpace) => void;
   onCreate?: () => void;
+  onLeave?: () => void;
 }
 
 function dismissPopover(target: EventTarget | null) {
@@ -156,6 +159,22 @@ export function SpaceSelector(props: Props) {
                         <Icon name="add" />
                         <span class="font-medium text-size-small leading-none">
                           {t("Create new Space")}
+                        </span>
+                      </button>
+                    </Show>
+
+                    <Show when={props.canLeave}>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          dismissPopover(event.target);
+                          props.onLeave?.();
+                        }}
+                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-red-600 transition-colors hover:bg-red-50"
+                      >
+                        <Icon name="sign-out" />
+                        <span class="font-medium text-size-small leading-none">
+                          {t("Leave space")}
                         </span>
                       </button>
                     </Show>

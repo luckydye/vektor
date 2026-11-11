@@ -1167,6 +1167,12 @@ export class ApiClient {
       await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}`);
       await this.replica.removeSpace(spaceId);
     },
+
+    /** Leave a space the caller was invited to, revoking their own grants. */
+    leave: async (spaceId: string) => {
+      await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/leave`);
+      await this.replica.removeSpace(spaceId);
+    },
   };
 
   spaceMembers = {

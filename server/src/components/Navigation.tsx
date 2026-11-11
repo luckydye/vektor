@@ -10,7 +10,8 @@ import {
   Show,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
-import { canAccessSettings } from "#acl/permissions.ts";
+import { canAccessSettings, isOwner } from "#acl/permissions.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import {
@@ -34,6 +35,7 @@ import { PinnedDocuments } from "./PinnedDocuments.tsx";
 import { QuickSearchResults } from "./QuickSearchResults.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
+import { useToast } from "#composeables/useToast.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function Navigation() {
@@ -46,6 +48,7 @@ export function Navigation() {
     currentSpace,
     spaces,
     createSpace,
+    leaveSpace,
     canCreateSpace,
     isLoading: spaceIsLoading,
   } = useSpace();
@@ -95,6 +98,37 @@ export function Navigation() {
   const userCanAccessSettings = createMemo(
     () => !isLoading() && canAccessSettings(currentSpace()?.userRole),
   );
+
+  // A space reached through admin rights is not one the viewer belongs to, so
+  // there is nothing for them to leave.
+  const userCanLeaveSpace = createMemo(() => {
+    const space = currentSpace();
+    return !isLoading() && !!space && !isOwner(space.userRole) && !space.adminAccess;
+  });
+
+  async function handleLeaveSpace() {
+    const space = currentSpace();
+    if (!space) return;
+    if (
+      !(await confirmDialog(
+        t("Leave {name}? You will lose access until someone invites you again.").replace(
+          "{name}",
+          space.name,
+        ),
+        { tone: "danger", confirmLabel: t("Leave space") },
+      ))
+    )
+      return;
+
+    try {
+      await leaveSpace(space.id);
+      window.location.href = "/spaces";
+    } catch (error) {
+      useToast().error(
+        error instanceof Error ? error.message : t("Failed to leave space"),
+      );
+    }
+  }
 
   // Quick search inline, as in macOS Settings: typing swaps the navigation for
   // results, and clearing the field brings it back.
@@ -216,12 +250,14 @@ export function Navigation() {
           current={currentUiSpace()}
           allSpacesHref="/spaces"
           canCreateSpaces={canCreateSpace() === true}
+          canLeave={userCanLeaveSpace()}
           loading={isLoading()}
           onSelect={(space) => {
             const full = spaces()?.find((s: ApiSpace) => s.id === space.id);
             if (full) window.location.href = `/${full.slug}/`;
           }}
           onCreate={() => setShowCreateDialog(true)}
+          onLeave={() => void handleLeaveSpace()}
         />
       </div>
 

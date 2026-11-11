@@ -9,6 +9,7 @@ import {
   useTranslation,
 } from "#composeables/useTranslation.ts";
 import { useInstanceUsers } from "#composeables/useInstanceUsers.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { usePopoverSheets } from "#composeables/usePopoverSheets.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
@@ -110,8 +111,15 @@ function SpacesRail(props: {
 function SpacesOverviewContainer() {
   const t = useTranslation();
 
-  const { spaces, isLoading, createSpace, deleteSpace, gainAccess, canCreateSpace } =
-    useSpace();
+  const {
+    spaces,
+    isLoading,
+    createSpace,
+    deleteSpace,
+    leaveSpace,
+    gainAccess,
+    canCreateSpace,
+  } = useSpace();
   const toast = useToast();
   const { pinnedSpaceIds, togglePin } = usePinnedSpaces();
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
@@ -166,6 +174,25 @@ function SpacesOverviewContainer() {
         onTogglePin={togglePin}
         onCreate={() => setShowCreateDialog(true)}
         onDelete={setPendingDelete}
+        onLeave={async (space) => {
+          if (
+            !(await confirmDialog(
+              t(
+                "Leave {name}? You will lose access until someone invites you again.",
+              ).replace("{name}", space.name),
+              { tone: "danger", confirmLabel: t("Leave space") },
+            ))
+          )
+            return;
+          try {
+            await leaveSpace(space.id);
+            toast.success(t("You left {name}").replace("{name}", space.name));
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : t("Failed to leave space"),
+            );
+          }
+        }}
         onGainAccess={async (space) => {
           try {
             await gainAccess(space.id);

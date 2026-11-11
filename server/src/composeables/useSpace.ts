@@ -75,6 +75,13 @@ export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
     },
   });
 
+  const leaveSpaceMutation = useMutation({
+    mutationFn: async (spaceId: string) => {
+      await api.space.leave(spaceId);
+      return spaceId;
+    },
+  });
+
   /**
    * Standing owner access to a space an instance admin only reaches through
    * their admin rights. Written to the groups rather than to the person, so it
@@ -128,6 +135,9 @@ export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
     ) => updateSpaceMutation.mutateAsync({ spaceId, name, slug, preferences }),
     deleteSpace: async (spaceId: string) => {
       await deleteSpaceMutation.mutateAsync(spaceId);
+    },
+    leaveSpace: async (spaceId: string) => {
+      await leaveSpaceMutation.mutateAsync(spaceId);
     },
   };
 }
