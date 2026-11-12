@@ -166,5 +166,10 @@ export function servedFileSecurityHeaders(
     "Content-Disposition": contentDisposition(extension, filename),
     "Content-Security-Policy": SERVED_FILE_CSP,
     "X-Content-Type-Options": "nosniff",
+    // Uploaded media is embedded by pages on other origins (an image in a
+    // site, a canvas texture, a video in an editor). `*` is safe here: a
+    // wildcard forbids credentials, so another origin cannot use the viewer's
+    // session to read a file it has no access to.
+    "Access-Control-Allow-Origin": "*",
   };
 }

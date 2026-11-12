@@ -111,6 +111,9 @@ export const GET: ApiRouteHandler = (context) =>
     out.set("cache-control", "public, max-age=3600, immutable");
     out.set("x-content-type-options", "nosniff");
     out.set("content-security-policy", "sandbox; default-src 'none'");
+    // The proxied media is meant to be embedded cross-origin. No credentials
+    // cross the boundary, so allowing any origin exposes only the public URL.
+    out.set("access-control-allow-origin", "*");
 
     return new Response(upstream.body, { status: upstream.status, headers: out });
   });

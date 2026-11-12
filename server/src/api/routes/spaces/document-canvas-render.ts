@@ -85,6 +85,8 @@ export const GET: ApiRouteHandler = (context) =>
       headers: {
         "Content-Type": "image/png",
         "Content-Length": String(png.byteLength),
+        // A rendered canvas is embedded cross-origin, like any other image.
+        "Access-Control-Allow-Origin": "*",
         "X-Canvas-Scale": String(Math.round(scale * 1000) / 1000),
         "X-Canvas-Region": `${Math.round(region.x)},${Math.round(region.y)},${Math.round(region.width)},${Math.round(region.height)}`,
       },

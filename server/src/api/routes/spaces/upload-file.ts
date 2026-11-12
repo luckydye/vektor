@@ -3,6 +3,7 @@ import {
   authenticateDocumentAccess,
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
+  requireSpace,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { matchesWeak } from "#api/conditional.ts";
@@ -11,7 +12,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileIndexEntry } from "#db/space/files.ts";
-import { mimeTypeForExtension } from "#files/fileTypes.ts";
+import { isMediaExtension, mimeTypeForExtension } from "#files/fileTypes.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -37,37 +38,48 @@ export const GET: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      // The document an upload hangs off is what authorizes it: a public share,
-      // a resource grant and an archive all reach the file through its document
-      // and not through a space role. A file that belongs to none — a workflow
-      // artifact, say — keeps the space check.
-      const indexed = await getFileIndexEntry(context.var.platform, spaceId, path);
-      const documentId = indexed?.documentId ?? null;
-      if (documentId) {
-        await authenticateDocumentAccess(
-          context.var.platform,
-          context.var.credentials,
-          spaceId,
-          documentId,
-          Permission.VIEWER,
-          { shareLinks: true },
-        );
-      } else {
-        await authenticateSpaceAccess(
-          context.var.platform,
-          context.var.credentials,
-          spaceId,
-          Permission.VIEWER,
-        );
-      }
-
-      // Get file extension from the path
+      // The extension decides how the bytes are labelled and whether the file
+      // is public by direct link.
       const extension = path.split(".").pop()?.toLowerCase();
       if (!extension) {
         return new Response("Missing file extension", { status: 400 });
       }
-
       const mimeType = mimeTypeForExtension(extension);
+
+      // The document an upload hangs off is what authorizes it: a public share,
+      // a resource grant and an archive all reach the file through its document
+      // and not through a space role. A file that belongs to none — a workflow
+      // artifact, say — keeps the space check.
+      //
+      // Media is public by direct link: its content-addressed URL is the
+      // capability, so an <img>, <video>, audio player or another origin can
+      // load it without a Vektor session. Everything else stays gated.
+      const indexed = await getFileIndexEntry(context.var.platform, spaceId, path);
+      if (isMediaExtension(extension)) {
+        // A deleted or suspended space keeps its bytes during retention, but its
+        // direct links stop resolving with the rest of the space.
+        await requireSpace(context.var.platform, spaceId);
+      } else {
+        const documentId = indexed?.documentId ?? null;
+        if (documentId) {
+          await authenticateDocumentAccess(
+            context.var.platform,
+            context.var.credentials,
+            spaceId,
+            documentId,
+            Permission.VIEWER,
+            { shareLinks: true },
+          );
+        } else {
+          await authenticateSpaceAccess(
+            context.var.platform,
+            context.var.credentials,
+            spaceId,
+            Permission.VIEWER,
+          );
+        }
+      }
+
       const storage = context.var.platform.blobStore;
 
       // If transform params are present, serve via the transform+cache path.
@@ -95,6 +107,7 @@ export const GET: ApiRouteHandler = (context) =>
           headers: {
             Location: redirect,
             "Cache-Control": "private, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
           },
         });
       }
@@ -116,7 +129,11 @@ export const GET: ApiRouteHandler = (context) =>
       if (ifNoneMatch && matchesWeak(ifNoneMatch, info.etag)) {
         return new Response(null, {
           status: 304,
-          headers: { ETag: info.etag, "Cache-Control": "private, max-age=3600" },
+          headers: {
+            ETag: info.etag,
+            "Cache-Control": "private, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+          },
         });
       }
 
@@ -154,6 +171,7 @@ export const GET: ApiRouteHandler = (context) =>
             headers: {
               "Content-Range": `bytes */${fileSize}`,
               "Cache-Control": "private, max-age=3600",
+              "Access-Control-Allow-Origin": "*",
             },
           });
         }

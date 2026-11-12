@@ -66,6 +66,20 @@ export function isMediaFile(file: File): boolean {
   return isVideoFile(file) || isImageFile(file) || isAudioFile(file);
 }
 
+/**
+ * Whether a stored upload's extension is passive media. The server-side twin of
+ * {@link isMediaFile}, for routes that only have the key and not the `File`.
+ */
+export function isMediaExtension(extension: string | undefined): boolean {
+  if (!extension) return false;
+  const ext = extension.toLowerCase();
+  return (
+    IMAGE_EXTENSIONS.includes(ext) ||
+    VIDEO_EXTENSIONS.includes(ext) ||
+    AUDIO_EXTENSIONS.includes(ext)
+  );
+}
+
 export function mediaTypeForFile(file: File): "image" | "video" | "audio" | null {
   // Audio mime types win over the video extension list so `.ogg`/`.oga`
   // audio (an extension shared with video containers) is not misread as video.
