@@ -35,6 +35,7 @@ import {
   readImageDimensions,
 } from "#files/imageDimensions.ts";
 import { listAllFiles } from "#files/storage.ts";
+import { queueTransformPurge } from "#files/transforms.ts";
 import { deleteRepositoryObjects } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
 import { writeCanvasSnapshot } from "#realtime/canvasEdits.ts";
@@ -43,7 +44,6 @@ import { deleteDocumentSeriesObjects, seriesIdsForDocument } from "#series/catal
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { parseCanvasSnapshot } from "./canvasSnapshot.ts";
-import { tombstoneUpload } from "./transformTombstones.ts";
 import {
   type DocumentWriteOutcome,
   type DocumentWriteResult,
@@ -679,17 +679,7 @@ export async function deleteDocument(
         path,
       });
     }
-    // Queue the variant purge only after the original is gone: a background
-    // pass that ran first could drop the tombstone while the original was
-    // still reachable through an unlisted transform URL.
-    await tombstoneUpload(s, path).catch((error) => {
-      appLogger.warn("Failed to queue transform purge", {
-        error,
-        spaceId: s.spaceId,
-        documentId: id,
-        path,
-      });
-    });
+    queueTransformPurge(s.platform, s.spaceId, path);
   }
 
   return true;

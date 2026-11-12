@@ -12,12 +12,12 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileIndexEntry } from "#db/space/files.ts";
-import {
-  isUploadTombstoned,
-  tombstoneUpload,
-} from "#db/space/transformTombstones.ts";
 import { isMediaExtension, mimeTypeForExtension } from "#files/fileTypes.ts";
-import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
+import {
+  parseTransformParams,
+  queueTransformPurge,
+  serveTransformed,
+} from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
@@ -59,6 +59,7 @@ export const GET: ApiRouteHandler = (context) =>
         return new Response("Missing file extension", { status: 400 });
       }
       const mimeType = mimeTypeForExtension(extension);
+      const storage = context.var.platform.blobStore;
 
       // The document an upload hangs off is what authorizes it: a public share,
       // a resource grant and an archive all reach the file through its document
@@ -69,15 +70,6 @@ export const GET: ApiRouteHandler = (context) =>
       // capability, so an <img>, <video>, audio player or another origin can
       // load it without a Vektor session. Everything else stays gated.
       const indexed = await getFileIndexEntry(context.var.platform, spaceId, path);
-      // A queued delete is final immediately: the background pass may not have
-      // removed the bytes yet, but the index row is gone and the tombstone says
-      // the file must not be served.
-      if (
-        !indexed &&
-        (await isUploadTombstoned(context.var.platform, spaceId, path))
-      ) {
-        return new Response("File not found", { status: 404 });
-      }
       if (isMediaExtension(extension)) {
         // A deleted or suspended space keeps its bytes during retention, but its
         // direct links stop resolving with the rest of the space.
@@ -102,8 +94,6 @@ export const GET: ApiRouteHandler = (context) =>
           );
         }
       }
-
-      const storage = context.var.platform.blobStore;
 
       // If transform params are present, serve via the transform+cache path.
       // This bypasses redirectUrl so the server can read, transform, and cache
@@ -262,17 +252,12 @@ export const DELETE: ApiRouteHandler = (context) =>
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,
       );
 
-      // The original is one unlink on the request path; the derived variants
-      // need a directory listing, which is queued instead.
+      // The original and index row go now; the variant purge runs on the next
+      // event-loop turn, so this path never lists the transform cache.
       await context.var.platform.blobStore.delete(spaceId, path);
-
-      // Queue the cache purge and drop the index row in one transaction, so a
-      // concurrent GET sees the tombstone and stops serving immediately.
-      const store = await openSpaceStore(context.var.platform, spaceId);
-      await store.tx(async (tx) => {
-        await tx.db.delete(fileTable).where(eq(fileTable.path, path));
-        await tombstoneUpload(tx, path);
-      });
+      const { db } = await openSpaceStore(context.var.platform, spaceId);
+      await db.delete(fileTable).where(eq(fileTable.path, path));
+      queueTransformPurge(context.var.platform, spaceId, path);
 
       return new Response(null, { status: 204 });
     },

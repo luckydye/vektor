@@ -447,9 +447,9 @@ export const file = sqliteTable("file", {
 });
 
 /**
- * Upload keys whose cached transform variants still need deleting. The DELETE
- * route deletes the original and records this row; a background pass does the
- * cache listing and unlinks off the request path.
+ * @deprecated The tombstone queue was replaced by an in-memory purge queued on
+ * delete; migration 21 drops this table. It stays declared so the already
+ * shipped migration 20 can still create it.
  */
 export const transformTombstone = sqliteTable("transform_tombstone", {
   path: text("path").primaryKey(),

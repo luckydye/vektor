@@ -330,6 +330,10 @@ async function transformTombstones(db: Database): Promise<void> {
   await createTables(db, [spaceSchema.transformTombstone]);
 }
 
+async function dropTransformTombstones(db: Database): Promise<void> {
+  await run(db, ["DROP TABLE IF EXISTS transform_tombstone"]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -355,4 +359,5 @@ export const spaceMigrations: Migration[] = [
   { id: 18, name: "live-document-indexes", up: liveDocumentIndexes },
   { id: 19, name: "category-document-listing", up: categoryDocumentListing },
   { id: 20, name: "transform-tombstones", up: transformTombstones },
+  { id: 21, name: "drop-transform-tombstones", up: dropTransformTombstones },
 ];

@@ -4,7 +4,6 @@
  */
 
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
-import { transformTombstoneWork } from "#db/space/transformTombstones.ts";
 import { workflowScheduleWork } from "#jobs/cronScheduler.ts";
 import { emailNotificationWork } from "#notifications/worker.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -24,7 +23,6 @@ const work: SpaceWork[] = [
   workflowScheduleWork,
   seriesMaintenanceWork,
   emailNotificationWork,
-  transformTombstoneWork,
 ];
 
 /** Run the space's due work; returns when the pass is next due, or null when nothing is pending. */

@@ -153,12 +153,45 @@ export async function applyTransform(
  * A variant's key is the original's key plus a suffix (`_320x0_orig_q80.webp`),
  * so a prefix delete reaches all of them without touching another upload.
  */
-export async function deleteTransformVariants(
+async function deleteTransformVariants(
   platform: Platform,
   spaceId: string,
   originalPath: string,
 ): Promise<void> {
   await deletePrefix(platform.transformCache, spaceId, originalPath);
+}
+
+/** Transform-cache purges currently running, so one path is not worked twice. */
+const purging = new Set<string>();
+
+/**
+ * Queue the variant purge for an explicitly deleted upload.
+ *
+ * The delete request has its answer already; the listing starts on the next
+ * turn of the event loop. A crash before it runs leaves the variants in place,
+ * which is the same state as any pre-existing cache entry.
+ */
+export function queueTransformPurge(
+  platform: Platform,
+  spaceId: string,
+  originalPath: string,
+): void {
+  const key = `${spaceId}/${originalPath}`;
+  if (purging.has(key)) return;
+  purging.add(key);
+
+  const timer = setTimeout(() => {
+    void deleteTransformVariants(platform, spaceId, originalPath)
+      .catch((error) => {
+        appLogger.warn("Failed to purge transform variants", {
+          error,
+          spaceId,
+          path: originalPath,
+        });
+      })
+      .finally(() => purging.delete(key));
+  }, 0);
+  timer.unref?.();
 }
 
 // ---------------------------------------------------------------------------
