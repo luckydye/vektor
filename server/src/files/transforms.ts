@@ -1,7 +1,7 @@
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
-import { type BlobStore, containedKey } from "./storage.ts";
+import { type BlobStore, containedKey, deletePrefix } from "./storage.ts";
 
 export { withTransformParams } from "./transformUrl.ts";
 
@@ -141,6 +141,24 @@ export async function applyTransform(
     });
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cache invalidation
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove every cached variant derived from one original.
+ *
+ * A variant's key is the original's key plus a suffix (`_320x0_orig_q80.webp`),
+ * so a prefix delete reaches all of them without touching another upload.
+ */
+export async function deleteTransformVariants(
+  platform: Platform,
+  spaceId: string,
+  originalPath: string,
+): Promise<void> {
+  await deletePrefix(platform.transformCache, spaceId, originalPath);
 }
 
 // ---------------------------------------------------------------------------

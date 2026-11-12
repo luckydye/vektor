@@ -447,6 +447,22 @@ export const file = sqliteTable("file", {
 });
 
 /**
+ * Upload keys whose cached transform variants still need deleting. The DELETE
+ * route deletes the original and records this row; a background pass does the
+ * cache listing and unlinks off the request path.
+ */
+export const transformTombstone = sqliteTable("transform_tombstone", {
+  path: text("path").primaryKey(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  /**
+   * Set after the first purge. The row stays until a second pass after the
+   * grace period, which catches a variant written by a transform that was
+   * already in flight when the delete landed.
+   */
+  purgedAt: integer("purged_at", { mode: "timestamp" }),
+});
+
+/**
  * What a time series is, never what it contains: points live only as objects
  * under `series/{id}/` in file storage (see `#series/store.ts`).
  */

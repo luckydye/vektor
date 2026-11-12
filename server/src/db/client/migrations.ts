@@ -326,6 +326,10 @@ async function categoryDocumentListing(db: Database): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.category.documentLimit);
 }
 
+async function transformTombstones(db: Database): Promise<void> {
+  await createTables(db, [spaceSchema.transformTombstone]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -350,4 +354,5 @@ export const spaceMigrations: Migration[] = [
   { id: 17, name: "repair-agent-schedules", up: repairAgentSchedules },
   { id: 18, name: "live-document-indexes", up: liveDocumentIndexes },
   { id: 19, name: "category-document-listing", up: categoryDocumentListing },
+  { id: 20, name: "transform-tombstones", up: transformTombstones },
 ];

@@ -607,6 +607,10 @@ export async function purgeSpace(platform: Platform, spaceId: string): Promise<v
   // repositories and extension bundles under its own id.
   await platform.blobStore.deleteAll(spaceId);
 
+  // Transformed variants live in their own cache root, outside the space's
+  // blob tree, so deleting the space's uploads does not reach them.
+  await platform.transformCache.deleteAll(spaceId);
+
   await platform.spaceDatabase.purge(spaceId);
   if (!record) return;
 

@@ -12,6 +12,10 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileIndexEntry } from "#db/space/files.ts";
+import {
+  isUploadTombstoned,
+  tombstoneUpload,
+} from "#db/space/transformTombstones.ts";
 import { isMediaExtension, mimeTypeForExtension } from "#files/fileTypes.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
@@ -65,6 +69,15 @@ export const GET: ApiRouteHandler = (context) =>
       // capability, so an <img>, <video>, audio player or another origin can
       // load it without a Vektor session. Everything else stays gated.
       const indexed = await getFileIndexEntry(context.var.platform, spaceId, path);
+      // A queued delete is final immediately: the background pass may not have
+      // removed the bytes yet, but the index row is gone and the tombstone says
+      // the file must not be served.
+      if (
+        !indexed &&
+        (await isUploadTombstoned(context.var.platform, spaceId, path))
+      ) {
+        return new Response("File not found", { status: 404 });
+      }
       if (isMediaExtension(extension)) {
         // A deleted or suspended space keeps its bytes during retention, but its
         // direct links stop resolving with the rest of the space.
@@ -249,10 +262,17 @@ export const DELETE: ApiRouteHandler = (context) =>
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,
       );
 
-      // Remove from storage (idempotent) and drop the ephemeral index row
+      // The original is one unlink on the request path; the derived variants
+      // need a directory listing, which is queued instead.
       await context.var.platform.blobStore.delete(spaceId, path);
-      const { db } = await openSpaceStore(context.var.platform, spaceId);
-      await db.delete(fileTable).where(eq(fileTable.path, path));
+
+      // Queue the cache purge and drop the index row in one transaction, so a
+      // concurrent GET sees the tombstone and stops serving immediately.
+      const store = await openSpaceStore(context.var.platform, spaceId);
+      await store.tx(async (tx) => {
+        await tx.db.delete(fileTable).where(eq(fileTable.path, path));
+        await tombstoneUpload(tx, path);
+      });
 
       return new Response(null, { status: 204 });
     },
