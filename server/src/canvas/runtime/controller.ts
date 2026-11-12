@@ -12,7 +12,7 @@ import {
   type CanvasShapeLibraryItem,
   setActiveShapeId,
 } from "#canvas/extensions/geo.ts";
-import type { CanvasUploader } from "#canvas/extensions/media.ts";
+import { type CanvasUploader, paintedImageUrl } from "#canvas/extensions/media.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
 import { FREEHAND_STYLE, maxStrokeWidth } from "#canvas/render/freehand.ts";
@@ -1666,7 +1666,23 @@ export function createCanvasController(
   }
 
   function selectedCanvasClipboard(): CanvasClipboard | null {
-    return createCanvasClipboard(collectSelection());
+    const selection = collectSelection();
+    // The HTML flavor names the resized variant the canvas is showing, so a
+    // paste into a document loads those bytes instead of the full-size original.
+    const imageSrc: Record<string, string> = {};
+    for (const shape of selection.shapes) {
+      if (shape.type !== "image") continue;
+      const src = shape.data.src;
+      if (typeof src !== "string" || !src) continue;
+      const rendered = paintedImageUrl(
+        src,
+        shape.frame.width ?? 0,
+        transform().scale,
+        dpr,
+      );
+      if (rendered !== src) imageSrc[shape.id] = rendered;
+    }
+    return createCanvasClipboard(selection, imageSrc);
   }
 
   /** True when the user has a real text selection (let the browser copy that instead). */

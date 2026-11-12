@@ -106,6 +106,25 @@ function mediaAlt(shape: CanvasShape) {
   return typeof shape.data.alt === "string" ? shape.data.alt : "";
 }
 
+function isGifSrc(src: string): boolean {
+  return /\.gif($|\?)/i.test(src);
+}
+
+/**
+ * The URL the canvas paints for an image at this width, zoom and pixel ratio.
+ * Animated GIFs skip the resize pipeline; everything else snaps to the smallest
+ * tier that covers the rendered pixels.
+ */
+function renderedImageUrl(
+  src: string,
+  width: number,
+  scale: number,
+  dpr: number,
+): string {
+  if (width <= 0 || (animatesImages && isGifSrc(src))) return src;
+  return resizeImageUrl(src, Math.ceil(width * scale * dpr));
+}
+
 function cachedImageFallback(src: string): HTMLImageElement | null {
   for (let index = IMAGE_RESIZE_TIERS.length - 1; index >= 0; index--) {
     const cached = cachedImage(resizeImageUrl(src, IMAGE_RESIZE_TIERS[index]));
@@ -114,8 +133,29 @@ function cachedImageFallback(src: string): HTMLImageElement | null {
   return cachedImage(src);
 }
 
-function isGifSrc(src: string): boolean {
-  return /\.gif($|\?)/i.test(src);
+/**
+ * The URL whose bytes the canvas is actually showing for an image. Mirrors the
+ * painter's tier-first load and its cached fallback, so a copied selection names
+ * the variant the user sees rather than an original that may be gone.
+ */
+export function paintedImageUrl(
+  src: string,
+  width: number,
+  scale: number,
+  dpr: number,
+): string {
+  // Animated GIFs paint from the original, and a zero-size shape has no tier.
+  if (width <= 0 || (animatesImages && isGifSrc(src))) return src;
+  const tiered = renderedImageUrl(src, width, scale, dpr);
+  if (cachedImage(tiered)) return tiered;
+  // The painter falls back to the largest loaded tier, then the original, when
+  // its requested URL is still loading — including when the requested URL is
+  // the original because the render is larger than the biggest tier.
+  for (let index = IMAGE_RESIZE_TIERS.length - 1; index >= 0; index--) {
+    const tier = resizeImageUrl(src, IMAGE_RESIZE_TIERS[index]);
+    if (cachedImage(tier)) return tier;
+  }
+  return cachedImage(src) ? src : tiered;
 }
 
 function paintImage(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelpers) {
@@ -130,8 +170,7 @@ function paintImage(gpu: CanvasGpu, shape: CanvasShape, helpers: CanvasPaintHelp
     return;
   }
 
-  const targetPixels = Math.ceil(shape.frame.width * helpers.scale * helpers.dpr);
-  const tieredSrc = resizeImageUrl(src, targetPixels);
+  const tieredSrc = renderedImageUrl(src, shape.frame.width, helpers.scale, helpers.dpr);
   const processed = helpers.host.processedImage(shape, tieredSrc, helpers.invalidate);
   const displayImage =
     processed ?? loadedImage(tieredSrc, helpers.invalidate) ?? cachedImageFallback(src);

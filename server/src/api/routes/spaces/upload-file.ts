@@ -20,6 +20,16 @@ import type { Platform } from "#platform/platform.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
 /**
+ * Put the CORS header on the route's error responses too. A cross-origin fetch
+ * otherwise reports a missing file, a bad path or a server failure as a CORS
+ * error, hiding the status the caller needs to see.
+ */
+function withMediaCors(response: Response): Response {
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  return response;
+}
+
+/**
  * Download an uploaded file
  *
  * @tag Files
@@ -209,7 +219,7 @@ export const GET: ApiRouteHandler = (context) =>
         return new Response("Failed to serve file", { status: 500 });
       },
     },
-  );
+  ).then(withMediaCors);
 
 /**
  * Delete an uploaded file

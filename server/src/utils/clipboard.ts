@@ -13,6 +13,12 @@ export type CanvasClipboard = {
   "vektor-canvas-clipboard": 1;
   shapes: CanvasSerializedShape[];
   strokes: CanvasStrokeSnapshot[];
+  /**
+   * The src each image was painted with on the source canvas, keyed by shape id.
+   * The shapes keep their original src so a paste back into a canvas still
+   * renders at whatever size the new canvas needs.
+   */
+  imageSrc?: Record<string, string>;
 };
 
 type DocumentClipboardUnit =
@@ -43,15 +49,19 @@ function supportedShapes(payload: CanvasClipboard) {
   );
 }
 
-export function createCanvasClipboard(selection: {
-  shapes: CanvasSerializedShape[];
-  strokes: CanvasStrokeSnapshot[];
-}): CanvasClipboard | null {
+export function createCanvasClipboard(
+  selection: {
+    shapes: CanvasSerializedShape[];
+    strokes: CanvasStrokeSnapshot[];
+  },
+  imageSrc?: Record<string, string>,
+): CanvasClipboard | null {
   if (selection.shapes.length === 0 && selection.strokes.length === 0) return null;
   return {
     [CANVAS_CLIPBOARD_MARKER]: 1,
     shapes: selection.shapes,
     strokes: selection.strokes,
+    ...(imageSrc && Object.keys(imageSrc).length > 0 ? { imageSrc } : {}),
   };
 }
 
@@ -109,7 +119,7 @@ export function canvasClipboardToPlainText(payload: CanvasClipboard): string {
       shape.type === "video" ||
       shape.type === "file"
     ) {
-      lines.push(alt || src || shape.type);
+      lines.push(alt || payload.imageSrc?.[shape.id] || src || shape.type);
     } else if (shape.type === "link" && src) {
       lines.push(text || src);
     } else if (shape.type === "document" && text.trim()) {
@@ -149,8 +159,9 @@ export function canvasClipboardToDocumentHtml(
     }
 
     if (shape.type === "image" && src) {
+      const imageSrc = payload.imageSrc?.[shape.id] ?? src;
       html.push(
-        `<img src="${escapeHtml(src)}" alt="${escapeHtml(
+        `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(
           alt,
         )}" width="${Math.round(shape.frame.width ?? 0)}" height="${Math.round(shape.frame.height ?? 0)}">`,
       );
