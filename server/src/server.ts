@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { createEmbeddedClientAssetMiddleware } from "#platform/bun/clientAssets.ts";
 import { createBunPlatform } from "#platform/bun/index.ts";
 import { attachNodeWebSocketServer } from "#platform/bun/nodeServer.ts";
@@ -172,6 +173,12 @@ function isBenignConnectionError(reason: unknown): boolean {
 export async function startServer(platform: Platform): Promise<void> {
   // Not strict: `/docs/` and `/login/` are the pages, not a space slug.
   const app = new Hono<ApiBindings>({ strict: false });
+
+  // Everything below is uncompressed without this: a database listing of a
+  // few thousand records is megabytes of JSON, and the calendar asks for its
+  // records all at once. Registered first so it wraps every handler's
+  // response; streamed and already-encoded bodies are left alone.
+  app.use("*", compress());
 
   // Database schema preparation and local-file reconciliation must complete
   // before requests or background workers can observe the space index.
