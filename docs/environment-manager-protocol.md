@@ -1,6 +1,6 @@
 # Environment manager protocol
 
-How a CLI lets `vektor agent serve` run agents in environments it manages (VMs, containers, remote boxes). The node is the only caller; the CLI needs nothing from Vektor. The verbs follow the shape of `docker` and `varmint`, so those work as they are.
+How a CLI lets `vektor agent serve` run agents in environments it manages (VMs, containers, remote boxes). The node is the only caller; the CLI needs nothing from Vektor. The verbs follow the shape of `vm`, so it works as it is.
 
 ```
 vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inner "<agent command>"]
@@ -12,8 +12,8 @@ vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inne
 
 | Call | Meaning | Contract |
 |---|---|---|
-| `<mgr> run [args...]` | Create and start an environment | Prints its id as the last line of stdout and exits 0 once `exec` works. `args` are whatever `--run-args` gave (image, mounts, …). |
-| `<mgr> exec <id> -- <argv...>` | Run a command inside | stdin, stdout and stderr pass through unchanged (the ACP pipe: line-delimited JSON-RPC). Runs in the environment's default directory. Ends when the command ends or the process is killed. |
+| `<mgr> run [args...]` | Create and start an environment | Prints its id as the last line of stdout and exits 0 once a command can run inside. `args` are whatever `--run-args` gave (image, mounts, …). |
+| `<mgr> run <id> -- <argv...>` | Run a command inside | stdin, stdout and stderr pass through unchanged (the ACP pipe: line-delimited JSON-RPC). Runs in the environment's default directory. Ends when the command ends or the process is killed. Without this form the environment is left running and nothing else is printed on stdout. |
 | `<mgr> stop <id>` | Dispose of the environment | The environment must not outlive it, so `run` has to make an ephemeral one. Idempotent; exit 0 if it is already gone. |
 | `<mgr> address <id>` | *Optional.* Print the host the environment reaches the node at | One line on stdout. A non-zero exit means "not supported"; the node uses `--gateway`, else its own first non-loopback IPv4. |
 | `<mgr> stream <id>` | *Optional.* Stream the environment's screen and sound | Writes the media below to stdout until it is killed. Run once per viewer, so each starts with a keyframe. A non-zero exit means "not supported" or failed; its stderr is shown to the viewer. |
@@ -21,7 +21,7 @@ vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inne
 
 - Any non-zero exit from `run` fails the task with the CLI's stderr.
 - The node calls `stop` when the task ends, fails or is cancelled, and when anything after `run` fails.
-- The session's directory is `--env-workdir`, else the output of `exec <id> -- pwd`.
+- The session's directory is `--env-workdir`, else the output of `run <id> -- pwd`.
 
 ## Screen
 
@@ -43,7 +43,7 @@ The chat shows a managed task's screen and lets its user drive it. `stream` writ
 
 ## What the environment must provide
 
-- `env` and `pwd` on its PATH, plus `sh`, `mkdir`, `dirname` and `cat` when `--copy-file` is used. The task's variables are set with `exec <id> -- env K=V... <agent command>`.
+- `env` and `pwd` on its PATH, plus `sh`, `mkdir`, `dirname` and `cat` when `--copy-file` is used. The task's variables are set with `run <id> -- env K=V... <agent command>`.
 - The agent command (`--inner`, default `opencode acp`) and the `vektor` binary, whose `vektor mcp` gives the agent Vektor's tools and messaging.
 - A network route to `<address>:<port>`, the node's proxy to the Vektor server. It forwards only `/api/v1/` and carries the task's short-lived job token, never the node's login.
 
@@ -60,8 +60,8 @@ Both repeat. The values are the host's to choose and live only as long as the en
 
 Environments are disposable, so the node auto-approves the agent's permission requests inside them and scopes paths to the session's directory.
 
-## Example: varmint
+## Example: vm
 
 ```
-vektor agent serve --manager vm=varmint --run-args "--mount .:work" --gateway <host-ip>
+vektor agent serve --manager claude=vm --run-args "--base vektor-agent --wait-network --store shared" --gateway <host-ip>
 ```

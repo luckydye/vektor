@@ -9,19 +9,19 @@ import type { Adapter, ScreenSession } from "./types.ts";
  * documented in docs/environment-manager-protocol.md. The node only calls:
  *
  *   <manager> run [args...]                  prints the environment's id
- *   <manager> exec <id> -- <argv...>
+ *   <manager> run <id> -- <argv...>
  *   <manager> stop <id>
  *   <manager> address <id>                   optional
  *   <manager> stream <id>                    optional, the screen as H.264 and Opus
  *   <manager> input <id>                     optional, mouse and keyboard as JSON lines
  *
- * `exec`'s stdio is the ACP pipe. The environment lives as long as the task's
+ * `run`'s stdio is the ACP pipe. The environment lives as long as the task's
  * session and is stopped when it ends. It reaches the Vektor server only
  * through this node's proxy, which carries the task's job token and never the
  * node's own login.
  */
 export type ManagedOptions = {
-  /** The manager command, e.g. `["varmint"]` or `["mgr", "--host", "box"]`. */
+  /** The manager command, e.g. `["vm"]` or `["mgr", "--host", "box"]`. */
   manager: string[];
   /** Extra arguments for `run`, e.g. `["--mount", ".:work"]`. */
   runArgs: string[];
@@ -165,11 +165,11 @@ export function managedAdapter(options: ManagedOptions): Adapter {
           if (!(await source.exists()))
             throw new Error(`--copy-file: ${file.from} does not exist.`);
           await run(
-            [...manager, "exec", id, "--", "sh", "-c", WRITE_FILE, "sh", file.to],
+            [...manager, "run", id, "--", "sh", "-c", WRITE_FILE, "sh", file.to],
             await source.text(),
           );
         }
-        const cwd = options.cwd ?? (await run([...manager, "exec", id, "--", "pwd"]));
+        const cwd = options.cwd ?? (await run([...manager, "run", id, "--", "pwd"]));
         const env = {
           ...options.env,
           VEKTOR_HOST: `http://${address}:${proxy.port}`,
@@ -181,7 +181,7 @@ export function managedAdapter(options: ManagedOptions): Adapter {
         const session = await openAcpSession(
           spawnTransport([
             ...manager,
-            "exec",
+            "run",
             id,
             "--",
             "env",

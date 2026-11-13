@@ -20,7 +20,7 @@ The node is a bridge, not an agent. It holds one outbound WebSocket (no inbound 
 
 `--manager <name>=<cli> --run-args <args> --inner "opencode acp"`, for any CLI implementing the environment manager protocol:
 
-1. On a session's first `agent` request, create an environment (`<cli> create`).
+1. On a session's first `agent` request, create an environment (`<cli> run`).
 2. Run `<inner agent> acp` in the VM; its stdio is the ACP pipe.
 3. The VM lives as long as the session, so follow-up prompts and messages hit the same machine.
 4. When the session closes, destroy the VM.
