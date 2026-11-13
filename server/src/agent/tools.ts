@@ -240,7 +240,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
         properties: {
           limit: {
             type: "number",
-            description: "Documents per page, 1 to 5000 (default 100).",
+            description: "Documents per page, 1 to 500 (default 100).",
           },
           cursor: {
             type: "string",

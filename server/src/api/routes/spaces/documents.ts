@@ -125,7 +125,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
-      { defaultLimit: 50, maxLimit: 5000 },
+      { defaultLimit: 50, maxLimit: 500 },
     );
     const typeParam =
       new URL(context.req.url).searchParams.get("type")?.trim() || undefined;

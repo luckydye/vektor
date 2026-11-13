@@ -336,7 +336,7 @@ interface FilterSearch {
   parentId?: string;
   typeFilters: PropertyValueFilter[];
   propertyFilters: PropertyValueFilter[];
-  rangeFilters: { key: string }[];
+  rangeFilters: { key: string; from: number; before: number }[];
   dateWindows: DateWindow[];
   /** The complete filter rule, for rows SQL does not decide on its own. */
   matchesFilters: (properties: DocumentProperties, docType: string | null) => boolean;
@@ -346,9 +346,9 @@ interface FilterSearch {
 /**
  * Filter-only search: documents newest first, then files. The filters, the
  * readable set and the page are all decided in SQL, so the cost follows the
- * page and not the size of the space. Only what SQL cannot decide — date
- * ranges, which are read from property text, and non-ASCII values — narrows
- * to candidates there and is settled here, paging in memory over those few.
+ * page and not the size of the space. What SQL cannot settle exactly — the
+ * time inside a date range, and non-ASCII values — is narrowed to candidates
+ * in SQL and settled here, paging in memory over those few.
  */
 async function searchByFilters(
   s: SpaceStore,
@@ -366,9 +366,10 @@ async function searchByFilters(
     parentId,
     typeFilters: search.typeFilters,
     propertyFilters: sqlFilters,
-    requiredKeys: [...residualFilters, ...search.rangeFilters].map(
-      (filter) => filter.key,
-    ),
+    // The SQL day span narrows a range to its window; the exact bounds are
+    // settled by `matchesFilters` over what is left.
+    propertyRanges: search.rangeFilters,
+    requiredKeys: residualFilters.map((filter) => filter.key),
     dateWindows: search.dateWindows,
   });
   const where = sql.join(conditions, sql` AND `);

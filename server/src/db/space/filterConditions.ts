@@ -108,9 +108,41 @@ export interface DocumentFilters {
   typeFilters: PropertyValueFilter[];
   /** Property filters SQL can decide (see `isSqlComparable`). */
   propertyFilters: PropertyValueFilter[];
+  /**
+   * Range filters, whose exact bounds stay in memory but whose day span SQL can
+   * narrow to. Dates are stored as text that starts with a calendar day, so a
+   * day or two of padding around the bounds is a safe superset.
+   */
+  propertyRanges: { key: string; from: number; before: number }[];
   /** Keys a filter needs present, for filters settled in memory afterwards. */
   requiredKeys: string[];
   dateWindows: DateWindow[];
+}
+
+/** The stored day an epoch-ms instant falls on, moved by `days`. */
+function storedDayOf(time: number, days: number): string {
+  return new Date(time + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * A range filter's day span, as a superset of what the in-memory rule accepts.
+ * An array value is left for the in-memory rule: its days are inside JSON, not
+ * at the front of the stored text.
+ */
+function propertyRangeCondition(key: string, from: number, before: number) {
+  const bounds: SQL[] = [];
+  if (from !== -Infinity) {
+    bounds.push(sql`substr(trim(p.value), 1, 10) >= ${storedDayOf(from, -1)}`);
+  }
+  if (before !== Infinity) {
+    bounds.push(sql`substr(trim(p.value), 1, 10) <= ${storedDayOf(before, 1)}`);
+  }
+  if (bounds.length === 0) return undefined;
+  return sql`EXISTS (
+    SELECT 1 FROM property p
+    WHERE p.document_id = d.id AND ${PROPERTY_KEY_SQL} = ${canonicalPropertyKey(key)}
+      AND (${STORED_ARRAY_SQL} OR (${sql.join(bounds, sql` AND `)}))
+  )`;
 }
 
 /** Every condition a live document must meet; AND them in a `WHERE`. */
@@ -139,6 +171,10 @@ export function documentFilterConditions(filters: DocumentFilters): SQL[] {
   }
   for (const filter of filters.propertyFilters) {
     conditions.push(propertyValueCondition(filter));
+  }
+  for (const range of filters.propertyRanges) {
+    const condition = propertyRangeCondition(range.key, range.from, range.before);
+    if (condition) conditions.push(condition);
   }
   for (const key of filters.requiredKeys) conditions.push(hasPropertyCondition(key));
   return conditions;
