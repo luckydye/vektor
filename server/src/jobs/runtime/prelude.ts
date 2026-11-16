@@ -200,7 +200,7 @@ export const JOB_SCOPE = String.raw`
   g.writeDocument = (documentId, content, type) => call("writeDocument", documentId, content, type);
   g.createDocument = (content, options) => call("createDocument", content, options);
   g.searchDocuments = (query, limit) => call("searchDocuments", query, limit);
-  g.notifyInitiator = (documentId) => call("notifyInitiator", documentId);
+  g.notifyInitiator = (documentId, options) => call("notifyInitiator", documentId, options);
   g.getSecret = (name) => call("getSecret", name);
   g.runJob = (extensionId, jobId, inputs) => call("runJob", extensionId, jobId, inputs);
 

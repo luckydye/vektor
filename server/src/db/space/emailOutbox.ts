@@ -9,7 +9,8 @@ export type EmailNotificationKind =
   | "document_mention"
   | "comment_created"
   | "comment_mention"
-  | "job_notification";
+  | "job_notification"
+  | "reminder";
 
 export interface EmailNotificationInit {
   kind: EmailNotificationKind;
@@ -18,6 +19,8 @@ export interface EmailNotificationInit {
   publishedRevision?: number | null;
   previousPublishedRevision?: number | null;
   actorId: string;
+  subject?: string | null;
+  message?: string | null;
 }
 
 /**
@@ -44,6 +47,8 @@ export async function insertEmailNotifications(
         previousPublishedRevision: notification.previousPublishedRevision ?? null,
         actorId: notification.actorId,
         recipientUserId,
+        subject: notification.subject ?? null,
+        message: notification.message ?? null,
         status: "pending",
         attempts: 0,
         availableAt: now,

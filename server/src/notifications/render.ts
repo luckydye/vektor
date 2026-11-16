@@ -303,15 +303,26 @@ export function renderNotificationEmail(params: {
   const { notification, actorName, documentTitle, spaceName, documentUrl } = params;
   const accent = accentFor(params.brandColor);
 
-  if (notification.kind === "job_notification") {
-    const subject = headerText(`Automated report ready: ${documentTitle}`);
+  if (notification.kind === "job_notification" || notification.kind === "reminder") {
+    const reminder = notification.kind === "reminder";
+    const subject = headerText(
+      notification.subject ??
+        (reminder
+          ? `Reminder: ${documentTitle}`
+          : `Automated report ready: ${documentTitle}`),
+    );
+    const message =
+      notification.message ??
+      (reminder
+        ? `You asked to be reminded about “${documentTitle}”.`
+        : "An automated job created a new report.");
     return {
       subject,
-      text: `An automated job created “${documentTitle}” in ${spaceName}.\n\nOpen document: ${documentUrl}`,
+      text: `${message}\n\n“${documentTitle}” in ${spaceName}\n\nOpen document: ${documentUrl}`,
       html: emailHtml({
-        eyebrow: "Automated job",
-        heading: "Your report is ready",
-        message: `An automated job created a new report.`,
+        eyebrow: reminder ? "Reminder" : "Automated job",
+        heading: notification.subject ?? (reminder ? "Reminder" : "Your report is ready"),
+        message,
         documentTitle,
         spaceName,
         documentUrl,

@@ -25,7 +25,7 @@ import { config, getLocalOrigin } from "#config";
 import { isSerializedDocumentType } from "#documents/types.ts";
 import { applyTransform } from "#files/transforms.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
-import { enqueueJobNotificationEmail } from "#notifications/enqueue.ts";
+import { enqueueSelfNotificationEmail } from "#notifications/enqueue.ts";
 import type { Platform } from "#platform/platform.ts";
 import {
   isLoopbackIp,
@@ -345,16 +345,27 @@ export function createCapabilities(
       return ((await response.json()) as { results: unknown }).results;
     }) as never,
 
-    notifyInitiator: (async (documentId: unknown) => {
+    notifyInitiator: (async (documentId: unknown, options: unknown) => {
       if (!initiatedByUserId) {
         throw new Error(
           "notifyInitiator is unavailable for a job without an initiating user",
         );
       }
-      const queued = await enqueueJobNotificationEmail(platform, {
+      const { subject, message } = asRecord(options);
+      for (const [name, value] of Object.entries({ subject, message })) {
+        if (value !== undefined && typeof value !== "string") {
+          throw new Error(`notifyInitiator: options.${name} must be a string`);
+        }
+      }
+      const queued = await enqueueSelfNotificationEmail(platform, {
         spaceId,
+        kind: "job_notification",
+        // Every call is its own notification, however often a job sends one.
+        sourceId: crypto.randomUUID(),
         documentId: String(documentId),
-        actorId: initiatedByUserId,
+        userId: initiatedByUserId,
+        subject: subject as string | undefined,
+        message: message as string | undefined,
       });
       onLog(`queued ${queued} job notification email(s)`);
       return queued;

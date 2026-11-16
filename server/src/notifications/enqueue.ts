@@ -175,13 +175,21 @@ export async function enqueueCommentCreatedEmails(
   return queued[0] + queued[1];
 }
 
-/** Queue an automated job's report for the account that started the job. */
-export async function enqueueJobNotificationEmail(
+/**
+ * Queue a notification a user arranged for themselves: a workflow's
+ * `notifyInitiator` or a reminder trigger. `sourceId` identifies the occurrence,
+ * so a repeated occurrence is notified again while a duplicate claim is not.
+ */
+export async function enqueueSelfNotificationEmail(
   platform: Platform,
   params: {
     spaceId: string;
+    kind: "job_notification" | "reminder";
+    sourceId: string;
     documentId: string;
-    actorId: string;
+    userId: string;
+    subject?: string | null;
+    message?: string | null;
   },
 ): Promise<number> {
   const appConfig = config();
@@ -191,17 +199,19 @@ export async function enqueueJobNotificationEmail(
   if (!deliveryConfigured && !developmentDelivery) return 0;
 
   const store = await openSpaceStore(platform, params.spaceId);
-  const muted = await getEmailMutedUserIds(store, [params.actorId], params.documentId);
-  if (muted.has(params.actorId)) return 0;
+  const muted = await getEmailMutedUserIds(store, [params.userId], params.documentId);
+  if (muted.has(params.userId)) return 0;
 
   return insertEmailNotifications(
     store,
     {
-      kind: "job_notification",
-      sourceId: params.documentId,
+      kind: params.kind,
+      sourceId: params.sourceId,
       documentId: params.documentId,
-      actorId: params.actorId,
+      actorId: params.userId,
+      subject: params.subject,
+      message: params.message,
     },
-    [params.actorId],
+    [params.userId],
   );
 }

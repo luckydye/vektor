@@ -748,6 +748,8 @@
   "At time": "Zeitpunkt",
   "From date": "Ab Datum",
   "Offset in minutes": "Versatz in Minuten",
+  "Reminder": "Erinnerung",
+  "Reminder message": "Erinnerungstext",
   "No workflows in this space": "Keine Workflows in diesem Space",
   "No date properties on this document": "Keine Datumseigenschaften in diesem Dokument",
   "Drawing": "Zeichnung",

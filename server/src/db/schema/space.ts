@@ -323,6 +323,10 @@ export const emailNotificationOutbox = sqliteTable(
     previousPublishedRevision: integer("previous_published_revision"),
     actorId: text("actor_id").notNull(),
     recipientUserId: text("recipient_user_id").notNull(),
+    /** Subject chosen by whoever queued the notification, replacing the kind's own. */
+    subject: text("subject"),
+    /** Message chosen by whoever queued the notification, replacing the kind's own. */
+    message: text("message"),
     status: text("status").notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
     availableAt: integer("available_at", { mode: "timestamp" }).notNull(),
@@ -355,6 +359,11 @@ export const workflowSchedule = sqliteTable(
      * `createdBy`. Set instead of `documentId` for an agent schedule.
      */
     prompt: text("prompt"),
+    /**
+     * Message of a reminder that emails `createdBy` about `sourceDocumentId`
+     * when the schedule fires. Set instead of `documentId` and `prompt`.
+     */
+    reminder: text("reminder"),
     /** Null for a one-shot schedule; otherwise a standard 5-field cron expression. */
     cronExpression: text("cron_expression"),
     /** Document property that owns a one-shot schedule. */

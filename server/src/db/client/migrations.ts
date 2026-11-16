@@ -334,6 +334,12 @@ async function dropTransformTombstones(db: Database): Promise<void> {
   await run(db, ["DROP TABLE IF EXISTS transform_tombstone"]);
 }
 
+async function reminders(db: Database): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.workflowSchedule.reminder);
+  await addColumnIfMissing(db, spaceSchema.emailNotificationOutbox.subject);
+  await addColumnIfMissing(db, spaceSchema.emailNotificationOutbox.message);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -360,4 +366,5 @@ export const spaceMigrations: Migration[] = [
   { id: 19, name: "category-document-listing", up: categoryDocumentListing },
   { id: 20, name: "transform-tombstones", up: transformTombstones },
   { id: 21, name: "drop-transform-tombstones", up: dropTransformTombstones },
+  { id: 22, name: "reminders", up: reminders },
 ];

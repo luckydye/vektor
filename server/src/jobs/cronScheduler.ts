@@ -11,6 +11,7 @@ import {
   nextWorkflowScheduleAt,
   parseWorkflowScheduleInputs,
 } from "#db/space/workflowSchedules.ts";
+import { enqueueSelfNotificationEmail } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { SpaceWork } from "#platform/spaceWork.ts";
 import { getLatestRunIdForDoc, getRunForRead } from "./runStore.ts";
@@ -43,6 +44,10 @@ async function runScheduledWorkflow(
   try {
     if (schedule.prompt !== null) {
       await runAgentSchedule(store, schedule.prompt, schedule.createdBy);
+      return;
+    }
+    if (schedule.reminder !== null) {
+      await sendReminder(store, schedule, schedule.reminder);
       return;
     }
     const { documentId } = schedule;
@@ -101,6 +106,28 @@ async function runScheduledWorkflow(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+/** Emails the trigger's writer about its document, once per due time. */
+async function sendReminder(
+  store: SpaceStore,
+  schedule: WorkflowSchedule,
+  message: string,
+): Promise<void> {
+  const { sourceDocumentId, nextRunAt } = schedule;
+  if (sourceDocumentId === null || nextRunAt === null) {
+    throw new Error("Reminder schedule needs a source document and a due time");
+  }
+  await assertTriggersEnabled(store.platform, store.spaceId);
+  await enqueueSelfNotificationEmail(store.platform, {
+    spaceId: store.spaceId,
+    kind: "reminder",
+    // A reminder whose date moves is a new occurrence and is sent again.
+    sourceId: `${schedule.id}:${nextRunAt.getTime()}`,
+    documentId: sourceDocumentId,
+    userId: schedule.createdBy,
+    message: message || null,
+  });
 }
 
 /** Gives the agent `prompt` as a new chat session of `userId`. */

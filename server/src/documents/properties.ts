@@ -240,19 +240,24 @@ export function normalizeDocumentPropertyPatch(
 
 /**
  * The property type of a trigger: a stored JSON {@link TriggerSpec} that starts
- * a workflow once its time has come. An empty value is a trigger not yet armed.
+ * a workflow or sends its writer a reminder once its time has come. An empty
+ * value is a trigger not yet armed.
  */
 export const TRIGGER_PROPERTY_TYPE = "trigger";
 
 /**
- * When a trigger fires and which workflow it starts. `at` is a fixed instant;
- * `from` names a date property of the same document, so the trigger follows
- * that date when it is edited.
+ * What a trigger does when it fires: start a workflow, or email its writer a
+ * reminder about the document, with `remind` as the message ("" for the default).
  */
-export type TriggerSpec = { workflow: string } & (
-  | { at: string }
-  | { from: string; offsetMinutes: number }
-);
+export type TriggerAction = { workflow: string } | { remind: string };
+
+/**
+ * When a trigger fires and what it does. `at` is a fixed instant; `from` names
+ * a date property of the same document, so the trigger follows that date when
+ * it is edited.
+ */
+export type TriggerSpec = TriggerAction &
+  ({ at: string } | { from: string; offsetMinutes: number });
 
 export function parseTriggerSpec(key: string, value: DocumentPropertyValue): TriggerSpec {
   const invalid = (reason: string) =>
@@ -269,9 +274,25 @@ export function parseTriggerSpec(key: string, value: DocumentPropertyValue): Tri
     throw invalid("must be a JSON object");
   }
 
-  const { workflow, at, from, offsetMinutes = 0 } = parsed as Record<string, unknown>;
-  if (typeof workflow !== "string" || !workflow) {
-    throw invalid('needs a "workflow" document id');
+  const {
+    workflow,
+    remind,
+    at,
+    from,
+    offsetMinutes = 0,
+  } = parsed as Record<string, unknown>;
+  if ((workflow === undefined) === (remind === undefined)) {
+    throw invalid('needs exactly one of "workflow" or "remind"');
+  }
+  let action: TriggerAction;
+  if (workflow !== undefined) {
+    if (typeof workflow !== "string" || !workflow) {
+      throw invalid('"workflow" must be a document id');
+    }
+    action = { workflow };
+  } else {
+    if (typeof remind !== "string") throw invalid('"remind" must be a message');
+    action = { remind };
   }
   if ((at === undefined) === (from === undefined)) {
     throw invalid('needs exactly one of "at" or "from"');
@@ -280,7 +301,7 @@ export function parseTriggerSpec(key: string, value: DocumentPropertyValue): Tri
     if (typeof at !== "string" || Number.isNaN(new Date(at).getTime())) {
       throw invalid('"at" is not a valid date');
     }
-    return { workflow, at };
+    return { ...action, at };
   }
   if (typeof from !== "string" || !from.trim()) {
     throw invalid('"from" must name a date property');
@@ -288,7 +309,7 @@ export function parseTriggerSpec(key: string, value: DocumentPropertyValue): Tri
   if (typeof offsetMinutes !== "number" || !Number.isFinite(offsetMinutes)) {
     throw invalid('"offsetMinutes" must be a number');
   }
-  return { workflow, from: storedPropertyKey(from), offsetMinutes };
+  return { ...action, from: storedPropertyKey(from), offsetMinutes };
 }
 
 /** Store a trigger's value, given as a spec object or its JSON; refuses a malformed spec. */

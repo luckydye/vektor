@@ -82,7 +82,10 @@ export async function authorizeTriggerWrites(
     if (operation.value === "") continue;
 
     const writer = writerOf(operation.key, userId);
-    const { workflow } = parseTriggerSpec(operation.key, operation.value);
+    const spec = parseTriggerSpec(operation.key, operation.value);
+    // A reminder only emails its writer about a document they are editing.
+    if (!("workflow" in spec)) continue;
+    const { workflow } = spec;
     const target = await one(
       s.db
         .select({ type: document.type })
@@ -141,7 +144,8 @@ export async function syncPropertyTriggers(
       const schedule = resolveSchedule(spec, values);
       return {
         propertyKey: row.key,
-        workflowId: spec.workflow,
+        action:
+          "workflow" in spec ? { workflow: spec.workflow } : { remind: spec.remind },
         runAt: schedule,
         triggerWritten: writtenKeys.has(canonicalPropertyKey(row.key)),
         changed:

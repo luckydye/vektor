@@ -12,12 +12,13 @@ import {
 import {
   canonicalPropertyKey,
   InvalidDocumentPropertyPatchError,
+  type TriggerAction,
 } from "#documents/properties.ts";
 
 /** A resolved property trigger; the scheduler never reads its definition. */
 export interface PropertyWorkflowSchedule {
   propertyKey: string;
-  workflowId: string;
+  action: TriggerAction;
   runAt: Date | null;
   /** Only an explicit trigger write changes its execution identity. */
   triggerWritten: boolean;
@@ -60,14 +61,19 @@ export async function syncPropertyWorkflowSchedules(
     const nextRunAt = entry.runAt
       ? new Date(Math.floor(entry.runAt.getTime() / 1000) * 1000)
       : null;
-    const target = await one(
-      s.db
-        .select({ type: document.type })
-        .from(document)
-        .where(eq(document.id, entry.workflowId)),
-    );
+    const workflowId = "workflow" in entry.action ? entry.action.workflow : null;
+    const reminder = "remind" in entry.action ? entry.action.remind : null;
+    const target =
+      workflowId === null
+        ? null
+        : await one(
+            s.db
+              .select({ type: document.type })
+              .from(document)
+              .where(eq(document.id, workflowId)),
+          );
     // A deleted target must not prevent edits to the source document.
-    if (target?.type !== "workflow") {
+    if (workflowId !== null && target?.type !== "workflow") {
       if (current) {
         await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, current.id));
       }
@@ -80,7 +86,8 @@ export async function syncPropertyWorkflowSchedules(
       );
     }
     if (
-      current?.documentId === entry.workflowId &&
+      current?.documentId === workflowId &&
+      current.reminder === reminder &&
       current.nextRunAt?.getTime() === nextRunAt?.getTime()
     ) {
       if (current.propertyKey !== entry.propertyKey && current.propertyKey !== null) {
@@ -104,7 +111,8 @@ export async function syncPropertyWorkflowSchedules(
     const expired = entry.runAt !== null && entry.runAt <= now;
     const values = {
       propertyKey: entry.propertyKey,
-      documentId: entry.workflowId,
+      documentId: workflowId,
+      reminder,
       sourceDocumentId,
       inputs: JSON.stringify({
         documentId: sourceDocumentId,

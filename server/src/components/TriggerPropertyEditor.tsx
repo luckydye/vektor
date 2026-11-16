@@ -1,6 +1,6 @@
 import { createMemo, createSignal, Show } from "solid-js";
 import { useTranslation } from "#composeables/useTranslation.ts";
-import type { TriggerSpec } from "#documents/properties.ts";
+import type { TriggerAction, TriggerSpec } from "#documents/properties.ts";
 import { Button } from "./Button.tsx";
 import { Input } from "./Input.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
@@ -25,7 +25,15 @@ export function TriggerPropertyEditor(props: Props) {
   const t = useTranslation();
 
   const initial = props.spec; // solid-reactivity-ok: a draft seeded once from the stored spec
-  const [workflow, setWorkflow] = createSignal(initial?.workflow ?? "");
+  const [action, setAction] = createSignal<"workflow" | "remind">(
+    initial && "remind" in initial ? "remind" : "workflow",
+  );
+  const [workflow, setWorkflow] = createSignal(
+    initial && "workflow" in initial ? initial.workflow : "",
+  );
+  const [remind, setRemind] = createSignal(
+    initial && "remind" in initial ? initial.remind : "",
+  );
   const [mode, setMode] = createSignal<"at" | "from">(
     initial && "from" in initial ? "from" : "at",
   );
@@ -38,13 +46,16 @@ export function TriggerPropertyEditor(props: Props) {
   );
 
   const draft = createMemo((): TriggerSpec | null => {
-    if (!workflow()) return null;
+    let target: TriggerAction;
+    if (action() === "remind") target = { remind: remind() };
+    else if (workflow()) target = { workflow: workflow() };
+    else return null;
     if (mode() === "at") {
-      return at() ? { workflow: workflow(), at: new Date(at()).toISOString() } : null;
+      return at() ? { ...target, at: new Date(at()).toISOString() } : null;
     }
     const offset = Number(offsetMinutes());
     if (!from() || !Number.isFinite(offset)) return null;
-    return { workflow: workflow(), from: from(), offsetMinutes: offset };
+    return { ...target, from: from(), offsetMinutes: offset };
   });
 
   const save = () => {
@@ -55,20 +66,45 @@ export function TriggerPropertyEditor(props: Props) {
 
   return (
     <div class="flex w-[280px] flex-col gap-3xs p-4xs">
-      <span class="px-4xs text-interactive text-neutral-700">{t("Workflow")}</span>
+      <div class="flex gap-5xs">
+        <Button
+          size="small"
+          variant={action() === "workflow" ? "secondary" : "ghost"}
+          text={t("Workflow")}
+          onClick={() => setAction("workflow")}
+        />
+        <Button
+          size="small"
+          variant={action() === "remind" ? "secondary" : "ghost"}
+          text={t("Reminder")}
+          onClick={() => setAction("remind")}
+        />
+      </div>
+
       <Show
-        when={props.workflows.length > 0}
+        when={action() === "workflow"}
         fallback={
-          <span class="px-4xs text-interactive text-neutral-500">
-            {t("No workflows in this space")}
-          </span>
+          <Input
+            value={remind()}
+            placeholder={t("Reminder message")}
+            onInput={setRemind}
+          />
         }
       >
-        <SelectMenu
-          items={props.workflows}
-          value={workflow() || null}
-          onSelect={(item) => setWorkflow(item.id)}
-        />
+        <Show
+          when={props.workflows.length > 0}
+          fallback={
+            <span class="px-4xs text-interactive text-neutral-500">
+              {t("No workflows in this space")}
+            </span>
+          }
+        >
+          <SelectMenu
+            items={props.workflows}
+            value={workflow() || null}
+            onSelect={(item) => setWorkflow(item.id)}
+          />
+        </Show>
       </Show>
 
       <div class="flex gap-5xs">
