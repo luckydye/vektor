@@ -20,6 +20,13 @@ interface Props {
   documentId: string;
   documentType: string;
   extensions: ExtensionInfo[];
+  /**
+   * Whether the extension list is still on its way. A database's configured
+   * view is persisted per browser and applied once `extensions` names it, so
+   * the table must not mount before then: it would read the first page of rows
+   * the extension view never shows.
+   */
+  extensionsLoading: boolean;
   properties: DocumentProperties;
   readonly: boolean;
   spaceId: string;
@@ -66,6 +73,7 @@ const DatabaseView: Component<Props> = (props) => {
       databaseDocumentId={props.documentId}
       spaceId={props.spaceId}
       views={views()}
+      extensionsLoading={props.extensionsLoading}
       viewConfig={props.properties._databaseViews}
       title={optionalPropertyValueToText(props.properties.title) ?? undefined}
       schemaJson={optionalPropertyValueToText(props.properties._schema) ?? undefined}

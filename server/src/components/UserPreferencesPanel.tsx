@@ -39,7 +39,6 @@ import { AccessTokensPanel } from "./AccessTokensPanel.tsx";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { DesktopAppPreferences } from "./DesktopAppPreferences.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
-import { SettingsSection } from "./SettingsSection.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 
@@ -426,88 +425,76 @@ export function UserPreferencesPanel(props: Props) {
         </p>
       </div>
 
-      <div class="min-h-[200px] px-4 pt-6 pb-6">
+      <div
+        class="min-h-[200px] px-4"
+        classList={{ "py-2": props.section !== "desktop", "py-6": props.section === "desktop" }}
+      >
         {(
           {
             general: () => (
               <>
-                <SettingsSection
-                  title={t("Interface")}
-                  description={t("Choose how Vektor looks on this device.")}
-                >
-                  <fieldset class="grid grid-cols-3 gap-2">
-                    <legend class="sr-only">{t("Theme")}</legend>
+              <div class="divide-y divide-neutral-100">
+                <fieldset class="flex items-center justify-between gap-4 py-3">
+                  <legend class="sr-only">{t("Theme")}</legend>
+                  <span class="font-medium text-foreground text-size-small">
+                    {t("Theme")}
+                  </span>
+                  <div class="flex gap-0.5 rounded-lg bg-neutral-100 p-0.5">
                     <For each={themeOptions}>
                       {(option) => (
                         <button
                           type="button"
                           aria-pressed={themePreference() === option.value}
                           onClick={() => chooseThemePreference(option.value)}
-                          class="flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 font-medium text-size-small transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                          class="flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium text-size-small transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                           classList={{
-                            "border-neutral-200 bg-background text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900":
+                            "text-neutral-500 hover:text-neutral-900":
                               themePreference() !== option.value,
-                            "border-primary-500 bg-primary-50 text-foreground":
+                            "bg-background text-foreground shadow-sm":
                               themePreference() === option.value,
                           }}
                         >
-                          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-neutral-200 p-0.5">
-                            <span
-                              class={`h-full w-full rounded-full ${option.swatchClass}`}
-                            />
-                          </span>
-                          <span>{t(option.label)}</span>
+                          <span
+                            class={`h-3 w-3 shrink-0 rounded-full border border-neutral-300 ${option.swatchClass}`}
+                          />
+                          {t(option.label)}
                         </button>
                       )}
                     </For>
-                  </fieldset>
-                </SettingsSection>
+                  </div>
+                </fieldset>
 
-                <SettingsSection
-                  title={t("Collaboration")}
-                  description={t("Personalize how you appear to collaborators.")}
-                >
-                  <div class="flex items-center justify-start gap-5 rounded-lg border border-neutral-200 bg-background p-3">
-                    <div class="flex items-start justify-between gap-3">
-                      <div>
-                        <p class="font-medium text-foreground text-size-small">
-                          {t("Cursor color")}
-                        </p>
-                      </div>
-                      <Show when={!isAutomaticCursorColor()}>
-                        <button
-                          type="button"
-                          onClick={clearCursorColor}
-                          class="shrink-0 font-medium text-label text-neutral-500 transition-colors hover:text-neutral-900"
-                        >
-                          {t("Reset to automatic")}
-                        </button>
-                      </Show>
-                    </div>
+                <div class="flex items-center justify-between gap-4 py-3">
+                  <span class="font-medium text-foreground text-size-small">
+                    {t("Cursor color")}
+                  </span>
+                  <div class="flex items-center gap-3">
+                    <Show when={!isAutomaticCursorColor()}>
+                      <button
+                        type="button"
+                        onClick={clearCursorColor}
+                        class="text-label text-neutral-500 transition-colors hover:text-neutral-900"
+                      >
+                        {t("Reset to automatic")}
+                      </button>
+                    </Show>
                     <a-popover-trigger>
                       <button
                         slot="trigger"
                         type="button"
-                        class="flex w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-background px-3 py-2 text-foreground text-size-medium transition-colors hover:bg-neutral-50"
+                        class="-mr-2 flex items-center gap-2 rounded-lg py-1 pr-2 pl-2 text-foreground text-size-small transition-colors hover:bg-neutral-50"
                         attr:aria-label={t("Cursor color")}
                       >
-                        <span class="flex items-center gap-2">
-                          <span
-                            class="h-5 w-5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(15,23,42,0.2),0_1px_2px_rgba(15,23,42,0.18)]"
-                            style={{ background: cursorColor() }}
-                            aria-hidden="true"
-                          />
-                          <span>
-                            {isAutomaticCursorColor() ? t("Automatic") : cursorColor()}
-                          </span>
-                        </span>
-                        <span class="font-medium text-label text-neutral-500">
-                          {t("Change")}
-                        </span>
+                        <span
+                          class="h-4 w-4 rounded-full shadow-[0_0_0_1px_rgba(128,128,128,0.4)]"
+                          style={{ background: cursorColor() }}
+                          aria-hidden="true"
+                        />
+                        {isAutomaticCursorColor() ? t("Automatic") : cursorColor()}
                       </button>
-                      <a-popover class="group" placements="top-start">
+                      <a-popover class="group" placements="top-end">
                         <div class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                          <div class="origin-bottom-left scale-95 rounded-lg border border-neutral-100 bg-background p-2 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100">
+                          <div class="origin-bottom-right scale-95 rounded-lg border border-neutral-100 bg-background p-2 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100">
                             <a-color-picker
                               class="w-[220px]"
                               attr:value={cursorColor()}
@@ -522,52 +509,30 @@ export function UserPreferencesPanel(props: Props) {
                       </a-popover>
                     </a-popover-trigger>
                   </div>
-                </SettingsSection>
+                </div>
 
-                <SettingsSection
-                  title={t("Notifications")}
-                  description={t("Manage notifications for the current space.")}
-                >
-                  <Show when={notificationPreferenceError()}>
-                    <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
-                      {notificationPreferenceError()}
-                    </div>
-                  </Show>
-
-                  <Show
-                    when={currentSpace()?.id}
-                    fallback={
-                      <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
-                        {t("Open a space to manage notifications.")}
-                      </div>
-                    }
-                  >
-                    <Show
-                      when={!isLoadingNotificationPreference()}
-                      fallback={
-                        <div class="rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
-                          {t("Loading...")}
-                        </div>
+                <Show when={currentSpace()?.id}>
+                  <div class="flex items-center justify-between gap-4 py-3">
+                    <span class="font-medium text-foreground text-size-small">
+                      {t("Mute space notifications")}
+                    </span>
+                    <SwitchToggle
+                      value={spaceNotificationsMuted()}
+                      disabled={
+                        isLoadingNotificationPreference() ||
+                        isUpdatingNotificationPreference()
                       }
-                    >
-                      <div class="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-background p-3">
-                        <div>
-                          <p class="font-medium text-foreground text-size-small">
-                            {t("Mute space notifications")}
-                          </p>
-                          <p class="mt-0.5 text-label text-neutral-500">
-                            {t("Stop email notifications from this space.")}
-                          </p>
-                        </div>
-                        <SwitchToggle
-                          value={spaceNotificationsMuted()}
-                          disabled={isUpdatingNotificationPreference()}
-                          onInput={(muted) => void muteSpaceNotifications(muted)}
-                        />
-                      </div>
-                    </Show>
-                  </Show>
-                </SettingsSection>
+                      ariaLabel={t("Mute space notifications")}
+                      onInput={(muted) => void muteSpaceNotifications(muted)}
+                    />
+                  </div>
+                </Show>
+              </div>
+              <Show when={notificationPreferenceError()}>
+                <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
+                  {notificationPreferenceError()}
+                </div>
+              </Show>
               </>
             ),
 
@@ -620,15 +585,9 @@ export function UserPreferencesPanel(props: Props) {
             ),
 
             integrations: () => (
-              <section>
-                <div class="mb-4">
-                  <p class="text-neutral-500 text-size-small">
-                    {t("Connect tools to make them available in this space.")}
-                  </p>
-                </div>
-
+              <>
                 <Show when={integrationsError()}>
-                  <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
+                  <div class="mb-2 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
                     {integrationsError()}
                   </div>
                 </Show>
@@ -636,233 +595,183 @@ export function UserPreferencesPanel(props: Props) {
                 <Show
                   when={currentSpace()?.id}
                   fallback={
-                    <div class="flex min-h-[236px] flex-col items-center justify-center rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
+                    <p class="py-8 text-center text-neutral-500 text-size-small">
                       {t("Open a space to manage integrations.")}
-                    </div>
+                    </p>
                   }
                 >
                   <Show
-                    when={!isLoadingIntegrations()}
+                    when={integrationCards().length > 0}
                     fallback={
-                      <div class="flex min-h-[236px] flex-col items-center justify-center rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
-                        {t("Loading...")}
-                      </div>
+                      <p class="py-8 text-center text-neutral-500 text-size-small">
+                        {isLoadingIntegrations()
+                          ? t("Loading...")
+                          : t("Install an extension that provides an integration.")}
+                      </p>
                     }
                   >
-                    <Show
-                      when={integrationCards().length > 0}
-                      fallback={
-                        <div class="flex min-h-[236px] flex-col items-center justify-center rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
-                          {t("Install an extension that provides an integration.")}
-                        </div>
-                      }
-                    >
-                      <div class="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
-                        <For each={integrationCards()}>
-                          {(card) => (
-                            <div class="flex min-h-[254px] flex-col rounded-lg border border-neutral-200 bg-background p-4">
-                              <div class="flex items-start justify-between gap-3">
-                                <div
-                                  class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-semibold text-size-large text-white"
-                                  style={{ "background-color": card.iconColor }}
-                                  aria-hidden="true"
-                                >
-                                  {card.initial}
-                                </div>
-                                <span
-                                  class="inline-flex rounded-full px-2 py-0.5 font-medium text-label"
+                    <div class="divide-y divide-neutral-100">
+                      <For each={integrationCards()}>
+                        {(card) => (
+                          <div class="py-3">
+                            <div class="flex items-center gap-3">
+                              <div
+                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-semibold text-size-small text-white"
+                                style={{ "background-color": card.iconColor }}
+                                aria-hidden="true"
+                              >
+                                {card.initial}
+                              </div>
+                              <div class="min-w-0 flex-1">
+                                <p class="font-medium text-foreground text-size-small">
+                                  {card.label}
+                                </p>
+                                <p
+                                  class="truncate text-label"
                                   classList={{
-                                    "bg-green-50 text-green-700":
-                                      !!card.connection?.connected,
-                                    "bg-neutral-100 text-neutral-500":
-                                      !card.connection?.connected,
+                                    "text-green-700": !!card.connection?.connected,
+                                    "text-amber-700":
+                                      !card.connection?.connected &&
+                                      card.connection?.configured === false,
+                                    "text-neutral-500":
+                                      !card.connection?.connected &&
+                                      card.connection?.configured !== false,
                                   }}
+                                  title={card.description ?? undefined}
                                 >
                                   {card.connection?.connected
-                                    ? t("Connected")
-                                    : t("Not connected")}
-                                </span>
+                                    ? `${t("Connected as")} ${card.connection.externalUsername || card.connection.externalAccountId}`
+                                    : card.connection?.configured === false
+                                      ? t("Not configured")
+                                      : card.description}
+                                </p>
                               </div>
-
-                              <div class="mt-4">
-                                <h3 class="font-semibold text-foreground text-size-medium">
-                                  {card.label}
-                                </h3>
-                                <Show when={card.description}>
-                                  <p class="mt-1 text-neutral-500 text-size-small leading-5">
-                                    {card.description}
-                                  </p>
-                                </Show>
-                              </div>
-
-                              <div class="mt-3 min-h-10 text-label">
-                                <Show when={card.connection?.connected}>
-                                  <p class="text-neutral-600">
-                                    {t("Connected as")}{" "}
-                                    {card.connection?.externalUsername ||
-                                      card.connection?.externalAccountId}
-                                  </p>
-                                </Show>
-                                <Show
-                                  when={
-                                    card.connection?.connected &&
-                                    card.connection?.aiModelsPath
-                                  }
-                                >
-                                  <label class="mt-2 block text-neutral-600">
-                                    {t("Model for agent chats")}
-                                    <select
-                                      class="mt-1 block w-full rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
-                                      disabled={updatingModelProvider() === card.provider}
-                                      onChange={(event) =>
-                                        void handleSelectAIModel(
-                                          card.provider,
-                                          event.currentTarget.value || null,
-                                        )
-                                      }
-                                    >
-                                      <option
-                                        value=""
-                                        selected={!card.connection?.aiModel}
-                                      >
-                                        {t("Instance default")}
-                                      </option>
-                                      <For each={aiModels()[card.provider] ?? []}>
-                                        {(model) => (
-                                          <option
-                                            value={model}
-                                            selected={card.connection?.aiModel === model}
-                                          >
-                                            {model}
-                                          </option>
-                                        )}
-                                      </For>
-                                    </select>
-                                  </label>
-                                  <Show when={card.connection?.aiModel}>
-                                    <p class="mt-1 text-green-700">
-                                      {t("Runs your agent chats")}
-                                    </p>
-                                  </Show>
-                                </Show>
-                                <Show
-                                  when={
-                                    card.connection?.connected &&
-                                    card.connection?.manageUrl
-                                  }
-                                >
-                                  <a
-                                    href={card.connection?.manageUrl ?? undefined}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="mt-1 inline-block text-blue-600 hover:underline"
-                                  >
-                                    {t("Manage usage")}
-                                  </a>
-                                </Show>
-                                <Show
-                                  when={
-                                    !card.connection?.connected &&
-                                    pastingProvider() === card.provider
-                                  }
-                                >
-                                  <form
-                                    class="flex flex-col gap-1.5"
-                                    onSubmit={(event) => {
-                                      event.preventDefault();
-                                      handleFinishPastedConnect(card.provider);
-                                    }}
-                                  >
-                                    <label
-                                      class="text-neutral-600"
-                                      for={`paste-${card.provider}`}
-                                    >
-                                      {t(
-                                        "Paste the address you landed on after signing in",
-                                      )}
-                                    </label>
-                                    <input
-                                      id={`paste-${card.provider}`}
-                                      type="url"
-                                      required
-                                      value={pastedAddress()}
-                                      onInput={(event) =>
-                                        setPastedAddress(event.currentTarget.value)
-                                      }
-                                      class="rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
-                                    />
-                                    <button
-                                      type="submit"
-                                      class="rounded-md border border-neutral-200 px-3 py-1 font-medium text-size-small hover:bg-neutral-50"
-                                    >
-                                      {t("Finish connecting")}
-                                    </button>
-                                  </form>
-                                </Show>
-                                <Show
-                                  when={
-                                    !card.connection?.connected &&
-                                    card.connection?.configured === false
-                                  }
-                                >
-                                  <p class="text-amber-700">{t("Not configured")}</p>
-                                </Show>
-                                <Show
-                                  when={
-                                    !card.connection?.connected &&
-                                    card.connection?.configured !== false &&
-                                    card.connection?.instanceUrl
-                                  }
-                                >
-                                  <p class="truncate text-neutral-500">
-                                    {card.connection?.instanceUrl}
-                                  </p>
-                                </Show>
-                              </div>
-
-                              <div class="mt-auto border-neutral-100 border-t pt-3">
-                                <Show
-                                  when={card.connection?.connected}
-                                  fallback={
-                                    <button
-                                      type="button"
-                                      disabled={
-                                        connectingProvider() === card.provider ||
-                                        card.connection?.configured === false
-                                      }
-                                      onClick={() =>
-                                        void handleConnectIntegration(card.connection)
-                                      }
-                                      class="w-full rounded-md bg-blue-600 px-3 py-1.5 font-medium text-size-small text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      {connectingProvider() === card.provider
-                                        ? t("Redirecting…")
-                                        : t("Connect")}
-                                    </button>
-                                  }
-                                >
+                              <Show
+                                when={card.connection?.connected}
+                                fallback={
                                   <button
                                     type="button"
-                                    disabled={disconnectingProvider() === card.provider}
-                                    onClick={() =>
-                                      void handleDisconnectIntegration(card.provider)
+                                    disabled={
+                                      connectingProvider() === card.provider ||
+                                      card.connection?.configured === false
                                     }
-                                    class="w-full rounded-md border border-red-200 px-3 py-1.5 font-medium text-red-600 text-size-small transition-colors hover:bg-red-50 disabled:opacity-50"
+                                    onClick={() =>
+                                      void handleConnectIntegration(card.connection)
+                                    }
+                                    class="shrink-0 rounded-lg bg-blue-600 px-3 py-1 font-medium text-size-small text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                                   >
-                                    {disconnectingProvider() === card.provider
-                                      ? t("Disconnecting…")
-                                      : t("Disconnect")}
+                                    {connectingProvider() === card.provider
+                                      ? t("Redirecting…")
+                                      : t("Connect")}
                                   </button>
-                                </Show>
-                              </div>
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  disabled={disconnectingProvider() === card.provider}
+                                  onClick={() =>
+                                    void handleDisconnectIntegration(card.provider)
+                                  }
+                                  class="shrink-0 rounded-lg px-3 py-1 font-medium text-red-600 text-size-small transition-colors hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  {disconnectingProvider() === card.provider
+                                    ? t("Disconnecting…")
+                                    : t("Disconnect")}
+                                </button>
+                              </Show>
                             </div>
-                          )}
-                        </For>
-                      </div>
-                    </Show>
+
+                            <Show
+                              when={
+                                card.connection?.connected && card.connection?.aiModelsPath
+                              }
+                            >
+                              <label class="mt-3 flex items-center justify-between gap-3 pl-12 text-label text-neutral-600">
+                                {t("Model for agent chats")}
+                                <select
+                                  class="min-w-0 max-w-[55%] rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
+                                  disabled={updatingModelProvider() === card.provider}
+                                  onChange={(event) =>
+                                    void handleSelectAIModel(
+                                      card.provider,
+                                      event.currentTarget.value || null,
+                                    )
+                                  }
+                                >
+                                  <option value="" selected={!card.connection?.aiModel}>
+                                    {t("Instance default")}
+                                  </option>
+                                  <For each={aiModels()[card.provider] ?? []}>
+                                    {(model) => (
+                                      <option
+                                        value={model}
+                                        selected={card.connection?.aiModel === model}
+                                      >
+                                        {model}
+                                      </option>
+                                    )}
+                                  </For>
+                                </select>
+                              </label>
+                            </Show>
+                            <Show
+                              when={
+                                card.connection?.connected && card.connection?.manageUrl
+                              }
+                            >
+                              <a
+                                href={card.connection?.manageUrl ?? undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="mt-2 inline-block pl-12 text-blue-600 text-label hover:underline"
+                              >
+                                {t("Manage usage")}
+                              </a>
+                            </Show>
+                            <Show
+                              when={
+                                !card.connection?.connected &&
+                                pastingProvider() === card.provider
+                              }
+                            >
+                              <form
+                                class="mt-3 flex flex-col gap-1.5 pl-12"
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  handleFinishPastedConnect(card.provider);
+                                }}
+                              >
+                                <label
+                                  class="text-label text-neutral-600"
+                                  for={`paste-${card.provider}`}
+                                >
+                                  {t("Paste the address you landed on after signing in")}
+                                </label>
+                                <input
+                                  id={`paste-${card.provider}`}
+                                  type="url"
+                                  required
+                                  value={pastedAddress()}
+                                  onInput={(event) =>
+                                    setPastedAddress(event.currentTarget.value)
+                                  }
+                                  class="rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
+                                />
+                                <button
+                                  type="submit"
+                                  class="rounded-md border border-neutral-200 px-3 py-1 font-medium text-size-small hover:bg-neutral-50"
+                                >
+                                  {t("Finish connecting")}
+                                </button>
+                              </form>
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+                    </div>
                   </Show>
                 </Show>
-              </section>
+              </>
             ),
           } satisfies Record<PreferencesSection, () => JSX.Element>
         )[props.section]()}

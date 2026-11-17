@@ -94,7 +94,7 @@ export function DocumentPageView(props: Props) {
   const [now, setNow] = createSignal(props.ssrNow ?? Date.now());
 
   const { currentSpace } = useSpace();
-  const { extensions } = useExtensions();
+  const { extensions, isLoading: extensionsLoading } = useExtensions();
   const toast = useToast();
   const { canUseDocumentEditor, setDocumentContext, resetDocumentContext } =
     useDocumentContext();
@@ -804,6 +804,7 @@ export function DocumentPageView(props: Props) {
                           documentId={doc()?.id as string}
                           documentType={documentType()}
                           extensions={extensions()}
+                          extensionsLoading={extensionsLoading()}
                           properties={doc()?.properties ?? {}}
                           readonly={isReadonly()}
                           spaceId={currentSpace()?.id as string}

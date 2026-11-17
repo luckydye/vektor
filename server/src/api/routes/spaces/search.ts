@@ -47,7 +47,11 @@ export const GET: ApiRouteHandler = (context) =>
         new URL(context.req.url).searchParams,
         {
           defaultLimit: 20,
-          maxLimit: 100,
+          // A filter-only search settles its whole match set server-side either
+          // way, so a bigger page repeats that work less — which is how the
+          // calendar loads its date window in two requests instead of six. A
+          // query ranks and reads content per result, so it keeps the cap.
+          maxLimit: query.trim() ? 100 : 500,
         },
       );
       const filters = parseSearchFilters(

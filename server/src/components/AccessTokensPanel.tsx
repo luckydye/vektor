@@ -97,26 +97,23 @@ export function AccessTokensPanel(props: Props) {
       : t("Never used");
     const expiry = token.expiresAt
       ? t("Expires {date}").replace("{date}", formatAbsoluteDate(token.expiresAt, lang))
-      : t("No expiration");
-    return `${used} · ${expiry}`;
+      : null;
+    return [token.spaceName, used, expiry].filter(Boolean).join(" · ");
   }
 
   return (
     <section>
-      <div class="mb-3 flex items-start justify-between gap-3">
-        <p class="text-neutral-500 text-size-small">
-          {t("Tokens let the CLI and the API act as you. Treat them like passwords.")}
-        </p>
-        <Show when={props.spaces.length > 0 && view() === "list"}>
+      <Show when={props.spaces.length > 0 && view() === "list"}>
+        <div class="mb-1 flex justify-end">
           <button
             type="button"
             onClick={openForm}
-            class="shrink-0 font-medium text-blue-600 text-size-small hover:text-blue-800"
+            class="rounded-lg px-2 py-1 font-medium text-blue-600 text-size-small transition-colors hover:bg-blue-50"
           >
             {t("+ New token")}
           </button>
-        </Show>
-      </div>
+        </div>
+      </Show>
 
       <Show when={props.error}>
         <div class="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2.5 text-red-600 text-size-small">
@@ -125,12 +122,12 @@ export function AccessTokensPanel(props: Props) {
       </Show>
 
       {/* A floor for every state, so loading, empty and full do not resize the panel. */}
-      <div class="min-h-[236px]">
+      <div>
         <Switch>
           <Match when={view() === "form"}>
             <form
               onSubmit={(event) => void submitForm(event)}
-              class="space-y-3 rounded-lg border border-neutral-200 bg-background p-3"
+              class="space-y-3"
             >
               <div>
                 <label
@@ -255,10 +252,10 @@ export function AccessTokensPanel(props: Props) {
             <Show
               when={!props.isLoading}
               fallback={
-                <div class="divide-y divide-neutral-100 rounded-md border border-neutral-100">
+                <div class="divide-y divide-neutral-100">
                   <For each={[0, 1, 2]}>
                     {() => (
-                      <div class="flex items-center gap-3 px-4 py-2.5">
+                      <div class="flex items-center gap-3 py-3">
                         <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-skeleton" />
                         <div class="flex-1 space-y-1.5">
                           <div class="h-3 w-1/3 animate-pulse rounded bg-skeleton" />
@@ -273,7 +270,7 @@ export function AccessTokensPanel(props: Props) {
               <Show
                 when={props.tokens.length > 0}
                 fallback={
-                  <div class="flex min-h-[236px] flex-col items-center justify-center rounded-md border border-neutral-100 border-dashed p-5 text-center">
+                  <div class="flex flex-col items-center justify-center py-8 text-center">
                     <Icon class="h-6 w-6 text-neutral-400" name="lock-element" />
                     <p class="mt-2 text-neutral-500 text-size-small">
                       {props.spaces.length === 0
@@ -283,88 +280,61 @@ export function AccessTokensPanel(props: Props) {
                   </div>
                 }
               >
-                <div class="overflow-x-auto rounded-md border border-neutral-100">
-                  <table class="min-w-full text-size-medium">
-                    <thead class="bg-neutral-50">
-                      <tr>
-                        <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                          {t("Token")}
-                        </th>
-                        <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                          {t("Space")}
-                        </th>
-                        <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                          {t("Role")}
-                        </th>
-                        <th class="px-4 py-2.5" />
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-neutral-100">
-                      <For each={props.tokens}>
-                        {(token) => (
-                          <tr class="hover:bg-neutral-50">
-                            <td class="px-4 py-2.5">
-                              <div class="flex items-center gap-3">
-                                <vektor-avatar
-                                  size="28"
-                                  attr:user-id={token.id}
-                                  kind="credential"
-                                />
-                                <div>
-                                  <div class="flex items-center gap-2">
-                                    <span class="font-medium text-neutral-900">
-                                      {token.name}
-                                    </span>
-                                    {/* Active is the default, so only say what is wrong. */}
-                                    <Show when={tokenStatus(token) !== "Active"}>
-                                      <span
-                                        class={`rounded-sm px-1.5 py-0.5 text-size-small ${tokenStatusClass(tokenStatus(token))}`}
-                                      >
-                                        {statusLabel(tokenStatus(token))}
-                                      </span>
-                                    </Show>
-                                  </div>
-                                  <div class="text-neutral-500 text-size-small">
-                                    {tokenSubtitle(token)}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td class="whitespace-nowrap px-4 py-2.5 text-neutral-600">
-                              {token.spaceName}
-                            </td>
-                            <td class="whitespace-nowrap px-4 py-2.5">
+                <div class="divide-y divide-neutral-100">
+                  <For each={props.tokens}>
+                    {(token) => (
+                      <div class="group flex items-center gap-3 py-3">
+                        <vektor-avatar
+                          size="32"
+                          attr:user-id={token.id}
+                          kind="credential"
+                        />
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-2">
+                            <span class="truncate font-medium text-foreground text-size-small">
+                              {token.name}
+                            </span>
+                            <span
+                              class={`shrink-0 rounded-full px-1.5 py-px font-medium text-label ${roleBadgeClass(tokenRole(token))}`}
+                            >
+                              {tokenRole(token)}
+                            </span>
+                            {/* Active is the default, so only say what is wrong. */}
+                            <Show when={tokenStatus(token) !== "Active"}>
                               <span
-                                class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(tokenRole(token))}`}
+                                class={`shrink-0 rounded-sm px-1.5 py-px text-label ${tokenStatusClass(tokenStatus(token))}`}
                               >
-                                {tokenRole(token)}
+                                {statusLabel(tokenStatus(token))}
                               </span>
-                            </td>
-                            <td class="space-x-3 whitespace-nowrap px-4 py-2.5 text-right">
-                              <Show when={!token.revokedAt}>
-                                <button
-                                  type="button"
-                                  disabled={props.pendingTokenId === token.id}
-                                  onClick={() => props.onRevoke(token)}
-                                  class="text-red-600 text-size-small hover:text-red-800 disabled:opacity-50"
-                                >
-                                  {t("Revoke")}
-                                </button>
-                              </Show>
-                              <button
-                                type="button"
-                                disabled={props.pendingTokenId === token.id}
-                                onClick={() => props.onDelete(token)}
-                                class="text-neutral-500 text-size-small hover:text-neutral-700 disabled:opacity-50"
-                              >
-                                {t("Delete")}
-                              </button>
-                            </td>
-                          </tr>
-                        )}
-                      </For>
-                    </tbody>
-                  </table>
+                            </Show>
+                          </div>
+                          <p class="truncate text-label text-neutral-500">
+                            {tokenSubtitle(token)}
+                          </p>
+                        </div>
+                        <div class="flex shrink-0 gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                          <Show when={!token.revokedAt}>
+                            <button
+                              type="button"
+                              disabled={props.pendingTokenId === token.id}
+                              onClick={() => props.onRevoke(token)}
+                              class="rounded-md px-2 py-1 text-label text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {t("Revoke")}
+                            </button>
+                          </Show>
+                          <button
+                            type="button"
+                            disabled={props.pendingTokenId === token.id}
+                            onClick={() => props.onDelete(token)}
+                            class="rounded-md px-2 py-1 text-label text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+                          >
+                            {t("Delete")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </For>
                 </div>
               </Show>
             </Show>

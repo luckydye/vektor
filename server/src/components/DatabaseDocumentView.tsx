@@ -26,6 +26,13 @@ interface Props {
   spaceId: string;
   viewConfig?: DocumentPropertyValue;
   views: DatabaseExtensionView[];
+  /**
+   * Whether the extension list is still on its way. A configured view is
+   * restored from this browser once that list names it, so the table must not
+   * mount before then: it would read its first page of rows a moment before
+   * the extension view replaces it.
+   */
+  extensionsLoading: boolean;
 }
 
 const TABLE_VIEW_ID = "table";
@@ -58,15 +65,25 @@ export function DatabaseDocumentView(props: Props) {
   let panelRef: HTMLDivElement | undefined;
   const [toolbarSlot, setToolbarSlot] = createSignal<HTMLElement>();
   const [viewSheetOpen, setViewSheetOpen] = createSignal(false);
+  /**
+   * The persisted view is read after the first render, so until this mounts the
+   * selection is only the `table` fallback. Rendering the table then would read
+   * its first page of rows a moment before an extension view replaces it.
+   */
+  const [mounted, setMounted] = createSignal(false);
 
   onMount(() => {
     const slot = document.querySelector<HTMLElement>("#document-toolbar-slot");
     if (!slot) throw new Error("Database views need the document toolbar slot");
     setToolbarSlot(slot);
+    setMounted(true);
   });
   const [configuredViewIds, setConfiguredViewIds] = createSignal(
     parseConfiguredViewIds(props.viewConfig),
   );
+  /** A database with no configured view has no persisted view to restore. */
+  const viewsPending = () =>
+    props.extensionsLoading && configuredViewIds().length > 0;
 
   let previousDatabaseDocumentId = props.databaseDocumentId; // solid-reactivity-ok: snapshot by design
   let previousViewConfigKey = JSON.stringify(parseConfiguredViewIds(props.viewConfig));
@@ -411,11 +428,13 @@ export function DatabaseDocumentView(props: Props) {
         <Show
           when={selectedExtensionView()}
           fallback={
-            <DatabaseView
-              databaseDocumentId={props.databaseDocumentId}
-              schemaJson={props.schemaJson}
-              title={props.title}
-            />
+            <Show when={mounted() && !viewsPending()} fallback={null}>
+              <DatabaseView
+                databaseDocumentId={props.databaseDocumentId}
+                schemaJson={props.schemaJson}
+                title={props.title}
+              />
+            </Show>
           }
         >
           {(view) => (

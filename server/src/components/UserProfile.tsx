@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createComputed, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { isNoAuthMode } from "#config";
 import { authClient } from "#composeables/auth-client.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
@@ -35,14 +35,16 @@ export function UserProfile() {
   const isPreferencesOpen = () => openSection() !== null;
   // Kept once shown, so returning to the menu does not drop loaded state.
   const [shownSection, setShownSection] = createSignal<PreferencesSection | null>(null);
-  createEffect(() => {
+  createComputed(() => {
     const section = openSection();
     if (section) setShownSection(section);
   });
   const width = () =>
-    isPreferencesOpen()
-      ? "w-[620px] max-w-[calc(100vw-2rem)]"
-      : "w-[300px] max-w-[calc(100vw-2rem)]";
+    !isPreferencesOpen()
+      ? "w-[300px] max-w-[calc(100vw-2rem)]"
+      : openSection() !== "desktop"
+        ? "w-[400px] max-w-[calc(100vw-2rem)]"
+        : "w-[620px] max-w-[calc(100vw-2rem)]";
 
   // The client reports a failed sign-out as a value, not a throw; reloading
   // regardless would look like signing out silently did nothing.
@@ -151,7 +153,7 @@ export function UserProfile() {
 
             <div
               hidden={!isPreferencesOpen()}
-              class="preferences-panel w-[620px] max-w-[calc(100vw-2rem)]"
+              class={`preferences-panel ${width()}`}
             >
               <Show when={shownSection()}>
                 {(section) => (
