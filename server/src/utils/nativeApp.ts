@@ -1,7 +1,7 @@
-/** What the desktop app injects before any page script runs. */
+/** What the desktop and the mobile app inject before any page script runs. */
 export interface NativeApp {
   version: string;
-  /** Rust's `std::env::consts::OS`, e.g. "macos". */
+  /** Rust's `std::env::consts::OS`, e.g. "macos", "ios" or "android". */
   platform: string;
 }
 
@@ -48,14 +48,27 @@ export type NativeAppMessage =
 declare global {
   interface Window {
     vektorApp?: NativeApp;
-    /** The desktop app's message channel. */
+    /**
+     * The Android app's stand-in for `vektorApp`: Android's WebView cannot run a script before the
+     * page's own, but its bridge objects are there from the start. They only carry methods.
+     */
+    vektorAndroid?: { app(): string };
+    /** The app's message channel. */
     ipc?: { postMessage(message: string): void };
   }
 }
 
-/** The desktop app hosting this page; undefined in a regular browser and during SSR. */
+/** The app hosting this page; undefined in a regular browser and during SSR. */
 export function nativeApp(): NativeApp | undefined {
-  return typeof window === "undefined" ? undefined : window.vektorApp;
+  if (typeof window === "undefined") return undefined;
+  if (window.vektorAndroid) return JSON.parse(window.vektorAndroid.app()) as NativeApp;
+  return window.vektorApp;
+}
+
+/** The desktop app, which mounts spaces as folders; undefined in the mobile app and in a browser. */
+export function desktopApp(): NativeApp | undefined {
+  const app = nativeApp();
+  return app && app.platform !== "ios" && app.platform !== "android" ? app : undefined;
 }
 
 export function postToNativeApp(message: NativeAppMessage) {

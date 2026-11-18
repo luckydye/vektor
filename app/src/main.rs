@@ -10,10 +10,11 @@ mod titlebar;
 
 use browser::{
     CloseTab, DismissFind, Find, FindNext, FindPrevious, NewTab, NextTab, PreviousTab, Reload,
-    Session, TabSource, ToggleDevTools, browsers, is_internal, open_browser, route_tab_events,
-    save_session, session_path, window_options,
+    Session, TabSource, ToggleDevTools, browsers, open_browser, route_tab_events, save_session,
+    session_path, window_options,
 };
 use std::borrow::Cow;
+use vektor_shell::is_internal;
 
 use futures::StreamExt;
 

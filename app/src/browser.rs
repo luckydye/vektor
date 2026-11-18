@@ -15,8 +15,11 @@ use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::NSEvent;
 use objc2_foundation::{NSArray, NSString};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use url::{Origin, Url};
+use vektor_shell::{
+    CHROME_COLOR_SCRIPT, PageMessage, SignIn, is_internal, may_open_externally, native_app_script,
+    sign_in_code,
+};
 use wry::http::Request;
 use wry::{
     NewWindowResponse, PageLoadEvent, Rect, WebView, WebViewBuilder, WebViewExtMacOS,
@@ -114,50 +117,10 @@ const FIND_SCRIPT: &str = r#"
 }
 "#;
 
-/// Reports the colour of the page's top pixel row so the chrome can blend into it. The layers
-/// under that row are composited on a canvas, which also resolves any CSS colour syntax.
-const CHROME_COLOR_SCRIPT: &str = r##"
-{
-  const context = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
-  let last = "";
-  const sample = () => {
-    context.globalAlpha = 1;
-    context.fillStyle = "#fff";
-    context.fillRect(0, 0, 1, 1);
-    for (const element of document.elementsFromPoint(innerWidth / 2, 0).reverse()) {
-      const style = getComputedStyle(element);
-      context.globalAlpha = Number(style.opacity);
-      context.fillStyle = style.backgroundColor;
-      context.fillRect(0, 0, 1, 1);
-    }
-    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
-    const color = `${r},${g},${b}`;
-    if (color !== last) {
-      last = color;
-      window.ipc.postMessage(JSON.stringify({ type: "chromeColor", color: [r, g, b] }));
-    }
-  };
-  // Keeps sampling briefly after each change so fades (e.g. dialog backdrops) are followed.
-  let until = 0;
-  let frame = 0;
-  const tick = (now) => {
-    sample();
-    frame = now < until ? requestAnimationFrame(tick) : 0;
-  };
-  const schedule = () => {
-    until = performance.now() + 400;
-    frame ||= requestAnimationFrame(tick);
-  };
-  new MutationObserver(schedule).observe(document, { subtree: true, childList: true, attributes: true });
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
-  addEventListener("resize", schedule);
-  schedule();
-}
-"##;
-
 /// WebKit throttles rendering and requestAnimationFrame to 60fps by default, even on 120Hz displays.
 fn unlock_frame_rate(webview: &WebView) {
-    let features: Retained<NSArray<AnyObject>> = unsafe { msg_send![class!(WKPreferences), _features] };
+    let features: Retained<NSArray<AnyObject>> =
+        unsafe { msg_send![class!(WKPreferences), _features] };
     let feature = features
         .iter()
         .find(|feature| {
@@ -181,46 +144,6 @@ pub enum TabEvent {
     Page(u64, PageMessage),
     /// The app's answer to something the page asked for.
     Script(u64, String),
-}
-
-/// Messages a page sends with `window.ipc.postMessage(JSON.stringify(message))`.
-#[derive(Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum PageMessage {
-    ChromeColor {
-        color: [u8; 3],
-    },
-    /// Asks for a `vektor-app:mounts` event with the current mounts.
-    MountsRequest,
-    Mount {
-        space_id: String,
-        space_slug: String,
-        writable: bool,
-        /// A freshly minted access token, when the app reported it has none for the space.
-        token: Option<String>,
-        /// The id of `token`, so the token can be revoked when the mount is removed.
-        token_id: Option<String>,
-    },
-    /// The login page wants OAuth, which only works in the system browser.
-    BrowserSignIn,
-    /// The web UI deleted a token listed in the payload's `revoke`.
-    TokenRevoked {
-        token_id: String,
-    },
-    Unmount {
-        space_id: String,
-    },
-    RevealMount {
-        space_id: String,
-    },
-    /// `navigator.geolocation.getCurrentPosition`, answered through `__vektorLocation`.
-    LocationRequest {
-        id: u64,
-    },
 }
 
 pub struct TabEvents(pub mpsc::UnboundedSender<TabEvent>);
@@ -252,19 +175,6 @@ pub struct FindState {
     pub result: Option<SharedString>,
 }
 
-/// Announces the desktop app to the web UI as `window.vektorApp`, before any page script runs.
-pub fn native_app_script() -> String {
-    format!(
-        "Object.defineProperty(window, 'vektorApp', {{ value: Object.freeze({{ version: {:?}, platform: {:?} }}) }});",
-        env!("CARGO_PKG_VERSION"),
-        std::env::consts::OS,
-    )
-}
-
-pub fn is_internal(origin: &Origin, url: &str) -> bool {
-    Url::parse(url).is_ok_and(|url| url.origin() == *origin)
-}
-
 pub struct Tab {
     pub id: u64,
     pub title: SharedString,
@@ -284,8 +194,8 @@ pub struct Browser {
     /// Open while the find bar is shown.
     pub find: Option<FindState>,
     pub find_focus: FocusHandle,
-    /// Secret of the browser sign-in in progress; only its hash ever leaves the app.
-    pub sign_in_verifier: Option<String>,
+    /// The browser sign-in in progress.
+    pub sign_in: Option<SignIn>,
     /// Set while a tab of this window is being dragged.
     pub drag: Option<TabDrag>,
 }
@@ -421,7 +331,7 @@ impl Browser {
             url,
             find: None,
             find_focus: cx.focus_handle(),
-            sign_in_verifier: None,
+            sign_in: None,
             drag: None,
         }
     }
@@ -467,7 +377,7 @@ impl Browser {
             .with_devtools(true)
             .with_accept_first_mouse(true)
             .with_bounds(Rect::default())
-            .with_initialization_script(native_app_script())
+            .with_initialization_script(native_app_script(env!("CARGO_PKG_VERSION")))
             .with_initialization_script(LINK_SCRIPT)
             .with_initialization_script(OVERSCROLL_SCRIPT)
             .with_initialization_script(FIND_SCRIPT)
@@ -693,41 +603,26 @@ impl Browser {
         }
     }
 
-    /// The server's `desktopAuth` plugin holds the other half of this exchange.
     pub fn start_browser_sign_in(&mut self, cx: &mut Context<Self>) {
-        let verifier = hex::encode(rand::random::<[u8; 32]>());
-        let challenge = hex::encode(Sha256::digest(verifier.as_bytes()));
-        self.sign_in_verifier = Some(verifier);
-        let mut url = Url::parse(&self.url).expect("VEKTOR_URL is not a URL");
-        url.set_path("/desktop-login");
-        url.set_query(Some(&format!("challenge={challenge}")));
+        let (sign_in, url) =
+            SignIn::start(&Url::parse(&self.url).expect("VEKTOR_URL is not a URL"));
+        self.sign_in = Some(sign_in);
         open_external(url.as_str(), cx);
     }
 
     /// `vektor-desktop://auth?code=…` from the browser. Links this app did not ask for find no
-    /// verifier and are ignored.
+    /// sign-in in progress and are ignored.
     pub fn complete_sign_in(&mut self, link: &str, cx: &mut Context<Self>) {
-        let Ok(link) = Url::parse(link) else {
+        let Some(code) = sign_in_code(link) else {
             return;
         };
-        let Some(code) = link
-            .query_pairs()
-            .find(|(key, _)| key == "code")
-            .map(|(_, code)| code.into_owned())
-        else {
+        let Some(sign_in) = self.sign_in.take() else {
             return;
         };
-        if link.scheme() != "vektor-desktop" || link.host_str() != Some("auth") {
-            return;
-        }
-        let Some(verifier) = self.sign_in_verifier.take() else {
-            return;
-        };
-        let mut url = Url::parse(&self.url).expect("VEKTOR_URL is not a URL");
-        url.set_path("/api/auth/desktop-handoff/complete");
-        url.query_pairs_mut()
-            .append_pair("code", &code)
-            .append_pair("verifier", &verifier);
+        let url = sign_in.complete(
+            &Url::parse(&self.url).expect("VEKTOR_URL is not a URL"),
+            &code,
+        );
         self.tabs[self.active]
             .webview
             .load_url(url.as_str())
@@ -890,9 +785,8 @@ fn follow_pointer(grab: Point<Pixels>, window: &Window) {
     ns_window(window).setFrameTopLeftPoint(origin);
 }
 
-/// Only web and mail links leave the app; other schemes could launch arbitrary local apps.
 pub fn open_external(url: &str, cx: &App) {
-    if Url::parse(url).is_ok_and(|url| matches!(url.scheme(), "http" | "https" | "mailto")) {
+    if may_open_externally(url) {
         cx.open_url(url);
     }
 }

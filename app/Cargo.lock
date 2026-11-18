@@ -7515,19 +7515,29 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "gpui",
- "hex",
  "lfs",
  "objc2",
  "objc2-app-kit",
  "objc2-core-location",
  "objc2-foundation",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "vektor-shell",
+ "wry",
+]
+
+[[package]]
+name = "vektor-shell"
+version = "0.1.0"
+dependencies = [
+ "hex",
  "rand 0.8.8",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "tokio",
  "url",
- "wry",
 ]
 
 [[package]]
