@@ -18,13 +18,4 @@ describe("document content preparation", () => {
       prepareDocumentContent('<p onclick="alert(1)">Safe</p>', "text/plain"),
     ).toBe("<p>Safe</p>");
   });
-
-  it("does not let an application MIME type bypass sanitization", () => {
-    expect(
-      prepareDocumentContent(
-        '<p onclick="alert(1)">Safe</p>',
-        "application/vnd.wiki.app+html",
-      ),
-    ).toBe("<p>Safe</p>");
-  });
 });

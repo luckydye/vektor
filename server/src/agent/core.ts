@@ -167,7 +167,6 @@ function buildTurnContext(
 /** Maps a document type to the recipe that best explains how to edit it. */
 function recipeForDocumentType(documentType?: string | null): string {
   if (documentType === "canvas") return "canvas";
-  if (documentType === "app") return "app-doc";
   if (documentType === "database" || documentType === "record") return "database";
   return "edit-text";
 }
@@ -176,7 +175,7 @@ function recipeForDocumentType(documentType?: string | null): string {
  * When a document is in context, inline the editing playbook directly instead
  * of making the model discover it via \`recipes\`. Small models skip the lookup
  * step, so the most common task gets its instructions up front. The inlined
- * recipe is chosen by document type (canvas / app / database / html).
+ * recipe is chosen by document type (canvas / database / html).
  */
 function documentEditingSection(
   documentId?: string,
@@ -196,11 +195,9 @@ function documentEditingSection(
   const recipeName = recipeForDocumentType(documentType);
   const recipe = getRecipe(recipeName);
   const mutationInstructions =
-    documentType === "app"
-      ? `- To change it, read the complete source and use \`write_document\` with documentId \`${documentId}\` and the complete revised HTML. NEVER use \`edit_document\` for app documents because partial HTML edits remove script elements.`
-      : documentType === "database" || documentType === "record"
-        ? `- Its data lives in properties: change columns (the database's \`_schema\`) and cells (a row's properties) with \`update_document_properties\`, never with \`edit_document\`.`
-        : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
+    documentType === "database" || documentType === "record"
+      ? `- Its data lives in properties: change columns (the database's \`_schema\`) and cells (a row's properties) with \`update_document_properties\`, never with \`edit_document\`.`
+      : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
   sed, perl, python, or by piping through grep/awk — those corrupt unicode (emoji,
   umlauts) and bypass collaborative editing. There is no temp-file step.`;
 

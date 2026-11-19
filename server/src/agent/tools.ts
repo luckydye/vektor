@@ -361,7 +361,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
           content: {
             type: "string",
             description:
-              "Complete stored content: HTML for ordinary documents and records (sanitized), complete HTML for app, canvas JSON ({shapes, strokes}) for canvas, script source for workflow.",
+              "Complete stored content: HTML for ordinary documents and records (sanitized), canvas JSON ({shapes, strokes}) for canvas, script source for workflow.",
           },
           title: { type: "string", description: "Document title (create only)" },
           type: { type: "string", description: "Document type (create only)" },

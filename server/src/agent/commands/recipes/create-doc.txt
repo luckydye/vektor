@@ -8,7 +8,6 @@ content; the JSON tool call does not convert Markdown automatically.
 
    {"title":"Notes","content":"<h1>Notes</h1><p>...</p>"}
    {"title":"Child page","parentId":"<parent-document-id>","content":"<p>...</p>"}
-   {"title":"My App","type":"app","content":"<!doctype html><html>...</html>"}
 
 - Omit `type` for a normal document.
 - Use a non-empty placeholder such as `<p></p>` when the document starts blank.

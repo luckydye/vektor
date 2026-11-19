@@ -7,7 +7,7 @@ import { confirmDialog } from "./useDialogs.ts";
 const HEADER_IMAGE_PROPERTY = "headerImage";
 
 // Document types that don't render a header image.
-const UNSUPPORTED_TYPES = ["app", "workflow"];
+const UNSUPPORTED_TYPES = ["workflow"];
 
 export function supportsHeaderImage(documentType?: string): boolean {
   return !UNSUPPORTED_TYPES.includes(documentType ?? "");
