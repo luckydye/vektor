@@ -4,7 +4,7 @@
 # VEKTOR_URL (baked in) picks the server; production when unset.
 # Usage: bundle-ios.sh [--release] [extra cargo build args]
 set -euo pipefail
-cd "$(dirname "$0")/../mobile"
+cd "$(dirname "$0")/.."
 
 [[ "$(uname)" == "Darwin" ]] || { echo "bundle-ios.sh must run on macOS" >&2; exit 1; }
 
@@ -25,7 +25,7 @@ rm -rf "$APP"
 mkdir -p "$APP"
 cp "target/$TARGET/$PROFILE/$NAME" "$APP/$NAME"
 # The web app's touch icon is full-bleed and opaque, as iOS wants it.
-ICON="../../server/public/180x180.png"
+ICON="../server/public/180x180.png"
 cp "$ICON" "$APP/AppIcon60x60@3x.png"
 sips -z 120 120 "$ICON" --out "$APP/AppIcon60x60@2x.png" >/dev/null
 cat > "$APP/Info.plist" <<PLIST

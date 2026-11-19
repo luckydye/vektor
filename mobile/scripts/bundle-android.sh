@@ -6,7 +6,7 @@
 # VEKTOR_URL (baked in) picks the server; production when unset.
 # Usage: bundle-android.sh [--release] [extra cargo build args]
 set -euo pipefail
-cd "$(dirname "$0")/../mobile"
+cd "$(dirname "$0")/.."
 
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 NDK="$SDK/ndk/$(ls "$SDK/ndk" | sort -V | tail -1)"
@@ -51,7 +51,7 @@ mkdir -p "$WORK/res/values" "$WORK/res/mipmap-xxxhdpi" "$WORK/apk/lib/$ABI"
   -o "$WORK/apk/lib/$ABI/libvektor_mobile.so"
 cp "$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "$WORK/apk/lib/$ABI/"
 
-cp ../../server/public/192x192.png "$WORK/res/mipmap-xxxhdpi/ic_launcher.png"
+cp ../server/public/192x192.png "$WORK/res/mipmap-xxxhdpi/ic_launcher.png"
 # Edge to edge from launch on: GPUI paints behind the transparent system bars.
 cat > "$WORK/res/values/styles.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
