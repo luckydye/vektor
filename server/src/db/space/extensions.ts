@@ -11,6 +11,7 @@ import {
   type JobDefinition,
   type JobIOField,
 } from "#extensions/manifest.ts";
+import { cacheExtensionArchive } from "#extensions/packageCache.ts";
 import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
 import { appLogger } from "#observability/logger.ts";
 
@@ -114,6 +115,14 @@ async function loadManifest(
     .where(eq(extension.id, row.id));
 
   const packageBuffer = rows[0]?.package;
+  if (packageBuffer) {
+    // The archive was read to parse the manifest; keep it so the entry files
+    // that follow do not fetch it from the database again.
+    cacheExtensionArchive(
+      `${s.spaceId}:${row.id}:${row.updatedAt.getTime()}`,
+      packageBuffer,
+    );
+  }
   const result: LoadedManifest = packageBuffer
     ? safeExtractManifest(packageBuffer, row.id)
     : { manifest: null, error: "Extension package is missing" };

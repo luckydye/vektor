@@ -850,6 +850,10 @@ export class ApiClient {
     (change: RealtimeAccessChange) => void
   >();
   private readonly replica = new ReplicaCache();
+  private readonly extensionListRequests = new Map<
+    string,
+    Promise<{ extensions: ExtensionInfo[]; errors: ExtensionManifestError[] }>
+  >();
 
   constructor(options: {
     baseUrl?: string;
@@ -2340,17 +2344,30 @@ export class ApiClient {
     get: async (
       spaceId: string,
     ): Promise<{ extensions: ExtensionInfo[]; errors: ExtensionManifestError[] }> => {
-      const response = await this.apiGet<{
-        extensions: ExtensionInfo[];
-        errors?: ExtensionManifestError[];
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions`);
+      // The manager and the sidebar both ask for the list on startup. Sharing
+      // the request keeps that to one round trip.
+      const inFlight = this.extensionListRequests.get(spaceId);
+      if (inFlight) return await inFlight;
 
-      const manifest = {
-        extensions: response.extensions ?? [],
-        errors: response.errors ?? [],
-      };
-      await this.replica.writeExtensions(spaceId, manifest);
-      return manifest;
+      const request = (async () => {
+        const response = await this.apiGet<{
+          extensions: ExtensionInfo[];
+          errors?: ExtensionManifestError[];
+        }>(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions`);
+
+        const manifest = {
+          extensions: response.extensions ?? [],
+          errors: response.errors ?? [],
+        };
+        await this.replica.writeExtensions(spaceId, manifest);
+        return manifest;
+      })();
+      this.extensionListRequests.set(spaceId, request);
+      try {
+        return await request;
+      } finally {
+        this.extensionListRequests.delete(spaceId);
+      }
     },
 
     getCached: async (

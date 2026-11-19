@@ -157,6 +157,8 @@ type LoadedExtension = {
   registeredInspectors: Set<string>;
   registeredProcessors: Set<string>;
   registeredBlocks: Set<string>;
+  /** Resolves when this extension's frontend entry has imported and activated. */
+  frontendLoad: Promise<void>;
   viewCleanup: (() => void) | null;
 };
 
@@ -204,6 +206,7 @@ export class Extensions {
     registeredInspectors: new Set(),
     registeredProcessors: new Set(),
     registeredBlocks: new Set(),
+    frontendLoad: Promise.resolve(),
     viewCleanup: null,
   };
 
@@ -216,10 +219,15 @@ export class Extensions {
   }
 
   /**
-   * Initialise extensions for a space
-   * Fetches extension list and loads all frontend entries
+   * Initialise extensions for a space.
+   *
+   * Resolves once the manifests are published. Frontend entries keep importing
+   * in the background so a view can render without waiting for every extension.
    */
   private initPromise: Promise<void> | null = null;
+
+  /** Resolves once every frontend import started so far has settled. */
+  private frontendLoads: Promise<void> = Promise.resolve();
 
   async init(spaceId: string): Promise<void> {
     // If already initializing or initialized for this space, wait for completion
@@ -242,17 +250,22 @@ export class Extensions {
     }
 
     const initialising = (async () => {
+      // The sidebar has its own request for the same list; start ours before the
+      // IndexedDB read so both share it and the cache read costs nothing.
+      const remote = this.fetchExtensions(spaceId);
       const cached = await api.extensions.getCached(spaceId);
-      // loadExtensions announces cached manifest routes before it waits for
-      // frontend module imports, allowing the sidebar to render from IndexedDB
-      // on a warm start.
-      const cachedLoads = cached
-        ? this.loadExtensions(cached.extensions)
-        : Promise.resolve();
+      // Manifest metadata is registered before frontend imports start, so a view
+      // can render as soon as its manifest is known instead of waiting for every
+      // extension's main module.
+      if (cached) {
+        await this.loadExtensions(cached.extensions, { awaitFrontends: false });
+      }
 
-      const remoteExtensions = await this.fetchExtensions(spaceId);
-      await cachedLoads;
-      await this.loadExtensions(remoteExtensions, { reconcile: true });
+      const remoteExtensions = await remote;
+      await this.loadExtensions(remoteExtensions, {
+        reconcile: true,
+        awaitFrontends: false,
+      });
     })();
     this.initPromise = initialising;
     // A failed init must not be handed back for this space forever.
@@ -299,6 +312,7 @@ export class Extensions {
     // Do not race an initial cached/remote reconciliation with a realtime
     // event received while the connection is coming up.
     await this.initPromise;
+    await this.frontendLoads;
     if (this.spaceId !== spaceId) return;
 
     const extensionInfos = await this.fetchExtensions(spaceId);
@@ -313,7 +327,15 @@ export class Extensions {
 
   private async loadExtensions(
     extensionInfos: ExtensionInfo[],
-    options?: { reconcile?: boolean; reloadUpdated?: boolean },
+    options?: {
+      reconcile?: boolean;
+      reloadUpdated?: boolean;
+      /**
+       * Wait for the frontend modules to import and activate. Off for `init`,
+       * which only has to publish the manifests so extension views can render.
+       */
+      awaitFrontends?: boolean;
+    },
   ): Promise<void> {
     if (options?.reconcile) {
       const currentIds = new Set(extensionInfos.map((extension) => extension.id));
@@ -337,10 +359,12 @@ export class Extensions {
     // loadExtension records manifest metadata before importing its frontend
     // module, so the sidebar can use the routes below without waiting on that
     // network work.
-    const loading = extensionInfos.map((extension) => this.loadExtension(extension));
+    const loading = Promise.all(
+      extensionInfos.map((extension) => this.loadExtension(extension)),
+    ).then(() => this.notifyExtensionsLoaded());
+    this.frontendLoads = this.frontendLoads.then(() => loading);
     this.notifyExtensionsLoaded();
-    await Promise.all(loading);
-    this.notifyExtensionsLoaded();
+    if (options?.awaitFrontends !== false) await loading;
   }
 
   /**
@@ -373,35 +397,48 @@ export class Extensions {
       registeredInspectors: new Set(),
       registeredProcessors: new Set(),
       registeredBlocks: new Set(),
+      frontendLoad: Promise.resolve(),
       viewCleanup: null,
     };
 
     this.loaded.set(info.id, loaded);
 
-    if (!info.entries.frontend || !this.spaceId) {
+    const spaceId = this.spaceId;
+    const frontendEntry = info.entries.frontend;
+    if (!frontendEntry || !spaceId) {
       return;
     }
 
-    const assetUrl = getExtensionAssetUrl(
-      this.spaceId,
+    loaded.frontendLoad = this.activateFrontend(
       info.id,
-      info.entries.frontend,
-      info.updatedAt,
+      getExtensionAssetUrl(spaceId, info.id, frontendEntry, info.updatedAt),
+      loaded,
     );
+    await loaded.frontendLoad;
+  }
 
+  private async activateFrontend(
+    extensionId: string,
+    assetUrl: string,
+    loaded: LoadedExtension,
+  ): Promise<void> {
     try {
       const module = (await import(/* @vite-ignore */ assetUrl)) as ExtensionModule;
+      // The extension may have been unloaded, reloaded or the space switched
+      // while the module was in flight; a detached entry must not register.
+      if (this.loaded.get(extensionId) !== loaded) return;
       loaded.module = module;
 
-      const ctx = this.createContext(info.id, loaded);
+      const ctx = this.createContext(extensionId, loaded);
 
       if (module.activate) {
         await module.activate(ctx);
+        if (this.loaded.get(extensionId) !== loaded) this.releaseRegistrations(loaded);
       }
     } catch (err) {
-      console.error(`Failed to load extension '${info.id}':`, err);
+      console.error(`Failed to load extension '${extensionId}':`, err);
       // Drop whatever activate registered before it threw; the manifest entry stays.
-      this.releaseRegistrations(loaded);
+      if (this.loaded.get(extensionId) === loaded) this.releaseRegistrations(loaded);
     }
   }
 
@@ -747,7 +784,13 @@ export class Extensions {
       }
     }
 
-    const render = loaded.registeredViews.get(routePath);
+    let render = loaded.registeredViews.get(routePath);
+    if (!render) {
+      // Extensions without a `view` entry register their views from the
+      // frontend module, which may still be importing in the background.
+      await loaded.frontendLoad;
+      render = loaded.registeredViews.get(routePath);
+    }
     if (!render) {
       console.error(
         `Extension '${extensionId}' has no view registered for route '${routePath}'`,
@@ -812,7 +855,13 @@ export class Extensions {
       }
     }
 
-    const renderFn = loaded.registeredViews.get(routePath);
+    let renderFn = loaded.registeredViews.get(routePath);
+    if (!renderFn) {
+      // Extensions without a `view` entry register their views from the
+      // frontend module, which may still be importing in the background.
+      await loaded.frontendLoad;
+      renderFn = loaded.registeredViews.get(routePath);
+    }
     if (!renderFn) {
       console.error(
         `Extension '${extensionId}' has no view registered for route '${routePath}'`,
