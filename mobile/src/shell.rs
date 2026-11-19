@@ -5,27 +5,33 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::{Origin, Url};
 
-/// Reports the colour of the page's top pixel row so the chrome can blend into it. The layers
-/// under that row are composited on a canvas, which also resolves any CSS colour syntax.
+/// Reports the colours of the page's top and bottom pixel rows so the chrome above and below can
+/// blend into them. The layers under each row are composited on a canvas, which also resolves any
+/// CSS colour syntax.
 pub const CHROME_COLOR_SCRIPT: &str = r##"
 {
   const context = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
   let last = "";
-  const sample = () => {
+  const colorAt = (y) => {
     context.globalAlpha = 1;
     context.fillStyle = "#fff";
     context.fillRect(0, 0, 1, 1);
-    for (const element of document.elementsFromPoint(innerWidth / 2, 0).reverse()) {
+    for (const element of document.elementsFromPoint(innerWidth / 2, y).reverse()) {
       const style = getComputedStyle(element);
       context.globalAlpha = Number(style.opacity);
       context.fillStyle = style.backgroundColor;
       context.fillRect(0, 0, 1, 1);
     }
     const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
-    const color = `${r},${g},${b}`;
-    if (color !== last) {
-      last = color;
-      window.ipc.postMessage(JSON.stringify({ type: "chromeColor", color: [r, g, b] }));
+    return [r, g, b];
+  };
+  const sample = () => {
+    const top = colorAt(0);
+    const bottom = colorAt(innerHeight - 1);
+    const colors = `${top}/${bottom}`;
+    if (colors !== last) {
+      last = colors;
+      window.ipc.postMessage(JSON.stringify({ type: "chromeColor", top, bottom }));
     }
   };
   // Keeps sampling briefly after each change so fades (e.g. dialog backdrops) are followed.
@@ -70,7 +76,8 @@ pub fn native_app_script(version: &str) -> String {
 )]
 pub enum PageMessage {
     ChromeColor {
-        color: [u8; 3],
+        top: [u8; 3],
+        bottom: [u8; 3],
     },
     /// The login page wants OAuth, which only works in the system browser.
     BrowserSignIn,

@@ -29,7 +29,7 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
 import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
-import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
+import { parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
@@ -226,7 +226,6 @@ export function SpaceApp(props: Props) {
 
   const layoutStyle = createMemo(() => ({
     "--sidebar-width": `${initialSidebarWidth}px`,
-    "--mobile-sidebar-width": `${Math.max(initialSidebarWidth, DEFAULT_SIDEBAR_WIDTH)}px`,
     "--inset-left": `${initialSidebarWidth}px`,
   }));
 
@@ -248,7 +247,7 @@ export function SpaceApp(props: Props) {
         }}
       >
         <div
-          class="main-content relative h-full min-h-screen bg-neutral-10 transition-[transform,filter] md:transition-none"
+          class="main-content relative h-full min-h-screen bg-neutral-10 max-md:pt-[env(safe-area-inset-top)] max-md:pb-(--tab-bar-height) transition-[transform,filter] md:transition-none"
           style={{
             transform:
               drawerReveal.progress() === 0
@@ -284,6 +283,18 @@ export function SpaceApp(props: Props) {
             {shellProps.children as never}
           </Show>
         </div>
+
+        {/* Content scrolls under the status bar, so it gets a backdrop that recedes with the page. */}
+        <div
+          class="fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top)] bg-neutral-10 md:hidden"
+          style={{
+            filter:
+              drawerReveal.progress() === 0
+                ? undefined
+                : `brightness(${1 - drawerReveal.progress() * 0.3})`,
+            transition: drawerReveal.isDragging() ? "none" : "filter 150ms",
+          }}
+        />
 
         <Sidebar initialWidth={initialSidebarWidth} />
       </div>

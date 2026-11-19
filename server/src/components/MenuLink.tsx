@@ -32,7 +32,7 @@ export function MenuLink(props: Props) {
         props.isActive
           ? "bg-primary-100 text-primary-700"
           : "hover:bg-primary-50 active:bg-primary-100",
-        "min-h-[32px]",
+        "min-h-[32px] max-md:min-h-11",
         "overflow-hidden whitespace-nowrap",
       )}
     >

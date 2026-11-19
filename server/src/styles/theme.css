@@ -30,6 +30,15 @@
   --color-skeleton-strong: color-mix(in oklab, var(--color-neutral-500) 11%, transparent);
 
   --animate-workflow-progress:workflow-progress 1.8s ease-in-out infinite;
+  --animate-push-in: push-in 220ms cubic-bezier(0.25, 0.75, 0.5, 1);
+
+  /* A list pushed onto the mobile drawer, as a native navigation stack does. */
+  @keyframes push-in {
+    from {
+      transform: translateX(30%);
+      opacity: 0;
+    }
+  }
 
   @keyframes workflow-progress {
     from {
@@ -272,6 +281,10 @@
   --shadow-large-contact: rgb(0 0 0 / 0.08);
   --shadow-large-ambient: rgb(0 0 0 / 0.18);
   --shadow-large-rim: transparent;
+
+  /* The mobile tab bar, and the height a full-height view has between it and the status bar. */
+  --tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom));
+  --app-height: calc(100dvh - env(safe-area-inset-top) - var(--tab-bar-height));
 }
 
 @media (prefers-color-scheme: dark) {

@@ -1,6 +1,9 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
+import { MOBILE_QUERY } from "#composeables/useIsMobile.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { readStored, storedText, writeStored } from "#utils/clientStorage.ts";
 import {
@@ -11,7 +14,9 @@ import {
   SIDEBAR_WIDTH_KEY,
   writeSidebarWidthCookie,
 } from "#utils/sidebarState.ts";
+import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
+import { type MobileTab, MobileTabBar } from "./MobileTabBar.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { useSwipeDrawer } from "#composeables/useSwipeDrawer.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -46,15 +51,41 @@ export function Sidebar(props: Props) {
   let resizeStartY = 0;
   let resizeStartWidth = 0;
 
-  const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
-  const mobileDrawerWidth = () => Math.max(currentWidth(), defaultWidth());
+  const isMobileViewport = () => window.matchMedia(MOBILE_QUERY).matches;
 
   const drawer = useSwipeDrawer({
     side: "left",
-    size: mobileDrawerWidth,
+    // Full screen on mobile, as the Documents tab's own page.
+    size: () => window.innerWidth,
     openFromScreen: true,
     isOpen: isMobileOpen,
     setOpen: setIsMobileOpen,
+  });
+
+  const { pathname } = useRoute();
+  const { currentSpace } = useSpace();
+
+  const mobileTabs = createMemo((): MobileTab[] => {
+    const slug = currentSpace()?.slug;
+    const path = pathname().replace(/\/+$/, "");
+    const closeDrawer = () => setIsMobileOpen(false);
+    const isAt = (route: string) => path === spacePath(slug, route).replace(/\/+$/, "");
+    return [
+      {
+        icon: "home",
+        label: t("Activity"),
+        href: spacePath(slug, "/"),
+        onSelect: closeDrawer,
+        isActive: path === "" || isAt("/"),
+      },
+      {
+        icon: "search",
+        label: t("Search"),
+        href: spacePath(slug, "/search"),
+        onSelect: closeDrawer,
+        isActive: isAt("/search"),
+      },
+    ];
   });
 
   function closeMobileDrawerOnDesktop() {
@@ -179,14 +210,8 @@ export function Sidebar(props: Props) {
 
   return (
     <div>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer gestures are this control's only interaction. */}
-      <Show when={isMobileOpen()}>
-        <div
-          class="fixed inset-y-0 right-0 z-40 touch-pan-y md:hidden"
-          style={{ left: `${mobileDrawerWidth()}px` }}
-          onTouchStart={drawer.startFromDrawer}
-        />
-      </Show>
+      <MobileTabBar tabs={mobileTabs()} />
+
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: closes the drawer when a link inside it is followed. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are the keyboard path. */}
@@ -194,14 +219,13 @@ export function Sidebar(props: Props) {
         ref={sidebarRef}
         style={{
           "--sidebar-rendered-width": `${displayWidth()}px`,
-          "--mobile-sidebar-width": `${mobileDrawerWidth()}px`,
           translate: drawer.translate(),
           transition: drawer.transition(),
           "--color-background": "var(--color-neutral-15)",
         }}
         class={twMerge(
-          "@container sidebar flex p-1.5",
-          "fixed top-0 bottom-0 w-(--mobile-sidebar-width) touch-pan-y transition-transform will-change-transform md:w-(--sidebar-rendered-width)",
+          "@container sidebar flex md:p-1.5",
+          "fixed top-0 bottom-(--tab-bar-height) md:bottom-0 w-full touch-pan-y transition-transform will-change-transform md:w-(--sidebar-rendered-width)",
           "z-40 md:z-10",
           "md:translate-x-0",
           isMobileOpen() || drawer.isDragging() ? "translate-x-0" : "-translate-x-full",
@@ -214,7 +238,7 @@ export function Sidebar(props: Props) {
       >
         <span
           aria-hidden="true"
-          class="absolute top-1/2 -right-2 md:right-1 h-20 w-1 -translate-y-1/2 rounded-full bg-neutral-300/30 z-20"
+          class="absolute top-1/2 right-1 h-20 w-1 max-md:hidden -translate-y-1/2 rounded-full bg-neutral-300/30 z-20"
         />
 
         <button
@@ -229,10 +253,11 @@ export function Sidebar(props: Props) {
           <Icon name="collapse-sidebar" class="block h-4 w-4" />
         </button>
 
-        <div class={twMerge(
-          "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-100 dark:border-neutral-200",
-          (drawer.isDragging() || isMobileOpen()) && "shadow-2xl"
-        )}>
+        <div
+          class={twMerge(
+            "sidebar-panel after:surface-noise relative flex h-full w-full flex-col max-md:pt-[env(safe-area-inset-top)] overflow-hidden bg-background *:relative *:z-10 transition-shadow border-neutral-100 md:rounded-lg md:border dark:border-neutral-200",
+          )}
+        >
           <Navigation />
         </div>
 

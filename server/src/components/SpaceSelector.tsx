@@ -90,7 +90,8 @@ export function SpaceSelector(props: Props) {
             </div>
           </button>
 
-          <a-popover class="group" placements="bottom-start">
+          {/* A bottom sheet on phones, via `.popover-sheet`, with rows sized for touch. */}
+          <a-popover class="group popover-sheet" placements="bottom-start">
             <div class="w-max min-w-(--trigger-width) opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
               <div class="max-h-[500px] origin-top scale-95 overflow-y-auto rounded-lg border border-neutral-100 bg-neutral-50 shadow-xl transition-all duration-150 group-[[enabled]]:scale-100">
                 <div class="flex flex-col gap-[4px] p-[4px]">
@@ -102,13 +103,13 @@ export function SpaceSelector(props: Props) {
                           props.onSelect?.(space());
                           dismissPopover(event.target);
                         }}
-                        class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors hover:bg-neutral-100"
+                        class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors hover:bg-neutral-100 max-md:min-h-13 max-md:gap-3xs"
                         classList={{
                           "bg-primary-100": space().id === props.current?.id,
                         }}
                       >
                         <div
-                          class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-sm"
+                          class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-sm max-md:h-8 max-md:w-8 max-md:rounded-md"
                           style={{ "background-color": space().color || "#6366f1" }}
                         >
                           <SpaceLogo
@@ -118,7 +119,7 @@ export function SpaceSelector(props: Props) {
                           />
                         </div>
                         <div class="min-w-0 flex-1">
-                          <div class="truncate font-medium text-foreground text-size-small">
+                          <div class="truncate font-medium text-foreground text-size-small max-md:text-size-large">
                             {space().name}
                           </div>
                         </div>
@@ -137,10 +138,10 @@ export function SpaceSelector(props: Props) {
                       {(href) => (
                         <a
                           href={href()}
-                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100"
+                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100 max-md:min-h-12"
                         >
                           <Icon name="grid-grid" />
-                          <span class="font-medium text-size-small leading-none">
+                          <span class="font-medium text-size-small leading-none max-md:text-size-large">
                             {t("All spaces")}
                           </span>
                         </a>
@@ -154,10 +155,10 @@ export function SpaceSelector(props: Props) {
                           props.onCreate?.();
                           dismissPopover(event.target);
                         }}
-                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100"
+                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100 max-md:min-h-12"
                       >
                         <Icon name="add" />
-                        <span class="font-medium text-size-small leading-none">
+                        <span class="font-medium text-size-small leading-none max-md:text-size-large">
                           {t("Create new Space")}
                         </span>
                       </button>
@@ -170,10 +171,10 @@ export function SpaceSelector(props: Props) {
                           dismissPopover(event.target);
                           props.onLeave?.();
                         }}
-                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-red-600 transition-colors hover:bg-red-50"
+                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-red-600 transition-colors hover:bg-red-50 max-md:min-h-12"
                       >
                         <Icon name="sign-out" />
-                        <span class="font-medium text-size-small leading-none">
+                        <span class="font-medium text-size-small leading-none max-md:text-size-large">
                           {t("Leave space")}
                         </span>
                       </button>

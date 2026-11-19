@@ -16,6 +16,7 @@ import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
+import { useIsMobile } from "#composeables/useIsMobile.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -42,6 +43,8 @@ import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface DocumentTreeHandle {
   readonly isEditMode: boolean;
+  /** On mobile a category opens as its own screen, covering the rest of the nav. */
+  readonly isCategoryPushed: boolean;
   toggleEditMode: () => void;
 }
 
@@ -109,9 +112,15 @@ export function DocumentTree(props: Props) {
     ...EXPANDED_ITEMS_CODEC,
   });
 
+  const isMobile = useIsMobile();
+  const [pushedCategoryId, setPushedCategoryId] = createSignal<string | null>(null);
+  const pushedCategory = createMemo(() =>
+    isMobile() ? categories().find((cat) => cat.id === pushedCategoryId()) : undefined,
+  );
+
   const expandedCategorySlugs = createMemo(() =>
     categories()
-      .filter((cat) => expandedItems().has(cat.id))
+      .filter((cat) => expandedItems().has(cat.id) || cat.id === pushedCategoryId())
       .map((cat) => cat.slug),
   );
 
@@ -412,7 +421,15 @@ export function DocumentTree(props: Props) {
   }
 
   const isCategoryOpen = (category: Category) =>
-    expandedItems().has(category.id) && !isEditMode();
+    isMobile()
+      ? pushedCategory()?.id === category.id
+      : expandedItems().has(category.id) && !isEditMode();
+
+  function openCategory(category: Category) {
+    if (isEditMode()) return;
+    if (isMobile()) setPushedCategoryId(category.id);
+    else toggleItem(category.id);
+  }
 
   function toggleItem(itemId: string) {
     const next = new Set(expandedItems());
@@ -492,6 +509,9 @@ export function DocumentTree(props: Props) {
     get isEditMode() {
       return isEditMode();
     },
+    get isCategoryPushed() {
+      return !!pushedCategory();
+    },
     toggleEditMode,
   });
 
@@ -562,6 +582,26 @@ export function DocumentTree(props: Props) {
 
         <Show when={!isLoading()}>
           <div class="space-y-1 px-4xs">
+            <Show when={pushedCategory()}>
+              {(category) => (
+                <button
+                  type="button"
+                  onClick={() => setPushedCategoryId(null)}
+                  // Sticky, so the way back stays in reach in a long category. Bleeds past the
+                  // nav's 3xs padding so it starts at the space logo's edge.
+                  class="sticky top-0 z-20 -mx-3xs flex min-h-11 w-[calc(100%+2*var(--spacing-3xs))] items-center gap-2 border-neutral-100 border-b bg-background/90 px-4 py-1 text-left text-neutral-900 backdrop-blur-md active:bg-neutral-200 dark:border-neutral-200"
+                >
+                  <Icon
+                    class="-ml-1 h-5 w-5 flex-none text-primary-700"
+                    name="chevron-left-thin"
+                  />
+                  <CategoryBadge category={category()} class="h-7 w-7" />
+                  <span class="truncate font-semibold text-size-large">
+                    {category().name}
+                  </span>
+                </button>
+              )}
+            </Show>
             <Index each={categories()}>
               {(category) => {
                 const documents = createMemo(
@@ -571,25 +611,36 @@ export function DocumentTree(props: Props) {
                       next.docs.length === 0 && !isCategoryOpen(category());
                     return isClosing ? prev : next;
                   },
-                  { docs: [], rootDocs: [], hiddenCount: 0, collapsible: false } as ReturnType<
-                    typeof categoryDocuments
-                  >,
+                  {
+                    docs: [],
+                    rootDocs: [],
+                    hiddenCount: 0,
+                    collapsible: false,
+                  } as ReturnType<typeof categoryDocuments>,
                 );
 
                 const isEmpty = createMemo(
                   () =>
-                    expandedItems().has(category().id) &&
+                    isCategoryOpen(category()) &&
                     !isSlugLoading(category().slug) &&
                     documents().rootDocs.length === 0,
                 );
 
+                const isPushed = () => pushedCategory()?.id === category().id;
+
                 return (
-                  <div>
+                  <div
+                    classList={{
+                      hidden: !!pushedCategory() && !isPushed(),
+                      "animate-push-in": isPushed(),
+                    }}
+                  >
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: the drag, long-press and context-menu gestures live on the row; the button inside is the control. */}
                     <category-target
                       attr:data-category-id={category().id}
                       attr:data-space-id={currentSpace()?.id}
                       class="block [&[data-drag-over]]:bg-neutral-100"
+                      classList={{ hidden: isPushed() }}
                       draggable={isEditMode()}
                       onDragStart={(e) => isEditMode() && handleDragStart(e, category())}
                       onDragOver={(e) =>
@@ -619,8 +670,8 @@ export function DocumentTree(props: Props) {
                       >
                         <button
                           type="button"
-                          onClick={() => !isEditMode() && toggleItem(category().id)}
-                          class="flex flex-1 items-center gap-2 px-4xs py-1 text-left overflow-hidden whitespace-nowrap hyphens-auto group-hover/category:clip-right group-focus-within/category:clip-right"
+                          onClick={() => openCategory(category())}
+                          class="flex flex-1 items-center gap-2 px-4xs py-1 max-md:py-2.5 text-left overflow-hidden whitespace-nowrap hyphens-auto group-hover/category:clip-right group-focus-within/category:clip-right"
                           aria-expanded={isCategoryOpen(category())}
                         >
                           <CategoryBadge category={category()} class="h-6 w-6">
@@ -633,7 +684,11 @@ export function DocumentTree(props: Props) {
                             />
                           </CategoryBadge>
 
-                          <span class="font-medium">{category().name}</span>
+                          <span class="flex-1 font-medium">{category().name}</span>
+                          <Icon
+                            class="h-4 w-4 flex-none text-neutral-400 md:hidden"
+                            name="chevron-right-thin"
+                          />
                         </button>
 
                         <Show when={!isEditMode() && canManageCategories()}>
@@ -695,8 +750,7 @@ export function DocumentTree(props: Props) {
                       <div class="space-y-1 pt-1 pb-1.5">
                         <Show
                           when={
-                            expandedItems().has(category().id) &&
-                            isSlugLoading(category().slug)
+                            isCategoryOpen(category()) && isSlugLoading(category().slug)
                           }
                         >
                           <Index each={["55%", "72%", "44%"]}>
@@ -992,7 +1046,7 @@ export function DocumentTree(props: Props) {
             </div>
             <p class="-mt-2 text-neutral-500 text-size-extra-small">
               {t(
-                "Limits the top-level documents listed in the sidebar; the rest are behind \"Show more\".",
+                'Limits the top-level documents listed in the sidebar; the rest are behind "Show more".',
               )}
             </p>
 

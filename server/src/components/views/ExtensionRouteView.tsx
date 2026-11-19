@@ -52,7 +52,7 @@ export function ExtensionRouteView() {
   );
 
   return (
-    <div class="relative flex h-dvh flex-col overflow-x-hidden">
+    <div class="relative flex h-dvh flex-col overflow-x-hidden max-md:h-(--app-height)">
       <inset-view class="relative my-1.5 block h-full flex-1 overflow-hidden md:mr-(--inset-right) md:ml-(--inset-left)">
         <Show when={target()}>
           {(resolved) => (

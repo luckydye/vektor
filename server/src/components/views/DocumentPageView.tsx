@@ -664,7 +664,8 @@ export function DocumentPageView(props: Props) {
             the page must not grow past it. */}
         <div
           class={twMerge(
-            isFullHeightView() && "flex h-[100dvh] flex-col overflow-hidden",
+            isFullHeightView() &&
+              "flex h-[100dvh] flex-col overflow-hidden max-md:h-(--app-height)",
           )}
         >
           <inset-view

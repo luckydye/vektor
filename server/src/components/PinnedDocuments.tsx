@@ -1,4 +1,12 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
@@ -11,6 +19,7 @@ import { documentTitle } from "#documents/title.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { MenuLink } from "./MenuLink.tsx";
+import { SectionLabel } from "./SectionLabel.tsx";
 
 /** Reserved `data-category-id` for the pinned-documents drop target — never a real category id. */
 export const PINNED_CATEGORY_ID = "__pinned__";
@@ -97,8 +106,11 @@ export function PinnedDocuments() {
   }
 
   async function handleDocumentReorder(event: Event) {
-    const { documentId, targetDocumentId, placement } = (event as CustomEvent)
-      .detail as { documentId: string; targetDocumentId: string; placement: Placement };
+    const { documentId, targetDocumentId, placement } = (event as CustomEvent).detail as {
+      documentId: string;
+      targetDocumentId: string;
+      placement: Placement;
+    };
     if (documentId === targetDocumentId) return;
 
     const ids = documents()
@@ -133,6 +145,9 @@ export function PinnedDocuments() {
           !!draggedDocument() && (pinnedDocuments().length > 0 || showEmptyTarget()),
       }}
     >
+      <Show when={documents().length > 0}>
+        <SectionLabel text={t("Pinned")} />
+      </Show>
       <For each={documents()}>
         {(doc: DocumentWithProperties) => {
           const url = () => spacePath(currentSpace()?.slug, `/doc/${doc.slug}`);

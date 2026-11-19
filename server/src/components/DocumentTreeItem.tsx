@@ -110,7 +110,7 @@ export function DocumentTreeItem(props: Props) {
         >
           <a
             href={getDocumentUrl(props.doc.slug)}
-            class={`flex flex-1 items-center justify-between text-ellipsis whitespace-nowrap rounded-sm px-1.5 py-1 text-size-normal ${
+            class={`flex flex-1 items-center justify-between text-ellipsis whitespace-nowrap rounded-sm px-1.5 py-1 max-md:py-2.5 text-size-normal ${
               isActive()
                 ? "bg-primary-200 text-neutral-700"
                 : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200"

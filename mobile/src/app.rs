@@ -1,5 +1,5 @@
-//! The window: the page fills the safe area, and the system bars around it take on the colour of
-//! the page's top edge, as the desktop app's tab bar does.
+//! The window: on Android the page fills the safe area and the system bars around it take on the
+//! colours of the page's edges next to them; on iOS the page fills the whole screen.
 
 use crate::shell::{PageMessage, SignIn, may_open_externally, sign_in_code};
 use futures::StreamExt as _;
@@ -18,8 +18,10 @@ pub const DEVELOPMENT_WINDOW: (f32, f32) = (393., 852.);
 pub struct MobileApp {
     pub page: Page,
     pub url: Url,
-    /// Colour of the page's top edge, which the system bars take on.
+    /// Colour of the page's top edge, which the status bar takes on.
     pub chrome: u32,
+    /// Colour of the page's bottom edge, which the home indicator's inset takes on.
+    pub chrome_bottom: u32,
     /// The browser sign-in in progress.
     pub sign_in: Option<SignIn>,
     pub _events: Task<()>,
@@ -73,6 +75,7 @@ impl MobileApp {
             page,
             url,
             chrome,
+            chrome_bottom: chrome,
             sign_in: None,
             _events: pump,
         }
@@ -80,8 +83,11 @@ impl MobileApp {
 
     pub fn handle(&mut self, event: PageEvent, cx: &mut Context<Self>) {
         match event {
-            PageEvent::Message(PageMessage::ChromeColor { color: [r, g, b] }) => {
+            PageEvent::Message(PageMessage::ChromeColor { top, bottom }) => {
+                let [r, g, b] = top;
                 self.chrome = u32::from_be_bytes([0, r, g, b]);
+                let [r, g, b] = bottom;
+                self.chrome_bottom = u32::from_be_bytes([0, r, g, b]);
                 Page::style_system_bars(is_light(self.chrome));
                 cx.notify();
             }
@@ -126,14 +132,20 @@ pub fn open_external(url: &str, cx: &App) {
 
 impl Render for MobileApp {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let safe = window.insets().safe_area;
+        // On iOS the page runs under the system bars and keeps clear of them with CSS
+        // `env(safe-area-inset-*)`, so its own drawers and tab bar reach the screen edges.
+        let safe = match cfg!(target_os = "ios") {
+            true => Default::default(),
+            false => window.insets().safe_area,
+        };
         let page = self.page.clone();
         div()
             .size_full()
+            .flex()
+            .flex_col()
             .bg(rgb(self.chrome))
             .pt(safe.top)
             .pr(safe.right)
-            .pb(safe.bottom)
             .pl(safe.left)
             .child(
                 // The native webview sits on top of this area and follows its layout bounds.
@@ -141,7 +153,9 @@ impl Render for MobileApp {
                     move |bounds, window, _| page.place(bounds, window.scale_factor()),
                     |_, _, _, _| {},
                 )
-                .size_full(),
+                .flex_1()
+                .w_full(),
             )
+            .child(div().flex_none().w_full().h(safe.bottom).bg(rgb(self.chrome_bottom)))
     }
 }

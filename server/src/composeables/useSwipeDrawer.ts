@@ -1,4 +1,5 @@
 import { type Accessor, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { MOBILE_QUERY } from "#composeables/useIsMobile.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 
 interface Options {
@@ -22,7 +23,6 @@ interface Sample {
 
 const DRAG_THRESHOLD = 8;
 const ANDROID_BACK_GESTURE_INSET = 24;
-const MOBILE_QUERY = "(max-width: 767px)";
 
 // Only the finger's movement in this window before release counts towards its speed.
 const VELOCITY_WINDOW = 80;

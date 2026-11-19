@@ -33,6 +33,7 @@ import { Icon } from "./Icon.tsx";
 import { MenuLink } from "./MenuLink.tsx";
 import { PinnedDocuments } from "./PinnedDocuments.tsx";
 import { QuickSearchResults } from "./QuickSearchResults.tsx";
+import { SectionLabel } from "./SectionLabel.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
 import { useToast } from "#composeables/useToast.ts";
@@ -231,7 +232,11 @@ export function Navigation() {
 
   return (
     <div class="z-1 flex h-full flex-col">
-      <div class="sticky top-0 z-10 flex-none rounded-t-md px-4xs @max-xs:px-1.5 pt-4xs pb-5xs">
+      {/* A pushed category is a screen of its own, headed by its back button instead. */}
+      <div
+        class="sticky top-0 z-10 flex-none rounded-t-md px-4xs @max-xs:px-1.5 pt-4xs pb-5xs"
+        classList={{ hidden: documentTree()?.isCategoryPushed === true }}
+      >
         <CreateSpaceDialog
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}
@@ -261,7 +266,8 @@ export function Navigation() {
         />
       </div>
 
-      <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
+      {/* On mobile, search is a tab of its own. */}
+      <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs max-md:hidden">
         {/* Collapsed, the sidebar has no room for results: the icon opens the palette. */}
         <button
           type="button"
@@ -331,40 +337,47 @@ export function Navigation() {
             isSearching() && "hidden @max-xs:flex",
           )}
         >
-          <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
-            <MenuLink
-              icon="home"
-              text={t("Activity")}
-              href={spacePath(currentSpace()?.slug, "/")}
-              isActive={activeRoute() === "home"}
-            />
-            <Show when={userCanAccessSettings()}>
+          <div
+            class="contents"
+            classList={{ hidden: documentTree()?.isCategoryPushed === true }}
+          >
+            <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
               <MenuLink
-                icon="settings"
-                text={t("Settings")}
-                href={spacePath(currentSpace()?.slug, "/settings")}
-                isActive={activeRoute() === "settings"}
+                class="max-md:hidden"
+                icon="home"
+                text={t("Activity")}
+                href={spacePath(currentSpace()?.slug, "/")}
+                isActive={activeRoute() === "home"}
               />
-            </Show>
-          </div>
-
-          <Show when={extensionMenuLinks().length > 0 && !isLoading()}>
-            <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs">
-              <For each={extensionMenuLinks()}>
-                {(link) => (
-                  <MenuLink
-                    icon="extension"
-                    iconSvg={link.icon}
-                    text={link.title}
-                    href={spacePath(currentSpace()?.slug, `/x/${link.route}`)}
-                    isActive={activeRoute() === `x/${link.route}`}
-                  />
-                )}
-              </For>
+              <Show when={userCanAccessSettings()}>
+                <MenuLink
+                  icon="settings"
+                  text={t("Settings")}
+                  href={spacePath(currentSpace()?.slug, "/settings")}
+                  isActive={activeRoute() === "settings"}
+                />
+              </Show>
             </div>
-          </Show>
 
-          <PinnedDocuments />
+            <Show when={extensionMenuLinks().length > 0 && !isLoading()}>
+              <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs">
+                <SectionLabel text={t("Extensions")} />
+                <For each={extensionMenuLinks()}>
+                  {(link) => (
+                    <MenuLink
+                      icon="extension"
+                      iconSvg={link.icon}
+                      text={link.title}
+                      href={spacePath(currentSpace()?.slug, `/x/${link.route}`)}
+                      isActive={activeRoute() === `x/${link.route}`}
+                    />
+                  )}
+                </For>
+              </div>
+            </Show>
+
+            <PinnedDocuments />
+          </div>
 
           <div class="@max-xs:hidden px-5xs pb-s">
             {/* The hint gives the lone Done button something to belong to, and says
@@ -384,12 +397,18 @@ export function Navigation() {
               </div>
             </Show>
 
+            <Show when={!documentTree()?.isCategoryPushed}>
+              {/* Inside the tree's px-5xs, so this lines up with the other labels' px-3xs. */}
+              <div class="flex flex-col px-4xs">
+                <SectionLabel text={t("Categories")} />
+              </div>
+            </Show>
             <DocumentTree ref={setDocumentTree} />
           </div>
         </nav>
       </div>
 
-      <div class="relative flex flex-none items-center px-1 py-3">
+      <div class="relative flex flex-none items-center border-neutral-100 px-1 py-3 max-md:border-t dark:border-neutral-200">
         <UserProfile />
       </div>
     </div>

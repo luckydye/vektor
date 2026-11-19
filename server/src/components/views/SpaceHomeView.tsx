@@ -86,7 +86,7 @@ export function SpaceHomeView() {
       {(space) => (
         <FileDropOverlay
           disabled={!userCanUpload()}
-          class="relative flex h-dvh flex-col overflow-hidden"
+          class="relative flex h-dvh flex-col overflow-hidden max-md:h-(--app-height)"
           onSelect={(file) => void uploadDroppedFile(file)}
         >
           <inset-view class="flex min-h-0 flex-1 flex-col gap-12 p-2xs *:mx-auto *:w-full *:max-w-(--document-width) md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">

@@ -78,30 +78,37 @@ export function UserProfile() {
       useToast().error(url.searchParams.get("message") || t("Integration OAuth failed"));
     }
 
-    for (const name of ["integration", "status", "message"]) url.searchParams.delete(name);
+    for (const name of ["integration", "status", "message"])
+      url.searchParams.delete(name);
     history.replaceState(history.state, "", url);
   });
 
   return (
-    <a-popover-trigger class="group relative z-10 block">
+    <a-popover-trigger class="group relative z-10 block max-md:w-full">
+      {/* On mobile the avatar heads a full-width row, as a native account cell does. */}
       <button
         slot="trigger"
         type="button"
-        class="focus-ring mx-4xs my-2 block overflow-visible rounded-full"
+        class="focus-ring mx-4xs my-2 flex items-center gap-3xs overflow-visible rounded-full max-md:w-[calc(100%-2*var(--spacing-4xs))] max-md:rounded-md"
       >
         <vektor-avatar prop:user={user()} />
+        <span class="min-w-0 flex-1 truncate text-left font-medium text-neutral-900 text-size-normal md:hidden">
+          {user()?.name || t("Anonymous User")}
+        </span>
+        <Icon class="h-4 w-4 flex-none text-neutral-400 md:hidden" name="chevron-right-thin" />
       </button>
 
+      {/* A bottom sheet on phones, via `.popover-sheet`; the panel's own frame steps aside there. */}
       <a-popover
-        class="group"
+        class="group popover-sheet"
         placements="top-start"
         on:exit={() => setOpenSection(null)}
       >
         <div
-          class={`overflow-hidden rounded-lg border border-neutral-100 bg-background opacity-0 shadow-large transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 ${width()}`}
+          class={`overflow-hidden rounded-lg border border-neutral-100 bg-background opacity-0 shadow-large transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 max-md:overflow-visible max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:shadow-none ${width()} max-md:max-w-none`}
         >
           <div
-            class={`relative origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 ${width()}`}
+            class={`relative origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 max-md:bg-background ${width()} max-md:w-full max-md:max-w-none`}
           >
             <Show when={!isPreferencesOpen()}>
               <div class="border-neutral-100 border-b p-4">
@@ -151,10 +158,7 @@ export function UserProfile() {
               </div>
             </Show>
 
-            <div
-              hidden={!isPreferencesOpen()}
-              class={`preferences-panel ${width()}`}
-            >
+            <div hidden={!isPreferencesOpen()} class={`preferences-panel ${width()}`}>
               <Show when={shownSection()}>
                 {(section) => (
                   <UserPreferencesPanel
