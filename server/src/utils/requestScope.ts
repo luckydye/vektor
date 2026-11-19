@@ -105,4 +105,14 @@ export const requestScope = {
   forget(key: string): void {
     storage.getStore()?.cache.delete(key);
   },
+
+  /** Drop every key starting with `prefix`, after a write that changed all of them. */
+  forgetPrefix(prefix: string): void {
+    const scope = storage.getStore();
+    if (!scope?.open) return;
+
+    for (const key of scope.cache.keys()) {
+      if (key.startsWith(prefix)) scope.cache.delete(key);
+    }
+  },
 };

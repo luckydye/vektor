@@ -23,6 +23,7 @@ import { acl, category, document, property } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
 import type { Platform } from "#platform/platform.ts";
+import { requestScope } from "#utils/requestScope.ts";
 
 export interface AclEntry {
   resourceType: string;
@@ -204,6 +205,8 @@ export async function grantPermission(
     });
   }
 
+  forgetPermissions();
+
   // Re-granting the same permission is a no-op; only log real changes.
   if (existing?.permission !== permission) {
     await logAclChange(store, spaceId, {
@@ -248,6 +251,7 @@ export async function revokeAllUserGrants(
   if (removed.length === 0) return [];
 
   await db.delete(acl).where(and(...conditions));
+  forgetPermissions();
 
   for (const entry of removed) {
     await logAclChange(store, spaceId, {
@@ -295,6 +299,7 @@ export async function revokePermission(
   );
 
   await db.delete(acl).where(and(...conditions));
+  forgetPermissions();
 
   for (const entry of removed) {
     await logAclChange(store, spaceId, {
@@ -339,6 +344,11 @@ async function tokenIssuer(
   spaceId: string,
   principalId: string,
 ): Promise<ResolvedIdentity | null> {
+  // Only a credential's id can name a token row. That is the one thing its
+  // shape says for certain, and it saves a database round trip on every
+  // decision a person makes.
+  if (!principalId.startsWith("token_")) return null;
+
   const { db } = await openSpaceStore(platform, spaceId);
   const row = await one(
     db
@@ -444,7 +454,26 @@ function intersectScopes(a: string[] | null, b: string[] | null): string[] | nul
   return a.filter((id) => allowed.has(id));
 }
 
-export async function getPermission(
+/** The cache key a decision on one resource and principal is held under. */
+function permissionKey(
+  spaceId: string,
+  resourceType: ResourceType,
+  resourceId: string,
+  userId: string,
+  groups: string[],
+): string {
+  return `acl:permission:${spaceId}\0${resourceType}\0${resourceId}\0${userId}\0${groups
+    .slice()
+    .sort()
+    .join("\0")}`;
+}
+
+/** Drop every decision held for this request, after a grant or a revoke. */
+function forgetPermissions(): void {
+  requestScope.forgetPrefix("acl:");
+}
+
+export function getPermission(
   platform: Platform,
   spaceId: string,
   resourceType: ResourceType,
@@ -452,51 +481,66 @@ export async function getPermission(
   userId: string,
   userGroups?: string[],
 ): Promise<AclEntry | null> {
+  // Always include "public" in group checks to support public access
+  const effectiveGroups =
+    userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
+  // One request asks the same question several times: a guard checks the space
+  // role and the route then resolves what that role reaches. Hold the answer
+  // for the request rather than paying a remote round trip again.
+  return requestScope.memoize(
+    permissionKey(spaceId, resourceType, resourceId, userId, effectiveGroups),
+    () => readPermission(platform, spaceId, resourceType, resourceId, userId, effectiveGroups),
+  );
+}
+
+async function readPermission(
+  platform: Platform,
+  spaceId: string,
+  resourceType: ResourceType,
+  resourceId: string,
+  userId: string,
+  effectiveGroups: string[],
+): Promise<AclEntry | null> {
   const { db } = await openSpaceStore(platform, spaceId);
 
-  const allPermissions: AclRow[] = [];
-
-  // Get user-specific permission
-  const userResult = await one(
-    db
-      .select()
-      .from(acl)
-      .where(
-        and(
-          eq(acl.resourceType, resourceType),
-          eq(acl.resourceId, resourceId),
-          eq(acl.userId, userId),
-          isNull(acl.groupId),
-          live(),
+  // The two halves are independent reads; issue them together so a decision
+  // costs one round trip rather than two.
+  const [userResult, groupResults] = await Promise.all([
+    one(
+      db
+        .select()
+        .from(acl)
+        .where(
+          and(
+            eq(acl.resourceType, resourceType),
+            eq(acl.resourceId, resourceId),
+            eq(acl.userId, userId),
+            isNull(acl.groupId),
+            live(),
+          ),
         ),
-      ),
-  );
+    ),
+    many(
+      db
+        .select()
+        .from(acl)
+        .where(
+          and(
+            eq(acl.resourceType, resourceType),
+            eq(acl.resourceId, resourceId),
+            isNull(acl.userId),
+            inArray(acl.groupId, effectiveGroups),
+            live(),
+          ),
+        ),
+    ),
+  ]);
 
+  const allPermissions: AclRow[] = groupResults;
   if (userResult) {
     allPermissions.push(userResult);
   }
 
-  // Always include "public" in group checks to support public access
-  const effectiveGroups =
-    userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
-
-  // Get group-based permissions (including "public")
-  const groupResults = await many(
-    db
-      .select()
-      .from(acl)
-      .where(
-        and(
-          eq(acl.resourceType, resourceType),
-          eq(acl.resourceId, resourceId),
-          isNull(acl.userId),
-          inArray(acl.groupId, effectiveGroups),
-          live(),
-        ),
-      ),
-  );
-
-  allPermissions.push(...groupResults);
   return bestAclEntry(
     await capRowsToIssuer(platform, spaceId, resourceType, allPermissions),
   );
@@ -529,43 +573,42 @@ async function getBestPermissionForResourceIds(
   if (resourceIds.length === 0) return null;
 
   const { db } = await openSpaceStore(platform, spaceId);
-  const allPermissions: AclRow[] = [];
-
-  const userResults = await many(
-    db
-      .select()
-      .from(acl)
-      .where(
-        and(
-          eq(acl.resourceType, resourceType),
-          inArray(acl.resourceId, resourceIds),
-          eq(acl.userId, userId),
-          isNull(acl.groupId),
-          live(),
-        ),
-      ),
-  );
-
-  allPermissions.push(...userResults);
-
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
-  const groupResults = await many(
-    db
-      .select()
-      .from(acl)
-      .where(
-        and(
-          eq(acl.resourceType, resourceType),
-          inArray(acl.resourceId, resourceIds),
-          isNull(acl.userId),
-          inArray(acl.groupId, effectiveGroups),
-          live(),
-        ),
-      ),
-  );
 
-  allPermissions.push(...groupResults);
+  const [userResults, groupResults] = await Promise.all([
+    many(
+      db
+        .select()
+        .from(acl)
+        .where(
+          and(
+            eq(acl.resourceType, resourceType),
+            inArray(acl.resourceId, resourceIds),
+            eq(acl.userId, userId),
+            isNull(acl.groupId),
+            live(),
+          ),
+        ),
+    ),
+    many(
+      db
+        .select()
+        .from(acl)
+        .where(
+          and(
+            eq(acl.resourceType, resourceType),
+            inArray(acl.resourceId, resourceIds),
+            isNull(acl.userId),
+            inArray(acl.groupId, effectiveGroups),
+            live(),
+          ),
+        ),
+    ),
+  ]);
+
+  const allPermissions: AclRow[] = groupResults;
+  allPermissions.push(...userResults);
   return bestAclEntry(
     await capRowsToIssuer(platform, spaceId, resourceType, allPermissions),
   );
@@ -645,20 +688,22 @@ async function getDocumentDescendantIds(
   return descendants;
 }
 
-async function getDocumentCategoryResourceIds(
+/**
+ * The categories these documents belong to, through their `category` or
+ * `collection` property. One join rather than reading the slugs and then
+ * looking the categories up, since each of those is a round trip.
+ */
+async function getCategoryIdsForDocumentIds(
   platform: Platform,
   spaceId: string,
-  documentId: string,
+  documentIds: string[],
 ): Promise<string[]> {
   const { db } = await openSpaceStore(platform, spaceId);
-  const documentIds = [
-    documentId,
-    ...(await getDocumentAncestorIds(platform, spaceId, documentId)),
-  ];
-  const categoryProperties = await many(
+  const rows = await many(
     db
-      .select({ value: property.value })
+      .selectDistinct({ id: category.id })
       .from(property)
+      .innerJoin(category, eq(category.slug, property.value))
       .where(
         and(
           inArray(property.documentId, documentIds),
@@ -667,14 +712,18 @@ async function getDocumentCategoryResourceIds(
       ),
   );
 
-  const slugs = [...new Set(categoryProperties.map((row) => row.value).filter(Boolean))];
-  if (slugs.length === 0) return [];
+  return rows.map((row) => row.id);
+}
 
-  const categoryRows = await many(
-    db.select({ id: category.id }).from(category).where(inArray(category.slug, slugs)),
-  );
-
-  return categoryRows.map((row) => row.id);
+async function getDocumentCategoryResourceIds(
+  platform: Platform,
+  spaceId: string,
+  documentId: string,
+): Promise<string[]> {
+  return await getCategoryIdsForDocumentIds(platform, spaceId, [
+    documentId,
+    ...(await getDocumentAncestorIds(platform, spaceId, documentId)),
+  ]);
 }
 
 async function getDocumentIdsForCategoryRoots(
@@ -1018,51 +1067,85 @@ export async function hasAnyResourceScopedAccess(
  * tree, category and space grants. Grants add up so a narrow one cannot demote
  * someone — sharing a document as viewer would otherwise lock out its owner.
  */
-export async function getDocumentPermission(
+export function getDocumentPermission(
   platform: Platform,
   spaceId: string,
   documentId: string,
   userId: string,
   userGroups?: string[],
 ): Promise<AclEntry | null> {
-  const directPermission = await getPermission(
-    platform,
-    spaceId,
-    ResourceType.DOCUMENT,
-    documentId,
-    userId,
-    userGroups,
+  const effectiveGroups =
+    userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
+  // A route commonly asks twice — once to admit the read, again for a feature
+  // on the same document — and each answer is four reads.
+  return requestScope.memoize(
+    `acl:document:${spaceId}\0${documentId}\0${userId}\0${effectiveGroups
+      .slice()
+      .sort()
+      .join("\0")}`,
+    () =>
+      readDocumentPermission(
+        platform,
+        spaceId,
+        documentId,
+        userId,
+        effectiveGroups,
+      ),
   );
+}
 
+async function readDocumentPermission(
+  platform: Platform,
+  spaceId: string,
+  documentId: string,
+  userId: string,
+  userGroups: string[],
+): Promise<AclEntry | null> {
+  // The ancestors are one read the other three branches depend on; once they
+  // are known, direct, tree, category and space are independent, so a document
+  // decision costs three round trips rather than one per branch.
   const treeResourceIds = [
     documentId,
     ...(await getDocumentAncestorIds(platform, spaceId, documentId)),
   ];
-  const treePermission = await getBestPermissionForResourceIds(
-    platform,
-    spaceId,
-    ResourceType.DOCUMENT_TREE,
-    treeResourceIds,
-    userId,
-    userGroups,
-  );
-  const categoryPermission = await getBestPermissionForResourceIds(
-    platform,
-    spaceId,
-    ResourceType.CATEGORY,
-    await getDocumentCategoryResourceIds(platform, spaceId, documentId),
-    userId,
-    userGroups,
-  );
 
-  const spacePermission = await getPermission(
-    platform,
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    userId,
-    userGroups,
-  );
+  const [directPermission, treePermission, categoryPermission, spacePermission] =
+    await Promise.all([
+      getPermission(
+        platform,
+        spaceId,
+        ResourceType.DOCUMENT,
+        documentId,
+        userId,
+        userGroups,
+      ),
+      getBestPermissionForResourceIds(
+        platform,
+        spaceId,
+        ResourceType.DOCUMENT_TREE,
+        treeResourceIds,
+        userId,
+        userGroups,
+      ),
+      getCategoryIdsForDocumentIds(platform, spaceId, treeResourceIds).then((ids) =>
+        getBestPermissionForResourceIds(
+          platform,
+          spaceId,
+          ResourceType.CATEGORY,
+          ids,
+          userId,
+          userGroups,
+        ),
+      ),
+      getPermission(
+        platform,
+        spaceId,
+        ResourceType.SPACE,
+        spaceId,
+        userId,
+        userGroups,
+      ),
+    ]);
 
   return bestAclEntry(
     [directPermission, treePermission, categoryPermission, spacePermission].filter(

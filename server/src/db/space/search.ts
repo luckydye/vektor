@@ -353,7 +353,12 @@ interface FilterSearch {
 async function searchByFilters(
   s: SpaceStore,
   search: FilterSearch,
-): Promise<{ rows: RawResult[]; total: number }> {
+): Promise<{
+  rows: RawResult[];
+  total: number;
+  /** Candidate properties already read to settle the filters, for the page that follows. */
+  properties?: Map<string, DocumentProperties>;
+}> {
   const { readable, startIndex, limit, parentId, matchesFilters } = search;
   const sqlFilters = search.propertyFilters.filter(isSqlComparable);
   const residualFilters = search.propertyFilters.filter(
@@ -400,14 +405,16 @@ async function searchByFilters(
 
   let documents: RawResult[];
   let documentTotal: number;
+  let properties: Map<string, DocumentProperties> | undefined;
   if (settledHere) {
     const candidates = (await s.db.all<Row>(select)).map(toRaw);
-    const properties = await readProperties(
+    const candidateProperties = await readProperties(
       s,
       candidates.map((row) => row.id),
     );
+    properties = candidateProperties;
     const settled = candidates.filter((row) =>
-      matchesFilters(properties.get(row.id) ?? {}, row.type),
+      matchesFilters(candidateProperties.get(row.id) ?? {}, row.type),
     );
     documentTotal = settled.length;
     documents = settled.slice(startIndex, startIndex + limit);
@@ -432,6 +439,7 @@ async function searchByFilters(
       ...files.slice(filesStart, filesStart + limit - documents.length),
     ],
     total: documentTotal + files.length,
+    properties,
   };
 }
 
@@ -553,7 +561,7 @@ export async function searchDocuments(
 
   if (!hasQuery) {
     const startIndex = cursor ? (decodeSearchCursor(cursor)?.index ?? 0) : 0;
-    const { rows, total } = await searchByFilters(s, {
+    const { rows, total, properties } = await searchByFilters(s, {
       readable,
       startIndex,
       limit,
@@ -566,7 +574,9 @@ export async function searchDocuments(
       excludeFiles,
     });
     return {
-      results: await toSearchResults(s, rows),
+      // `rows` were settled from the candidate properties, so the page needs no
+      // second read of the same rows.
+      results: await toSearchResults(s, rows, properties),
       nextCursor:
         startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null,
     };
@@ -751,11 +761,13 @@ export async function searchDocuments(
 async function toSearchResults(
   s: SpaceStore,
   rawResults: RawResult[],
+  /** Properties the caller already read, e.g. to settle range filters. */
+  knownProperties?: Map<string, DocumentProperties>,
 ): Promise<SearchResult[]> {
   const results: SearchResult[] = [];
   const pageDocumentIds = rawResults.filter((row) => !row.file).map((row) => row.id);
   const [propertiesByDocument, documentsById] = await Promise.all([
-    readProperties(s, pageDocumentIds),
+    knownProperties ?? readProperties(s, pageDocumentIds),
     readDocuments(s, pageDocumentIds),
   ]);
 

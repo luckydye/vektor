@@ -66,15 +66,21 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const store = await openSpaceStore(context.var.platform, spaceId);
+      // A session that cleared the space-role guard reaches every document in
+      // the space, so resolving the whole readable set would only repeat the
+      // guard's work. A credential's reach is also bounded by its issuer, which
+      // only `listAccessibleResources` knows. A scoped grant, when this route
+      // ever admits one, arrives already narrowed.
       const docIds =
-        userId === null
-          ? null
-          : await listAccessibleResources(
+        access.resourceScope ??
+        (userId?.startsWith("token_")
+          ? await listAccessibleResources(
               store.platform,
               spaceId,
               await resolveIdentity(store.platform, userId),
               ResourceType.DOCUMENT,
-            );
+            )
+          : null);
 
       // Catch up stale indexes before the query reads them — but not for a
       // caller who can read nothing, since the search returns empty regardless.
