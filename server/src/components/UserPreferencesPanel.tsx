@@ -28,7 +28,7 @@ import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import type { TranslationKey } from "#utils/lang.ts";
-import { nativeApp } from "#utils/nativeApp.ts";
+import { desktopApp } from "#utils/nativeApp.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
@@ -65,8 +65,8 @@ const sectionLabels = Object.fromEntries(
   sections.map((section) => [section.id, section.label]),
 ) as Record<PreferencesSection, TranslationKey>;
 
-// Only the desktop app announces itself, so its section is absent in a browser.
-const app = nativeApp();
+// Only the desktop app mounts spaces, so its section is absent in a browser and on phones.
+const app = desktopApp();
 
 /** The profile menu's entries, one per preferences section. */
 export const preferenceSections = app

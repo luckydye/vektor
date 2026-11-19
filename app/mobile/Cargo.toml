@@ -1,0 +1,47 @@
+# Vektor for touch devices (iOS, Android): a GPUI window around a native
+# webview with the web UI, like the desktop app. A crate of its own, since it
+# runs on gpui-pre (which has a mobile platform) rather than the desktop's gpui.
+[package]
+name = "vektor-mobile"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures = "0.3"
+gpui = { package = "gpui-pre", version = "=0.3.11" }
+serde_json = "1"
+url = "2"
+vektor-shell = { path = "../shell" }
+
+# gpui-pre has no Android platform; there the app runs on `gpui-android`, and
+# the webview is Android's own (`android/de/vektor/app/VektorActivity.java`).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+# Compiles shaders at launch, so building needs no Metal toolchain.
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["font-kit", "runtime_shaders"] }
+raw-window-handle = "0.6"
+wry = "0.57"
+
+[target.'cfg(target_os = "android")'.dependencies]
+gpui-android = { path = "../vendor/gpui-android" }
+android_logger = "0.15"
+log = "0.4"
+libc = "0.2"
+# Same version as gpui-android's.
+jni = "0.22"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+gpui_ios = { package = "gpui-pre-ios", version = "=0.3.11" }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "UIResponder", "UIView"] }
+
+# Android loads the app as a shared library (`libvektor_mobile.so`).
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "Vektor"
+path = "src/main.rs"
+
+# gpui and wgpu are unusably slow unoptimized.
+[profile.dev.package."*"]
+opt-level = 3

@@ -94,6 +94,46 @@ tasks:
       - /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f target/debug/Vektor.app
       - ./target/debug/Vektor.app/Contents/MacOS/vektor-app
 
+  mobile:dev:
+    desc: Run the mobile app in a phone-sized desktop window against VEKTOR_URL (defaults to the dev server).
+    dir: ./app/mobile
+    env:
+      VEKTOR_URL: '{{.VEKTOR_URL | default "http://127.0.0.1:4321"}}'
+    cmd: cargo run
+
+  ios:build:
+    desc: Build the iOS simulator bundle (app/mobile/target/aarch64-apple-ios-sim/debug/bundle/Vektor.app) against VEKTOR_URL.
+    env:
+      VEKTOR_URL: '{{.VEKTOR_URL | default "http://127.0.0.1:4321"}}'
+    cmd: bash app/scripts/bundle-ios.sh
+
+  ios:sim:
+    desc: Build, install and launch on an iOS simulator (DEVICE="iPad Pro 13-inch (M5)" to pick one).
+    deps: [ios:build]
+    vars:
+      DEVICE: '{{.DEVICE | default "iPhone 17"}}'
+    cmds:
+      - xcrun simctl bootstatus "{{.DEVICE}}" -b
+      - open "$(xcode-select -p)/../Applications/DeviceHub.app"
+      - xcrun simctl install "{{.DEVICE}}" app/mobile/target/aarch64-apple-ios-sim/debug/bundle/Vektor.app
+      - xcrun simctl launch --console-pty --terminate-running-process "{{.DEVICE}}" de.vektor.app
+
+  android:build:
+    desc: Build the Android APK (app/mobile/target/aarch64-linux-android/release/bundle/Vektor.apk) against VEKTOR_URL.
+    env:
+      VEKTOR_URL: '{{.VEKTOR_URL | default "http://127.0.0.1:4321"}}'
+    cmd: bash app/scripts/bundle-android.sh --release
+
+  android:run:
+    desc: Build, install and launch on the connected Android device or emulator, then follow its log.
+    deps: [android:build]
+    cmds:
+      - adb install -r app/mobile/target/aarch64-linux-android/release/bundle/Vektor.apk
+      # The device's 127.0.0.1:4321 is the dev server on this machine.
+      - adb reverse tcp:4321 tcp:4321
+      - adb shell am start -S -n de.vektor.app/.VektorActivity
+      - adb logcat -v brief -s vektor:I
+
   preview:
     deps: [setup]
     dir: ./server

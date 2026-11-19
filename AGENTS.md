@@ -16,7 +16,9 @@
 ## Repo Layout
 
 - `server/` — the app (Solid SSR frontend in `src/web` + Hono API), compiled into the single `vektor` binary
-- `app/` — native desktop app (Rust)
+- `app/` — native desktop app (Rust, `task app`); the web UI in native webviews
+  - `app/mobile/` — native iOS/Android app (`task mobile:dev`, `task ios:sim`, `task android:run`)
+  - `app/shell/` — what both share: the web UI contract, origin policy, browser sign-in
 - `api/` — API client package
 - `extensions/` — first-party extensions
 
