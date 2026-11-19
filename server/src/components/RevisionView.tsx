@@ -14,7 +14,6 @@ import { isServer } from "solid-js/web";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { useSpace } from "#composeables/useSpace.ts";
 import { isSerializedDocumentType } from "#documents/types.ts";
-import { AppView } from "./AppView.tsx";
 import { Icon } from "./Icon.tsx";
 
 interface Props {
@@ -228,11 +227,6 @@ export function RevisionView(props: Props) {
             </div>
           }
         >
-          <Match when={props.documentType === "app" && !showingDiff()}>
-            <div class="h-full">
-              <AppView html={revisionContent()} />
-            </div>
-          </Match>
           <Match when={isSerializedDocumentType(props.documentType) && !showingDiff()}>
             <pre class="overflow-auto whitespace-pre-wrap p-m font-mono text-size-small">
               {revisionContent()}

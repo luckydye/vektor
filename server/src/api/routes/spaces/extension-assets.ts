@@ -9,6 +9,10 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { extractFile, getExtension, getExtensionPackage } from "#db/space/extensions.ts";
+import {
+  cacheExtensionArchive,
+  getCachedExtensionArchive,
+} from "#extensions/packageCache.ts";
 import { appLogger } from "#observability/logger.ts";
 import type { Platform } from "#platform/platform.ts";
 import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/csp.ts";
@@ -72,12 +76,20 @@ export const GET: ApiRouteHandler = (context) =>
     const store = await openSpaceStore(context.var.platform, spaceId);
     // A disabled extension is not served: the client unloads it, and its files
     // should not stay fetchable.
-    if (!(await getExtension(store, extensionId))) {
+    const extension = await getExtension(store, extensionId);
+    if (!extension) {
       return notFoundResponse("Extension");
     }
-    const packageBuffer = await getExtensionPackage(store, extensionId);
+
+    const archiveKey = `${spaceId}:${extensionId}:${extension.updatedAt.getTime()}`;
+    let packageBuffer = getCachedExtensionArchive(archiveKey);
     if (!packageBuffer) {
-      return notFoundResponse("Extension");
+      const stored = await getExtensionPackage(store, extensionId);
+      if (!stored) {
+        return notFoundResponse("Extension");
+      }
+      cacheExtensionArchive(archiveKey, stored);
+      packageBuffer = stored;
     }
 
     let fileData: Buffer | null = null;
@@ -101,11 +113,16 @@ export const GET: ApiRouteHandler = (context) =>
     // import() promise indefinitely. Omit CSP entirely for these types.
     const isScript = ext === "js" || ext === "mjs" || ext === "css";
     const csp = isScript ? EXTENSION_ASSET_CSP_SCRIPT : EXTENSION_ASSET_CSP;
+    // The manager appends `?v=<updatedAt>` to entry URLs, so a versioned asset
+    // can be cached for as long as the version stays the same.
+    const versioned = new URL(context.req.url).searchParams.has("v");
 
     const headers: Record<string, string> = {
       "Content-Type": mimeType,
       "Content-Length": String(fileData.length),
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": versioned
+        ? "private, max-age=31536000, immutable"
+        : "private, max-age=3600",
       "X-Content-Type-Options": "nosniff",
     };
     if (csp !== null) {

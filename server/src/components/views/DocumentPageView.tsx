@@ -213,7 +213,6 @@ export function DocumentPageView(props: Props) {
   );
 
   const isCanvas = createMemo(() => documentType() === "canvas");
-  const isApp = createMemo(() => documentType() === "app");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
   const isRecord = createMemo(() => documentType() === "record");
@@ -222,7 +221,6 @@ export function DocumentPageView(props: Props) {
     () =>
       isDatabase() ||
       isCanvas() ||
-      isApp() ||
       isWorkflow() ||
       documentType() === repositoryDocumentType,
   );
@@ -235,11 +233,9 @@ export function DocumentPageView(props: Props) {
         (key) => key === templatePropertyKey || !isHiddenDocumentPropertyKey(key),
       ),
   );
-  const isFullHeightView = createMemo(
-    () => isApp() || isDatabase() || isWorkflow(),
-  );
+  const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
-    () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
+    () => !isCanvas() && !isWorkflow() && !isDatabase(),
   );
 
   const documentRightViews = createMemo(
@@ -278,7 +274,6 @@ export function DocumentPageView(props: Props) {
           doc()?.readonly ||
           doc()?.archived ||
           isCanvas() ||
-          isApp() ||
           isWorkflow() ||
           isDatabase()
         ),

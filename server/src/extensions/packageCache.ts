@@ -73,3 +73,47 @@ export function clearExtensionPackageCache(): void {
   cache.clear();
   cachedBytes = 0;
 }
+
+/** How much compressed package data is held in memory across all spaces. */
+const ARCHIVE_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
+interface CachedArchive {
+  data: Buffer;
+  bytes: number;
+}
+
+/**
+ * Stored package archives keyed by space, extension and version. Serving an
+ * entry should not read the zip out of the database again, and a view plus its
+ * frontend entry would otherwise each fetch it.
+ */
+const archiveCache = new Map<string, CachedArchive>();
+let cachedArchiveBytes = 0;
+
+export function getCachedExtensionArchive(key: string): Buffer | undefined {
+  const cached = archiveCache.get(key);
+  if (!cached) return undefined;
+  archiveCache.delete(key);
+  archiveCache.set(key, cached);
+  return cached.data;
+}
+
+export function cacheExtensionArchive(key: string, data: Buffer): void {
+  const existing = archiveCache.get(key);
+  if (existing) {
+    cachedArchiveBytes -= existing.bytes;
+    archiveCache.delete(key);
+  }
+  archiveCache.set(key, { data, bytes: data.byteLength });
+  cachedArchiveBytes += data.byteLength;
+  for (const [cachedKey, entry] of archiveCache) {
+    if (cachedArchiveBytes <= ARCHIVE_CACHE_MAX_BYTES) return;
+    archiveCache.delete(cachedKey);
+    cachedArchiveBytes -= entry.bytes;
+  }
+}
+
+export function clearExtensionArchiveCache(): void {
+  archiveCache.clear();
+  cachedArchiveBytes = 0;
+}

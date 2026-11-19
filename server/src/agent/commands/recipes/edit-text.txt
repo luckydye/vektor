@@ -4,7 +4,7 @@ keywords: edit, html, text, line, insert, replace, delete, document, sub, regex,
 ---
 
 Use this recipe for normal HTML/text documents and workflow source. Do not use
-it for app documents or JSON-backed canvas documents.
+it for JSON-backed canvas documents.
 
 1. Read the live draft with `read_document`, or `get_current_document` for the current page.
 2. Call `edit_document` with one or more operations. To remove or rewrite a pattern

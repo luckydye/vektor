@@ -10,7 +10,7 @@ export const workflowRunDocumentType = "workflow-run";
  */
 export const repositoryDocumentType = "repository";
 
-const serializedDocumentTypes = new Set(["app", "canvas", "workflow"]);
+const serializedDocumentTypes = new Set(["canvas", "workflow"]);
 
 export function isSerializedDocumentType(type: unknown): type is string {
   return typeof type === "string" && serializedDocumentTypes.has(type);

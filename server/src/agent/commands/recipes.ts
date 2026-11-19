@@ -2,7 +2,6 @@
 // Kept as `.txt` rather than `.md` because the ambient `*.md` module
 // type treats markdown as page content,
 // which would conflict with the plain string these imports need.
-import appDocRaw from "./recipes/app-doc.txt" with { type: "text" };
 import canvasRaw from "./recipes/canvas.txt" with { type: "text" };
 import createDocRaw from "./recipes/create-doc.txt" with { type: "text" };
 import databaseRaw from "./recipes/database.txt" with { type: "text" };
@@ -41,7 +40,6 @@ const RECIPES: Record<string, Recipe> = {
   database: parseRecipe(databaseRaw),
   "find-docs": parseRecipe(findDocsRaw),
   "header-image": parseRecipe(headerImageRaw),
-  "app-doc": parseRecipe(appDocRaw),
   workflow: parseRecipe(workflowRaw),
   upload: parseRecipe(uploadRaw),
   extension: parseRecipe(extensionRaw),

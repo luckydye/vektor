@@ -1,7 +1,6 @@
 import { type Component, createMemo } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { ExtensionInfo } from "#api/client.ts";
-import { AppView } from "#components/AppView.tsx";
 import { CanvasView } from "#components/CanvasView.tsx";
 import {
   DatabaseDocumentView,
@@ -82,7 +81,6 @@ const DatabaseView: Component<Props> = (props) => {
 };
 
 const documentViews: Readonly<Record<string, Component<Props>>> = {
-  app: (props) => <AppView html={props.content} />,
   canvas: (props) => <CanvasView documentId={props.documentId} spaceId={props.spaceId} />,
   database: DatabaseView,
   repository: (props) => (
