@@ -1,6 +1,6 @@
 {
   "name": "@vektorapp/server",
-  "version": "0.0.250",
+  "version": "0.0.251",
   "type": "module",
   "scripts": {
     "figma:parse": "figma connect parse --config figma.config.json",
