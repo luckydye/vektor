@@ -254,6 +254,11 @@ export function SpaceApp(props: Props) {
               drawerReveal.progress() === 0
                 ? undefined
                 : `scale(${1 - drawerReveal.progress() * 0.05})`,
+            // Recedes around the viewport's centre, not the scrolled page's. Also set at
+            // progress 0, so the closing transition shrinks back around the same point.
+            "transform-origin": isServer
+              ? undefined
+              : `50% ${window.scrollY + window.innerHeight / 2}px`,
             filter:
               drawerReveal.progress() === 0
                 ? undefined
