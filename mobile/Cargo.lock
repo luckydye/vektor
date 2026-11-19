@@ -6025,28 +6025,19 @@ dependencies = [
  "gpui-pre",
  "gpui-pre-ios",
  "gpui-pre-platform",
+ "hex",
  "jni 0.22.4",
  "libc",
  "log",
  "objc2-core-foundation",
  "objc2-ui-kit",
- "raw-window-handle",
- "serde_json",
- "url",
- "vektor-shell",
- "wry",
-]
-
-[[package]]
-name = "vektor-shell"
-version = "0.1.0"
-dependencies = [
- "hex",
  "rand 0.8.8",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "sha2",
  "url",
+ "wry",
 ]
 
 [[package]]

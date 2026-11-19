@@ -1,5 +1,5 @@
-//! The native shell around the web UI, shared by the desktop and the mobile app: what they tell
-//! the page, what the page may ask of them, which URLs stay in the app and the browser sign-in.
+//! What the app tells the page, what the page may ask of it, which URLs stay in the app and the
+//! browser sign-in.
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};

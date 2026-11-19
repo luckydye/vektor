@@ -174,7 +174,8 @@ export function SpaceApp(props: Props) {
     if (idle) idle(() => void registerDocumentElements(), { timeout: 1500 });
     else setTimeout(() => void registerDocumentElements(), 200);
 
-    navigator.serviceWorker.register("/sw.js").catch(console.error);
+    // WKWebView (the iOS app) has no service workers.
+    navigator.serviceWorker?.register("/sw.js").catch(console.error);
 
     for (const [shortcut, actions] of Object.entries(shortcuts)) {
       for (const action of Array.isArray(actions) ? actions : [actions]) {

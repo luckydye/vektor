@@ -6,6 +6,7 @@
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::shell::{CHROME_COLOR_SCRIPT, app_info, is_internal};
 use futures::channel::mpsc::UnboundedSender;
 use gpui::{Bounds, Pixels, Window};
 use gpui_android::android::jni as platform;
@@ -14,7 +15,6 @@ use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::{EnvUnowned, jni_sig, jni_str};
 use url::{Origin, Url};
-use vektor_shell::{CHROME_COLOR_SCRIPT, app_info, is_internal};
 
 use crate::PageEvent;
 

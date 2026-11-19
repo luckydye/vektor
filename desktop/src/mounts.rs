@@ -187,12 +187,7 @@ pub fn init(url: &Url, cx: &mut App) {
 
     cx.spawn(async move |cx| {
         while let Some(result) = receiver.next().await {
-            if cx
-                .update_global::<Mounts, _>(|mounts, _| mounts.apply(result))
-                .is_err()
-            {
-                break;
-            }
+            cx.update_global::<Mounts, _>(|mounts, _| mounts.apply(result));
         }
     })
     .detach();

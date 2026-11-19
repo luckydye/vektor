@@ -3,6 +3,7 @@
 //! `main.rs` starts it on iOS (and on a desktop while developing), `android_main` on Android.
 
 pub mod app;
+pub mod shell;
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -14,8 +15,8 @@ pub mod webview;
 #[cfg(not(target_os = "android"))]
 pub use webview::Page;
 
+use crate::shell::PageMessage;
 use futures::channel::mpsc;
-use vektor_shell::PageMessage;
 
 /// Baked in at build time, so a plain build targets production.
 pub const URL: &str = match option_env!("VEKTOR_URL") {

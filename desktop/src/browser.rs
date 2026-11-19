@@ -4,6 +4,10 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use crate::shell::{
+    CHROME_COLOR_SCRIPT, PageMessage, SignIn, is_internal, may_open_externally, native_app_script,
+    sign_in_code,
+};
 use futures::{StreamExt, channel::mpsc};
 use gpui::{
     App, Bounds, Context, DispatchPhase, FocusHandle, Global, IntoElement, KeyDownEvent,
@@ -16,10 +20,6 @@ use objc2_app_kit::NSEvent;
 use objc2_foundation::{NSArray, NSString};
 use serde::{Deserialize, Serialize};
 use url::{Origin, Url};
-use vektor_shell::{
-    CHROME_COLOR_SCRIPT, PageMessage, SignIn, is_internal, may_open_externally, native_app_script,
-    sign_in_code,
-};
 use wry::http::Request;
 use wry::{
     NewWindowResponse, PageLoadEvent, Rect, WebView, WebViewBuilder, WebViewExtMacOS,
@@ -266,8 +266,7 @@ pub fn route_tab_events(cx: &mut App) {
     cx.set_global(TabEvents(events));
     cx.spawn(async move |cx| {
         while let Some(event) = receiver.next().await {
-            cx.update(|cx| deliver(event, cx))
-                .expect("app quit while delivering a tab event");
+            cx.update(|cx| deliver(event, cx));
         }
     })
     .detach();
@@ -685,7 +684,7 @@ impl Browser {
             .webview
             .focus_parent()
             .expect("failed to focus find bar");
-        window.focus(&self.find_focus);
+        window.focus(&self.find_focus, cx);
         self.search(0, cx);
         cx.notify();
     }

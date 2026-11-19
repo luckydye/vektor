@@ -48,7 +48,7 @@ impl RenderOnce for TabBar {
                 .id(ElementId::Integer(index as u64))
                 .group("tab")
                 .flex()
-                .flex_shrink()
+                .flex_shrink(1.)
                 .items_center()
                 .gap_1()
                 .h_8()

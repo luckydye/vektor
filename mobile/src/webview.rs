@@ -3,10 +3,10 @@
 
 use std::rc::Rc;
 
+use crate::shell::{CHROME_COLOR_SCRIPT, is_internal, native_app_script};
 use futures::channel::mpsc::UnboundedSender;
 use gpui::{Bounds, Pixels, Window};
 use url::Url;
-use vektor_shell::{CHROME_COLOR_SCRIPT, is_internal, native_app_script};
 use wry::http::Request;
 use wry::{NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder};
 

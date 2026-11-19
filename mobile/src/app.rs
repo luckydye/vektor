@@ -1,6 +1,7 @@
 //! The window: the page fills the safe area, and the system bars around it take on the colour of
 //! the page's top edge, as the desktop app's tab bar does.
 
+use crate::shell::{PageMessage, SignIn, may_open_externally, sign_in_code};
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use gpui::{
@@ -8,7 +9,6 @@ use gpui::{
     rgb, size,
 };
 use url::Url;
-use vektor_shell::{PageMessage, SignIn, may_open_externally, sign_in_code};
 
 use crate::{Page, PageEvent};
 
@@ -90,9 +90,6 @@ impl MobileApp {
                 self.sign_in = Some(sign_in);
                 open_external(url.as_str(), cx);
             }
-            // Mounts and the location bridge belong to the desktop app; the phone's webview has
-            // geolocation of its own.
-            PageEvent::Message(_) => {}
             PageEvent::Navigate(url) => self.page.load(&url),
             PageEvent::OpenExternal(url) => open_external(&url, cx),
             PageEvent::LeftOrigin(url) => {
