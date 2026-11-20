@@ -133,7 +133,7 @@ export function ExtensionView(props: Props) {
 
       <extension-view
         ref={containerRef}
-        class="block w-full"
+        class="w-full"
         classList={{ "absolute inset-0 h-full": props.fill, hidden: loading() }}
       />
     </div>
