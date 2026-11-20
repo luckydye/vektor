@@ -84,6 +84,23 @@ export type AclKind = (typeof AclKind)[keyof typeof AclKind];
 export const GROUP_NAME_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 /** Identity used for per-resource ACL filtering; null = trusted system view. */
+/**
+ * Whether document rows have to be checked one by one for this viewer, at the
+ * `viewer` level.
+ *
+ * A space-wide role is a floor, never a ceiling — no document grant takes
+ * access away — so for `null` (no filtering) and for a viewer with no document
+ * scope the check would return every row it was given. A token is the
+ * exception even then: its reach is also bounded by its issuer's, which only
+ * the filter resolves.
+ */
+export function needsDocumentFilter(viewer: AclViewer | null): viewer is AclViewer {
+  return (
+    viewer !== null &&
+    (viewer.documentScope != null || viewer.userId.startsWith("token_"))
+  );
+}
+
 export interface AclViewer {
   userId: string;
   userGroups?: string[];

@@ -24,10 +24,15 @@ import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
-import { touchDocument } from "./changeSeq.ts";
+import {
+  documentTreeVersion,
+  propertyKeysChanged,
+  propertyKeyVersion,
+  touchDocument,
+} from "./changeSeq.ts";
+import { nonArchivedDocumentCondition, STORED_ARRAY_SQL } from "./documentSql.ts";
 import { generateUniqueSlug } from "./documents.ts";
 import { authorizeTriggerWrites, syncPropertyTriggers } from "./propertyTriggers.ts";
-import { nonArchivedDocumentCondition, STORED_ARRAY_SQL } from "./documentSql.ts";
 import { renamePropertyWorkflowSchedule } from "./workflowSchedules.ts";
 
 export interface PatchDocumentPropertiesResult {
@@ -144,6 +149,7 @@ export async function patchDocumentProperties(
 
   if (result.conflict) return result;
 
+  propertyKeysChanged(s.spaceId);
   scheduleDocumentSearchRefresh(s, documentId);
   return result;
 }
@@ -409,12 +415,18 @@ export async function renameDatabaseColumn(
     return { touchedIds: [databaseId, ...patches.keys()], schemaJson };
   });
 
+  propertyKeysChanged(s.spaceId);
   for (const id of touchedIds) scheduleDocumentSearchRefresh(s, id);
   return schemaJson;
 }
 
-/** How long the set of keys held only by archived documents is reused. */
-const ARCHIVED_ONLY_KEYS_TTL_MS = 60_000;
+/**
+ * How long the space-wide property list, and the archived-only answer behind
+ * it, are reused. Listing a large space's keys scans every stored property —
+ * hundreds of thousands of rows for a few dozen keys — and the answer only
+ * changes when a key is first used or last stops being used.
+ */
+const SPACE_PROPERTIES_TTL_MS = 60_000;
 const archivedOnlyKeysCache = new Map<
   string,
   { at: number; checked: Set<string>; archivedOnly: Set<string> }
@@ -426,13 +438,20 @@ const archivedOnlyKeysCache = new Map<
  * properties, so the answer is reused briefly. Keys not seen at the last check
  * are checked now, so a new key is never hidden by a stale answer.
  */
+const propertyKeysCache = new Map<
+  string,
+  { at: number; version: string; properties: SpaceProperty[] }
+>();
+
 async function archivedOnlyKeys(
   s: SpaceStore,
   rows: StoredPropertyKeyRow[],
 ): Promise<Set<string>> {
   const cached = archivedOnlyKeysCache.get(s.spaceId);
-  const fresh = cached && Date.now() - cached.at < ARCHIVED_ONLY_KEYS_TTL_MS;
-  const unchecked = rows.map((row) => row.key).filter((key) => !fresh || !cached.checked.has(key));
+  const fresh = cached && Date.now() - cached.at < SPACE_PROPERTIES_TTL_MS;
+  const unchecked = rows
+    .map((row) => row.key)
+    .filter((key) => !fresh || !cached.checked.has(key));
   if (unchecked.length === 0 && cached) return cached.archivedOnly;
 
   const keys = sql.join(
@@ -473,6 +492,17 @@ export async function listSpaceProperties(
   s: SpaceStore,
   options: { parentId?: string } = {},
 ): Promise<SpaceProperty[]> {
+  const key = `${s.spaceId}\u0000${options.parentId ?? ""}`;
+  const version = `${documentTreeVersion(s.spaceId)}:${propertyKeyVersion(s.spaceId)}`;
+  const cached = propertyKeysCache.get(key);
+  if (
+    cached &&
+    cached.version === version &&
+    Date.now() - cached.at < SPACE_PROPERTIES_TTL_MS
+  )
+    return cached.properties;
+
+  let properties: SpaceProperty[];
   if (options.parentId !== undefined) {
     // The keys one document's children use: a database's columns as its rows hold them.
     const rows = await many<StoredPropertyKeyRow>(
@@ -484,19 +514,28 @@ export async function listSpaceProperties(
         GROUP BY p.key
       `,
     );
-    return aggregateStoredProperties(rows).sort((a, b) => a.name.localeCompare(b.name));
+    properties = aggregateStoredProperties(rows).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  } else {
+    const rows = await many<StoredPropertyKeyRow>(
+      s.db,
+      sql`SELECT key, count(*) AS count, min(type) AS type FROM ${property} GROUP BY key`,
+    );
+    const archivedOnly = await archivedOnlyKeys(s, rows);
+    properties = [
+      { name: DOCUMENT_TYPE_FILTER_KEY, type: "select" },
+      ...aggregateStoredProperties(rows.filter((row) => !archivedOnly.has(row.key))),
+    ].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  const rows = await many<StoredPropertyKeyRow>(
-    s.db,
-    sql`SELECT key, count(*) AS count, min(type) AS type FROM ${property} GROUP BY key`,
-  );
-  const archivedOnly = await archivedOnlyKeys(s, rows);
-
-  return [
-    { name: DOCUMENT_TYPE_FILTER_KEY, type: "select" },
-    ...aggregateStoredProperties(rows.filter((row) => !archivedOnly.has(row.key))),
-  ].sort((a, b) => a.name.localeCompare(b.name));
+  // Drop expired entries rather than grow with the spaces and parents visited.
+  const now = Date.now();
+  for (const [cachedKey, entry] of propertyKeysCache) {
+    if (now - entry.at >= SPACE_PROPERTIES_TTL_MS) propertyKeysCache.delete(cachedKey);
+  }
+  propertyKeysCache.set(key, { at: now, version, properties });
+  return properties;
 }
 
 /**

@@ -177,6 +177,8 @@ class WorkerConnection {
   nextId = 1;
   /** Set once the worker died or was closed; every request after fails with it. */
   failure: Error | null = null;
+  /** Pending release of the process's liveness, cancelled by the next request. */
+  idleRelease: ReturnType<typeof setTimeout> | null = null;
 
   constructor(url: string, authToken: string | undefined) {
     this.worker = new Worker(workerUrl(), { type: "module" });
@@ -190,7 +192,7 @@ class WorkerConnection {
       const waiter = this.pending.get(response.id);
       if (!waiter) throw new Error(`Unexpected database worker response ${response.id}`);
       this.pending.delete(response.id);
-      if (this.pending.size === 0) this.unref?.();
+      if (this.pending.size === 0) this.releaseWhenIdle();
       if (response.ok) waiter.resolve(response.result);
       else waiter.reject(toError(response.error));
     });
@@ -207,9 +209,27 @@ class WorkerConnection {
     const id = this.nextId++;
     return new Promise<Result>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      if (this.pending.size === 1) this.ref?.();
+      if (this.idleRelease) {
+        clearTimeout(this.idleRelease);
+        this.idleRelease = null;
+      } else if (this.pending.size === 1) {
+        this.ref?.();
+      }
       this.worker.postMessage({ id, ...request });
     });
+  }
+
+  /**
+   * Lets the process exit once the connection has been quiet for a moment. Not
+   * per request: a `ref`/`unref` pair on every statement cost more than the
+   * statements did, since a request runs a dozen of them.
+   */
+  releaseWhenIdle(): void {
+    this.idleRelease ??= setTimeout(() => {
+      this.idleRelease = null;
+      if (this.pending.size === 0) this.unref?.();
+    }, 1_000);
+    this.idleRelease.unref?.();
   }
 
   fail(error: Error): void {

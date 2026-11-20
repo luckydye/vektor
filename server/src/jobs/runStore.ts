@@ -4,7 +4,7 @@ import { many } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
-import { touchDocument } from "#db/space/changeSeq.ts";
+import { propertyKeysChanged, touchDocument } from "#db/space/changeSeq.ts";
 import {
   assertDocumentCanParent,
   type DocumentWithProperties,
@@ -263,6 +263,7 @@ async function writeRunToDocument(
         set: { value: entry.value, type: entry.type, updatedAt: now },
       });
   }
+  propertyKeysChanged(store.spaceId);
 }
 
 async function persistRunToDocument(

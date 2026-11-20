@@ -58,6 +58,45 @@ export async function nextChangeSeq(s: SpaceStore): Promise<number> {
  * Write a document and move its sequence, optionally only while it still sits at
  * one of `expected`. Zero rows updated is the conflict.
  */
+/**
+ * Bumped whenever a document row changes in a way the tree walk reads: created,
+ * deleted, moved, archived or restored, or retyped. A cached tree is valid while
+ * this is unchanged.
+ *
+ * In-process, like the app's other read caches: the single server is the only
+ * writer while it runs. A change made by another process shows up here once this
+ * process writes.
+ */
+const documentTreeVersions = new Map<string, number>();
+
+export function documentTreeVersion(spaceId: string): number {
+  return documentTreeVersions.get(spaceId) ?? 0;
+}
+
+/**
+ * Bumped whenever a stored property row is written, so a cached key list is
+ * rebuilt instead of waiting out its TTL. The TTL stays as a backstop for a
+ * write path that forgets to bump it.
+ */
+const propertyKeyVersions = new Map<string, number>();
+
+export function propertyKeyVersion(spaceId: string): number {
+  return propertyKeyVersions.get(spaceId) ?? 0;
+}
+
+export function propertyKeysChanged(spaceId: string): void {
+  propertyKeyVersions.set(spaceId, propertyKeyVersion(spaceId) + 1);
+}
+
+export function documentTreeChanged(spaceId: string): void {
+  documentTreeVersions.set(spaceId, documentTreeVersion(spaceId) + 1);
+}
+
+/** Whether a write to these columns changes what the tree walk sees. */
+function changesTree(values: object): boolean {
+  return "parentId" in values || "type" in values || "archived" in values;
+}
+
 export async function touchDocument(
   s: SpaceStore,
   id: string,
@@ -93,6 +132,7 @@ export async function touchDocument(
         .returning({ id: document.id }),
     );
     const written = rows.length > 0;
+    if (written && changesTree(columns)) documentTreeChanged(s.spaceId);
     // A write that throws leaves its blob under the document's prefix, removed with the document.
     const unreferenced = written ? replaced?.contentKey : content?.contentKey;
     if (unreferenced)
@@ -120,6 +160,7 @@ export async function touchDocuments(
       .set({ ...values, changeSeq })
       .where(inArray(document.id, ids));
   });
+  if (changesTree(values)) documentTreeChanged(s.spaceId);
 }
 
 /** Delete a document, optionally only while it still sits at one of `expected`. */
@@ -134,6 +175,7 @@ export async function deleteDocumentRow(
       .where(documentCondition(id, expected, undefined))
       .returning({ id: document.id }),
   );
+  if (rows.length > 0) documentTreeChanged(s.spaceId);
   return rows.length > 0;
 }
 

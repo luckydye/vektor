@@ -1,5 +1,10 @@
 import { and, desc, eq, inArray, lt, ne, or, type SQL, sql } from "drizzle-orm";
-import { type AclViewer, Permission, ResourceType } from "#acl/permissions.ts";
+import {
+  type AclViewer,
+  needsDocumentFilter,
+  Permission,
+  ResourceType,
+} from "#acl/permissions.ts";
 import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
@@ -48,7 +53,10 @@ import {
   type DocumentWriteOutcome,
   type DocumentWriteResult,
   deleteDocumentRow,
+  documentTreeChanged,
+  documentTreeVersion,
   nextChangeSeq,
+  propertyKeysChanged,
   touchDocument,
   touchDocuments,
 } from "./changeSeq.ts";
@@ -59,11 +67,11 @@ import {
   type StoredDocumentContent,
   storeDocumentContent,
 } from "./documentContent.ts";
+import { nonArchivedDocumentCondition } from "./documentSql.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
 import { syncPropertyTriggers } from "./propertyTriggers.ts";
 import { deleteRevisionSnapshots, getRevisionContent } from "./revisions.ts";
-import { nonArchivedDocumentCondition } from "./documentSql.ts";
 import { fileRowToDocument } from "./search.ts";
 
 export interface DocumentWithProperties {
@@ -224,6 +232,7 @@ export async function createDocument(
     });
     return allocated;
   });
+  documentTreeChanged(s.spaceId);
 
   const properties = initialProperties || {};
   // A `Map`, materialised once below: the reserved-key guard above already keeps
@@ -259,6 +268,7 @@ export async function createDocument(
     });
   }
 
+  if (storedProperties.size > 0) propertyKeysChanged(s.spaceId);
   await syncPropertyTriggers(s, id, new Set([...initialEntries.keys()]), createdBy);
   scheduleDocumentSearchRefresh(s, id);
 
@@ -479,7 +489,9 @@ export async function updateDocument(
       // A canvas's content is its object store; the snapshot is written as records below.
       ...(canvas ? {} : { content: await storeDocumentContent(s, id, content) }),
       updatedAt: now,
-      type: nextType,
+      // Only when it differs: the tree cache keys on writes that change it, and
+      // rewriting the same type would look like a change.
+      ...(nextType === existing.type ? {} : { type: nextType }),
     },
     expected,
   );
@@ -772,6 +784,17 @@ export function decodeListCursor(cursor: string): { updatedAt: Date; id: string 
   return { updatedAt: new Date(pos.t), id: pos.id as string };
 }
 
+/** How many documents match `condition`, for a listing's `total`. */
+async function countDocuments(
+  s: SpaceStore,
+  condition: SQL | undefined,
+): Promise<number> {
+  const [row] = await many<{ total: number }>(
+    s.db.select({ total: sql<number>`count(*)` }).from(document).where(condition),
+  );
+  return Number(row?.total ?? 0);
+}
+
 /**
  * One page of the documents matching `condition` that `viewer` may read, newest
  * first. Only ids and timestamps are read for the whole set; `total` counts it.
@@ -943,7 +966,7 @@ export async function listDocuments(
   let total = 0;
   let nextCursor: string | null = null;
 
-  if (viewer) {
+  if (needsDocumentFilter(viewer)) {
     const page = await readableDocumentPage(s, baseCondition, viewer, { limit, cursor });
     total = page.total;
     nextCursor = page.nextCursor;
@@ -988,7 +1011,7 @@ export async function listDocuments(
     } else {
       docs = rows;
     }
-    total = 0;
+    total = viewer ? await countDocuments(s, baseCondition) : 0;
   }
 
   // Fetch properties only for the documents on this page
@@ -1051,7 +1074,8 @@ export async function listArchivedDocuments(
 
   // Per-document ACL filtering, mirroring listDocuments: space access alone must
   // not expose archived documents the caller cannot read — at `editor`, which is
-  // what reading one takes.
+  // what reading one takes. Not skipped for a space-wide viewer: a document
+  // grant below `editor` does take access away here, unlike at `viewer`.
   if (viewer) {
     const readable = await filterReadableResources(
       s.platform,
@@ -1121,7 +1145,7 @@ export async function listPinnedDocuments(
   );
   let docs = [...byId.values()].filter((doc) => !doc.archived);
 
-  if (viewer) {
+  if (needsDocumentFilter(viewer)) {
     const readable = await filterReadableResources(
       s.platform,
       s.spaceId,
@@ -1204,6 +1228,49 @@ async function countMentionsForUser(
   }
 }
 
+/** A live document as the tree walk needs it: id, parent and type, nothing else. */
+interface LiveDocumentNode {
+  id: string;
+  parentId: string | null;
+  type: string | null;
+}
+
+/**
+ * How many spaces keep their document tree in memory. A tree is the one thing a
+ * category listing needs from every document, so holding it saves reading tens
+ * of thousands of rows per page load; the bound keeps that to a few MB each
+ * rather than one per open space.
+ */
+const MAX_CACHED_TREES = 16;
+
+const liveTreeCache = new Map<string, { version: number; nodes: LiveDocumentNode[] }>();
+
+/**
+ * Every live document's id, parent and type, cached until a write changes what
+ * the tree walk reads (see {@link documentTreeVersion}). Listing the categories
+ * of a large space otherwise reads every document on every page load.
+ */
+async function liveDocumentNodes(s: SpaceStore): Promise<LiveDocumentNode[]> {
+  const version = documentTreeVersion(s.spaceId);
+  const cached = liveTreeCache.get(s.spaceId);
+  if (cached && cached.version === version) return cached.nodes;
+
+  const nodes = await many<LiveDocumentNode>(
+    s.db,
+    sql`
+      SELECT id, parent_id AS parentId, type FROM document
+      WHERE ${nonArchivedDocumentCondition}
+    `,
+  );
+  liveTreeCache.delete(s.spaceId);
+  liveTreeCache.set(s.spaceId, { version: documentTreeVersion(s.spaceId), nodes });
+  while (liveTreeCache.size > MAX_CACHED_TREES) {
+    const oldest = liveTreeCache.keys().next().value as string;
+    liveTreeCache.delete(oldest);
+  }
+  return nodes;
+}
+
 /**
  * List documents for multiple categories in one pass.
  * For each category slug, includes documents directly in that category plus all descendants, except records.
@@ -1225,18 +1292,14 @@ export async function listAllDocumentsByCategories(
     return new Map();
   }
 
-  // The tree is walked on ids alone; full rows are read only for what is returned.
-  const nodes = await many(
-    s.db
-      .select({ id: document.id, parentId: document.parentId, type: document.type })
-      .from(document)
-      .where(nonArchivedDocumentCondition),
-  );
+  // The tree is walked on ids alone; full rows are read only for what is
+  // returned, from the cache when nothing has written since it was filled.
+  const nodes = await liveDocumentNodes(s);
   const parentByIdAll = new Map<string, string | null>(
     nodes.map((node) => [node.id, node.parentId || null]),
   );
 
-  const readableIds = viewer
+  const readableIds = needsDocumentFilter(viewer)
     ? await filterReadableResources(
         s.platform,
         s.spaceId,
@@ -1462,10 +1525,11 @@ export async function getDocumentChildren(
   let total: number;
   let nextCursor: string | null = null;
 
+  const filtered = needsDocumentFilter(viewer) ? viewer : null;
   const page = sort
-    ? await sortedDocumentPage(s, baseCondition, viewer, { limit, cursor, sort })
-    : viewer
-      ? await readableDocumentPage(s, baseCondition, viewer, { limit, cursor })
+    ? await sortedDocumentPage(s, baseCondition, filtered, { limit, cursor, sort })
+    : filtered
+      ? await readableDocumentPage(s, baseCondition, filtered, { limit, cursor })
       : null;
 
   if (page) {
