@@ -202,6 +202,12 @@ async function applyMigration(
       sql`INSERT OR REPLACE INTO schema_migration (id, name, applied_at) VALUES (${migration.id}, ${migration.name}, ${Date.now()})`,
     );
 
+  // Schema changes run with foreign keys off, as SQLite requires for rebuilding
+  // a table: inside the transaction the pragma is a no-op, and a DROP TABLE
+  // under it would cascade into child rows. Set before every migration because
+  // a libsql transaction takes the connection it is opened on, and the client
+  // carries on with a fresh one where foreign keys are on again.
+  await exec(db, sql.raw("PRAGMA foreign_keys = OFF"));
   await platform.spaceDatabase.transaction(db, (tx) =>
     withinTransaction(async () => {
       await migration.up(tx);

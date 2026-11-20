@@ -5,12 +5,12 @@
  */
 
 import { eq, isNull, sql } from "drizzle-orm";
-import type { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
 import type { Database } from "./connection.ts";
 import type { Migration } from "./migrator.ts";
-import { exec, one } from "./query.ts";
+import { exec, many, one } from "./query.ts";
 import {
   addColumnIfMissing,
   columnExists,
@@ -334,6 +334,53 @@ async function dropTransformTombstones(db: Database): Promise<void> {
   await run(db, ["DROP TABLE IF EXISTS transform_tombstone"]);
 }
 
+/**
+ * Rebuild `document` in the schema's column order, which puts the small columns
+ * ahead of `content`, `search_text` and `search_embedding`. In the old order
+ * `parent_id`, `created_at` and `updated_at` sat behind ~10KB of search data, so
+ * reading them walked every row's overflow pages — a scan of all live
+ * documents' parents went from ~1.4s cold to ~0.2s here.
+ *
+ * The table's own indexes and triggers are read back from the catalog and
+ * recreated, whichever of them this database has.
+ */
+async function documentColumnOrder(db: Database): Promise<void> {
+  // DROP TABLE runs an implicit DELETE, which with foreign keys enforced would
+  // cascade through every property and revision of the space.
+  const [foreignKeys] = await many<{ foreign_keys: number }>(
+    db,
+    sql.raw("PRAGMA foreign_keys"),
+  );
+  if (Number(foreignKeys?.foreign_keys) !== 0) {
+    throw new Error("document-column-order must run with foreign keys disabled");
+  }
+
+  const dependents = await many<{ sql: string }>(
+    db,
+    sql.raw(
+      "SELECT sql FROM sqlite_master WHERE tbl_name = 'document' AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+    ),
+  );
+  const columns = getTableConfig(spaceSchema.document)
+    .columns.map((column) => `"${column.name}"`)
+    .join(", ");
+
+  await run(db, [
+    generateCreateTableSQL(spaceSchema.document).replace(
+      "CREATE TABLE IF NOT EXISTS document",
+      "CREATE TABLE document_new",
+    ),
+    `INSERT INTO document_new (${columns}) SELECT ${columns} FROM document`,
+    // The rebuilt table declares `parent_id`'s reference, which the oldest
+    // databases never had; a parent already gone is what ON DELETE SET NULL
+    // would have left.
+    "UPDATE document_new SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM document_new)",
+    "DROP TABLE document",
+    "ALTER TABLE document_new RENAME TO document",
+    ...dependents.map((row) => row.sql),
+  ]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -360,4 +407,5 @@ export const spaceMigrations: Migration[] = [
   { id: 19, name: "category-document-listing", up: categoryDocumentListing },
   { id: 20, name: "transform-tombstones", up: transformTombstones },
   { id: 21, name: "drop-transform-tombstones", up: dropTransformTombstones },
+  { id: 22, name: "document-column-order", up: documentColumnOrder },
 ];

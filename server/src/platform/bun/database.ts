@@ -5,6 +5,7 @@ import { type Client, createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { config, isInMemoryDb } from "#config";
 import type { Database } from "#db/client/connection.ts";
+import { WorkerClient } from "./workerClient.ts";
 
 /** Resolved per call rather than at import, so `DATA_DIR` is read after config. */
 export function dataDirectory(): string {
@@ -126,17 +127,18 @@ export function createDatabase(
 ): Database {
   const databasePath = getDatabaseFilePath(databaseUrl);
   if (databasePath) mkdirSync(path.dirname(databasePath), { recursive: true });
-  const client = createClient({
-    url: databaseUrl,
-    // Locations stored in the auth index carry no credentials, so an empty
-    // token here means an unauthenticated connection rather than a shared one.
-    authToken: credentials.authToken ?? authTokenFromDatabaseUrl(databaseUrl),
-  });
+  // Locations stored in the auth index carry no credentials, so an empty
+  // token here means an unauthenticated connection rather than a shared one.
+  const authToken = credentials.authToken ?? authTokenFromDatabaseUrl(databaseUrl);
+  const memory = databaseUrl.startsWith("file::memory:") || databaseUrl === ":memory:";
+  // libsql runs a local database synchronously, so it gets threads of its own;
+  // a remote one is network I/O and already leaves the event loop free.
+  const client =
+    databaseUrl.startsWith("file:") || memory
+      ? new WorkerClient(databaseUrl, authToken, memory)
+      : createClient({ url: databaseUrl, authToken });
   const database = drizzle(client);
-  connections.set(database, {
-    client,
-    memory: databaseUrl.startsWith("file::memory:") || databaseUrl === ":memory:",
-  });
+  connections.set(database, { client, memory });
   return database;
 }
 
@@ -153,6 +155,8 @@ export async function runTransaction<T>(
   database: Database,
   fn: (tx: Database) => Promise<T>,
 ): Promise<T> {
-  if (connectionOf(database).memory) return fn(database);
-  return database.transaction(fn);
+  const { client, memory } = connectionOf(database);
+  if (memory) return fn(database);
+  if (!(client instanceof WorkerClient)) return database.transaction(fn);
+  return database.transaction((tx) => client.runInTransactionBody(() => fn(tx)));
 }

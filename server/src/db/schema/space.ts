@@ -58,32 +58,40 @@ export const extension = sqliteTable("extension", {
   createdBy: text("created_by").notNull(),
 });
 
+/**
+ * Column order is the physical row layout, and it matters: SQLite reads a row's
+ * columns front to back, so anything after the large text columns is reached
+ * only by walking their overflow pages. The small columns that listings and
+ * the tree walk read come first; `content`, `search_text` and `search_embedding`
+ * (~8KB each) stay last. Migration `document-column-order` brings existing
+ * databases in line.
+ */
 export const document = sqliteTable("document", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull(),
   type: text("type"),
   archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
   readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
-  content: text("content").notNull(),
-  /** Blob store key of content too large to inline, which leaves `content` empty; see `#db/space/documentContent.ts`. */
-  contentKey: text("content_key"),
-  searchText: text("search_text"),
-  searchEmbedding: text("search_embedding"),
-  searchEmbeddingModel: text("search_embedding_model"),
-  searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
-  currentRev: integer("current_rev").default(0).notNull(),
-  publishedRev: integer("published_rev"),
   parentId: text("parent_id").references((): AnySQLiteColumn => document.id, {
     onDelete: "set null",
   }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   createdBy: text("created_by").notNull(),
+  currentRev: integer("current_rev").default(0).notNull(),
+  publishedRev: integer("published_rev"),
   /**
    * The document's entity tag; see `#db/space/changeSeq.ts`. Not `currentRev`,
    * which a property patch, a publish or a move all leave alone.
    */
   changeSeq: integer("change_seq").notNull().default(0),
+  /** Blob store key of content too large to inline, which leaves `content` empty; see `#db/space/documentContent.ts`. */
+  contentKey: text("content_key"),
+  searchEmbeddingModel: text("search_embedding_model"),
+  searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
+  content: text("content").notNull(),
+  searchText: text("search_text"),
+  searchEmbedding: text("search_embedding"),
 });
 
 export const revision = sqliteTable(

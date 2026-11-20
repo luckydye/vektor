@@ -71,11 +71,15 @@ export async function initSpaceDbSchema(
   spaceDb: Database,
   options: { local: boolean; migrations?: boolean },
 ): Promise<number[]> {
-  await exec(spaceDb, sql.raw("PRAGMA foreign_keys = ON"));
-  // The integrity pragma above is needed for every SQLite connection; these
-  // remaining pragmas tune durable local files only.
+  // These pragmas tune durable local files only.
   if (options.local) await applySpaceDbPragmas(spaceDb);
 
-  if (options.migrations === false) return [];
-  return runMigrations(platform, spaceDb, spaceMigrations);
+  // After the migrations, which switch foreign keys off for themselves (see
+  // `applyMigration`), so the connection is left enforcing them either way.
+  const applied =
+    options.migrations === false
+      ? []
+      : await runMigrations(platform, spaceDb, spaceMigrations);
+  await exec(spaceDb, sql.raw("PRAGMA foreign_keys = ON"));
+  return applied;
 }

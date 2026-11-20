@@ -214,8 +214,13 @@ const result = await Bun.build({
   // executable at `$bunfs/root/src/agent/worker.js` (its path from this
   // directory, bundled to `.js`), which agent/agent.ts spawns. Unlike the serialization worker it
   // needs no pre-bundling, and its native js-exec addon is embedded like the
-  // server's.
-  entrypoints: ["./vektor.ts", "./src/agent/worker.ts"],
+  // server's. The database worker (platform/bun/workerClient.ts) is embedded
+  // the same way, with the libsql addon below.
+  entrypoints: [
+    "./vektor.ts",
+    "./src/agent/worker.ts",
+    "./src/platform/bun/databaseWorker.ts",
+  ],
   compile: true,
   // @ts-expect-error — `outfile` is valid alongside `compile` at runtime (see
   // Bun.build's own docs), but tsc's bundled bun-types doesn't reflect it.
