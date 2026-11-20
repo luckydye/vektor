@@ -7,6 +7,8 @@
 # Usage: bundle-android.sh [--release] [extra cargo build args]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# A RUSTUP_TOOLCHAIN override would beat rust-toolchain.toml.
+unset RUSTUP_TOOLCHAIN
 
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 NDK="$SDK/ndk/$(ls "$SDK/ndk" | sort -V | tail -1)"

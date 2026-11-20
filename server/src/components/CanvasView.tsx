@@ -83,7 +83,7 @@ export function CanvasView(props: Props) {
 
   return (
     <Show when={hasMounted()}>
-      <div class="h-screen">
+      <div class="h-screen max-md:h-(--app-height)">
         <Canvas
           documentId={documentId()}
           spaceId={props.spaceId}

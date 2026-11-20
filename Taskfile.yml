@@ -83,7 +83,8 @@ tasks:
     env:
       VEKTOR_URL: '{{.VEKTOR_URL | default "http://127.0.0.1:4321"}}'
     cmds:
-      - cargo build
+      # A RUSTUP_TOOLCHAIN override would beat rust-toolchain.toml.
+      - env -u RUSTUP_TOOLCHAIN cargo build
       # macOS only shows the icon and name for a binary launched from inside a bundle.
       - mkdir -p target/debug/Vektor.app/Contents/MacOS target/debug/Vektor.app/Contents/Resources
       - cp Info.plist target/debug/Vektor.app/Contents/
@@ -99,7 +100,8 @@ tasks:
     dir: ./mobile
     env:
       VEKTOR_URL: '{{.VEKTOR_URL | default "http://127.0.0.1:4321"}}'
-    cmd: cargo run
+    # A RUSTUP_TOOLCHAIN override would beat rust-toolchain.toml.
+    cmd: env -u RUSTUP_TOOLCHAIN cargo run
 
   ios:build:
     desc: Build the iOS simulator bundle (mobile/target/aarch64-apple-ios-sim/debug/bundle/Vektor.app) against VEKTOR_URL.

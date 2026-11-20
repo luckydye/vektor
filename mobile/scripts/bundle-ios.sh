@@ -5,6 +5,8 @@
 # Usage: bundle-ios.sh [--release] [extra cargo build args]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# A RUSTUP_TOOLCHAIN override would beat rust-toolchain.toml.
+unset RUSTUP_TOOLCHAIN
 
 [[ "$(uname)" == "Darwin" ]] || { echo "bundle-ios.sh must run on macOS" >&2; exit 1; }
 
