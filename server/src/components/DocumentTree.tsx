@@ -876,12 +876,12 @@ export function DocumentTree(props: Props) {
             placements="right-start,left-start"
             on:exit={closeContextMenu}
           >
-            <div class="category-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+            <div class="category-context-menu w-max py-1">
               <Show when={contextMenu()}>
                 {(menu) => (
                   // biome-ignore lint/a11y/noStaticElementInteractions: suppressing the native context menu does not make the panel a control.
                   <div
-                    class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-xl surface-menu space-y-5xs p-5xs transition-transform duration-150 group-[&[enabled]]:scale-100 [.category-context-menu[data-placement^='left']_&]:origin-top-right [.category-context-menu[data-placement^='right']_&]:origin-top-left"
+                    class="category-context-panel min-w-[224px] origin-top-left scale-95 opacity-0 rounded-xl surface-menu space-y-5xs p-5xs transition-all duration-150 group-[&[enabled]]:scale-100 group-[&[enabled]]:opacity-100 [.category-context-menu[data-placement^='left']_&]:origin-top-right [.category-context-menu[data-placement^='right']_&]:origin-top-left"
                     onContextMenu={(e) => e.preventDefault()}
                   >
                     <div class="truncate px-3xs py-5xs text-neutral-500 text-size-extra-small">

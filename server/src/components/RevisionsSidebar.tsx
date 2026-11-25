@@ -361,8 +361,8 @@ export function RevisionsSidebar(props: Props) {
                             </button>
 
                             <a-popover class="group popover-sheet" placements="bottom-end">
-                              <div class="revision-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                                <div class="revision-context-panel min-w-[224px] origin-top-right scale-95 rounded-xl surface-menu space-y-5xs p-5xs transition-transform duration-150 group-[&[enabled]]:scale-100">
+                              <div class="revision-context-menu w-max py-1">
+                                <div class="revision-context-panel min-w-[224px] origin-top-right scale-95 opacity-0 rounded-xl surface-menu space-y-5xs p-5xs transition-all duration-150 group-[&[enabled]]:scale-100 group-[&[enabled]]:opacity-100">
                                   <button
                                     type="button"
                                     onClick={(e) => {

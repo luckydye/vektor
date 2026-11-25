@@ -624,11 +624,14 @@ export function DocumentSharePopover(props: Props) {
       </button>
 
       <a-popover class="group popover-sheet" placements="bottom,bottom-end">
-        <div class="my-3xs w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-          <a-popover-arrow class="max-md:hidden">
+        <div class="my-3xs w-max">
+          <a-popover-arrow class="max-md:hidden opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
             <div class="contributors-arrow" />
           </a-popover-arrow>
-          <div class="max-h-[min(40rem,80vh)] origin-top scale-95 overflow-y-auto rounded-2xl border border-neutral-100 bg-neutral-10 shadow-large transition-all duration-150 group-[&[enabled]]:scale-100 md:w-[32rem]">
+          {/* Fade the panel itself, not the wrapper: an ancestor with opacity
+              below 1 becomes the backdrop root and its backdrop-filter would
+              blur nothing until the fade ends. */}
+          <div class="max-h-[min(40rem,80vh)] origin-top scale-95 opacity-0 overflow-y-auto rounded-2xl surface-menu transition-all duration-150 group-[&[enabled]]:scale-100 group-[&[enabled]]:opacity-100 md:w-[32rem]">
             <div class="px-5 pt-4 pb-5">
               <Show when={props.canManageLinks}>
                 {/* Not TabsList: a-tabs-list slots its tabs into a shadow track that cannot stretch them. */}

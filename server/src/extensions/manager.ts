@@ -920,6 +920,11 @@ export class ExtensionViewElement extends HTMLElement {
         :host {
           display: block;
         }
+        /* A light-DOM display:none loses to this rule, so hiding the element
+           has to be handled inside the shadow root too. */
+        :host([hidden]) {
+          display: none;
+        }
       </style>
     `;
 

@@ -59,6 +59,7 @@ declare module "solid-js" {
       "attr:data-shortcut"?: string | undefined;
       "attr:data-comments-enabled"?: string | undefined;
       "attr:aria-label"?: string | undefined;
+      "attr:aria-selected"?: string | undefined;
       "attr:placeholder"?: string | undefined;
       "attr:mentions"?: string | undefined;
       "attr:inline-document-references"?: string | undefined;

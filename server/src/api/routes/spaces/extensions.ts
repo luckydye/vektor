@@ -151,8 +151,14 @@ export const POST: ApiRouteHandler = (context) =>
           ? await updateExtension(store, extensionId, buffer)
           : await createExtension(store, extensionId, buffer, createdBy);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Invalid extension package";
-        return badRequestResponse(`Invalid extension package: ${message}`);
+        // A failed write is not a bad package. Drizzle's message repeats the
+        // bound parameters, which for this query means the whole zip, so log
+        // the driver error and answer without either.
+        appLogger.error("Failed to save extension", {
+          extensionId,
+          error: err instanceof Error && err.cause ? err.cause : err,
+        });
+        return errorResponse("Failed to save extension", 500);
       }
 
       if (!ext) {

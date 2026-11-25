@@ -78,9 +78,12 @@ export function ContextMenu(props: Props) {
         class="group popover-sheet"
         attr:placements={props.placements ?? "bottom-end"}
       >
-        <div class="w-max p-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+        <div class="w-max p-2">
+          {/* Fade the panel itself, not a wrapper: an ancestor with opacity < 1
+              becomes the backdrop root, so the panel's backdrop-filter would
+              blur nothing until the fade ends. */}
           <div
-            class={`min-w-[100px] ${menuOrigin(props.placements)} scale-95 rounded-xl surface-menu p-5xs transition-all duration-150 group-[&[enabled]]:scale-100`}
+            class={`min-w-[100px] ${menuOrigin(props.placements)} scale-95 opacity-0 rounded-xl surface-menu p-5xs transition-all duration-150 group-[&[enabled]]:scale-100 group-[&[enabled]]:opacity-100`}
           >
             <a-list
               on:change={handleSubmit}

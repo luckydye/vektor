@@ -4,14 +4,12 @@ import { api, type ExtensionRoute } from "#api/client.ts";
 import { ContextMenu, ContextMenuSeparator } from "#components/ContextMenu.tsx";
 import { ContextMenuItem } from "#components/ContextMenuItem.tsx";
 import { DatabaseView } from "#components/DatabaseView.tsx";
-import { Dialog } from "#components/Dialog.tsx";
 import { ExtensionView } from "#components/ExtensionView.tsx";
 import { Icon } from "#components/Icon.tsx";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useToast } from "#composeables/useToast.ts";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
 import { animateTabPanel } from "#utils/animate.ts";
-import { TabButton } from "./Tabs.tsx";
 
 export interface DatabaseExtensionView {
   extensionId: string;
@@ -64,7 +62,6 @@ export function DatabaseDocumentView(props: Props) {
   const { error: toastError } = useToast();
   let panelRef: HTMLDivElement | undefined;
   const [toolbarSlot, setToolbarSlot] = createSignal<HTMLElement>();
-  const [viewSheetOpen, setViewSheetOpen] = createSignal(false);
   /**
    * The persisted view is read after the first render, so until this mounts the
    * selection is only the `table` fallback. Rendering the table then would read
@@ -98,10 +95,16 @@ export function DatabaseDocumentView(props: Props) {
     return props.views.filter((view) => !configured.has(extensionViewId(view)));
   });
 
-  const orderedViewIds = createMemo(() => [
-    TABLE_VIEW_ID,
-    ...configuredExtensionViews().map(extensionViewId),
+  const viewOptions = createMemo(() => [
+    { id: TABLE_VIEW_ID, title: "Table", icon: "table" as const },
+    ...configuredExtensionViews().map((view) => ({
+      id: extensionViewId(view),
+      title: extensionViewTitle(view),
+      icon: "grid-grid" as const,
+    })),
   ]);
+
+  const orderedViewIds = createMemo(() => viewOptions().map((view) => view.id));
 
   let animatedViewId = TABLE_VIEW_ID;
 
@@ -225,200 +228,93 @@ export function DatabaseDocumentView(props: Props) {
     }
   }
 
-  function onTabKeyDown(event: KeyboardEvent) {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-
-    const tabList = event.currentTarget as HTMLElement;
-    const tabs = Array.from(tabList.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-    const currentIndex = tabs.indexOf(document.activeElement as HTMLButtonElement);
-    if (currentIndex === -1) return;
-
-    event.preventDefault();
-    const nextIndex =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? tabs.length - 1
-          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
-            tabs.length;
-    tabs[nextIndex]?.focus();
-    tabs[nextIndex]?.click();
-  }
-
   return (
     <div class="flex h-full min-h-0 flex-1 flex-col">
       <Show when={toolbarSlot()}>
         {(slot) => (
           <Portal mount={slot()}>
-            <button
-              type="button"
-              class="flex h-9 items-center gap-2 rounded-lg border border-neutral-100 bg-background px-3 text-label @min-[60rem]:hidden"
-              title={selectedViewTitle()}
-              onClick={() => setViewSheetOpen(true)}
+            <ContextMenu
+              ariaLabel="Database view"
+              placements="bottom-end"
+              trigger={
+                <button
+                  type="button"
+                  slot="trigger"
+                  title={selectedViewTitle()}
+                  class="flex h-9 items-center gap-2 rounded-lg border border-neutral-100 bg-background px-3 text-label transition-colors hover:bg-neutral-100 aria-expanded:bg-neutral-100 active:bg-neutral-200"
+                >
+                  <Icon
+                    class="h-4 w-4"
+                    name={selectedExtensionView() ? "grid-grid" : "table"}
+                  />
+                  {/* On phones the breadcrumb needs the room; the menu names every view. */}
+                  <span class="max-w-32 truncate @max-[30rem]:sr-only">
+                    {selectedViewTitle()}
+                  </span>
+                  <Icon class="h-4 w-4 text-neutral-400" name="chevron-down" />
+                </button>
+              }
             >
-              <Icon
-                class="h-4 w-4"
-                name={selectedExtensionView() ? "grid-grid" : "table"}
-              />
-              {/* On phones the breadcrumb needs the room; the sheet names every view. */}
-              <span class="@max-[30rem]:sr-only">{selectedViewTitle()}</span>
-              <Icon class="h-4 w-4 text-neutral-400" name="chevron-down" />
-            </button>
-
-            <div class="flex h-9 min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background px-1 @max-[60rem]:hidden">
-              <div
-                role="tablist"
-                class="inline-flex min-w-0 items-center gap-1 overflow-x-auto"
-                aria-label="Database views"
-                onKeyDown={onTabKeyDown}
-              >
-                <TabButton
-                  selected={selectedViewId() === TABLE_VIEW_ID}
-                  icon="table"
-                  onClick={() => selectView(TABLE_VIEW_ID)}
-                >
-                  Table
-                </TabButton>
-                <For each={configuredExtensionViews()}>
-                  {(view) => {
-                    const viewId = extensionViewId(view);
-                    return (
-                      <span class="inline-flex items-center">
-                        <TabButton
-                          selected={selectedViewId() === viewId}
-                          icon="grid-grid"
-                          onClick={() => selectView(viewId)}
-                        >
-                          {extensionViewTitle(view)}
-                        </TabButton>
-                      </span>
-                    );
-                  }}
-                </For>
-              </div>
-
-              <Show when={availableExtensionViews().length > 0 || selectedExtensionView()}>
-                <ContextMenu
-                  ariaLabel="Database views"
-                  placements="bottom-start"
-                  trigger={
-                    <button
-                      type="button"
-                      slot="trigger"
-                      aria-label="Manage views"
-                      title="Manage views"
-                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200/60 hover:text-neutral-700"
+              <For each={viewOptions()}>
+                {(view) => (
+                  <ContextMenuItem
+                    selected={selectedViewId() === view.id}
+                    onClick={(event) => {
+                      selectView(view.id);
+                      (event.currentTarget as Element).dispatchEvent(
+                        new CustomEvent("exit", { bubbles: true }),
+                      );
+                    }}
+                  >
+                    <Icon class="h-4 w-4 flex-none" name={view.icon} />
+                    <span class="min-w-0 flex-1 truncate text-left text-neutral-900">
+                      {view.title}
+                    </span>
+                    <Show when={selectedViewId() === view.id}>
+                      <Icon class="h-4 w-4 flex-none" name="confirmation" />
+                    </Show>
+                  </ContextMenuItem>
+                )}
+              </For>
+              <Show when={availableExtensionViews().length > 0}>
+                <ContextMenuSeparator />
+                <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
+                  Add view
+                </div>
+                <For each={availableExtensionViews()}>
+                  {(view) => (
+                    <ContextMenuItem
+                      class="min-w-48"
+                      onClick={(event) => void addExtensionView(view, event)}
                     >
-                      <Icon class="h-4 w-4" name="context-menu-more" />
-                    </button>
-                  }
-                >
-                  <Show when={availableExtensionViews().length > 0}>
-                    <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
-                      Add view
-                    </div>
-                    <For each={availableExtensionViews()}>
-                      {(view) => (
-                        <ContextMenuItem
-                          class="min-w-48"
-                          onClick={(event) => void addExtensionView(view, event)}
-                        >
-                          <Icon class="h-4 w-4 flex-none" name="grid-grid" />
-                          <span class="min-w-0 truncate text-left text-neutral-900">
-                            {extensionViewTitle(view)}
-                          </span>
-                        </ContextMenuItem>
-                      )}
-                    </For>
-                  </Show>
-                  <Show when={selectedExtensionView()}>
-                    {(view) => (
-                      <>
-                        <Show when={availableExtensionViews().length > 0}>
-                          <ContextMenuSeparator />
-                        </Show>
-                        <ContextMenuItem
-                          class="min-w-48"
-                          onClick={(event) => void removeExtensionView(view(), event)}
-                        >
-                          <Icon
-                            class="h-4 w-4 flex-none text-red-600"
-                            name="delete-entry"
-                          />
-                          <span class="text-red-600">
-                            Remove {extensionViewTitle(view())}
-                          </span>
-                        </ContextMenuItem>
-                      </>
-                    )}
-                  </Show>
-                </ContextMenu>
+                      <Icon class="h-4 w-4 flex-none" name="grid-grid" />
+                      <span class="min-w-0 truncate text-left text-neutral-900">
+                        {extensionViewTitle(view)}
+                      </span>
+                    </ContextMenuItem>
+                  )}
+                </For>
               </Show>
-            </div>
+              <Show when={selectedExtensionView()}>
+                {(view) => (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      class="min-w-48"
+                      onClick={(event) => void removeExtensionView(view(), event)}
+                    >
+                      <Icon class="h-4 w-4 flex-none text-red-600" name="delete-entry" />
+                      <span class="text-red-600">
+                        Remove {extensionViewTitle(view())}
+                      </span>
+                    </ContextMenuItem>
+                  </>
+                )}
+              </Show>
+            </ContextMenu>
           </Portal>
         )}
       </Show>
-
-      <Dialog
-        show={viewSheetOpen()}
-        title="Views"
-        bodyClass="flex flex-col gap-1 overflow-y-auto px-3 pb-5"
-        onUpdateShow={setViewSheetOpen}
-      >
-        <For each={[undefined, ...configuredExtensionViews()]}>
-          {(view) => {
-            const viewId = view ? extensionViewId(view) : TABLE_VIEW_ID;
-            return (
-              <div class="flex items-center gap-1">
-                <button
-                  type="button"
-                  class="flex h-11 flex-1 items-center gap-3 rounded-lg px-3 text-left text-neutral-800 text-size-medium"
-                  classList={{ "bg-neutral-50 font-medium": selectedViewId() === viewId }}
-                  onClick={() => {
-                    selectView(viewId);
-                    setViewSheetOpen(false);
-                  }}
-                >
-                  <Icon class="h-4 w-4 flex-none" name={view ? "grid-grid" : "table"} />
-                  <span class="min-w-0 flex-1 truncate">
-                    {view ? extensionViewTitle(view) : "Table"}
-                  </span>
-                </button>
-                <Show when={view}>
-                  {(view) => (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${extensionViewTitle(view())} view`}
-                      class="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-neutral-400"
-                      onClick={(event) => void removeExtensionView(view(), event)}
-                    >
-                      <Icon class="h-4 w-4" name="delete-entry" />
-                    </button>
-                  )}
-                </Show>
-              </div>
-            );
-          }}
-        </For>
-
-        <Show when={availableExtensionViews().length > 0}>
-          <div class="mt-3 px-3 pb-1 text-neutral-500 text-size-extra-small">
-            Add view
-          </div>
-          <For each={availableExtensionViews()}>
-            {(view) => (
-              <button
-                type="button"
-                class="flex h-11 items-center gap-3 rounded-lg px-3 text-left text-neutral-700 text-size-medium"
-                onClick={(event) => void addExtensionView(view, event)}
-              >
-                <Icon class="h-4 w-4 flex-none text-neutral-400" name="add" />
-                <span class="min-w-0 flex-1 truncate">{extensionViewTitle(view)}</span>
-              </button>
-            )}
-          </For>
-        </Show>
-      </Dialog>
 
       <div
         ref={panelRef}

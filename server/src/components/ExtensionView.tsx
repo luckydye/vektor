@@ -78,22 +78,34 @@ export function ExtensionView(props: Props) {
       mount.style.width = "100%";
       root.replaceChildren(mount);
 
-      const nextCleanup = await extensions.renderInlineView(
-        target.extensionId,
-        target.routePath,
-        mount,
-        target.data,
-      );
+      // The view paints its own loading state (a board skeleton, a spinner…).
+      // The host skeleton has done its job once that first paint lands; keeping
+      // both up would show two loading screens at once.
+      const painted = new MutationObserver(() => {
+        if (version === renderVersion) setLoading(false);
+      });
+      painted.observe(mount, { childList: true, characterData: true, subtree: true });
 
-      if (version !== renderVersion) {
-        nextCleanup?.();
-        mount.remove();
-        return;
-      }
+      try {
+        const nextCleanup = await extensions.renderInlineView(
+          target.extensionId,
+          target.routePath,
+          mount,
+          target.data,
+        );
 
-      cleanup = nextCleanup;
-      if (!nextCleanup) {
-        setError(`Failed to render view for route "${target.routePath}"`);
+        if (version !== renderVersion) {
+          nextCleanup?.();
+          mount.remove();
+          return;
+        }
+
+        cleanup = nextCleanup;
+        if (!nextCleanup) {
+          setError(`Failed to render view for route "${target.routePath}"`);
+        }
+      } finally {
+        painted.disconnect();
       }
     } catch (err) {
       console.error("Error rendering extension view:", err);
@@ -134,7 +146,8 @@ export function ExtensionView(props: Props) {
       <extension-view
         ref={containerRef}
         class="w-full"
-        classList={{ "absolute inset-0 h-full": props.fill, hidden: loading() }}
+        classList={{ "absolute inset-0 h-full": props.fill }}
+        attr:hidden={loading() ? "" : undefined}
       />
     </div>
   );
