@@ -169,11 +169,13 @@ async function dispatch(
 async function serializeDocContent(
   format: CollaborationContentFormat,
   doc: Y.Doc,
+  options?: { sanitize?: boolean },
 ): Promise<string> {
   const response = await dispatch({
     op: "serialize",
     format,
     update: Y.encodeStateAsUpdate(doc),
+    sanitize: options?.sanitize,
   }).catch((error) => {
     throw new Error("Serializing a document failed", { cause: error });
   });

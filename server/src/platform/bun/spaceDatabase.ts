@@ -26,6 +26,7 @@ import {
   closeDatabase,
   createDatabase,
   type DatabaseCredentials,
+  databaseIsIdle,
   dataDirectory,
   getAuthDatabaseUrl,
   getLocalSpaceDatabaseUrl,
@@ -721,6 +722,7 @@ export function createLibsqlSpaceDatabase(platform: () => Platform): SpaceDataba
 
     close: closeDatabase,
     transaction: runTransaction,
+    idle: databaseIsIdle,
 
     async archive(spaceId) {
       const record = await getAssignedSpaceDatabase(platform(), spaceId);

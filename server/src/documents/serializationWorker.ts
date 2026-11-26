@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import * as Y from "yjs";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type CollaborationContentFormat,
   contentFromDoc,
@@ -20,6 +21,8 @@ export type SerializationRequest =
       op: "serialize";
       format: CollaborationContentFormat;
       update: Uint8Array;
+      /** Run the stored-document sanitizer over the result, off the main thread. */
+      sanitize?: boolean;
     }
   | {
       id: number;
@@ -44,7 +47,8 @@ ctx.onmessage = (event) => {
     if (req.op === "serialize") {
       const doc = docFromUpdate(req.update);
       const content = contentFromDoc(req.format, doc);
-      ctx.postMessage({ id: req.id, ok: true, content });
+      const serialized = req.sanitize ? sanitizeDocumentHtml(content) : content;
+      ctx.postMessage({ id: req.id, ok: true, content: serialized });
     } else {
       const doc = docFromContent(req.format, req.content);
       const update = Y.encodeStateAsUpdate(doc);

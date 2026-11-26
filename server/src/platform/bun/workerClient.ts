@@ -177,6 +177,8 @@ class WorkerConnection {
   nextId = 1;
   /** Set once the worker died or was closed; every request after fails with it. */
   failure: Error | null = null;
+  /** When this connection last carried a request, for retiring idle readers. */
+  lastRequestAt = Date.now();
   /** Pending release of the process's liveness, cancelled by the next request. */
   idleRelease: ReturnType<typeof setTimeout> | null = null;
 
@@ -206,6 +208,7 @@ class WorkerConnection {
 
   request(request: Request): Promise<Result> {
     if (this.failure) return Promise.reject(this.failure);
+    this.lastRequestAt = Date.now();
     const id = this.nextId++;
     return new Promise<Result>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -320,6 +323,10 @@ const transactionBodies = new AsyncLocalStorage<WorkerTransaction>();
 
 /** Reader threads per database, beside its writer; spawned as reads need them. */
 const MAX_READERS = 3;
+/** How long a reader thread may sit idle before it is retired. */
+const READER_IDLE_MS = 60_000;
+/** How often idle readers are checked. */
+const READER_SWEEP_MS = 30_000;
 
 /** Whether a statement only reads, and so may run on any connection. */
 function isRead(stmt: InStatement): boolean {
@@ -334,6 +341,7 @@ export class WorkerClient implements Client {
   readonly readers: WorkerConnection[] = [];
   /** The transaction holding the writer; at most one, since writes take turns. */
   active: WorkerTransaction | null = null;
+  readonly readerSweep: ReturnType<typeof setInterval>;
 
   constructor(
     readonly url: string,
@@ -345,6 +353,32 @@ export class WorkerClient implements Client {
     readonly memory: boolean,
   ) {
     this.writer = new WorkerConnection(url, authToken);
+    this.readerSweep = setInterval(() => this.trimIdleReaders(), READER_SWEEP_MS);
+    this.readerSweep.unref?.();
+  }
+
+  /** Whether nothing is in flight on any thread, so the connection can be closed now. */
+  idle(): boolean {
+    return (
+      !this.active &&
+      this.writer.pending.size === 0 &&
+      this.readers.every((reader) => reader.pending.size === 0)
+    );
+  }
+
+  /**
+   * Retire reader threads that have not served a request for a while. A read
+   * spawns one again, so this trades a thread start for keeping no threads on a
+   * database that is only touched now and then.
+   */
+  trimIdleReaders(now = Date.now()): void {
+    for (let index = this.readers.length - 1; index >= 0; index -= 1) {
+      const reader = this.readers[index];
+      if (reader.failure || reader.pending.size > 0) continue;
+      if (now - reader.lastRequestAt < READER_IDLE_MS) continue;
+      this.readers.splice(index, 1);
+      reader.close();
+    }
   }
 
   /**
@@ -371,7 +405,12 @@ export class WorkerClient implements Client {
   /** Reads spread over reader threads, spawned as concurrent reads need them. */
   reader(): WorkerConnection {
     if (this.closed) throw new LibsqlError("The client is closed", "CLIENT_CLOSED");
-    const idle = this.readers.find((connection) => connection.pending.size === 0);
+    for (let index = this.readers.length - 1; index >= 0; index -= 1) {
+      if (this.readers[index].failure) this.readers.splice(index, 1);
+    }
+    const idle = this.readers.find(
+      (connection) => !connection.failure && connection.pending.size === 0,
+    );
     if (idle) return idle;
     if (this.readers.length < MAX_READERS) {
       const spawned = new WorkerConnection(this.url, this.authToken);
@@ -444,6 +483,7 @@ export class WorkerClient implements Client {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    clearInterval(this.readerSweep);
     this.writer.close();
     for (const reader of this.readers) reader.close();
   }

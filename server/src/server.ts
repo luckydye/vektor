@@ -16,7 +16,7 @@ import { createApiRouter, isApiPath } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
 import { listActiveSpaceIds } from "./db/auth/spaceIndex.ts";
-import { initializeDatabases } from "./db/client/db.ts";
+import { initializeDatabases, sweepIdleSpaceDbs } from "./db/client/db.ts";
 import { openSpaceStore } from "./db/client/store.ts";
 import { failInterruptedAIChatTurns } from "./db/space/aiChatSessions.ts";
 import { migrateCanvases } from "./db/space/canvasMigration.ts";
@@ -35,8 +35,8 @@ import { startYRoomSweep } from "./realtime/yjsRooms.ts";
 import { APP_CSP } from "./utils/csp.ts";
 import { every } from "./utils/every.ts";
 import type { DevWeb } from "./web/dev.ts";
-import { createWebRuntime } from "./web/runtime.ts";
 import { registerWebRoutes } from "./web/routes.ts";
+import { createWebRuntime } from "./web/runtime.ts";
 
 function buildHeaders(req: IncomingMessage): Headers {
   const headers = new Headers();
@@ -100,6 +100,13 @@ const VITE_MODULE_PATH = /^\/(?:src|node_modules|@id|@fs|@vite)\//;
  * that waited 30 days can wait another hour.
  */
 const SPACE_RETENTION_SWEEP_MS = 60 * 60 * 1000;
+
+/**
+ * How often space connections that have gone quiet are released from the
+ * cache. Each local connection holds worker threads, so this is the point where
+ * a space nobody is using stops costing memory.
+ */
+const SPACE_DB_SWEEP_MS = 30 * 1000;
 
 function purgeExpiredSpacesLogged(platform: Platform): void {
   void purgeExpiredSpaces(platform, new Date()).then(
@@ -330,6 +337,7 @@ export async function startServer(platform: Platform): Promise<void> {
   const stopRetentionSweep = every(SPACE_RETENTION_SWEEP_MS, () =>
     purgeExpiredSpacesLogged(platform),
   );
+  const stopSpaceDbSweep = every(SPACE_DB_SWEEP_MS, () => sweepIdleSpaceDbs(platform));
 
   let isShuttingDown = false;
   let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -346,6 +354,7 @@ export async function startServer(platform: Platform): Promise<void> {
     stopYRoomSweep();
     stopCanvasRoomSweep();
     stopRetentionSweep();
+    stopSpaceDbSweep();
     stopDiscordBots();
     stopSerializationPool();
     stopAgentWorker(platform);

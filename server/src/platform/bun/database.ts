@@ -146,6 +146,12 @@ export function closeDatabase(database: Database): void {
   connectionOf(database).client.close();
 }
 
+/** Whether the connection has nothing in flight, so closing it cannot cut off a query. */
+export function databaseIsIdle(database: Database): boolean {
+  const { client } = connectionOf(database);
+  return client instanceof WorkerClient ? client.idle() : true;
+}
+
 /**
  * libsql gives every `:memory:` connection its own private database and tears it
  * down when a transaction ends, so there `fn` runs directly and is not atomic.

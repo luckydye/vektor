@@ -5,6 +5,7 @@
  */
 
 import type { BBox } from "#canvas/document/format/records.ts";
+import { unpinSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   appendCanvasRecords,
@@ -300,7 +301,11 @@ export async function sweepCanvasRooms(
       if (room.clients.size > 0 || ws.pending.length > 0) continue;
       dropCanvasWorkingSet(spaceId, documentId);
       canvasRooms.delete(key);
-      await collectCanvasGarbage(ws.store, documentId);
+      try {
+        await collectCanvasGarbage(ws.store, documentId);
+      } finally {
+        unpinSpaceDb(ws.store.platform, spaceId);
+      }
     } catch (error) {
       appLogger.warn("Failed to evict a canvas working set", {
         error,

@@ -25,6 +25,12 @@ export interface PlatformState {
   /** What each cached connection costs to keep open; see {@link ConnectionKind}. */
   spaceDbKind: Map<string, ConnectionKind>;
   /**
+   * Spaces that must stay open because a long-lived object holds their store.
+   * A canvas working set is open for as long as its room is, whether or not it
+   * runs a query every minute.
+   */
+  pinnedSpaceDbs: Map<string, number>;
+  /**
    * Databases this process has already migrated to the current schema.
    *
    * Reopening an evicted connection would otherwise re-read the migration version
@@ -54,6 +60,7 @@ export function createPlatformState(): PlatformState {
     spaceDbPreparation: new Map(),
     spaceDbOpening: new Map(),
     spaceDbKind: new Map(),
+    pinnedSpaceDbs: new Map(),
     migratedSpaceDbs: new Set(),
   };
 }
@@ -168,6 +175,23 @@ export function closeSpaceDb(platform: Platform, spaceId: string): void {
   state.spaceDbLastUsed.delete(spaceId);
   state.spaceDbPreparation.delete(spaceId);
   state.spaceDbKind.delete(spaceId);
+  state.pinnedSpaceDbs.delete(spaceId);
+}
+
+/**
+ * Keep a space's connection open while something other than a request holds its
+ * store. Pair with {@link unpinSpaceDb}; nested holders count.
+ */
+export function pinSpaceDb(platform: Platform, spaceId: string): void {
+  const pins = platform.state.pinnedSpaceDbs;
+  pins.set(spaceId, (pins.get(spaceId) ?? 0) + 1);
+}
+
+export function unpinSpaceDb(platform: Platform, spaceId: string): void {
+  const pins = platform.state.pinnedSpaceDbs;
+  const remaining = (pins.get(spaceId) ?? 0) - 1;
+  if (remaining > 0) pins.set(spaceId, remaining);
+  else pins.delete(spaceId);
 }
 
 /** Re-insert, so the cache order stays the least-recently-used order. */
@@ -183,6 +207,13 @@ function touch(platform: Platform, spaceId: string, database: Database): void {
  * query is still running against it.
  */
 const IDLE_BEFORE_CLOSE_MS = 60_000;
+
+/**
+ * The periodic sweep is less eager than the ceiling eviction: a background pass
+ * can hold one store across a slow send or blob read, and a minute of no queries
+ * between its steps must not cut the handle off.
+ */
+const SWEEP_IDLE_BEFORE_CLOSE_MS = 5 * 60_000;
 
 /** One open file per connection, so the ceiling is a descriptor budget. */
 const DEFAULT_MAX_OPEN_FILE_SPACE_DBS = 128;
@@ -210,6 +241,32 @@ function maxOpenSpaceDbs(kind: ConnectionKind): number {
   const configured = config().MAX_OPEN_SPACE_DBS?.trim();
   if (!configured || !/^\d+$/.test(configured)) return DEFAULT_MAX_OPEN_FILE_SPACE_DBS;
   return Number.parseInt(configured, 10);
+}
+
+/**
+ * Close every connection left untouched past the idle window.
+ *
+ * Opening a space used to be the only moment the cache was trimmed, so a host
+ * with fewer spaces than the ceiling kept all of them open forever. Each local
+ * connection runs on worker threads of its own, so that cache was most of the
+ * process's memory. This runs on a timer from the server bootstrap.
+ */
+export function sweepIdleSpaceDbs(platform: Platform): void {
+  // An in-memory connection *is* the space's data — dev and test only.
+  if (isInMemoryDb()) return;
+
+  const { spaceDbs, spaceDbKind, spaceDbLastUsed, pinnedSpaceDbs } = platform.state;
+  const idleSince = Date.now() - SWEEP_IDLE_BEFORE_CLOSE_MS;
+  for (const spaceId of spaceDbs.keys()) {
+    // A remote connection is a stateless HTTP client and costs no descriptor or
+    // thread; only a local file owns worker threads worth reclaiming.
+    if (spaceDbKind.get(spaceId) !== "file") continue;
+    if ((pinnedSpaceDbs.get(spaceId) ?? 0) > 0) continue;
+    if ((spaceDbLastUsed.get(spaceId) ?? Date.now()) > idleSince) continue;
+    const database = spaceDbs.get(spaceId);
+    if (!database || !platform.spaceDatabase.idle(database)) continue;
+    closeSpaceDb(platform, spaceId);
+  }
 }
 
 /**
@@ -245,7 +302,10 @@ function evictIdleSpaceDbs(platform: Platform): void {
     let openCount = kindSpaces.length;
     for (const spaceId of kindSpaces) {
       if (openCount <= limit) break;
+      if ((platform.state.pinnedSpaceDbs.get(spaceId) ?? 0) > 0) continue;
       if ((spaceDbLastUsed.get(spaceId) ?? Date.now()) > idleSince) continue;
+      const database = spaceDbCache.get(spaceId);
+      if (!database || !platform.spaceDatabase.idle(database)) continue;
       closeSpaceDb(platform, spaceId);
       openCount--;
     }

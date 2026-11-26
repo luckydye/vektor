@@ -294,10 +294,9 @@ export async function persistYRoomDraft(platform: Platform, key: string): Promis
 
   const doc = room.doc;
   const format = collaborationContentFormat(meta.type);
-  const serialized = await traced("persist.serialize", () =>
-    platform.docSerializer.serialize(format, doc),
+  const content = await traced("persist.serialize", () =>
+    platform.docSerializer.serialize(format, doc, { sanitize: format === "html" }),
   );
-  const content = format === "html" ? sanitizeDocumentHtml(serialized) : serialized;
 
   const store = await openSpaceStore(platform, ids.spaceId);
   // Unconditional: the room owns this content. It still moves `change_seq`, so a

@@ -38,6 +38,7 @@ import {
 } from "#canvas/document/format/records.ts";
 import { queryRTree } from "#canvas/document/format/rtree.ts";
 import { streamRecords } from "#canvas/document/format/stream.ts";
+import { pinSpaceDb, unpinSpaceDb } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, revision } from "#db/schema/space.ts";
@@ -285,8 +286,16 @@ export async function openCanvasWorkingSet(
   s: SpaceStore,
   documentId: string,
 ): Promise<CanvasWorkingSet> {
-  const base = await readCanvasBase(s, await canvasBaseKey(s, documentId));
-  return workingSetOver(s, documentId, base, await listSegments(s, documentId));
+  // The working set keeps this store for as long as the room is open, so the
+  // idle-connection sweep must not close it between edits.
+  pinSpaceDb(s.platform, s.spaceId);
+  try {
+    const base = await readCanvasBase(s, await canvasBaseKey(s, documentId));
+    return await workingSetOver(s, documentId, base, await listSegments(s, documentId));
+  } catch (error) {
+    unpinSpaceDb(s.platform, s.spaceId);
+    throw error;
+  }
 }
 
 async function workingSetOver(

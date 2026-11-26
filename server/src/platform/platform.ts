@@ -40,6 +40,8 @@ export interface SpaceDatabase {
   close(database: Database): void;
   /** Run `fn` as one transaction, as atomic as this storage allows. */
   transaction<T>(database: Database, fn: (tx: Database) => Promise<T>): Promise<T>;
+  /** Whether nothing is in flight on the connection, so closing it now cannot cut off a query. */
+  idle(database: Database): boolean;
   /** Take a deleted space's data out of reach until it is purged; false when there was none. */
   archive(spaceId: string): Promise<boolean>;
   /** Reclaim whatever a deleted space's database still occupies, index record included. */
@@ -117,7 +119,15 @@ export interface JobVm {
 
 /** Converts collaborative documents to and from their stored content, off the request path where the host can. */
 export interface DocSerializer {
-  serialize(format: CollaborationContentFormat, doc: Y.Doc): Promise<string>;
+  /**
+   * `sanitize` runs the stored-HTML allow-list in the worker, so the main thread
+   * never parses a large document just to reject markup the tree cannot hold.
+   */
+  serialize(
+    format: CollaborationContentFormat,
+    doc: Y.Doc,
+    options?: { sanitize?: boolean },
+  ): Promise<string>;
   deserialize(format: CollaborationContentFormat, content: string): Promise<Y.Doc>;
 }
 

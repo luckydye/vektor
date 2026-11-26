@@ -336,6 +336,12 @@ async function collectMetrics(platform: Platform): Promise<MetricLine[]> {
       value: memory.arrayBuffers,
     },
     {
+      name: "vektor_space_databases_open",
+      help: "Space database connections held open. Each local one owns worker threads.",
+      type: "gauge",
+      value: platform.state.spaceDbs.size,
+    },
+    {
       name: "vektor_job_queue_active",
       help: "Job executions currently holding a worker slot.",
       type: "gauge",
