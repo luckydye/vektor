@@ -282,9 +282,8 @@
   --shadow-large-ambient: rgb(0 0 0 / 0.18);
   --shadow-large-rim: transparent;
 
-  /* The mobile tab bar, and the height a full-height view has between it and the status bar. */
-  --tab-bar-height: calc(3.5rem + env(safe-area-inset-bottom));
-  --app-height: calc(100dvh - env(safe-area-inset-top) - var(--tab-bar-height));
+  /* The height a full-height view has below the status bar. */
+  --app-height: calc(100dvh - env(safe-area-inset-top));
 }
 
 @media (prefers-color-scheme: dark) {

@@ -247,7 +247,7 @@ export function SpaceApp(props: Props) {
         }}
       >
         <div
-          class="main-content relative h-full min-h-screen bg-neutral-10 max-md:pt-[env(safe-area-inset-top)] max-md:pb-(--tab-bar-height) transition-[transform,filter] md:transition-none"
+          class="main-content relative h-full min-h-screen bg-neutral-10 max-md:pt-[env(safe-area-inset-top)] transition-[transform,filter] md:transition-none"
           style={{
             transform:
               drawerReveal.progress() === 0

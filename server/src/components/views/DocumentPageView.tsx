@@ -553,9 +553,12 @@ export function DocumentPageView(props: Props) {
         <Show when={isWorkflow()}>
           <div id="workflow-breadcrumb-slot" class="shrink-0 empty:hidden" />
         </Show>
-        <div class="min-w-0 flex-1">{breadcrumbs()}</div>
+        <div class="min-w-0">{breadcrumbs()}</div>
+        <div
+          id="document-toolbar-slot"
+          class="pointer-events-auto shrink-0 empty:hidden"
+        />
       </div>
-      <div id="document-toolbar-slot" class="pointer-events-auto shrink-0 empty:hidden" />
       {documentActions()}
       <Show when={hasToolbarProperties()}>
         <Dialog

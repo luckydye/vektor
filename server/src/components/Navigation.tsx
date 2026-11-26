@@ -266,8 +266,7 @@ export function Navigation() {
         />
       </div>
 
-      {/* On mobile, search is a tab of its own. */}
-      <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs max-md:hidden">
+      <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
         {/* Collapsed, the sidebar has no room for results: the icon opens the palette. */}
         <button
           type="button"
@@ -278,7 +277,7 @@ export function Navigation() {
           <Icon name="search" />
         </button>
 
-        <label class="button-with-icon mb-xs flex min-h-[36px] @max-xs:hidden w-full cursor-text items-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none focus-within:border-primary-300 focus-within:bg-background">
+        <label class="button-with-icon mb-xs flex min-h-[36px] max-md:min-h-11 @max-xs:hidden w-full cursor-text items-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none focus-within:border-primary-300 focus-within:bg-background">
           <Icon name="search" />
           <input
             ref={searchInput}
@@ -343,7 +342,6 @@ export function Navigation() {
           >
             <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
               <MenuLink
-                class="max-md:hidden"
                 icon="home"
                 text={t("Activity")}
                 href={spacePath(currentSpace()?.slug, "/")}

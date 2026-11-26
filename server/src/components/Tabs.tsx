@@ -39,7 +39,7 @@ interface TabsProps {
 export function TabsList(props: { class?: string; children: JSX.Element }) {
   return (
     <a-tabs-list
-      class={`inline-flex h-9 max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-neutral-100 bg-background px-1 ${props.class ?? ""}`}
+      class={`inline-flex h-9 max-md:h-11 max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-neutral-100 bg-background px-1 ${props.class ?? ""}`}
     >
       {props.children}
     </a-tabs-list>
@@ -80,7 +80,7 @@ export function Tabs(props: TabsProps) {
  */
 function TabPill(props: { icon?: IconName; children: JSX.Element }) {
   return (
-    <span class="inline-flex h-7 items-center justify-center gap-2 rounded-md px-4 [[aria-selected=true]>&]:bg-neutral-100 [[selected]>&]:bg-neutral-100">
+    <span class="inline-flex h-7 max-md:h-9 items-center justify-center gap-2 rounded-md px-4 [[aria-selected=true]>&]:bg-neutral-100 [[selected]>&]:bg-neutral-100">
       <Show when={props.icon}>{(icon) => <Icon class="h-4 w-4" name={icon()} />}</Show>
       {props.children}
     </span>
@@ -88,7 +88,7 @@ function TabPill(props: { icon?: IconName; children: JSX.Element }) {
 }
 
 const TAB_CLASS =
-  "group/tab inline-flex h-7 items-center justify-center rounded-sm text-label opacity-60 hover:opacity-100 [&[aria-selected=true]]:opacity-100 [&[selected]]:opacity-100";
+  "group/tab inline-flex h-7 max-md:h-9 items-center justify-center rounded-sm text-label opacity-60 hover:opacity-100 [&[aria-selected=true]]:opacity-100 [&[selected]]:opacity-100";
 
 interface TabProps {
   /** Only the initially selected tab needs this; the element takes over after. */

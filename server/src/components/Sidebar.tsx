@@ -1,9 +1,7 @@
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { MOBILE_QUERY } from "#composeables/useIsMobile.ts";
-import { useRoute } from "#composeables/useRoute.ts";
-import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { readStored, storedText, writeStored } from "#utils/clientStorage.ts";
 import {
@@ -14,9 +12,7 @@ import {
   SIDEBAR_WIDTH_KEY,
   writeSidebarWidthCookie,
 } from "#utils/sidebarState.ts";
-import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
-import { type MobileTab, MobileTabBar } from "./MobileTabBar.tsx";
 import { Navigation } from "./Navigation.tsx";
 import { useSwipeDrawer } from "#composeables/useSwipeDrawer.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -55,37 +51,11 @@ export function Sidebar(props: Props) {
 
   const drawer = useSwipeDrawer({
     side: "left",
-    // Full screen on mobile, as the Documents tab's own page.
+    // Full screen on mobile, as a page of its own.
     size: () => window.innerWidth,
     openFromScreen: true,
     isOpen: isMobileOpen,
     setOpen: setIsMobileOpen,
-  });
-
-  const { pathname } = useRoute();
-  const { currentSpace } = useSpace();
-
-  const mobileTabs = createMemo((): MobileTab[] => {
-    const slug = currentSpace()?.slug;
-    const path = pathname().replace(/\/+$/, "");
-    const closeDrawer = () => setIsMobileOpen(false);
-    const isAt = (route: string) => path === spacePath(slug, route).replace(/\/+$/, "");
-    return [
-      {
-        icon: "home",
-        label: t("Activity"),
-        href: spacePath(slug, "/"),
-        onSelect: closeDrawer,
-        isActive: path === "" || isAt("/"),
-      },
-      {
-        icon: "search",
-        label: t("Search"),
-        href: spacePath(slug, "/search"),
-        onSelect: closeDrawer,
-        isActive: isAt("/search"),
-      },
-    ];
   });
 
   function closeMobileDrawerOnDesktop() {
@@ -209,10 +179,7 @@ export function Sidebar(props: Props) {
   });
 
   return (
-    <div>
-      <MobileTabBar tabs={mobileTabs()} />
-
-
+    <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: closes the drawer when a link inside it is followed. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: the links themselves are the keyboard path. */}
       <div
@@ -225,7 +192,7 @@ export function Sidebar(props: Props) {
         }}
         class={twMerge(
           "@container sidebar flex md:p-1.5",
-          "fixed top-0 bottom-(--tab-bar-height) md:bottom-0 w-full touch-pan-y transition-transform will-change-transform md:w-(--sidebar-rendered-width)",
+          "fixed top-0 bottom-0 w-full touch-pan-y transition-transform will-change-transform md:w-(--sidebar-rendered-width)",
           "z-40 md:z-10",
           "md:translate-x-0",
           isMobileOpen() || drawer.isDragging() ? "translate-x-0" : "-translate-x-full",
@@ -272,6 +239,6 @@ export function Sidebar(props: Props) {
           <div class="absolute inset-y-0 -right-1 w-3" />
         </div>
       </div>
-    </div>
+    </>
   );
 }
