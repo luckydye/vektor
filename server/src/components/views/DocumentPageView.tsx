@@ -500,6 +500,8 @@ export function DocumentPageView(props: Props) {
         class={twMerge(
           "pointer-events-auto flex min-w-0 items-center gap-1 rounded-lg border border-neutral-100 bg-background dark:border-neutral-200",
           hasToolbarProperties() && !inlineAddProperty() ? "h-9 px-1 pr-2" : "h-9 px-1",
+          // The crumbs are hidden here for these types, leaving only the empty pill.
+          !hasToolbarProperties() && "max-md:hidden",
         )}
       >
         <Show when={!isDraft()}>
