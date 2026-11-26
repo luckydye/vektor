@@ -63,8 +63,7 @@ export const extension = sqliteTable("extension", {
  * columns front to back, so anything after the large text columns is reached
  * only by walking their overflow pages. The small columns that listings and
  * the tree walk read come first; `content`, `search_text` and `search_embedding`
- * (~8KB each) stay last. Migration `document-column-order` brings existing
- * databases in line.
+ * (~8KB each) stay last.
  */
 export const document = sqliteTable("document", {
   id: text("id").primaryKey(),
@@ -176,9 +175,7 @@ export const acl = sqliteTable(
     /**
      * The credential this row is opened with, read according to `kind`: an
      * access token's SHA-256, or a share link's Argon2id password verifier; null
-     * on the ordinary grants that carry none. Unique — on the column for a table
-     * created from this schema, and the `acl_secret_unique` index for one
-     * migrated into it, because SQLite cannot ADD COLUMN with UNIQUE.
+     * on the ordinary grants that carry none.
      */
     secret: text("secret").unique(),
     /**
@@ -452,22 +449,6 @@ export const file = sqliteTable("file", {
   updatedAt: integer("updated_at", { mode: "timestamp" }),
   /** Text extracted from the file for search */
   extractedText: text("extracted_text"),
-});
-
-/**
- * @deprecated The tombstone queue was replaced by an in-memory purge queued on
- * delete; migration 21 drops this table. It stays declared so the already
- * shipped migration 20 can still create it.
- */
-export const transformTombstone = sqliteTable("transform_tombstone", {
-  path: text("path").primaryKey(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  /**
-   * Set after the first purge. The row stays until a second pass after the
-   * grace period, which catches a variant written by a transform that was
-   * already in flight when the delete landed.
-   */
-  purgedAt: integer("purged_at", { mode: "timestamp" }),
 });
 
 /**

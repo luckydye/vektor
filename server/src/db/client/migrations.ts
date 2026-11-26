@@ -1,22 +1,17 @@
 /**
- * The ordered schema migrations of a space database. A change to
- * `#db/schema/space.ts` reaches an existing database only through an entry
- * appended here; never edit one that has shipped.
+ * The schema of a space database. The single baseline below creates the current
+ * tables and indexes from `#db/schema/space.ts`; it is idempotent, so a database
+ * migrated before the squash converges on it too. Append a migration for every
+ * later schema change; never edit one that has shipped.
  */
 
-import { eq, isNull, sql } from "drizzle-orm";
-import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as spaceSchema from "#db/schema/space.ts";
-import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
 import type { Database } from "./connection.ts";
 import type { Migration } from "./migrator.ts";
-import { exec, many, one } from "./query.ts";
-import {
-  addColumnIfMissing,
-  columnExists,
-  generateCreateTableSQL,
-  renameColumnIfNeeded,
-} from "./schemaUtils.ts";
+import { exec } from "./query.ts";
+import { generateCreateTableSQL } from "./schemaUtils.ts";
 
 export async function createTables(db: Database, tables: SQLiteTable[]): Promise<void> {
   for (const table of tables) {
@@ -30,382 +25,55 @@ async function run(db: Database, statements: string[]): Promise<void> {
   }
 }
 
-/**
- * Derive `last_message_role` for sessions stored before the column existed. A
- * row with an empty or unreadable history keeps its null, which reads as no role.
- */
-async function backfillAIChatSessionRoles(db: Database): Promise<void> {
-  const rows = await db
-    .select({
-      id: spaceSchema.aiChatSession.id,
-      conversationHistory: spaceSchema.aiChatSession.conversationHistory,
-    })
-    .from(spaceSchema.aiChatSession)
-    .where(isNull(spaceSchema.aiChatSession.lastMessageRole));
-
-  for (const row of rows) {
-    let role: string | null = null;
-    try {
-      const parsed = JSON.parse(row.conversationHistory) as unknown;
-      if (Array.isArray(parsed)) role = lastMessageRoleOf(parsed);
-    } catch {
-      // An unreadable transcript is not worth failing the migration over.
-    }
-    if (!role) continue;
-
-    await db
-      .update(spaceSchema.aiChatSession)
-      .set({ lastMessageRole: role })
-      .where(eq(spaceSchema.aiChatSession.id, row.id));
-  }
-}
-
-/**
- * Every schema change made before databases were versioned. Idempotent, unlike
- * the migrations after it: a database predating the stamp replays it once.
- */
 async function baseline(db: Database): Promise<void> {
   await createTables(db, [
     spaceSchema.spaceMetadata,
+    spaceSchema.preference,
+    spaceSchema.comment,
+    spaceSchema.extension,
     spaceSchema.document,
     spaceSchema.revision,
     spaceSchema.property,
     spaceSchema.category,
-    spaceSchema.preference,
-    spaceSchema.extension,
-    spaceSchema.comment,
     spaceSchema.acl,
-    spaceSchema.auditLog,
-    spaceSchema.emailNotificationOutbox,
-    spaceSchema.aiChatSession,
-    spaceSchema.aiWeeklyUsage,
-    spaceSchema.workflowSchedule,
     spaceSchema.spaceSecret,
+    spaceSchema.spaceRunner,
     spaceSchema.oauthIntegration,
     spaceSchema.oauthIntegrationState,
+    spaceSchema.auditLog,
+    spaceSchema.emailNotificationOutbox,
+    spaceSchema.workflowSchedule,
+    spaceSchema.aiChatSession,
+    spaceSchema.aiWeeklyUsage,
     spaceSchema.file,
+    spaceSchema.series,
+    spaceSchema.seriesDirtyWindow,
   ]);
 
   await run(db, [
     "CREATE INDEX IF NOT EXISTS document_updated_at_idx ON document (updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)",
+    "CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)",
     "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
-    "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
+    "CREATE INDEX IF NOT EXISTS document_live_updated_idx ON document (updated_at DESC, id) WHERE CAST(archived AS INTEGER) = 0",
+    "CREATE INDEX IF NOT EXISTS document_live_type_updated_idx ON document ((lower(coalesce(nullif(type, ''), 'document'))), updated_at DESC, id) WHERE CAST(archived AS INTEGER) = 0",
     "CREATE UNIQUE INDEX IF NOT EXISTS revision_document_id_rev_unique ON revision (document_id, rev)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
+    "CREATE INDEX IF NOT EXISTS property_key_value_idx ON property (key, value)",
+    "CREATE INDEX IF NOT EXISTS property_key_type_idx ON property (key, type)",
     "CREATE INDEX IF NOT EXISTS audit_log_doc_id_created_at_idx ON audit_log (doc_id, created_at DESC, id DESC)",
     "CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at DESC, id DESC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS email_notification_outbox_event_recipient_unique ON email_notification_outbox (kind, source_id, recipient_user_id)",
     "CREATE INDEX IF NOT EXISTS email_notification_outbox_due_idx ON email_notification_outbox (status, available_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS workflow_schedule_source_property_unique ON workflow_schedule (source_document_id, property_key)",
     "CREATE INDEX IF NOT EXISTS workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
-  ]);
-
-  await renameColumnIfNeeded(db, spaceSchema.acl.secret, "token");
-  for (const column of [
-    spaceSchema.acl.name,
-    spaceSchema.acl.secret,
-    spaceSchema.acl.kind,
-    spaceSchema.acl.expiresAt,
-    spaceSchema.acl.lastUsedAt,
-    spaceSchema.acl.createdBy,
-    spaceSchema.acl.revokedAt,
-  ]) {
-    await addColumnIfMissing(db, column);
-  }
-  // Every credential row predating `kind` is an access token, and the principal
-  // is now the credential's own id rather than a `token:`-prefixed one.
-  await run(db, [
-    "UPDATE acl SET kind = 'token' WHERE kind IS NULL AND secret IS NOT NULL",
-    "UPDATE acl SET user_id = substr(user_id, 7) WHERE user_id LIKE 'token:%'",
-    // SQLite carries an index across a rename, so the old one still guards it.
-    "DROP INDEX IF EXISTS acl_token_unique",
-    "CREATE UNIQUE INDEX IF NOT EXISTS acl_secret_unique ON acl (secret)",
-    "DROP TABLE IF EXISTS access_token",
-  ]);
-
-  await addColumnIfMissing(db, spaceSchema.aiChatSession.lastMessageRole);
-  await backfillAIChatSessionRoles(db);
-
-  await addColumnIfMissing(db, spaceSchema.file.size);
-  await addColumnIfMissing(db, spaceSchema.file.width);
-  await addColumnIfMissing(db, spaceSchema.file.height);
-}
-
-/**
- * The space write counter behind `document.change_seq`, the entity tag every
- * conditional document request compares against.
- *
- * Documents that predate it are numbered least recently edited first, so the
- * counter ends at the document count and the next allocation is unused. The
- * backfill is skipped once the counter has moved, in case the step is ever
- * replayed against a database whose rows are already live.
- */
-async function documentChangeSeq(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
-  await addColumnIfMissing(db, spaceSchema.document.changeSeq);
-  await exec(
-    db,
-    sql.raw("CREATE INDEX IF NOT EXISTS property_key_value_idx ON property (key, value)"),
-  );
-
-  const [counter] = await db
-    .select({ changeSeq: spaceSchema.spaceMetadata.changeSeq })
-    .from(spaceSchema.spaceMetadata);
-  if (counter && counter.changeSeq > 0) return;
-
-  await run(db, [
-    `UPDATE document SET change_seq = (
-       SELECT seq FROM (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at ASC, id ASC) AS seq
-         FROM document
-       ) ranked WHERE ranked.id = document.id
-     )`,
-    "UPDATE space_metadata SET change_seq = (SELECT COUNT(*) FROM document)",
-  ]);
-}
-
-/**
- * `generateUniqueSlug` looks up one candidate slug at a time; without an
- * index each lookup is a full scan of every document in the space.
- */
-async function documentSlugIndex(db: Database): Promise<void> {
-  await exec(
-    db,
-    sql.raw("CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)"),
-  );
-}
-
-/**
- * Extension job runs are ephemeral — only full workflow runs are logged — so
- * the table and its history go away.
- */
-async function dropJobRuns(db: Database): Promise<void> {
-  await run(db, [
-    "DROP INDEX IF EXISTS job_run_queued_at_idx",
-    "DROP TABLE IF EXISTS job_run",
-  ]);
-}
-
-async function aiWeeklyUsage(db: Database): Promise<void> {
-  await createTables(db, [spaceSchema.aiWeeklyUsage]);
-  await run(db, [
-    "DELETE FROM preference WHERE key IN ('ai:provider', 'ai:model', 'ai:baseUrl')",
-    "DELETE FROM space_secret WHERE name = 'secrets:ai_api_key'",
-  ]);
-}
-
-async function timeSeries(db: Database): Promise<void> {
-  await createTables(db, [spaceSchema.series, spaceSchema.seriesDirtyWindow]);
-  await run(db, [
+    "CREATE UNIQUE INDEX IF NOT EXISTS space_secret_name_unique ON space_secret (name)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS runner_name_unique ON runner (name)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS oauth_integration_provider_user_unique ON oauth_integration (provider, user_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS oauth_integration_state_unique ON oauth_integration_state (state)",
     "CREATE UNIQUE INDEX IF NOT EXISTS series_name_unique ON series (name)",
     "CREATE INDEX IF NOT EXISTS series_document_id_idx ON series (document_id)",
   ]);
 }
 
-/** Lets the space-wide key listing read each key's type from the index alone. */
-async function propertyKeyTypeIndex(db: Database): Promise<void> {
-  await exec(
-    db,
-    sql.raw("CREATE INDEX IF NOT EXISTS property_key_type_idx ON property (key, type)"),
-  );
-}
-
-async function oauthIntegrationClientAndModel(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.oauthIntegration.clientId);
-  await addColumnIfMissing(db, spaceSchema.oauthIntegration.aiModel);
-}
-
-async function auditLogAttribution(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.auditLog.attribution);
-}
-
-async function aiChatSessionSource(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.aiChatSession.source);
-}
-
-async function aiChatSessionNode(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.aiChatSession.node);
-}
-
-async function runners(db: Database): Promise<void> {
-  await createTables(db, [spaceSchema.spaceRunner]);
-  await run(db, [
-    "CREATE UNIQUE INDEX IF NOT EXISTS runner_name_unique ON runner (name)",
-  ]);
-}
-
-async function documentContentKey(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.document.contentKey);
-}
-
-async function oneShotWorkflowSchedules(db: Database): Promise<void> {
-  // Rebuild to allow NULL cron_expression for one-shot schedules.
-  const create = generateCreateTableSQL(spaceSchema.workflowSchedule).replace(
-    "CREATE TABLE IF NOT EXISTS workflow_schedule",
-    "CREATE TABLE workflow_schedule_new",
-  );
-  const columns =
-    "id, document_id, cron_expression, timezone, inputs, enabled, next_run_at, last_run_at, created_at, updated_at, created_by";
-  await run(db, [
-    create,
-    `INSERT INTO workflow_schedule_new (${columns}) SELECT ${columns} FROM workflow_schedule`,
-    "DROP TABLE workflow_schedule",
-    "ALTER TABLE workflow_schedule_new RENAME TO workflow_schedule",
-  ]);
-  await migrateDeprecatedPropertyTriggers(db);
-  await run(db, [
-    "CREATE UNIQUE INDEX workflow_schedule_source_property_unique ON workflow_schedule (source_document_id, property_key)",
-    "CREATE INDEX workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
-  ]);
-}
-
-/** @deprecated Only migrates databases opened by the branch's former migration 11. */
-async function migrateDeprecatedPropertyTriggers(db: Database): Promise<void> {
-  const oldTable = await one<{ name: string }>(
-    db,
-    sql`
-    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'property_trigger'
-  `,
-  );
-  if (!oldTable) return;
-  await run(db, [
-    `INSERT INTO workflow_schedule (
-      id, document_id, source_document_id, property_key, inputs, enabled,
-      next_run_at, last_run_at, created_by, created_at, updated_at
-    ) SELECT
-      id, workflow_id, document_id, property_key,
-      json_object('documentId', document_id, 'propertyKey', property_key),
-      fired_at IS NULL AND fire_at IS NOT NULL,
-      fire_at, fired_at, created_by, updated_at, updated_at
-    FROM property_trigger`,
-    "DROP TABLE property_trigger",
-  ]);
-}
-
-async function agentSchedules(db: Database): Promise<void> {
-  // Rebuild to allow NULL document_id and add prompt for agent schedules.
-  const create = generateCreateTableSQL(spaceSchema.workflowSchedule).replace(
-    "CREATE TABLE IF NOT EXISTS workflow_schedule",
-    "CREATE TABLE workflow_schedule_new",
-  );
-  const columns =
-    "id, document_id, cron_expression, source_document_id, property_key, timezone, inputs, enabled, next_run_at, last_run_at, created_at, updated_at, created_by";
-  await run(db, [
-    create,
-    `INSERT INTO workflow_schedule_new (${columns}) SELECT ${columns} FROM workflow_schedule`,
-    "DROP TABLE workflow_schedule",
-    "ALTER TABLE workflow_schedule_new RENAME TO workflow_schedule",
-    "CREATE UNIQUE INDEX workflow_schedule_source_property_unique ON workflow_schedule (source_document_id, property_key)",
-    "CREATE INDEX workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
-  ]);
-}
-
-/**
- * Repairs databases stamped as having `agent-schedules` that never got its
- * rebuilt table (no `prompt` column), which breaks every schedule query.
- */
-async function repairAgentSchedules(db: Database): Promise<void> {
-  if (await columnExists(db, "workflow_schedule", "prompt")) return;
-  await agentSchedules(db);
-}
-
-/**
- * `archived` is stored loosely (`'0'`, `'0.0'`, ...), so live documents are
- * selected by `CAST(archived AS INTEGER) = 0` (see `nonArchivedDocumentCondition`).
- * These partial indexes serve that predicate: newest-first listing, and the
- * same per type, so a filtered listing reads its page instead of the space.
- */
-async function liveDocumentIndexes(db: Database): Promise<void> {
-  await run(db, [
-    "CREATE INDEX IF NOT EXISTS document_live_updated_idx ON document (updated_at DESC, id) WHERE CAST(archived AS INTEGER) = 0",
-    "CREATE INDEX IF NOT EXISTS document_live_type_updated_idx ON document ((lower(coalesce(nullif(type, ''), 'document'))), updated_at DESC, id) WHERE CAST(archived AS INTEGER) = 0",
-  ]);
-}
-
-async function categoryDocumentListing(db: Database): Promise<void> {
-  await addColumnIfMissing(db, spaceSchema.category.documentSort);
-  await addColumnIfMissing(db, spaceSchema.category.documentLimit);
-}
-
-async function transformTombstones(db: Database): Promise<void> {
-  await createTables(db, [spaceSchema.transformTombstone]);
-}
-
-async function dropTransformTombstones(db: Database): Promise<void> {
-  await run(db, ["DROP TABLE IF EXISTS transform_tombstone"]);
-}
-
-/**
- * Rebuild `document` in the schema's column order, which puts the small columns
- * ahead of `content`, `search_text` and `search_embedding`. In the old order
- * `parent_id`, `created_at` and `updated_at` sat behind ~10KB of search data, so
- * reading them walked every row's overflow pages — a scan of all live
- * documents' parents went from ~1.4s cold to ~0.2s here.
- *
- * The table's own indexes and triggers are read back from the catalog and
- * recreated, whichever of them this database has.
- */
-async function documentColumnOrder(db: Database): Promise<void> {
-  // DROP TABLE runs an implicit DELETE, which with foreign keys enforced would
-  // cascade through every property and revision of the space.
-  const [foreignKeys] = await many<{ foreign_keys: number }>(
-    db,
-    sql.raw("PRAGMA foreign_keys"),
-  );
-  if (Number(foreignKeys?.foreign_keys) !== 0) {
-    throw new Error("document-column-order must run with foreign keys disabled");
-  }
-
-  const dependents = await many<{ sql: string }>(
-    db,
-    sql.raw(
-      "SELECT sql FROM sqlite_master WHERE tbl_name = 'document' AND type IN ('index', 'trigger') AND sql IS NOT NULL",
-    ),
-  );
-  const columns = getTableConfig(spaceSchema.document)
-    .columns.map((column) => `"${column.name}"`)
-    .join(", ");
-
-  await run(db, [
-    generateCreateTableSQL(spaceSchema.document).replace(
-      "CREATE TABLE IF NOT EXISTS document",
-      "CREATE TABLE document_new",
-    ),
-    `INSERT INTO document_new (${columns}) SELECT ${columns} FROM document`,
-    // The rebuilt table declares `parent_id`'s reference, which the oldest
-    // databases never had; a parent already gone is what ON DELETE SET NULL
-    // would have left.
-    "UPDATE document_new SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM document_new)",
-    "DROP TABLE document",
-    "ALTER TABLE document_new RENAME TO document",
-    ...dependents.map((row) => row.sql),
-  ]);
-}
-
-export const spaceMigrations: Migration[] = [
-  { id: 1, name: "baseline", up: baseline },
-  { id: 2, name: "document-change-seq", up: documentChangeSeq },
-  { id: 3, name: "document-slug-index", up: documentSlugIndex },
-  { id: 4, name: "drop-job-runs", up: dropJobRuns },
-  { id: 5, name: "ai-weekly-usage", up: aiWeeklyUsage },
-  { id: 6, name: "time-series", up: timeSeries },
-  { id: 7, name: "property-key-type-index", up: propertyKeyTypeIndex },
-  {
-    id: 8,
-    name: "oauth-integration-client-and-model",
-    up: oauthIntegrationClientAndModel,
-  },
-  { id: 9, name: "audit-log-attribution", up: auditLogAttribution },
-  { id: 10, name: "ai-chat-session-source", up: aiChatSessionSource },
-  // 11 was the superseded property-trigger table; 12 also upgrades those databases.
-  { id: 12, name: "one-shot-workflow-schedules", up: oneShotWorkflowSchedules },
-  { id: 13, name: "document-content-key", up: documentContentKey },
-  { id: 14, name: "agent-schedules", up: agentSchedules },
-  { id: 15, name: "ai-chat-session-node", up: aiChatSessionNode },
-  { id: 16, name: "runners", up: runners },
-  { id: 17, name: "repair-agent-schedules", up: repairAgentSchedules },
-  { id: 18, name: "live-document-indexes", up: liveDocumentIndexes },
-  { id: 19, name: "category-document-listing", up: categoryDocumentListing },
-  { id: 20, name: "transform-tombstones", up: transformTombstones },
-  { id: 21, name: "drop-transform-tombstones", up: dropTransformTombstones },
-  { id: 22, name: "document-column-order", up: documentColumnOrder },
-];
+export const spaceMigrations: Migration[] = [{ id: 23, name: "baseline", up: baseline }];
