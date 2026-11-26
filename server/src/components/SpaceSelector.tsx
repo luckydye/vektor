@@ -109,7 +109,7 @@ export function SpaceSelector(props: Props) {
                           props.onSelect?.(space());
                           dismissPopover(event.target);
                         }}
-                        class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors hover:bg-neutral-100 max-md:min-h-13 max-md:gap-3xs"
+                        class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors hover:bg-black/6 active:bg-black/10 max-md:min-h-13 max-md:gap-3xs dark:hover:bg-white/10 dark:active:bg-white/16"
                         classList={{
                           "bg-primary-100": space().id === props.current?.id,
                         }}
@@ -149,7 +149,7 @@ export function SpaceSelector(props: Props) {
                       {(href) => (
                         <a
                           href={href()}
-                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100 max-md:min-h-12"
+                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-black/6 active:bg-black/10 max-md:min-h-12 dark:hover:bg-white/10 dark:active:bg-white/16"
                         >
                           <Icon name="grid-grid" />
                           <span class="font-medium text-size-small leading-none max-md:text-size-large">
@@ -166,7 +166,7 @@ export function SpaceSelector(props: Props) {
                           props.onCreate?.();
                           dismissPopover(event.target);
                         }}
-                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100 max-md:min-h-12"
+                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-black/6 active:bg-black/10 max-md:min-h-12 dark:hover:bg-white/10 dark:active:bg-white/16"
                       >
                         <Icon name="add" />
                         <span class="font-medium text-size-small leading-none max-md:text-size-large">
@@ -182,7 +182,7 @@ export function SpaceSelector(props: Props) {
                           dismissPopover(event.target);
                           props.onLeave?.();
                         }}
-                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-red-600 transition-colors hover:bg-red-50 max-md:min-h-12"
+                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-red-600 transition-colors hover:bg-red-50 active:bg-red-100 max-md:min-h-12 dark:hover:bg-red-950/40 dark:active:bg-red-900/40"
                       >
                         <Icon name="sign-out" />
                         <span class="font-medium text-size-small leading-none max-md:text-size-large">
