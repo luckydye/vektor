@@ -282,13 +282,15 @@ export function Search(props: Props) {
               {(group) => (
                 <div>
                   <div class="mb-2 flex items-center gap-2">
-                    {/* The space's own mark, as the switcher shows it: the logo
-                        on its brand colour. The name repeats it in words, for a
-                        space with no mark of its own and for anyone who cannot
-                        tell them apart. */}
+                    {/* The space's own mark, as the switcher shows it: the logo or,
+                        with no mark of its own, the generic one on its brand
+                        colour. The name repeats it in words anyway. */}
                     <div
-                      class="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-primary-500"
-                      style={{ "background-color": group.color }}
+                      class="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-sm"
+                      classList={{ "bg-primary-500": !group.logoSvg }}
+                      style={
+                        group.logoSvg ? undefined : { "background-color": group.color }
+                      }
                     >
                       <SpaceLogo
                         logoSvg={group.logoSvg}

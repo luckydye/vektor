@@ -140,8 +140,13 @@ function SpaceCard(props: {
 
       <div class="flex flex-1 flex-col px-3xs pb-3xs">
         <div
-          class="-mt-7 mb-4xs flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-xl border-2 border-neutral-25 bg-primary-500"
-          style={{ "background-color": props.space.color }}
+          class="-mt-7 mb-4xs flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-xl border-2 border-neutral-25"
+          classList={{ "bg-primary-500": !props.space.logoSvg }}
+          style={
+            props.space.logoSvg
+              ? undefined
+              : { "background-color": props.space.color }
+          }
         >
           <SpaceLogo logoSvg={props.space.logoSvg} class="h-full w-full object-cover" />
         </div>

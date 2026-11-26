@@ -64,11 +64,17 @@ export function SpaceSelector(props: Props) {
             <div class="flex items-center gap-3xs rounded-md px-4xs py-4xs transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50">
               <div class="flex w-full cursor-pointer gap-3xs">
                 <div
-                  class="flex aspect-square w-[2.375rem] flex-none items-center justify-center overflow-hidden rounded-md bg-primary-500"
+                  class="flex aspect-square w-[2.375rem] flex-none items-center justify-center overflow-hidden rounded-md"
+                  classList={{ "bg-primary-500": !props.current?.logoSvg }}
                   // `background-color`, not the `background` shorthand: the
                   // shorthand also accepts `url()`, which turns a stored brand
-                  // colour into a request to whatever host it names.
-                  style={{ "background-color": props.current?.color }}
+                  // colour into a request to whatever host it names. A space
+                  // with a mark of its own keeps a bare tile behind it.
+                  style={
+                    props.current?.logoSvg
+                      ? undefined
+                      : { "background-color": props.current?.color }
+                  }
                 >
                   <SpaceLogo
                     logoSvg={props.current?.logoSvg}
@@ -110,7 +116,12 @@ export function SpaceSelector(props: Props) {
                       >
                         <div
                           class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-sm max-md:h-8 max-md:w-8 max-md:rounded-md"
-                          style={{ "background-color": space().color || "#6366f1" }}
+                          classList={{ "bg-primary-500": !space().logoSvg }}
+                          style={
+                            space().logoSvg
+                              ? undefined
+                              : { "background-color": space().color || "#6366f1" }
+                          }
                         >
                           <SpaceLogo
                             logoSvg={space().logoSvg}
