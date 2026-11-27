@@ -8,82 +8,96 @@ Replace private AI chats with persistent, space-wide bots. Each bot has a name, 
 
 A bot is a session with a persona. A thread is a session with a parent. No `bot` table.
 
-| Surface | Session row |
-| --- | --- |
-| Bot channel | `visibility: space`, no parent |
-| Thread | `visibility: space`, `parentSessionId` + `threadRootSeq` |
-| Legacy chat / job session | `visibility: private`, never listed |
+| Kind | Row | Who uses it |
+| --- | --- | --- |
+| Bot channel | `visibility: space`, no parent | the UI |
+| Thread | `visibility: space`, `parentSessionId` + `threadRootSeq` | the UI |
+| Private session | `visibility: private` | jobs, schedules, the `vektor agent` CLI; never listed |
 
-- One bot = one channel. `title` is the bot's name; a thread's title is the root message's opening text.
-- Threads are one level deep, and `threadRootSeq` must belong to the parent. Deleting a channel deletes its threads and messages.
+- One bot = one channel. `title` is the bot's name.
+- Threads:
+  - one level deep: the parent must be a channel
+  - `threadRootSeq` must be a visible row of the parent
+  - the server derives the title from the root message
+- Deleting a channel deletes its threads and all their messages in one transaction.
 - No channel is created automatically. An empty space shows "Create bot" to editors.
-- The floating assistant, the session picker, and private chats are removed. Channels are the only AI surface.
+- The floating assistant, the session picker, and private chats in the UI are removed. Channels are the only AI surface in the UI. Private sessions remain only for API callers.
 
 ### Rename
 
-`ai_chat_session` → `chat_session`, `aiChatSession` → `chatSession`, `db/space/aiChatSessions.ts` → `chatSessions.ts`, `AIChatSession*` → `ChatSession*`, `/ai-chat/sessions` → `/chat/sessions`. All in one step.
+`ai_chat_session` → `chat_session`, `aiChatSession` → `chatSession`, `db/space/aiChatSessions.ts` → `chatSessions.ts`, `AIChatSession*` → `ChatSession*`, `/ai-chat/sessions` → `/chat/sessions`. This includes `ApiClient.ts` and the `api/` package. All in one step.
 
 ### `chat_session` columns added
 
 ```
-visibility        "space" | "private"   default "private"; session/new sets "space"
-access            "editors" | "members" who may post; default "members", "editors" when on a node
+visibility        "space" | "private"   default "private"
+access            "viewer" | "editor"   minimum space role to post; forced "editor" on a node
 rolePrompt        text | null           null = general assistant
 avatar            text | null
 memory            text                  default ''
 memoryThroughSeq  integer               default 0
-repliedThroughSeq integer               default 0; last message the bot has answered
+repliedThroughSeq integer               default 0; last user row answered
 parentSessionId   text | null
 threadRootSeq     integer | null
 nodeAgent         text | null           pinned agent on `node`
 ```
 
-`shellSnapshot`, `source`, `node`, `createdBy` (the bot owner), and timestamps stay. `messages`, `conversationHistory`, and `lastMessageRole` become `@deprecated`.
+`shellSnapshot`, `source`, `node`, `createdBy` (the bot owner), and timestamps stay. `messages`, `conversationHistory`, and `lastMessageRole` become `@deprecated`. The first two are `NOT NULL` without a default, so inserts keep writing `'[]'` until they are dropped.
 
 ### `chat_message`
 
 One append-only log in the model's message shape. The UI renders the same rows.
 
 ```
-seq         integer primary key autoincrement   (global, so threadRootSeq is unambiguous)
-sessionId   text, index (sessionId, seq)
-role        "user" | "assistant" | "tool"
-authorId    text | null                         null for the bot
-content     text
-visible     boolean                             false for model-only rows, e.g. additional context
-metadata    text                                attachments, images, tool calls / tool call id, error flag
+seq        integer primary key autoincrement   global, so threadRootSeq is unambiguous
+sessionId  text, index (session_id, seq)
+role       "user" | "assistant" | "tool"
+authorId   text | null                         the poster; null for the bot
+content    text
+visible    boolean                             false for model-only rows, e.g. additional context
+metadata   text                                attachments, images, tool calls, error flag, and the poster's documentId and timeZone
 createdAt
 ```
 
-The UI shows visible rows. The model gets the composed system prompt (below), plus `memory`, plus the rows after `memoryThroughSeq`. No system prompt is stored.
+- A "user row" is `role: user` with `authorId` set. Only user rows count toward replies.
+- The model gets the composed prompt (below), then `memory`, then the rows after `memoryThroughSeq`. Each user row goes to the model prefixed `Name: `, on the server and on nodes alike.
+- A turn's rows are inserted when the turn ends, as today. The live view comes from the stream.
+
+## Identity
+
+- **Private session:** runs as its creator, exactly as today. That means the creator's job token, provider, profile, and integrations, and only the creator can access it.
+- **Channel or thread:** runs as the bot.
+  - The bot is its own ACL principal (`bot:<sessionId>`), granted `access` on the space the way access tokens get their own id (`guards.ts:307`).
+  - Its job token carries that principal. The existing ACL checks then limit it to what a plain viewer or editor of the space can see and do, on every path, with no new token claim.
+  - Provider and node: the owner's.
+  - Profile and personal integrations: none.
+  - If the owner is no longer an editor of the space, turns fail with an error row.
 
 ## Turns
 
-- A turn runs **as the bot**, not as whoever posted:
-  - the AI provider is the bot owner's
-  - the node is the owner's
-  - the job token belongs to the owner, limited to documents the whole space can view
-  - documents can be written only when `access` is `editors`
-  - personal OAuth integrations and the user profile are not used
-- One turn at a time per session, keyed `spaceId:sessionId`. Posting appends a row. If the session is idle, a turn starts; when it ends, the bot answers every row after `repliedThroughSeq`, then advances it.
-- A failed or cancelled turn writes an error row and advances `repliedThroughSeq`. It is never retried.
-- On startup, sessions with unanswered rows get an "interrupted by a restart" row, and `repliedThroughSeq` advances. This adapts `failInterruptedAIChatTurns`.
-- Anyone who can post can cancel.
-- The channel and its threads are separate sessions, so their turns run in parallel.
+All sessions go through one loop per `spaceId:sessionId`, registered without an await between the check and the registration, as `startChatTurn` does today.
 
-## Streaming
+1. Posting appends a user row. If no turn is registered, register one.
+2. The turn records `target`, the highest user-row `seq`, and answers every user row up to it. Rows posted after that wait for the next round.
+3. When the turn ends, write its rows, then set `repliedThroughSeq = target`. Failed and cancelled turns write an error row and also advance; nothing is retried.
+4. Compact memory if needed (see Memory).
+5. If a user row exists past `target`, run again from step 2 inside the same registry entry. Mark it done only after this final check finds nothing.
 
-- `session/prompt` appends and returns `{ seq }`; it does not stream.
-- A realtime event fires on turn start, turn end, and every message insert. Any viewer attaches to the running turn with `session/load` (existing turn registry and SSE replay), and refetches rows when the turn ends.
+- `session/prompt` appends, then streams the round that answers your row. `agentPrompt`, the CLI, and schedules keep working unchanged. Other viewers attach with `session/load`.
+- A realtime event fires when a round starts and ends, so the sidebar and other viewers refresh.
+- Anyone who can post can cancel. A cancel stops the whole batch, including other people's rows, and those rows count as answered.
+- On startup, sessions with user rows past `repliedThroughSeq` get an "interrupted by a restart" row, and the watermark advances.
+- A channel and its threads are separate sessions, so their turns run in parallel.
 
 ## Memory
 
 Fully automatic; no UI.
 
-1. After a turn, if rows after `memoryThroughSeq` exceed a token budget, summarize the oldest chunk into `memory` and advance `memoryThroughSeq`.
-2. Single-flight per session and idempotent through the watermark. Uses `callModel` + `reserveAITokens` with the bot owner's provider.
-3. A thread's prompt also gets the parent's memory and the root message. In v1, threads do not fold back into the channel's memory.
-4. The profile updater does not run for channel turns.
+- Memory is compacted at step 4 of the turn loop. That makes it exclusive with turns, so a turn never sees memory and its watermark out of step.
+- If rows after `memoryThroughSeq` exceed a token budget, summarize the oldest chunk into `memory` and advance `memoryThroughSeq`. Chunks end just before a user row, so a tool call is never split from its result.
+- Uses `callModel` + `reserveAITokens` with the session's provider.
+- A thread's prompt also gets the parent's memory and the root message.
+- The profile updater runs only for private sessions.
 
 ## Prompt
 
@@ -92,41 +106,47 @@ core system prompt
   + ## Bot Role            rolePrompt
   + ## Bot Memory          memory (+ parent memory and root message for threads)
   + ## Space Instructions
-turn context: speaker names, and the document if one is attached (space-visible documents only)
+turn context: each user row's own documentId and timeZone
 ```
 
-Built fresh every turn.
+Built fresh every turn. In channels, attached documents are visible to the model only if the bot principal can read them.
 
 ## Nodes
 
-- A bot channel is created on one of the creator's own nodes (`agentRunners`), with a pinned `nodeAgent`. Creating it shows a warning that space members will run commands on that machine.
-- Threads copy `node` + `nodeAgent`. Nothing falls back silently: a missing node or agent fails the turn with a visible error row.
-- Runner sessions are keyed by session, without `userId` in `chatKey`. They are opened with the owner's scope and the bot token, so identity never changes between turns, and the existing mailbox and screen checks still hold. Only the owner sees the screen.
+- A bot is created on a runner the creator may use (`agentRunners`: their own nodes, plus the space's HTTP runners when they own the space), with a pinned `nodeAgent`. `access` is forced to `editor`. A warning says space editors will run commands on that machine.
+- Threads copy `node` + `nodeAgent`. A missing node or agent fails the turn with an error row; nothing falls back silently.
+- Runner sessions are keyed by session (drop `userId` from `chatKey`) and opened with the owner's scope and the bot's token. Identity never changes between turns, so the mailbox and screen checks still hold, and only the owner sees the screen.
 - `promptChat` and `open` take the pinned agent instead of `agents[0]`.
-- On a fresh runner session, send a preamble: role, memory, the root message (for threads), and the last few author-prefixed rows. Later prompts are `Speaker: message`. When a session idles out, the next prompt rehydrates it the same way.
+- Whenever `promptChat` reports `fresh` (first prompt, idle timeout, or the agent failed), send a preamble: role, memory, the root message for threads, and the last few `Name:`-prefixed rows. Remove the "does not remember earlier messages" status in `runners/chat.ts`.
 - Offline, at-capacity, and timeout show as error rows.
 
 ## API
 
-- `session/new` accepts `rolePrompt`, `avatar`, `access`, `parentSessionId`, `threadRootSeq`, `node`, and `nodeAgent`. Requires editor; threads require posting rights.
-- `session/prompt`, `load`, and `cancel` check channel access instead of `createdBy`.
+- `session/new` accepts `visibility`, `rolePrompt`, `avatar`, `access`, `parentSessionId`, `node`, and `nodeAgent`.
+  - Visibility defaults to `private`.
+  - Creating a channel requires editor. Creating a thread requires posting rights on the parent.
+  - `title` is required for channels and private sessions, and derived for threads.
+- `session/prompt`, `load`, and `cancel` check channel access for space sessions and `createdBy` for private ones.
 - Session list: channels with thread counts. Threads are listed by `parentSessionId`. Messages have a paged list endpoint.
-- Editing and deleting a bot requires editor.
-- Agent schedules get an optional target `sessionId`, so they post into a channel.
+- Reading a channel requires viewer. Editing and deleting a bot requires editor.
+- Agent schedules get an optional target `sessionId`. They post through `agentPrompt`, so the schedule's user must be allowed to post there.
 
 ## UI
 
 - Sidebar section with the bot channels. A channel shows the timeline, avatars, composer, streaming state, and node status.
 - Bot editor: name, avatar, role prompt, run target, access.
 - "Reply in thread" on a message, a reply count on the root, and the thread in a side pane.
+- On realtime "round started", viewers who didn't post attach with `session/load`.
 
 ## Migration
 
-Migration 24 must work both on fresh databases (where the baseline already creates `chat_session`) and on old ones:
+Migration 24 must work on fresh databases (where the baseline already creates `chat_session`) and on old ones:
 
-1. If `ai_chat_session` exists and `chat_session` does not, rename it. If both exist (a database from before the squash), drop the empty `chat_session` and rename.
-2. Add the columns with the `columnExists` helpers. Create `chat_message`.
-3. Do not backfill. Existing chats stay as hidden `private` rows. A follow-up migration drops them along with the deprecated JSON columns.
+1. If `ai_chat_session` exists:
+   - If `chat_session` also exists (a database from before the squash), drop it if it is empty and throw if it is not.
+   - Rename `ai_chat_session` to `chat_session`.
+2. Add the columns with the `columnExists` helpers. Create `chat_message` and its `(session_id, seq)` index with raw SQL.
+3. Do not backfill. Existing sessions stay as hidden `private` rows without usable history; reusing an old job `sessionId` starts fresh. A follow-up migration drops them along with the deprecated columns.
 
 ## Later
 
