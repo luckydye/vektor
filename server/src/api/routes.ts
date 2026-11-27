@@ -17,9 +17,9 @@ import * as accessTokens from "./routes/spaces/access-tokens.ts";
 import * as agentSessionMessages from "./routes/spaces/agent-session-messages.ts";
 import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
 import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
-import * as aiChatSession from "./routes/spaces/ai-chat-session.ts";
-import * as aiChatSessionContext from "./routes/spaces/ai-chat-session-context.ts";
-import * as aiChatSessions from "./routes/spaces/ai-chat-sessions.ts";
+import * as chatSession from "./routes/spaces/chat-session.ts";
+import * as chatSessionMessages from "./routes/spaces/chat-session-messages.ts";
+import * as chatSessions from "./routes/spaces/chat-sessions.ts";
 import * as spaceAuditLogs from "./routes/spaces/audit-logs.ts";
 import * as availableRunners from "./routes/spaces/available-runners.ts";
 import * as categories from "./routes/spaces/categories.ts";
@@ -128,14 +128,14 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]", module: accessToken },
 
-  { pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions", module: aiChatSessions },
+  { pattern: "/api/v1/spaces/[spaceId]/chat/sessions", module: chatSessions },
   {
-    pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]",
-    module: aiChatSession,
+    pattern: "/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]",
+    module: chatSession,
   },
   {
-    pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]/context",
-    module: aiChatSessionContext,
+    pattern: "/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/messages",
+    module: chatSessionMessages,
   },
 
   { pattern: "/api/v1/spaces/[spaceId]/categories", module: categories },

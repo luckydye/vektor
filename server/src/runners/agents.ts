@@ -74,7 +74,10 @@ type Turn = {
 type AgentSession = {
   id: string;
   spaceId: string;
+  /** Whose runners it runs on, and who may open its screen. */
   userId: string;
+  /** The principal `jobToken` carries: the user, or a bot. */
+  actor: string;
   runner: Runner;
   agent: string;
   /** What the agent's Vektor tools act with. */
@@ -100,8 +103,9 @@ const sessions = new Map<string, AgentSession>();
 /** A chat's session, by chat key. */
 const chats = new Map<string, string>();
 
-const chatKey = (scope: { spaceId: string; userId: string; chatId: string }) =>
-  `${scope.spaceId}\0${scope.userId}\0${scope.chatId}`;
+type ChatScope = { spaceId: string; chatId: string };
+
+const chatKey = (scope: ChatScope) => `${scope.spaceId}\0${scope.chatId}`;
 
 const isOpen = (session: AgentSession) =>
   session.status === "running" || session.status === "idle";
@@ -135,6 +139,7 @@ async function open(
   request: {
     spaceId: string;
     userId: string;
+    actor: string;
     jobToken: string;
     runner?: string;
     agent?: string;
@@ -170,6 +175,7 @@ async function open(
     id: `as-${randomUUID()}`,
     spaceId: request.spaceId,
     userId: request.userId,
+    actor: request.actor,
     runner,
     agent,
     jobToken: request.jobToken,
@@ -287,24 +293,27 @@ function endTurn(session: AgentSession, result: PromptResult) {
   session.idleTimer.unref?.();
 }
 
-function chatSession(scope: { spaceId: string; userId: string; chatId: string }) {
+function chatSession(scope: ChatScope) {
   return sessions.get(chats.get(chatKey(scope)) ?? "");
 }
 
 /**
- * Starts one prompt of a chat on its session at `runner`, opening one when the
- * chat has none: on its first prompt, or after the session ended. `fresh`
- * says a session was opened, so it remembers no earlier prompt.
+ * Starts one prompt of a chat on its session at `runner`, opening one with the
+ * chat's pinned `agent` when it has none: on its first prompt, after an idle
+ * timeout, or after the agent failed. A fresh session remembers nothing, so it
+ * is sent `preamble` ahead of the prompt.
  */
 export async function promptChat(
   platform: Platform,
-  request: {
-    spaceId: string;
+  request: ChatScope & {
+    /** The owner, whose runners the chat may use. */
     userId: string;
-    chatId: string;
+    actor: string;
     runner: string;
+    agent: string;
     jobToken: string;
     text: string;
+    preamble: string;
   } & Turn,
 ): Promise<{ fresh: boolean; result: Promise<PromptResult> }> {
   const existing = chatSession(request);
@@ -313,19 +322,23 @@ export async function promptChat(
     throw new Error("A prompt is already running in this chat.");
   session.turn = { onUpdate: request.onUpdate, onScreen: request.onScreen };
   if (session.screen) request.onScreen(session.id);
-  const result = prompt(session, request.text);
+  const text =
+    existing || !request.preamble
+      ? request.text
+      : `${request.preamble}\n\n## New messages\n${request.text}`;
+  const result = prompt(session, text);
   void result.then((ended) => endTurn(session, ended));
   return { fresh: !existing, result };
 }
 
 /** Stops a chat's prompt in flight; its session stays open. */
-export function cancelChat(scope: { spaceId: string; userId: string; chatId: string }) {
+export function cancelChat(scope: ChatScope) {
   const session = chatSession(scope);
   if (session?.status === "running") session.cancelTurn?.();
 }
 
 /** Ends a chat's session, if it has one. */
-export function closeChat(scope: { spaceId: string; userId: string; chatId: string }) {
+export function closeChat(scope: ChatScope) {
   const session = chatSession(scope);
   if (session) settle(session, "cancelled", "The chat was closed.");
 }
@@ -348,7 +361,7 @@ export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
       })),
 
     async startSession(request) {
-      const session = await open(platform, request, null);
+      const session = await open(platform, { ...request, actor: request.userId }, null);
       void prompt(session, request.task).then((result) => {
         if (result.stopReason === "end_turn") settle(session, "done", session.output);
         else if (result.stopReason === "cancelled")
@@ -399,15 +412,16 @@ export function createAgentRunnerHost(platform: Platform): AgentRunnerHost {
 }
 
 /**
- * What the agent's MCP tools reach. Scoped to the session's own user and
- * space, so a job token for another session cannot read or write this one.
+ * What the agent's MCP tools reach. Scoped to the principal the session's job
+ * token carries and its space, so a job token for another session cannot read
+ * or write this one.
  */
 export function agentMailbox(
   sessionId: string,
   scope: { spaceId: string; userId: string | null },
 ) {
   const session = sessions.get(sessionId);
-  if (!session || session.spaceId !== scope.spaceId || session.userId !== scope.userId) {
+  if (!session || session.spaceId !== scope.spaceId || session.actor !== scope.userId) {
     throw new Error(`No agent session "${sessionId}".`);
   }
   return {

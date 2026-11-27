@@ -1,7 +1,8 @@
 /**
  * /api/v1/spaces/:spaceId/available-runners?for=jobs|agents
  *
- * GET: the names of the runners and nodes the caller may run jobs or agents on
+ * GET: the names of the runners and nodes the caller may run jobs or agents on,
+ *      and for agents which agents each offers
  */
 
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
@@ -39,9 +40,16 @@ export const GET: ApiRouteHandler = (context) =>
     if (!userId)
       throw forbiddenResponse("Runs here are a user's; this job token has none");
     const scope = { spaceId, userId };
-    const runners =
-      kind === "jobs"
-        ? await jobRunners(context.var.platform, scope)
-        : await agentRunners(context.var.platform, scope);
-    return jsonResponse({ runners: runners.map((runner) => runner.name) });
+    if (kind === "jobs") {
+      const runners = await jobRunners(context.var.platform, scope);
+      return jsonResponse({ runners: runners.map((runner) => runner.name) });
+    }
+    const runners = await agentRunners(context.var.platform, scope);
+    return jsonResponse({
+      runners: runners.map((runner) => runner.name),
+      // What a chat on each may pin.
+      agents: Object.fromEntries(
+        runners.map((runner) => [runner.name, runner.description.agents]),
+      ),
+    });
   }, "Failed to list runners");

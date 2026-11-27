@@ -53,6 +53,11 @@ import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { hasCredentialGrant, validateAccessToken } from "#db/space/accessTokens.ts";
+import {
+  type ChatSessionSource,
+  getChatSession,
+  type StoredChatSession,
+} from "#db/space/chatSessions.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import {
   findShareLink,
@@ -61,7 +66,7 @@ import {
   validateShareLink,
   verifyShareLinkProof,
 } from "#db/space/shareLinks.ts";
-import { parseJobToken } from "#jobs/jobToken.ts";
+import { createJobToken, parseJobToken } from "#jobs/jobToken.ts";
 import type { Platform } from "#platform/platform.ts";
 
 export { isAccessDenied } from "#acl/errors.ts";
@@ -326,14 +331,14 @@ export async function authenticateJobTokenOrSpaceRole(
 }
 
 /**
- * The user whose AI chat sessions the caller may read: chats belong to the
- * user who started them, so a user-less job token reaches none.
+ * Who a chat request acts for, and the job token a private session's rounds
+ * run with. Sessions are posted to by someone, so a user-less job token is refused.
  */
-export async function requireChatSessionOwner(
+export async function authenticateChatCaller(
   platform: Platform,
   credentials: CallerCredentials,
   spaceId: string,
-): Promise<string> {
+): Promise<{ userId: string; jobToken: string; source: ChatSessionSource }> {
   const auth = await authenticateJobTokenOrSpaceRole(
     platform,
     credentials,
@@ -341,8 +346,70 @@ export async function requireChatSessionOwner(
     Permission.VIEWER,
   );
   const userId = auth.type === "user" ? auth.user.id : auth.userId;
-  if (!userId) throw new PermissionDeniedError("AI chat sessions need a user");
-  return userId;
+  if (!userId) throw new PermissionDeniedError("Chat sessions need a user");
+  if (credentials.jobToken) {
+    return { userId, jobToken: credentials.jobToken, source: "job" };
+  }
+  return {
+    userId,
+    jobToken: createJobToken(spaceId, Date.now().toString(), userId, { app: "agent" }),
+    source: "chat",
+  };
+}
+
+/**
+ * The role `need` asks of a caller on a bot's channel or thread: reading needs
+ * a viewer, posting the channel's `access`, editing an editor.
+ */
+export function chatRoleNeeded(
+  channel: StoredChatSession,
+  need: "read" | "post" | "edit",
+): Permission {
+  if (need === "read") return Permission.VIEWER;
+  if (need === "edit") return Permission.EDITOR;
+  return channel.access === "viewer" ? Permission.VIEWER : Permission.EDITOR;
+}
+
+/**
+ * A chat session the caller may `need`. A private session answers only its
+ * creator, and is indistinguishable from a missing one to anyone else; a bot's
+ * channel or thread answers by space role.
+ */
+export async function requireChatSession(
+  platform: Platform,
+  credentials: CallerCredentials,
+  spaceId: string,
+  sessionId: string,
+  need: "read" | "post" | "edit",
+): Promise<{
+  session: StoredChatSession;
+  /** The bot's channel; the session itself unless it is a thread. */
+  channel: StoredChatSession;
+  userId: string;
+  jobToken: string;
+}> {
+  const caller = await authenticateChatCaller(platform, credentials, spaceId);
+  const store = await openSpaceStore(platform, spaceId);
+  const session = await getChatSession(store, sessionId);
+  if (!session) throw new ResourceUnavailableError("Chat session");
+  if (session.visibility === "private") {
+    if (session.createdBy !== caller.userId) {
+      throw new ResourceUnavailableError("Chat session");
+    }
+    return { session, channel: session, ...caller };
+  }
+  const channel = session.parentSessionId
+    ? await getChatSession(store, session.parentSessionId)
+    : session;
+  if (!channel) throw new ResourceUnavailableError("Chat session");
+  await verifyAccess(
+    platform,
+    spaceId,
+    { type: ResourceType.SPACE, id: spaceId },
+    caller.userId,
+    chatRoleNeeded(channel, need),
+  );
+  return { session, channel, ...caller };
 }
 
 /**

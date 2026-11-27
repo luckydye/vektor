@@ -3,17 +3,19 @@
  *
  * GET:  list the caller's agent triggers
  * POST: create a trigger that gives the agent a prompt at a due time, as a new
- *       chat session of the caller
+ *       chat session of the caller or as a post in `sessionId`
  *
  * Body: {
  *   prompt: string,
+ *   sessionId?: string,       // a bot's channel or thread to post into
+
  *   runAt?: string,           // ISO 8601 instant, for a one-shot trigger
  *   cronExpression?: string,  // standard 5-field cron, for a recurring one
  *   timezone?: string         // IANA timezone for the cron expression
  * }
  */
 
-import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
+import { authenticateJobTokenOrSpaceRole, requireChatSession } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -54,6 +56,7 @@ export function toAgentTriggerDto(trigger: AgentSchedule) {
   return {
     id: trigger.id,
     prompt: trigger.prompt,
+    sessionId: trigger.sessionId,
     cronExpression: trigger.cronExpression,
     timezone: trigger.timezone,
     enabled: trigger.enabled,
@@ -88,12 +91,23 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const userId = await requireTriggerOwner(context, spaceId);
-    const { prompt, runAt, cronExpression, timezone } = await parseJsonBody(
+    const { prompt, runAt, cronExpression, timezone, sessionId } = await parseJsonBody(
       context.req.raw,
     );
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw badRequestResponse("prompt is required and must be a non-empty string");
+    }
+    if (sessionId !== undefined) {
+      if (typeof sessionId !== "string") throw badRequestResponse("sessionId must be a string");
+      // Checked again when it fires: the schedule posts as its creator.
+      await requireChatSession(
+        context.var.platform,
+        context.var.credentials,
+        spaceId,
+        sessionId,
+        "post",
+      );
     }
     if ((runAt === undefined) === (cronExpression === undefined)) {
       throw badRequestResponse("Give exactly one of runAt and cronExpression");
@@ -124,6 +138,7 @@ export const POST: ApiRouteHandler = (context) =>
     const store = await openSpaceStore(context.var.platform, spaceId);
     const trigger = await createAgentSchedule(store, {
       prompt,
+      sessionId,
       runAt: due,
       cronExpression: typeof cronExpression === "string" ? cronExpression : undefined,
       timezone,

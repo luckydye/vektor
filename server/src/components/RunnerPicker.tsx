@@ -29,7 +29,7 @@ export function RunnerPicker(props: Props) {
       when={props.onChange}
       fallback={
         <span class="truncate rounded-full border border-neutral-200 bg-neutral-10 px-3 py-1 text-neutral-600 text-size-small" title="Runs on">
-          {props.value}
+          {props.value ?? SERVER_LABEL}
         </span>
       }
     >

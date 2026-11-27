@@ -18,7 +18,7 @@ import { config, isTrustProxyEnabled } from "./config.ts";
 import { listActiveSpaceIds } from "./db/auth/spaceIndex.ts";
 import { initializeDatabases, sweepIdleSpaceDbs } from "./db/client/db.ts";
 import { openSpaceStore } from "./db/client/store.ts";
-import { failInterruptedAIChatTurns } from "./db/space/aiChatSessions.ts";
+import { failInterruptedChatTurns } from "./db/space/chatSessions.ts";
 import { migrateCanvases } from "./db/space/canvasMigration.ts";
 import { purgeExpiredSpaces } from "./db/space/spaces.ts";
 import { startDiscordBots, stopDiscordBots } from "./integrations/discordBot.ts";
@@ -194,7 +194,7 @@ export async function startServer(platform: Platform): Promise<void> {
   // Agent turns live in process memory, so one a previous process left running
   // has no agent behind it. Before listening: afterwards a turn may be live.
   for (const spaceId of await listActiveSpaceIds(platform)) {
-    await failInterruptedAIChatTurns(await openSpaceStore(platform, spaceId));
+    await failInterruptedChatTurns(await openSpaceStore(platform, spaceId));
   }
 
   // Before listening: no canvas is served from its JSON snapshot any more.

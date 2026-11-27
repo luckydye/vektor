@@ -110,9 +110,9 @@ function describeNow(timeZone: string): string {
 }
 
 /**
- * The session's own system prompt. What changes between turns goes in the turn
- * context instead, except the space's instructions, which `withSpaceInstructions`
- * layers on from the current preference.
+ * The core system prompt, built fresh every turn. What changes between turns
+ * goes in the turn context instead; the session's own sections and the space's
+ * instructions are layered on top.
  */
 function buildCoreAgentSystemPrompt(
   integrationInstructions: string[],
@@ -127,17 +127,10 @@ function buildCoreAgentSystemPrompt(
 
 const spaceInstructionsHeader = "\n\n## Space Instructions\n";
 
-/**
- * Replaces the space's section of a system prompt with its current text. A
- * session stores the prompt it first sent, so a space that changes its
- * instructions replaces the old section on the next turn instead of appending
- * a second one.
- */
+/** Ends a system prompt with the space's current instructions, when it has any. */
 function withSpaceInstructions(systemPrompt: string, instructions?: string): string {
-  const index = systemPrompt.indexOf(spaceInstructionsHeader);
-  const base = index === -1 ? systemPrompt : systemPrompt.slice(0, index);
   const trimmed = instructions?.trim();
-  return trimmed ? `${base}${spaceInstructionsHeader}${trimmed}` : base;
+  return trimmed ? `${systemPrompt}${spaceInstructionsHeader}${trimmed}` : systemPrompt;
 }
 
 const turnContextHeader = "Context for this message, from Vektor:\n";
@@ -519,8 +512,8 @@ export async function runAgentPrompt(options: {
   connectedProviders?: string[];
   userProfile?: string;
   timeZone?: string;
-  /** The session's system prompt from its first turn; unset builds a new one. */
-  systemPrompt?: string;
+  /** The session's bot role and memory, after the core prompt. */
+  sessionSections?: string;
   /** The space's own instructions, added to the system prompt on every turn. */
   spaceSystemPrompt?: string;
   /** Whose credentials a contributed integration command runs under. */
@@ -588,7 +581,7 @@ export async function runAgentPrompt(options: {
             : runAgentPrompt({
                 ...options,
                 messages: [{ role: "user", content: task }],
-                systemPrompt: undefined,
+                sessionSections: undefined,
                 bash: undefined,
                 onChunk: undefined,
                 onEvent: undefined,
@@ -614,7 +607,9 @@ export async function runAgentPrompt(options: {
       : undefined;
   const tools = imageProvider ? [...prepared.tools, generateImageTool] : prepared.tools;
   const systemPrompt = withSpaceInstructions(
-    options.systemPrompt ?? prepared.systemPrompt,
+    options.sessionSections
+      ? `${prepared.systemPrompt}\n\n${options.sessionSections}`
+      : prepared.systemPrompt,
     options.spaceSystemPrompt,
   );
   options.onSetup?.({ model: provider.model, systemPrompt, tools });

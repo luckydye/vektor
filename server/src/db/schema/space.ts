@@ -360,6 +360,8 @@ export const workflowSchedule = sqliteTable(
      * `createdBy`. Set instead of `documentId` for an agent schedule.
      */
     prompt: text("prompt"),
+    /** The chat session an agent schedule posts into; null opens a new one each time. */
+    sessionId: text("session_id"),
     /** Null for a one-shot schedule; otherwise a standard 5-field cron expression. */
     cronExpression: text("cron_expression"),
     /** Document property that owns a one-shot schedule. */
@@ -391,27 +393,73 @@ export const workflowSchedule = sqliteTable(
 export type WorkflowSchedule = typeof workflowSchedule.$inferSelect;
 export type WorkflowScheduleInsert = typeof workflowSchedule.$inferInsert;
 
-export const aiChatSession = sqliteTable("ai_chat_session", {
+/**
+ * An agent conversation. A `space` session without a parent is a bot's channel
+ * (`title` is the bot's name); one with a parent is a thread in that channel. A
+ * `private` session belongs to its creator alone: jobs, schedules, the CLI.
+ */
+export const chatSession = sqliteTable("chat_session", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
+  /** The creator; a channel's owner, whose provider and nodes its bot uses. */
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  messages: text("messages").notNull(),
-  conversationHistory: text("conversation_history").notNull(),
   shellSnapshot: text("shell_snapshot"),
-  /**
-   * Role of the last conversation turn, denormalised out of the history so the
-   * session picker can list a space without reading its transcripts.
-   */
-  lastMessageRole: text("last_message_role"),
   /** Who opened the session: the chat UI ("chat") or a job such as a workflow run ("job"). */
   source: text("source", { enum: ["chat", "job"] })
     .notNull()
     .default("chat"),
   /** The node the agent runs on, by name; null runs it on the server. */
   node: text("node"),
+  visibility: text("visibility", { enum: ["space", "private"] })
+    .notNull()
+    .default("private"),
+  /** The minimum space role to post; always `editor` on a node. */
+  access: text("access", { enum: ["viewer", "editor"] })
+    .notNull()
+    .default("editor"),
+  /** The bot's role; null is a general assistant. */
+  rolePrompt: text("role_prompt"),
+  avatar: text("avatar"),
+  /** What the bot remembers of the rows up to `memoryThroughSeq`. */
+  memory: text("memory").notNull().default(""),
+  memoryThroughSeq: integer("memory_through_seq").notNull().default(0),
+  /** The last user row a round answered. */
+  repliedThroughSeq: integer("replied_through_seq").notNull().default(0),
+  /** The channel a thread belongs to. */
+  parentSessionId: text("parent_session_id"),
+  /** The channel row a thread replies to. */
+  threadRootSeq: integer("thread_root_seq"),
+  /** The agent the session runs on `node`. */
+  nodeAgent: text("node_agent"),
 });
+
+export type ChatSessionRow = typeof chatSession.$inferSelect;
+
+/**
+ * Every session's log in one append-only table, in the model's message shape;
+ * the UI renders the same rows. `seq` is global, so a thread's root is one number.
+ */
+export const chatMessage = sqliteTable(
+  "chat_message",
+  {
+    seq: integer("seq").primaryKey({ autoIncrement: true }),
+    sessionId: text("session_id").notNull(),
+    role: text("role", { enum: ["user", "assistant", "tool"] }).notNull(),
+    /** Who posted it; null for the bot and for model-only rows. */
+    authorId: text("author_id"),
+    content: text("content").notNull(),
+    /** False for rows only the model reads, e.g. additional context. */
+    visible: integer("visible", { mode: "boolean" }).notNull().default(true),
+    /** JSON `ChatMessageMetadata`. */
+    metadata: text("metadata").notNull().default("{}"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [index("chat_message_session_seq_idx").on(t.sessionId, t.seq)],
+);
+
+export type ChatMessageRow = typeof chatMessage.$inferSelect;
 
 /** Estimated AI tokens charged to a space for a UTC week (Monday to Monday). */
 export const aiWeeklyUsage = sqliteTable("ai_weekly_usage", {

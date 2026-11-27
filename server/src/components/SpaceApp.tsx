@@ -30,7 +30,6 @@ import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
 import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { parseSidebarWidth } from "#utils/sidebarState.ts";
-import { AIChatPanel } from "./AIChatPanel.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
 import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
@@ -38,6 +37,7 @@ import { ExtensionPanels } from "./ExtensionPanels.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
 import { DialogHost } from "./DialogHost.tsx";
+import { BotChannelView } from "./views/BotChannelView.tsx";
 import { DocumentPageView } from "./views/DocumentPageView.tsx";
 import { ExtensionRouteView } from "./views/ExtensionRouteView.tsx";
 import { NotFoundView } from "./views/NotFoundView.tsx";
@@ -310,7 +310,6 @@ export function SpaceApp(props: Props) {
         />
         <ToastContainer />
         <DialogHost />
-        <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />
         <ExtensionPanels documentId={documentContext[0]().documentId ?? null} />
         <CommandPalatte />
       </Show>
@@ -333,6 +332,7 @@ export function SpaceApp(props: Props) {
                 <Route path="/new" component={NewDocumentRoute} />
                 <Route path="/settings" component={SpaceSettingsView} />
                 <Route path="/doc/*documentSlug" component={DocumentRoute} />
+                <Route path="/bots/:sessionId" component={BotChannelView} />
                 <Route path="/x/*extensionPath" component={ExtensionRouteView} />
                 <Route path="*" component={NotFoundView} />
               </Router>

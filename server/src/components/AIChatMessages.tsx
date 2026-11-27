@@ -27,6 +27,21 @@ interface Props {
   isGenerating: boolean;
   sessionStartedAt: number | null;
   ref?: (handle: AIChatMessagesHandle) => void;
+  /** Shown while there are no messages. */
+  emptyTitle: string;
+  emptyHint: string;
+  /** Who posted a user message, by id. */
+  authorOf?: (authorId: string) => { name: string; image?: string | null } | undefined;
+  /** The viewer: their own posts sit on the right, everyone else's on the left. */
+  currentUserId?: string | null;
+  /** Labels the start of each of the bot's answers. */
+  bot?: { name: string; avatar: string | null };
+  /** The thread replying to a message, by the message's seq. */
+  threadOf?: (seq: number) => { messageCount?: number } | undefined;
+  /** Opens a message's thread, starting it when there is none. */
+  onOpenThread?: (seq: number) => void;
+  /** Offers older messages above the first. */
+  onLoadOlder?: () => void;
 }
 
 function attachmentPreviewUrl(attachment: { url: string }): string {
@@ -301,6 +316,45 @@ function summarizeToolRun(run: ToolRun): string {
     .join(", ");
 }
 
+/** A bot's avatar: an emoji or a few letters, else the agent icon. */
+export function BotAvatar(props: { avatar: string | null; class?: string }) {
+  return (
+    <span
+      class={`flex shrink-0 items-center justify-center rounded-md bg-primary-500/10 text-primary-700 ${props.class ?? "h-5 w-5 text-size-small"}`}
+    >
+      <Show when={props.avatar} fallback={<Icon class="h-3.5 w-3.5" name="agent-chat" />}>
+        {props.avatar}
+      </Show>
+    </span>
+  );
+}
+
+function BotLabel(props: { bot: { name: string; avatar: string | null } }) {
+  return (
+    <div class="mb-1 flex items-center gap-1.5 font-medium text-neutral-700 text-size-small">
+      <BotAvatar avatar={props.bot.avatar} />
+      {props.bot.name}
+    </div>
+  );
+}
+
+function PersonAvatar(props: { name: string; image?: string | null }) {
+  return (
+    <Show
+      when={props.image}
+      fallback={
+        <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 font-medium text-neutral-600 text-size-extra-small">
+          {props.name.slice(0, 1).toUpperCase()}
+        </span>
+      }
+    >
+      {(image) => (
+        <img src={image()} alt="" class="mt-0.5 h-6 w-6 shrink-0 rounded-full object-cover" />
+      )}
+    </Show>
+  );
+}
+
 export function AIChatMessages(props: Props) {
   const lang = useLocale();
   let messagesContainer: HTMLDivElement | undefined;
@@ -336,6 +390,100 @@ export function AIChatMessages(props: Props) {
   function isMessageShown(message: AIChatMessage): boolean {
     if (message.role !== "tool") return true;
     return toolRuns().get(message)?.items[0]?.message === message;
+  }
+
+  /** The first shown message of each of the bot's answers, which carries its name. */
+  const answerStarts = createMemo(() => {
+    const starts = new Set<AIChatMessage>();
+    let afterUser = true;
+    for (const message of props.messages) {
+      if (message.role === "user") afterUser = true;
+      else if (
+        afterUser &&
+        isMessageShown(message) &&
+        (message.role === "assistant" || message.role === "tool")
+      ) {
+        starts.add(message);
+        afterUser = false;
+      }
+    }
+    return starts;
+  });
+
+  function renderUserContent(message: AIChatMessage) {
+    return (
+      <>
+        <div
+          class="markdown-content text-size-medium leading-relaxed"
+          innerHTML={renderMessageMarkdown(message.content)}
+        />
+        <Show when={message.attachments?.length}>
+          <div class="mt-2 mb-1 space-y-1.5">
+            <For each={message.attachments}>
+              {(attachment) => (
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small transition-colors hover:bg-neutral-50"
+                >
+                  <Show when={attachment.isImage}>
+                    <img
+                      src={attachmentPreviewUrl(attachment)}
+                      alt={attachment.name}
+                      class="block max-h-80 w-full bg-neutral-50 object-contain"
+                      decoding="async"
+                      loading="lazy"
+                    />
+                  </Show>
+                  <span class="block px-2 py-1.5">
+                    <span class="font-medium">{attachment.name}</span>
+                    <span class="ml-1 text-neutral-500">
+                      {formatFileSize(attachment.size)}
+                    </span>
+                  </span>
+                </a>
+              )}
+            </For>
+          </div>
+        </Show>
+      </>
+    );
+  }
+
+  const isOwnPost = (message: AIChatMessage) =>
+    !message.authorId || message.authorId === props.currentUserId;
+
+  function renderThreadLink(message: AIChatMessage) {
+    const seq = message.seq;
+    const open = props.onOpenThread;
+    if (seq === undefined || !open) return null;
+    const thread = () => props.threadOf?.(seq);
+    return (
+      <Show
+        when={thread()}
+        fallback={
+          <button
+            type="button"
+            class="rounded px-1 text-neutral-400 text-size-extra-small transition-opacity hover:text-neutral-800 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100"
+            onClick={() => open(seq)}
+          >
+            Reply in thread
+          </button>
+        }
+      >
+        {(found) => (
+          <button
+            type="button"
+            class="flex items-center gap-1 rounded px-1 font-medium text-primary-600 text-size-extra-small hover:underline"
+            onClick={() => open(seq)}
+          >
+            <Icon class="h-3 w-3" name="comment" />
+            {found().messageCount === 1 ? "1 reply" : `${found().messageCount ?? 0} replies`}
+          </button>
+        )}
+      </Show>
+    );
   }
 
   function toolPreview(message: AIChatMessage): string {
@@ -539,15 +687,31 @@ export function AIChatMessages(props: Props) {
       <Show when={props.messages.length === 0 && !props.isGenerating}>
         <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
           <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-500/10">
-            <Icon class="h-5 w-5 text-primary-600" name="agent-chat" />
+            <Show
+              when={props.bot?.avatar}
+              fallback={<Icon class="h-5 w-5 text-primary-600" name="agent-chat" />}
+            >
+              <span class="text-size-large">{props.bot?.avatar}</span>
+            </Show>
           </div>
           <div>
-            <p class="font-medium text-neutral-800 text-size-medium">How can I help?</p>
-            <p class="mt-1 text-neutral-500 text-size-small">
-              Ask about this document, or @mention others.
-            </p>
+            <p class="font-medium text-neutral-800 text-size-medium">{props.emptyTitle}</p>
+            <p class="mt-1 text-neutral-500 text-size-small">{props.emptyHint}</p>
           </div>
         </div>
+      </Show>
+      <Show when={props.onLoadOlder}>
+        {(loadOlder) => (
+          <div class="text-center">
+            <button
+              type="button"
+              class="rounded-full px-3 py-1 text-neutral-500 text-size-small hover:bg-neutral-100"
+              onClick={() => loadOlder()()}
+            >
+              Show earlier messages
+            </button>
+          </div>
+        )}
       </Show>
       <Show when={props.sessionStartedAt}>
         <div class="text-center text-neutral-400 text-size-extra-small">
@@ -561,7 +725,7 @@ export function AIChatMessages(props: Props) {
               class="flex animate-message-slide-in"
               classList={{
                 "justify-center": message.role === "system",
-                "justify-end": message.role === "user",
+                "justify-end": message.role === "user" && isOwnPost(message),
               }}
             >
               <Show when={message.role === "system"}>
@@ -595,8 +759,15 @@ export function AIChatMessages(props: Props) {
 
               <Show when={message.role === "assistant"}>
                 <div class="group min-w-0 flex-1">
+                  <Show when={props.bot && answerStarts().has(message) && props.bot}>
+                    {(bot) => <BotLabel bot={bot()} />}
+                  </Show>
                   <div
-                    class="markdown-content text-neutral-800 text-size-medium leading-relaxed"
+                    class="markdown-content text-size-medium leading-relaxed"
+                    classList={{
+                      "text-neutral-800": !message.isError,
+                      "text-red-600": message.isError,
+                    }}
                     innerHTML={renderMessageMarkdown(message.content)}
                   />
                   <div class="mt-1 -ml-1.5 flex items-center gap-1 text-neutral-400 text-size-extra-small pointer-fine:opacity-0 transition-opacity pointer-fine:focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
@@ -616,49 +787,45 @@ export function AIChatMessages(props: Props) {
                     />
                     {formatTime(message.timestamp, lang)}
                   </div>
+                  {renderThreadLink(message)}
                 </div>
               </Show>
 
               <Show when={message.role === "tool" && toolRuns().get(message)}>
-                {(run) => renderToolRun(run)}
+                {(run) => (
+                  <div class="min-w-0 flex-1">
+                    <Show when={props.bot && answerStarts().has(message) && props.bot}>
+                      {(bot) => <BotLabel bot={bot()} />}
+                    </Show>
+                    {renderToolRun(run)}
+                  </div>
+                )}
               </Show>
 
-              <Show when={message.role === "user"}>
-                <div class="max-w-[85%] rounded-2xl rounded-br-md bg-neutral-100 px-3.5 py-2 text-neutral-800">
-                  <div
-                    class="markdown-content text-size-medium leading-relaxed"
-                    innerHTML={renderMessageMarkdown(message.content)}
+              <Show when={message.role === "user" && !isOwnPost(message)}>
+                <div class="group flex min-w-0 max-w-[85%] gap-2">
+                  <PersonAvatar
+                    name={props.authorOf?.(message.authorId as string)?.name ?? "Someone"}
+                    image={props.authorOf?.(message.authorId as string)?.image}
                   />
-                  <Show when={message.attachments?.length}>
-                    <div class="mt-2 mb-1 space-y-1.5">
-                      <For each={message.attachments}>
-                        {(attachment) => (
-                          <a
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="block overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small transition-colors hover:bg-neutral-50"
-                          >
-                            <Show when={attachment.isImage}>
-                              <img
-                                src={attachmentPreviewUrl(attachment)}
-                                alt={attachment.name}
-                                class="block max-h-80 w-full bg-neutral-50 object-contain"
-                                decoding="async"
-                                loading="lazy"
-                              />
-                            </Show>
-                            <span class="block px-2 py-1.5">
-                              <span class="font-medium">{attachment.name}</span>
-                              <span class="ml-1 text-neutral-500">
-                                {formatFileSize(attachment.size)}
-                              </span>
-                            </span>
-                          </a>
-                        )}
-                      </For>
+                  <div class="min-w-0">
+                    <div class="mb-0.5 font-medium text-neutral-600 text-size-small">
+                      {props.authorOf?.(message.authorId as string)?.name ?? "Someone"}
                     </div>
-                  </Show>
+                    <div class="rounded-2xl rounded-tl-md bg-neutral-100 px-3.5 py-2 text-neutral-800">
+                      {renderUserContent(message)}
+                    </div>
+                    <div class="mt-0.5 flex items-center gap-1">{renderThreadLink(message)}</div>
+                  </div>
+                </div>
+              </Show>
+
+              <Show when={message.role === "user" && isOwnPost(message)}>
+                <div class="group flex max-w-[85%] flex-col items-end">
+                  <div class="rounded-2xl rounded-br-md bg-neutral-100 px-3.5 py-2 text-neutral-800">
+                    {renderUserContent(message)}
+                  </div>
+                  <div class="mt-0.5 flex items-center gap-1">{renderThreadLink(message)}</div>
                 </div>
               </Show>
             </div>

@@ -1,0 +1,186 @@
+import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import type { ChatSessionHandle } from "#composeables/useChatSession.ts";
+import { AIChatMessages } from "./AIChatMessages.tsx";
+import { Icon } from "./Icon.tsx";
+import { MessageInput } from "./MessageInput.tsx";
+import { RemoteScreen } from "./RemoteScreen.tsx";
+import "#editor/css/mentions.css";
+
+interface Props {
+  chat: ChatSessionHandle;
+  class?: string;
+  placeholder: string;
+  emptyTitle: string;
+  emptyHint: string;
+  /** Why the viewer cannot post here; unset lets them. */
+  readonlyReason?: string;
+  bot?: { name: string; avatar: string | null };
+  authorOf?: (authorId: string) => { name: string; image?: string | null } | undefined;
+  currentUserId?: string | null;
+  threadOf?: (seq: number) => { messageCount?: number } | undefined;
+  onOpenThread?: (seq: number) => void;
+  /** Shown above the composer, like where the bot runs. */
+  footer?: JSX.Element;
+}
+
+type PinnedScreen = {
+  screen: NonNullable<ChatSessionHandle["messages"][number]["screen"]>;
+  task: string;
+};
+
+/** A session's transcript with its composer, and any remote screens pinned above. */
+export function ChatConversation(props: Props) {
+  const chat = () => props.chat;
+  /** Remote sessions' screens stay pinned above the transcript, like a screen share. */
+  const screens = createMemo(() => {
+    // Each turn on a runner re-announces its session; one tile per session, labelled by the latest task.
+    const bySession = new Map<string, PinnedScreen>();
+    for (const message of chat().messages) {
+      if (message.role === "screen" && message.screen) {
+        bySession.set(message.screen.sessionId, {
+          screen: message.screen,
+          task: message.content,
+        });
+      }
+    }
+    return bySession;
+  });
+  const screenIds = createMemo(() => [...screens().keys()], [], {
+    equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
+  });
+  const [screenHeight, setScreenHeight] = createSignal(320);
+
+  function resizeScreen(event: PointerEvent) {
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    const startY = event.clientY;
+    const startHeight = screenHeight();
+    const move = (moved: PointerEvent) =>
+      setScreenHeight(
+        Math.min(window.innerHeight * 0.8, Math.max(120, startHeight + moved.clientY - startY)),
+      );
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+  }
+
+  return (
+    <div class={`flex h-full min-h-0 flex-col bg-neutral-10 ${props.class ?? ""}`}>
+      <Show when={screenIds().length}>
+        <div class="shrink-0 px-3 pt-3">
+          <div class="flex gap-2" style={{ height: `${screenHeight()}px` }}>
+            {/* Keyed by session id so a new response does not remount (and reload) the streams. */}
+            <For each={screenIds()}>
+              {(id) => {
+                const entry = () => screens().get(id);
+                return (
+                  <Show when={entry()}>
+                    {(pinned) => <RemoteScreen screen={pinned().screen} task={pinned().task} />}
+                  </Show>
+                );
+              }}
+            </For>
+          </div>
+          {/* biome-ignore lint/a11y/useSemanticElements: a drag handle, not a content separator */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize screen"
+            class="group flex h-3 cursor-row-resize touch-none items-center justify-center"
+            onPointerDown={resizeScreen}
+          >
+            <div class="h-1 w-10 rounded-full bg-neutral-200 transition-colors group-hover:bg-neutral-400" />
+          </div>
+        </div>
+      </Show>
+
+      <AIChatMessages
+        ref={chat().setMessagesRef}
+        messages={chat().messages}
+        isGenerating={chat().isGenerating()}
+        sessionStartedAt={null}
+        emptyTitle={props.emptyTitle}
+        emptyHint={props.emptyHint}
+        bot={props.bot}
+        authorOf={props.authorOf}
+        currentUserId={props.currentUserId}
+        threadOf={props.threadOf}
+        onOpenThread={props.onOpenThread}
+        onLoadOlder={chat().hasMore() ? () => void chat().loadOlder() : undefined}
+      />
+
+      <div class="shrink-0 px-3 pb-3">
+        <Show
+          when={!props.readonlyReason}
+          fallback={
+            <div class="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-neutral-500 text-size-small">
+              {props.readonlyReason}
+            </div>
+          }
+        >
+          <div class="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-10 shadow-sm transition-colors focus-within:border-neutral-300">
+            <div class="px-3 pt-2.5 pb-2">
+              <MessageInput
+                ref={chat().setMessageInputEl}
+                value={chat().messageInput()}
+                onInput={chat().setMessageInput}
+                placeholder={props.placeholder}
+                rows={2}
+                autoGrow
+                attachments
+                mentions
+                inlineDocumentReferences
+                spaceId={chat().currentSpaceId() ?? undefined}
+                disabled={!chat().canSend()}
+                isUploading={chat().isUploadingFiles()}
+                uploadError={chat().uploadError()}
+                onSubmit={() => void chat().sendMessage()}
+                actions={
+                  <div class="flex min-w-0 items-center gap-1">
+                    <Show
+                      when={chat().isGenerating()}
+                      fallback={
+                        <button
+                          type="button"
+                          onClick={() => void chat().sendMessage()}
+                          disabled={
+                            !chat().canSend() ||
+                            (!chat().messageInput().trim() &&
+                              !chat().messageInputEl()?.pendingAttachments().length)
+                          }
+                          class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors enabled:hover:bg-primary-700 disabled:bg-neutral-100 disabled:text-neutral-400"
+                          title="Send (↵)"
+                        >
+                          <Icon class="h-3.5 w-3.5" name="send-message" />
+                        </button>
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={chat().cancelGeneration}
+                        class="flex h-7 pointer-coarse:h-9 pointer-coarse:w-9 w-7 shrink-0 items-center justify-center rounded-lg bg-neutral-800 text-neutral-10 transition-colors hover:bg-neutral-900"
+                        title="Stop generating"
+                      >
+                        <Icon class="h-3 w-3" name="stop" />
+                      </button>
+                    </Show>
+                  </div>
+                }
+              />
+            </div>
+            <Show when={props.footer}>
+              <div class="flex items-center gap-2 border-neutral-100 border-t bg-neutral-50 px-3 py-2">
+                {props.footer}
+              </div>
+            </Show>
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}

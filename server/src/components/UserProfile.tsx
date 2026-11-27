@@ -105,13 +105,46 @@ export function UserProfile() {
         on:exit={() => setOpenSection(null)}
       >
         <div
-          class={`overflow-hidden rounded-lg border border-neutral-100 bg-background opacity-0 shadow-large transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 max-md:overflow-visible max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:shadow-none ${width()} max-md:max-w-none`}
+          class={`overflow-hidden rounded-xl opacity-0 transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 max-md:overflow-visible max-md:rounded-none ${width()} max-md:max-w-none`}
         >
           <div
-            class={`relative origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 max-md:bg-background ${width()} max-md:w-full max-md:max-w-none`}
+            class={`relative origin-bottom-left scale-95 rounded-xl surface-menu transition-all duration-150 group-[[enabled]]:scale-100 max-md:bg-background ${width()} max-md:w-full max-md:max-w-none`}
           >
             <Show when={!isPreferencesOpen()}>
-              <div class="border-neutral-100 border-b p-4">
+              <div class="space-y-5xs p-5xs">
+                <For each={preferenceSections}>
+                  {(section) => (
+                    <button
+                      type="button"
+                      onClick={() => setOpenSection(section.id)}
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
+                    >
+                      <Icon class="h-4 w-4 flex-none" name={section.icon} />
+                      <span>{t(section.label)}</span>
+                    </button>
+                  )}
+                </For>
+                <a
+                  href="https://github.com/luckydye/vektor"
+                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-neutral-900 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
+                >
+                  <Icon class="h-4 w-4 flex-none" name="source-code" />
+                  <span>{t("Source")}</span>
+                </a>
+                {/* No-auth mode signs every request in as the local user, so there is no session to end. */}
+                <Show when={!isNoAuthMode()}>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-interactive text-red-600 hover:bg-black/6 active:bg-black/10 dark:hover:bg-white/10 dark:active:bg-white/16"
+                  >
+                    <Icon class="h-4 w-4 flex-none" name="sign-out" />
+                    <span>{t("Sign Out")}</span>
+                  </button>
+                </Show>
+              </div>
+
+              <div class="border-neutral-100 border-t p-4 dark:border-white/10">
                 <div class="flex items-center gap-3">
                   <div class="min-w-0 flex-1">
                     <p class="truncate font-medium text-foreground text-size-medium">
@@ -122,39 +155,6 @@ export function UserProfile() {
                     </p>
                   </div>
                 </div>
-              </div>
-
-              <div class="space-y-5xs p-[4px]">
-                <For each={preferenceSections}>
-                  {(section) => (
-                    <button
-                      type="button"
-                      onClick={() => setOpenSection(section.id)}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
-                    >
-                      <Icon class="h-4 w-4" name={section.icon} />
-                      <span class="text-interactive">{t(section.label)}</span>
-                    </button>
-                  )}
-                </For>
-                <a
-                  href="https://github.com/luckydye/vektor"
-                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
-                >
-                  <Icon class="h-4 w-4" name="source-code" />
-                  <span class="text-interactive">{t("Source")}</span>
-                </a>
-                {/* No-auth mode signs every request in as the local user, so there is no session to end. */}
-                <Show when={!isNoAuthMode()}>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-red-600 text-size-small transition-colors hover:bg-red-500 hover:text-white"
-                  >
-                    <Icon class="h-4 w-4" name="sign-out" />
-                    <span class="text-interactive">{t("Sign Out")}</span>
-                  </button>
-                </Show>
               </div>
             </Show>
 

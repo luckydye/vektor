@@ -18,6 +18,8 @@ export const realtimeTopics = {
   series: (name: string) => `series:${name}`,
   /** Any series in the space was appended to. */
   spaceEvents: "space:events",
+  /** A bot channel or thread was created, edited or deleted, or a round started or ended. */
+  chat: "space:chat",
 } as const;
 
 /** The server's end of a realtime connection, whatever accepted it. */

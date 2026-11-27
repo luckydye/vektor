@@ -4,20 +4,24 @@ import type { Platform } from "#platform/platform.ts";
 import { cancelChat, promptChat } from "./agents.ts";
 
 /**
- * Runs a chat's turn on its node or runner. The runner's session holds the
- * conversation, so the prompt carries only the new message.
+ * Runs a chat's round on its node or runner. The runner's session holds the
+ * conversation, so the prompt carries only the new messages; a fresh session
+ * is sent `preamble` first, since it remembers nothing.
  */
 export async function runChatOnRunner(
   platform: Platform,
   options: {
     spaceId: string;
+    /** The owner, whose runners the chat uses. */
     userId: string;
+    /** The principal `jobToken` carries. */
+    actor: string;
     chatId: string;
     runner: string;
+    agent: string;
     jobToken: string;
     text: string;
-    /** Whether the chat had earlier turns, which a fresh session does not remember. */
-    resumed: boolean;
+    preamble: string;
     signal: AbortSignal;
     onEvent: (event: AgentEvent) => void;
   },
@@ -25,7 +29,7 @@ export async function runChatOnRunner(
   const { runner, signal, onEvent } = options;
   const toolNames = new Map<string, string>();
   let content = "";
-  const { fresh, result } = await promptChat(platform, {
+  const { result } = await promptChat(platform, {
     ...options,
     onUpdate(update) {
       const event = parseAcpUpdate(update, toolNames);
@@ -36,12 +40,6 @@ export async function runChatOnRunner(
     onScreen: (sessionId) =>
       onEvent({ type: "screen", sessionId, runner, task: options.text }),
   });
-  if (fresh && options.resumed) {
-    onEvent({
-      type: "status",
-      text: `Started a new session on ${runner}; it does not remember earlier messages.`,
-    });
-  }
 
   const cancel = () => cancelChat(options);
   signal.addEventListener("abort", cancel, { once: true });

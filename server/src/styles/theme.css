@@ -552,23 +552,6 @@
   pointer-events: none;
 }
 
-/* The dashboard's ask box travelling to the chat's input. Only the input is
- * named: the rest of the page stays live and is animated with plain CSS. */
-::view-transition-group(agent-input) {
-  animation-duration: 300ms;
-  animation-timing-function: var(--emphasized-curve, ease-out);
-}
-
-.agent-chat-enter {
-  animation: agent-chat-enter 300ms var(--emphasized-curve, ease-out);
-}
-
-@keyframes agent-chat-enter {
-  from {
-    opacity: 0;
-  }
-}
-
 /**
  * A comment thread growing out of the bubble that opened it.
  *
@@ -700,18 +683,40 @@
   }
 }
 
+/* The menu surface follows an explicit theme preference as well as the OS one,
+   so a dark app on a light desktop still gets the dark surface. */
+:root {
+  --menu-surface-background: rgb(255 255 255 / 0.6);
+  --menu-surface-border: var(--color-neutral-100);
+  --menu-surface-shadow:
+    0 4px 16px rgb(15 23 42 / 0.08),
+    0 1px 3px rgb(15 23 42 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --menu-surface-background: rgb(39 39 42 / 0.6);
+    --menu-surface-border: rgb(255 255 255 / 0.1);
+    --menu-surface-shadow:
+      0 4px 16px rgb(0 0 0 / 0.3),
+      0 1px 3px rgb(0 0 0 / 0.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  --menu-surface-background: rgb(39 39 42 / 0.6);
+  --menu-surface-border: rgb(255 255 255 / 0.1);
+  --menu-surface-shadow:
+    0 4px 16px rgb(0 0 0 / 0.3),
+    0 1px 3px rgb(0 0 0 / 0.3);
+}
+
 /* Translucent, blurred panel shared by menus and popovers. */
 @utility surface-menu {
-  border: 1px solid var(--color-neutral-100);
-  background: rgb(255 255 255 / 0.6);
-  box-shadow: 0 4px 16px rgb(15 23 42 / 0.08), 0 1px 3px rgb(15 23 42 / 0.08);
+  border: 1px solid var(--menu-surface-border);
+  background: var(--menu-surface-background);
+  box-shadow: var(--menu-surface-shadow);
   backdrop-filter: blur(24px);
-
-  @media (prefers-color-scheme: dark) {
-    border-color: rgb(255 255 255 / 0.1);
-    background: rgb(39 39 42 / 0.6);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.3);
-  }
 }
 
 @utility focus-ring {

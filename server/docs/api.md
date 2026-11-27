@@ -206,7 +206,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 
 | Method | Path | What it does |
 |---|---|---|
-| POST | `/chat/acp` | Agent Control Protocol JSON-RPC endpoint (streaming AI chat turns) |
+| POST | `/chat/acp` | Agent Control Protocol JSON-RPC endpoint (bot channels, threads and private sessions) |
 | POST | `/chat/completions` | OpenAI/Anthropic/Ollama-compatible chat completions proxy |
 | GET/POST | `/auth/cli` | CLI login approval page / approve and mint a one-time code |
 | POST | `/auth/cli/token` | Exchange that code for a space access token |
@@ -243,8 +243,9 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET/POST/DELETE | `/spaces/:spaceId/workflows/runs/:runId` | Read a run / cancel it (POST or DELETE) |
 | GET/POST | `/spaces/:spaceId/workflows/schedules` | List / create cron schedules for workflow documents |
 | GET/PATCH/DELETE | `/spaces/:spaceId/workflows/schedules/:scheduleId` | Read / update / delete a workflow schedule |
-| GET | `/spaces/:spaceId/ai-chat/sessions` | List the caller's AI chat sessions |
-| GET/DELETE | `/spaces/:spaceId/ai-chat/sessions/:sessionId` | Read / delete an AI chat session |
+| GET | `/spaces/:spaceId/chat/sessions` | List the space's bot channels, or a channel's threads |
+| GET/PATCH/DELETE | `/spaces/:spaceId/chat/sessions/:sessionId` | Read / edit a bot / delete a chat session |
+| GET | `/spaces/:spaceId/chat/sessions/:sessionId/messages` | Page through a chat session's messages |
 | GET/POST | `/spaces/:spaceId/documents` | List documents (with filters) / create a document |
 | GET/PUT/PATCH/DELETE/POST | `/spaces/:spaceId/documents/:documentId` | Read / replace content / patch metadata / archive-delete / create revision |
 | GET | `/spaces/:spaceId/documents/:documentId/access` | Everyone who can reach the document, and the grant that gets them there |
@@ -263,29 +264,52 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 ### `POST /chat/acp`
 
 Agent Control Protocol JSON-RPC 2.0 endpoint for agent sessions. Sessions live on
-the server; the chat UI and job runs (`agentPrompt`) are both clients of them.
+the server; the bot channels in the UI, job runs (`agentPrompt`), schedules and the
+`vektor agent` CLI are all clients of them.
+
+A session is one of:
+
+- a **bot channel** (`visibility: "space"`, no parent): one persistent bot with a name
+  (`title`), avatar and role, shared by the whole space. Its turns run as the bot, its
+  own ACL principal (`bot:<sessionId>`) granted `access` on the space, with the
+  owner's (creator's) AI provider and nodes. A bot whose owner is no longer an editor
+  of the space answers with an error.
+- a **thread** (`visibility: "space"`, `parentSessionId`): replies to one message of a
+  channel, run by the channel's bot.
+- a **private session** (`visibility: "private"`): its creator's alone, run as them.
 
 - **Auth**: session, access token or job token, authenticated as viewer-or-above on the
-  space named in `params.spaceId`. A session belongs to a user, so a job token must
-  carry one (else `403`); a workflow run's token carries the user who started or
-  scheduled it.
+  space named in `params.spaceId`. A session is posted to by someone, so a job token
+  must carry a user (else `403`); a workflow run's token carries the user who started
+  or scheduled it. A private session answers only its creator (`404` for anyone else);
+  posting to and cancelling in a channel or thread needs the channel's `access` role.
 - **Body**: `{ jsonrpc: "2.0", id?, method, params }`. Every method takes `spaceId`
   (string, required). Supported `method`s:
-  - `session/new` — params: `title` (non-empty string). Opens an empty session owned by
-    the caller; `source` is `"job"` under a job token, else `"chat"`.
+  - `session/new` — params: `visibility?` (`"private"` (default) or `"space"`),
+    `title` (non-empty string; derived from the root message for a thread), `node?` and
+    `nodeAgent?` (a node or runner the caller may run agents on, and the agent on it,
+    pinned for good), and for a channel `rolePrompt?`, `avatar?`, `access?` (`"viewer"`
+    or `"editor"` (default), the role needed to post; always `"editor"` on a node).
+    Creating a channel needs `editor`. A thread takes `parentSessionId` and
+    `threadRootSeq` (a visible message of that channel), needs posting rights there,
+    copies its node, and is returned as is when the message already has one. `source`
+    is `"job"` under a job token, else `"chat"`.
   - `session/prompt` — params: `sessionId` (string, required), `documentId?` (string),
     `additionalContext?` (string), `timeZone?` (IANA name), `prompt` (non-empty array
     whose first element has a `text: string` field), `imageAttachments?` (array of
     `{ key, mediaType }` naming uploads in this space; jpeg/png/gif/webp, ≤20MB each),
-    `attachments?` (array of `{ key, name, type, size }` for non-image files). Starts a
-    turn on an existing session (`404` if the caller has none by that id, `409` while a
-    turn is running in it). The user message is saved before the agent starts; the turn
-    survives client disconnects.
-  - `session/load` — params: `sessionId`. Attaches to the session's running turn, or one
-    that finished in the last five minutes (`404` if there is none).
-  - `session/cancel` — params: `sessionId`. Aborts the running turn.
-- A turn still running when the server stops is closed with an error message on the
+    `attachments?` (array of `{ key, name, type, size }` for non-image files). Appends
+    the message and streams the round that answers it. A round answers every message
+    posted before it started; messages posted while one runs wait for the next round.
+    Rounds survive client disconnects.
+  - `session/load` — params: `sessionId`. Attaches to the session's latest round, running
+    or finished in the last five minutes (`404` if there is none).
+  - `session/cancel` — params: `sessionId`. Stops the running round; every message it
+    was answering counts as answered.
+- A round still running when the server stops is closed with an error message on the
   next start.
+- The bot remembers on its own: once a session's log outgrows the model's budget, its
+  oldest part is summarized into the session's memory.
 - Any other `method` → `400`.
 - **Returns** (`session/new`): `200 { jsonrpc, id, result: { sessionId } }`.
 - **Returns** (`session/prompt`, `session/load`): `text/event-stream` — replays buffered
@@ -1923,18 +1947,24 @@ curl -sS -X DELETE -b "$COOKIE" \
 { "success": true }
 ```
 
-## AI chat sessions
+## Chat sessions
 
-Per-user, per-space saved chat session state (used by the ACP chat UI). All four
-endpoints take a session and `viewer` on the space, and only ever see the caller's own
-sessions.
+Bot channels, their threads, and private sessions; see [`POST /chat/acp`](#post-chatacp)
+for what each is and for creating and posting to them. All endpoints take a session,
+access token or job token carrying a user. Reading a channel or thread needs `viewer`,
+editing or deleting one `editor`; a private session answers only its creator (`404`
+for anyone else). Changes and round starts and ends are announced on the `space:chat`
+realtime topic.
 
-### `GET /spaces/:spaceId/ai-chat/sessions`
+### `GET /spaces/:spaceId/chat/sessions`
 
-- **Returns**: `200 { sessions }` (summaries, caller's own sessions only).
+- **Query**: `parent?` — a channel id, to list its threads instead.
+- **Returns**: `200 { sessions }`: the space's bot channels with `threadCount`, or the
+  channel's threads (newest first) with `messageCount`. Each says whether a round is
+  `running`. Private sessions are never listed.
 
 ```bash
-curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions"
+curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/chat/sessions"
 ```
 
 ```json
@@ -1942,34 +1972,57 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions"
   "sessions": [
     {
       "id": "chat_2026-08-17-1",
-      "title": "Launch plan review",
+      "title": "Release bot",
+      "visibility": "space",
+      "access": "editor",
+      "rolePrompt": "You prepare release notes from the changelog documents.",
+      "avatar": "🚀",
+      "node": null,
+      "nodeAgent": null,
+      "createdBy": "user_1",
+      "parentSessionId": null,
+      "threadRootSeq": null,
       "source": "chat",
       "createdAt": 1755410000000,
       "updatedAt": 1755428400000,
-      "lastMessageRole": "assistant"
+      "running": false,
+      "threadCount": 2
     }
   ]
 }
 ```
 
-### `GET /spaces/:spaceId/ai-chat/sessions/:sessionId`
+### `GET /spaces/:spaceId/chat/sessions/:sessionId`
 
-- **Returns**: `200 { session }`. `404` if not found (for this user).
+- **Returns**: `200 { session }`, as listed above without the counts.
+
+### `PATCH /spaces/:spaceId/chat/sessions/:sessionId`
+
+- **Body**: any of `title`, `avatar`, `rolePrompt` (null clears it), `access`
+  (`"viewer"` or `"editor"`; a bot on a node stays `"editor"`).
+- **Returns**: `200 { success: true }`. `400` for a thread or a private session.
+
+### `DELETE /spaces/:spaceId/chat/sessions/:sessionId`
+
+- Deleting a channel deletes its threads, every message, and its bot's grant.
+- **Returns**: `200 { success: true }`.
 
 ```bash
-curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_2026-08-17-1"
+curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/chat/sessions/chat_2026-08-17-1"
 ```
 
-### `DELETE /spaces/:spaceId/ai-chat/sessions/:sessionId`
+### `GET /spaces/:spaceId/chat/sessions/:sessionId/messages`
 
-- **Returns**: `200 { success: true }`. `404` if not found.
+- **Query**: `before?` (a `seq`; omit for the newest page), `limit?` (default 50, max 200).
+- **Returns**: `200 { messages, hasMore }`, oldest first. A message is a row of the
+  session's log in the model's shape: `{ seq, sessionId, role: "user" | "assistant" |
+  "tool", authorId, content, visible, metadata, createdAt }`. `authorId` is the person
+  who posted, null for the bot; `metadata` holds `attachments`, `tool_calls`,
+  `tool_call_id`, `toolName`, `isError`, and the poster's `documentId` and `timeZone`.
+  `seq` is unique across the space, so a thread names its root by it.
 
 ```bash
-curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_2026-08-17-1"
-```
-
-```json
-{ "success": true }
+curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/chat/sessions/chat_2026-08-17-1/messages?limit=20"
 ```
 
 ## Documents

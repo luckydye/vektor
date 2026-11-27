@@ -42,7 +42,7 @@ async function runScheduledWorkflow(
 
   try {
     if (schedule.prompt !== null) {
-      await runAgentSchedule(store, schedule.prompt, schedule.createdBy);
+      await runAgentSchedule(store, { ...schedule, prompt: schedule.prompt });
       return;
     }
     const { documentId } = schedule;
@@ -103,17 +103,22 @@ async function runScheduledWorkflow(
   }
 }
 
-/** Gives the agent `prompt` as a new chat session of `userId`. */
+/**
+ * Posts the schedule's prompt as its creator: into its target session, which
+ * they must still be allowed to post to, or into a new chat session of theirs.
+ */
 async function runAgentSchedule(
   store: SpaceStore,
-  prompt: string,
-  userId: string,
+  schedule: WorkflowSchedule & { prompt: string },
 ): Promise<void> {
   const { spaceId } = store;
-  await agentPrompt(prompt, {
+  await agentPrompt(schedule.prompt, {
     origin: getLocalOrigin(),
     spaceId,
-    token: createJobToken(spaceId, Date.now().toString(), userId, { app: "agent" }),
+    token: createJobToken(spaceId, Date.now().toString(), schedule.createdBy, {
+      app: "agent",
+    }),
+    sessionId: schedule.sessionId ?? undefined,
     onLog: () => {},
   });
 }

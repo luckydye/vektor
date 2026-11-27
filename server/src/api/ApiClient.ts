@@ -682,6 +682,10 @@ export interface AIChatMessage {
   role: "user" | "assistant" | "system" | "tool" | "status" | "thinking" | "screen";
   content: string;
   timestamp: number;
+  /** The log row it renders; unset while it streams. */
+  seq?: number;
+  /** Who posted a user message. */
+  authorId?: string | null;
   /** A remote sub-agent's screen, on a `screen` message; live only during its turn. */
   screen?: { spaceId: string; sessionId: string; runner: string };
   toolName?: string;
@@ -699,42 +703,72 @@ export interface AIChatMessage {
 }
 
 /** Who opened a session: the chat UI, or a job such as a workflow run. */
-export type AIChatSessionSource = "chat" | "job";
+export type ChatSessionSource = "chat" | "job";
 
-export interface AIChatSession {
+/** A bot's channel, a thread in one, or a private session — see `ChatSessionSummary` on the server. */
+export interface ChatSession {
   id: string;
+  /** A channel's bot name, or a thread's root message. */
   title: string;
   spaceId: string;
-  source: AIChatSessionSource;
+  source: ChatSessionSource;
+  visibility: "space" | "private";
+  /** The space role needed to post. */
+  access: "viewer" | "editor";
+  rolePrompt: string | null;
+  avatar: string | null;
   /** The node the agent runs on; null runs it on the server. */
   node: string | null;
+  nodeAgent: string | null;
+  /** The owner, whose provider and nodes the bot uses. */
+  createdBy: string;
+  parentSessionId: string | null;
+  threadRootSeq: number | null;
   createdAt: number;
   updatedAt: number;
-  messages: AIChatMessage[];
-  conversationHistory: Array<{
-    role: "system" | "user" | "assistant" | "tool";
-    content?: string | null;
-    thinking?: string | null;
-    tool_calls?: Array<{
-      id: string;
-      type: string;
-      function: { name: string; arguments: string };
-    }>;
-    tool_call_id?: string;
-  }>;
-  shellSnapshot?: string | null;
+  /** Whether a round is answering right now. */
+  running: boolean;
+  /** On a listed channel. */
+  threadCount?: number;
+  /** On a listed channel with a node: whether its owner's node is connected. */
+  nodeOnline?: boolean;
+  /** On a listed thread. */
+  messageCount?: number;
 }
 
-/** A session as the picker lists it — see `AIChatSessionSummary` on the server. */
-export interface AIChatSessionListEntry {
-  id: string;
-  title: string;
-  spaceId: string;
-  source: AIChatSessionSource;
+/** One row of a session's log, in the model's shape. */
+export interface ChatMessageRow {
+  seq: number;
+  sessionId: string;
+  role: "user" | "assistant" | "tool";
+  /** Who posted it; null for the bot. */
+  authorId: string | null;
+  content: string;
+  visible: boolean;
+  metadata: {
+    tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+    tool_call_id?: string;
+    toolName?: string;
+    attachments?: AIChatMessage["attachments"];
+    isError?: boolean;
+    documentId?: string;
+    timeZone?: string;
+  };
   createdAt: number;
-  updatedAt: number;
-  lastMessageRole: string | null;
 }
+
+/** What creating a session takes; see `session/new`. */
+export type NewChatSession =
+  | {
+      visibility: "space";
+      title: string;
+      avatar?: string;
+      rolePrompt?: string;
+      access?: "viewer" | "editor";
+      node?: string | null;
+      nodeAgent?: string | null;
+    }
+  | { visibility: "space"; parentSessionId: string; threadRootSeq: number };
 
 /**
  * How long an unsubscribed realtime connection is kept before it is closed.
@@ -2852,6 +2886,15 @@ export class ApiClient {
       return runners;
     },
 
+    /** The agents each runner or node the user may run agents on offers, by its name. */
+    agents: async (spaceId: string): Promise<Record<string, string[]>> => {
+      const { agents } = await this.apiGet<{ agents: Record<string, string[]> }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/available-runners?for=agents`,
+      );
+      return agents;
+    },
+
     /** Owner only: asks the runner what it offers, and keeps the answer. */
     describe: async (spaceId: string, runnerId: string): Promise<RunnerSummary> => {
       const { runner } = await this.apiPost<{ runner: RunnerSummary }>(
@@ -2870,59 +2913,83 @@ export class ApiClient {
     },
   };
 
-  aiChatSessions = {
-    list: async (spaceId: string): Promise<AIChatSessionListEntry[]> => {
-      const { sessions } = await this.apiFetch<{ sessions: AIChatSessionListEntry[] }>(
+  chatSessions = {
+    /** The space's bot channels. */
+    list: async (spaceId: string): Promise<ChatSession[]> => {
+      const { sessions } = await this.apiGet<{ sessions: ChatSession[] }>(
         this.baseUrl,
-        `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions`,
-        { credentials: "same-origin" },
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions`,
       );
       return sessions;
     },
 
-    get: async (spaceId: string, sessionId: string): Promise<AIChatSession | null> => {
-      const response = await fetch(
-        `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}`,
-        { credentials: "same-origin" },
+    /** A channel's threads, newest first. */
+    threads: async (spaceId: string, channelId: string): Promise<ChatSession[]> => {
+      const { sessions } = await this.apiGet<{ sessions: ChatSession[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions`,
+        { parent: channelId },
       );
-      if (response.status === 404) return null;
-      if (!response.ok)
-        throw new Error(
-          `API request failed: ${response.status} ${await response.text()}`,
-        );
-      const { session } = (await response.json()) as { session: AIChatSession };
+      return sessions;
+    },
+
+    get: async (spaceId: string, sessionId: string): Promise<ChatSession> => {
+      const { session } = await this.apiGet<{ session: ChatSession }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+      );
       return session;
     },
 
-    /** Open a session on the server; it picks the id. A `node` runs its agent there. */
-    create: async (
+    /** One page of a session's messages, oldest first, ending before `before`. */
+    messages: async (
       spaceId: string,
-      title: string,
-      node: string | null,
-    ): Promise<string> => {
-      const { result } = await this.apiFetch<{ result: { sessionId: string } }>(
+      sessionId: string,
+      page: { before?: number; limit?: number } = {},
+    ): Promise<{ messages: ChatMessageRow[]; hasMore: boolean }> =>
+      await this.apiGet(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
+        page,
+      ),
+
+    /** Open a bot's channel or a thread; the server picks the id. */
+    create: async (spaceId: string, params: NewChatSession): Promise<string> => {
+      const { result } = await this.apiPost<{ result: { sessionId: string } }>(
         this.baseUrl,
         "/api/v1/chat/acp",
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: crypto.randomUUID(),
-            method: "session/new",
-            params: { spaceId, title, node },
-          }),
+          jsonrpc: "2.0",
+          id: crypto.randomUUID(),
+          method: "session/new",
+          params: { spaceId, ...params },
         },
       );
       return result.sessionId;
     },
 
-    delete: async (spaceId: string, sessionId: string): Promise<void> => {
-      await this.apiFetch<{ success: true }>(
+    /** Edit a bot. */
+    update: async (
+      spaceId: string,
+      sessionId: string,
+      patch: {
+        title?: string;
+        avatar?: string | null;
+        rolePrompt?: string | null;
+        access?: "viewer" | "editor";
+      },
+    ): Promise<void> => {
+      await this.apiPatch(
         this.baseUrl,
-        `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}`,
-        { method: "DELETE", credentials: "same-origin" },
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+        patch,
+      );
+    },
+
+    delete: async (spaceId: string, sessionId: string): Promise<void> => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
       );
     },
 

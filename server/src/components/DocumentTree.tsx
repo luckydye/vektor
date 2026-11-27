@@ -520,11 +520,11 @@ export function DocumentTree(props: Props) {
   return (
     <div class="document-tree">
       <Show when={!isMounted() || isLoading()}>
-        <div class="hidden flex-col space-y-1 px-5xs md:flex">
+        <div class="hidden flex-col space-y-1 px-4xs md:flex">
           <Index each={[0, 1, 2]}>
             {() => (
               <div class="space-y-1">
-                <div class="flex items-center gap-2 rounded-md p-2">
+                <div class="flex items-center gap-2 rounded-md py-2 pr-2 pl-3xs">
                   <div class="h-6 w-6 flex-none animate-pulse rounded-sm bg-skeleton" />
                   <div class="h-4 w-24 animate-pulse rounded-sm bg-skeleton" />
                 </div>
@@ -671,7 +671,7 @@ export function DocumentTree(props: Props) {
                         <button
                           type="button"
                           onClick={() => openCategory(category())}
-                          class="flex flex-1 items-center gap-2 px-4xs py-1 max-md:py-2.5 text-left overflow-hidden whitespace-nowrap hyphens-auto group-hover/category:clip-right group-focus-within/category:clip-right"
+                          class="flex flex-1 items-center gap-2 pr-4xs pl-3xs py-1 max-md:py-2.5 text-left overflow-hidden whitespace-nowrap hyphens-auto group-hover/category:clip-right group-focus-within/category:clip-right"
                           aria-expanded={isCategoryOpen(category())}
                         >
                           <CategoryBadge category={category()} class="h-6 w-6">
@@ -747,7 +747,8 @@ export function DocumentTree(props: Props) {
                       attr:opened={isCategoryOpen(category()) ? "" : undefined}
                       class="[--transition-speed:100ms]"
                     >
-                      <div class="space-y-1 pt-1 pb-1.5">
+                      {/* Indented with the category badge, which sits on the nav's icon column. */}
+                      <div class="space-y-1 pt-1 pb-1.5 pl-1">
                         <Show
                           when={
                             isCategoryOpen(category()) && isSlugLoading(category().slug)

@@ -11,7 +11,6 @@ import type { IconName } from "#components/Icon.tsx";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useQuery } from "#composeables/query.ts";
-import { useAgentAvailable } from "#composeables/useIntegrationAIModel.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { documentTypeIcon } from "#documents/icons.ts";
@@ -29,8 +28,7 @@ export type QuickSearchResult =
   | { type: "document"; data: QuickSearchDocument; id?: undefined }
   | { type: "action"; id: string; data: { title?: string; description?: string } }
   | { type: "search"; title: string; space: string; id?: undefined }
-  | { type: "create"; title: string; id?: undefined }
-  | { type: "agent"; title: string; id?: undefined };
+  | { type: "create"; title: string; id?: undefined };
 
 /** The action that opens the palette; never offered as a result of itself. */
 export const PALETTE_ACTION_ID = "ui:toggle:palatte";
@@ -49,7 +47,6 @@ const RESULT_ICONS: Record<Exclude<QuickSearchResult["type"], "document">, IconN
   action: "bolt",
   search: "search",
   create: "new-document",
-  agent: "agent-chat",
 };
 
 export function quickSearchSectionLabel(
@@ -59,7 +56,6 @@ export function quickSearchSectionLabel(
   if (type === "document") return t("Documents", lang);
   if (type === "action") return t("Actions", lang);
   if (type === "search") return t("Search", lang);
-  if (type === "agent") return t("Agent", lang);
   return t("Create", lang);
 }
 
@@ -75,8 +71,6 @@ export function quickSearchResultLabel(result: QuickSearchResult, lang: string):
     return t('Search "{query}" in {space}', lang)
       .replace("{query}", result.title)
       .replace("{space}", result.space);
-  if (result.type === "agent")
-    return t('Ask the agent "{query}"', lang).replace("{query}", result.title);
   return t('Create Document with title "{title}"', lang).replace("{title}", result.title);
 }
 
@@ -87,7 +81,6 @@ export function quickSearchResultDescription(
   if (result.type === "action") return result.data.description;
   if (result.type === "search") return t("Search the full text of every document", lang);
   if (result.type === "create") return t("Open a new document with this title", lang);
-  if (result.type === "agent") return t("Start a new agent chat with this message", lang);
   return undefined;
 }
 
@@ -99,8 +92,8 @@ interface Options {
 
 /**
  * Quick search over the space: recently visited documents first, then actions,
- * then whatever the typed text can become — a full-text search, a new document
- * or a question for the agent. Shared by the command palette and the sidebar.
+ * then whatever the typed text can become — a full-text search or a new
+ * document. Shared by the command palette and the sidebar.
  */
 export function useQuickSearch(options: Options) {
   const lang = useLocale();
@@ -108,7 +101,6 @@ export function useQuickSearch(options: Options) {
   const { documents } = useDocuments();
   const { documentContext } = useDocumentContext();
   const { currentSpace } = useSpace();
-  const agentAvailable = useAgentAvailable();
 
   const [historyEntries, setHistoryEntries] = createSignal<HistoryEntry[]>([]);
 
@@ -196,18 +188,12 @@ export function useQuickSearch(options: Options) {
       }
     }
 
-    // Nothing matched, so the input reads as a question: offer the agent first.
-    const askFirst = results.length === 0;
-    if (typed && askFirst && agentAvailable()) results.push({ type: "agent", title: typed });
-
     const space = currentSpace();
     if (typed && space) {
       results.push({ type: "search", title: typed, space: space.name || "this space" });
     }
 
     if (typed && space) results.push({ type: "create", title: typed });
-
-    if (typed && !askFirst && agentAvailable()) results.push({ type: "agent", title: typed });
 
     return results;
   }, []);
@@ -261,7 +247,6 @@ export function useQuickSearch(options: Options) {
     if (result.type === "document") void openDocument(result.data);
     else if (result.type === "action") Actions.run(result.id);
     else if (result.type === "search") searchSpace(result.title);
-    else if (result.type === "agent") Actions.emit("ai-chat:ask", { detail: result.title });
     else createDocumentWithTitle(result.title);
   }
 

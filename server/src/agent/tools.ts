@@ -6,7 +6,7 @@
  */
 
 import { CANVAS_OPERATION_SCHEMA } from "#canvas/agent/schema.ts";
-import type { StoredAIChatSession } from "#db/space/aiChatSessions.ts";
+import type { ChatSessionSummary, StoredChatMessage } from "#db/space/chatSessions.ts";
 import type { JobDefinition } from "#extensions/manifest.ts";
 import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 
@@ -623,7 +623,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "read_chat",
       description:
-        "Read the user and assistant messages of one of the user's AI chats, oldest first. Tool calls are left out.",
+        "Read the latest messages of one of the user's chats or of a bot's channel or thread, oldest first. Tool calls are left out.",
       inputSchema: {
         type: "object",
         properties: {
@@ -661,6 +661,11 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
           timezone: {
             type: "string",
             description: 'IANA timezone for cronExpression, e.g. "Europe/Berlin".',
+          },
+          sessionId: {
+            type: "string",
+            description:
+              "A bot's channel or thread to post the prompt into, instead of a new chat session.",
           },
         },
         required: ["prompt"],
@@ -1304,24 +1309,23 @@ export async function callTool(
     }
     case "read_chat": {
       const chatId = expectString(args, "chatId");
-      const { session } = (await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/ai-chat/sessions/${encodeURIComponent(chatId)}`,
-      )) as { session: StoredAIChatSession };
-      const messages = session.messages as Array<{
-        role: string;
-        content: string;
-        timestamp: number;
-      }>;
+      const path = `/api/v1/spaces/${config.spaceId}/chat/sessions/${encodeURIComponent(chatId)}`;
+      const { session } = (await apiRequest(config, path)) as {
+        session: ChatSessionSummary;
+      };
+      const { messages } = (await apiRequest(config, `${path}/messages?limit=200`)) as {
+        messages: StoredChatMessage[];
+      };
       return {
         id: session.id,
         title: session.title,
         messages: messages
-          .filter((m) => m.role === "user" || m.role === "assistant")
+          .filter((m) => m.role !== "tool" && m.content.trim())
           .map((m) => ({
             role: m.role,
+            ...(m.authorId ? { authorId: m.authorId } : {}),
             content: m.content,
-            at: new Date(m.timestamp).toISOString(),
+            at: new Date(m.createdAt).toISOString(),
           })),
       };
     }
@@ -1374,7 +1378,7 @@ export async function callTool(
     }
     case "create_agent_trigger": {
       const body: Record<string, unknown> = { prompt: expectString(args, "prompt") };
-      for (const key of ["runAt", "cronExpression", "timezone"]) {
+      for (const key of ["runAt", "cronExpression", "timezone", "sessionId"]) {
         const value = expectString(args, key, { optional: true });
         if (value) body[key] = value;
       }

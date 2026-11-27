@@ -32,10 +32,6 @@
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]` | DELETE | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]` | GET | 401 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]` | PATCH | 401 | 403 | 403 | 403 | 404 |  |
-| `/api/v1/spaces/[spaceId]/ai-chat/sessions` | GET | 401 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | DELETE | 401 | 403 | 404 | 404 | 404 |  |
-| `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | GET | 401 | 403 | 404 | 404 | 404 |  |
-| `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]/context` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/audit-logs` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories` | POST | 401 | 403 | 403 | 400 | 400 |  |
@@ -43,6 +39,11 @@
 | `/api/v1/spaces/[spaceId]/categories/[id]` | DELETE | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories/[id]` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories/[id]` | PUT | 401 | 403 | 403 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/chat/sessions` | GET | 401 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]` | DELETE | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]` | GET | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]` | PATCH | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/messages` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/comments` | DELETE | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/comments` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/comments` | PATCH | 401 | 403 | 403 | 400 | 400 |  |

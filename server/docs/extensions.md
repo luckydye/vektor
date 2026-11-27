@@ -63,7 +63,7 @@ it to the database's **+ View** picker; after a user adds and selects it,
 `ctx.documentId` is the current database document ID while the view is mounted.
 `"workflow"` replaces the result body of a workflow run: `ctx.documentId` is the
 workflow document and the render function's second argument is the prepared
-result. `"panel"` renders it in a dockable floating panel like the AI chat — see
+result. `"panel"` renders it in a dockable floating panel — see
 [Panels](#panels). `"page"` remains accepted as a deprecated alias for
 `"standalone"`.
 

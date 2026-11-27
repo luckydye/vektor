@@ -44,7 +44,8 @@ export type AgentTurnRequest = {
   integrationSurface: IntegrationAgentSurface;
   userProfile?: string;
   timeZone?: string;
-  systemPrompt?: string;
+  /** The session's bot role and memory, after the core prompt. */
+  sessionSections?: string;
   /** The space's own instructions, resolved on the main thread. */
   spaceSystemPrompt?: string;
   userId?: string | null;

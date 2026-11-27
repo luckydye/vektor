@@ -193,7 +193,8 @@ export async function runAgentInWorker(
     connectedProviders: string[];
     userProfile?: string;
     timeZone?: string;
-    systemPrompt?: string;
+    /** The session's bot role and memory, after the core prompt. */
+    sessionSections?: string;
     userId?: string | null;
     provider?: AIProvider;
     jobToken: string;

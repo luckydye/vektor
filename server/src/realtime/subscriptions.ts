@@ -38,6 +38,7 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.properties,
   realtimeTopics.spaceEvents,
   realtimeTopics.workflowRuns,
+  realtimeTopics.chat,
 ]);
 
 type TopicAccess = "allowed" | "denied" | "unknown";

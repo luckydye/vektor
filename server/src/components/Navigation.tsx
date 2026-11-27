@@ -10,7 +10,12 @@ import {
   Show,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
-import { canAccessSettings, isOwner } from "#acl/permissions.ts";
+import { canAccessSettings, canEdit, isOwner } from "#acl/permissions.ts";
+import {
+  useAgentRunnerAgents,
+  useBotActions,
+  useBotChannels,
+} from "#composeables/useBotChannels.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { useRoute } from "#composeables/useRoute.ts";
@@ -26,6 +31,8 @@ import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
 import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
 import { spacePath } from "#utils/utils.ts";
+import { BotChannelList } from "./BotChannelList.tsx";
+import { BotEditorDialog } from "./BotEditorDialog.tsx";
 import { Button } from "./Button.tsx";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
@@ -67,6 +74,8 @@ export function Navigation() {
       return match ? `x/${match[1]}` : "";
     }
     if (path.includes("/settings")) return "settings";
+    const bot = path.match(/\/bots\/([^/]+)/);
+    if (bot) return `bots/${bot[1]}`;
     if (path === "" || path === spacePath(currentSpace()?.slug, "").replace(/\/+$/, "")) {
       return "home";
     }
@@ -99,6 +108,11 @@ export function Navigation() {
   const userCanAccessSettings = createMemo(
     () => !isLoading() && canAccessSettings(currentSpace()?.userRole),
   );
+
+  const botChannels = useBotChannels();
+  const botActions = useBotActions();
+  const [showBotEditor, setShowBotEditor] = createSignal(false);
+  const agentsByRunner = useAgentRunnerAgents(showBotEditor);
 
   // A space reached through admin rights is not one the viewer belongs to, so
   // there is nothing for them to leave.
@@ -215,6 +229,14 @@ export function Navigation() {
     description: t("Create a new document"),
     run: async () => {
       if (currentSpace()) navigate("/new");
+    },
+  });
+
+  Actions.register("bot:create", {
+    title: t("Create bot"),
+    description: t("Add a bot with its own channel to this space"),
+    run: async () => {
+      if (canEdit(currentSpace()?.userRole)) setShowBotEditor(true);
     },
   });
 
@@ -359,7 +381,6 @@ export function Navigation() {
 
             <Show when={extensionMenuLinks().length > 0 && !isLoading()}>
               <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs">
-                <SectionLabel text={t("Extensions")} />
                 <For each={extensionMenuLinks()}>
                   {(link) => (
                     <MenuLink
@@ -373,6 +394,20 @@ export function Navigation() {
                 </For>
               </div>
             </Show>
+
+            <BotChannelList
+              channels={botChannels() ?? []}
+              activeId={activeRoute().startsWith("bots/") ? activeRoute().slice(5) : null}
+              hrefOf={(id) => spacePath(currentSpace()?.slug, `/bots/${id}`)}
+              canCreate={!isLoading() && canEdit(currentSpace()?.userRole)}
+              onCreate={() => setShowBotEditor(true)}
+            />
+            <BotEditorDialog
+              show={showBotEditor()}
+              onUpdateShow={setShowBotEditor}
+              agentsByRunner={agentsByRunner() ?? {}}
+              onSave={async (draft) => navigate(`/bots/${await botActions.create(draft)}`)}
+            />
 
             <PinnedDocuments />
           </div>

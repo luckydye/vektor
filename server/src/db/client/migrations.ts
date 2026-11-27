@@ -10,8 +10,8 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as spaceSchema from "#db/schema/space.ts";
 import type { Database } from "./connection.ts";
 import type { Migration } from "./migrator.ts";
-import { exec } from "./query.ts";
-import { generateCreateTableSQL } from "./schemaUtils.ts";
+import { exec, many } from "./query.ts";
+import { addColumnIfMissing, columnExists, generateCreateTableSQL } from "./schemaUtils.ts";
 
 export async function createTables(db: Database, tables: SQLiteTable[]): Promise<void> {
   for (const table of tables) {
@@ -43,7 +43,7 @@ async function baseline(db: Database): Promise<void> {
     spaceSchema.auditLog,
     spaceSchema.emailNotificationOutbox,
     spaceSchema.workflowSchedule,
-    spaceSchema.aiChatSession,
+    spaceSchema.chatSession,
     spaceSchema.aiWeeklyUsage,
     spaceSchema.file,
     spaceSchema.series,
@@ -76,4 +76,80 @@ async function baseline(db: Database): Promise<void> {
   ]);
 }
 
-export const spaceMigrations: Migration[] = [{ id: 23, name: "baseline", up: baseline }];
+async function tableExists(db: Database, table: string): Promise<boolean> {
+  try {
+    await exec(db, sql.raw(`SELECT 1 FROM ${table} LIMIT 0`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Private AI chats become persistent bots: `ai_chat_session` is renamed to
+ * `chat_session`, its transcripts move to the `chat_message` log, and every
+ * existing session is dropped rather than converted.
+ */
+async function chatSessions(db: Database): Promise<void> {
+  if (await tableExists(db, "ai_chat_session")) {
+    // A database from before the squash also got an empty `chat_session` from the baseline.
+    if (await tableExists(db, "chat_session")) {
+      const [row] = await many<{ count: number }>(
+        db,
+        sql.raw("SELECT count(*) AS count FROM chat_session"),
+      );
+      if (Number(row?.count) > 0) {
+        throw new Error("Both ai_chat_session and a non-empty chat_session exist");
+      }
+      await run(db, ["DROP TABLE chat_session"]);
+    }
+    await run(db, ["ALTER TABLE ai_chat_session RENAME TO chat_session"]);
+  }
+
+  await run(db, ["DELETE FROM chat_session"]);
+  for (const column of ["messages", "conversation_history", "last_message_role"]) {
+    if (await columnExists(db, "chat_session", column)) {
+      await run(db, [`ALTER TABLE chat_session DROP COLUMN ${column}`]);
+    }
+  }
+
+  const { chatSession, workflowSchedule } = spaceSchema;
+  for (const column of [
+    chatSession.shellSnapshot,
+    chatSession.source,
+    chatSession.node,
+    chatSession.visibility,
+    chatSession.access,
+    chatSession.rolePrompt,
+    chatSession.avatar,
+    chatSession.memory,
+    chatSession.memoryThroughSeq,
+    chatSession.repliedThroughSeq,
+    chatSession.parentSessionId,
+    chatSession.threadRootSeq,
+    chatSession.nodeAgent,
+    workflowSchedule.sessionId,
+  ]) {
+    await addColumnIfMissing(db, column);
+  }
+
+  await run(db, [
+    `CREATE TABLE IF NOT EXISTS chat_message (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      author_id TEXT,
+      content TEXT NOT NULL,
+      visible INTEGER NOT NULL DEFAULT 1,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL
+    )`,
+    "CREATE INDEX IF NOT EXISTS chat_message_session_seq_idx ON chat_message (session_id, seq)",
+    "CREATE INDEX IF NOT EXISTS chat_session_parent_idx ON chat_session (parent_session_id)",
+  ]);
+}
+
+export const spaceMigrations: Migration[] = [
+  { id: 23, name: "baseline", up: baseline },
+  { id: 24, name: "chat sessions", up: chatSessions },
+];

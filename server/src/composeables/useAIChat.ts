@@ -250,7 +250,7 @@ export function useAIChat(options: {
     const sessionId = options.currentSessionId();
     const spaceId = options.currentSpaceId();
     if (sessionId && spaceId) {
-      void api.aiChatSessions.cancel(spaceId, sessionId);
+      void api.chatSessions.cancel(spaceId, sessionId);
     }
     abortController?.abort();
     abortController = null;

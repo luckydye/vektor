@@ -35,15 +35,8 @@ a-popover-arrow {
 /* The share popover shares the translucent menu surface, so its arrow has to
    carry the same fill and border instead of the solid panel colour. */
 .popover-sheet .contributors-arrow {
-  background: rgb(255 255 255 / 0.6);
-  border-color: var(--color-neutral-100);
-}
-
-@media (prefers-color-scheme: dark) {
-  .popover-sheet .contributors-arrow {
-    background: rgb(39 39 42 / 0.6);
-    border-color: rgb(255 255 255 / 0.1);
-  }
+  background: var(--menu-surface-background);
+  border-color: var(--menu-surface-border);
 }
 
 /* ── CommentThread ──────────────────────────────────────────────────── */

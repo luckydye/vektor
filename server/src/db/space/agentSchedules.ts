@@ -18,6 +18,8 @@ export async function createAgentSchedule(
   s: SpaceStore,
   params: {
     prompt: string;
+    /** The session to post into; unset opens a new one each time. */
+    sessionId?: string;
     /** Due time of a one-shot schedule; a recurring one starts at its next occurrence. */
     runAt?: Date;
     cronExpression?: string;
@@ -39,6 +41,7 @@ export async function createAgentSchedule(
       id: createId("workflowSchedule"),
       documentId: null,
       prompt: params.prompt,
+      sessionId: params.sessionId ?? null,
       cronExpression: params.cronExpression ?? null,
       timezone: params.timezone ?? null,
       // Match SQLite's whole-second precision.

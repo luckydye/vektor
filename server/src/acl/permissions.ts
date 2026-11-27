@@ -71,9 +71,16 @@ export const PUBLIC_GROUP = "public";
 export const AclKind = {
   TOKEN: "token",
   LINK: "link",
+  /** A bot's own grant on the space; it carries no secret, its job tokens are signed. */
+  BOT: "bot",
 } as const;
 
 export type AclKind = (typeof AclKind)[keyof typeof AclKind];
+
+/** The ACL principal a bot channel's turns run as. */
+export function botPrincipal(channelId: string): string {
+  return `bot:${channelId}`;
+}
 
 /**
  * Canonical shape of a group name. Group membership drives ACL access, so
