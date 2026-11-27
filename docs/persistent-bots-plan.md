@@ -42,7 +42,7 @@ threadRootSeq     integer | null
 nodeAgent         text | null           pinned agent on `node`
 ```
 
-`shellSnapshot`, `source`, `node`, `createdBy` (the bot owner), and timestamps stay. `messages`, `conversationHistory`, and `lastMessageRole` become `@deprecated`. The first two are `NOT NULL` without a default, so inserts keep writing `'[]'` until they are dropped.
+`shellSnapshot`, `source`, `node`, `createdBy` (the bot owner), and timestamps stay. `messages`, `conversationHistory`, and `lastMessageRole` are dropped.
 
 ### `chat_message`
 
@@ -145,8 +145,9 @@ Migration 24 must work on fresh databases (where the baseline already creates `c
 1. If `ai_chat_session` exists:
    - If `chat_session` also exists (a database from before the squash), drop it if it is empty and throw if it is not.
    - Rename `ai_chat_session` to `chat_session`.
-2. Add the columns with the `columnExists` helpers. Create `chat_message` and its `(session_id, seq)` index with raw SQL.
-3. Do not backfill. Existing sessions stay as hidden `private` rows without usable history; reusing an old job `sessionId` starts fresh. A follow-up migration drops them along with the deprecated columns.
+2. Delete all existing sessions. Old chats and job sessions are not kept, and reusing an old job `sessionId` fails as not found.
+3. Drop `messages`, `conversation_history`, and `last_message_role` if they exist.
+4. Add the new columns with the `columnExists` helpers. Create `chat_message` and its `(session_id, seq)` index with raw SQL.
 
 ## Later
 
