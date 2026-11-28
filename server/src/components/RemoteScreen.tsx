@@ -1,24 +1,21 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { useRemoteScreen } from "#composeables/useRemoteScreen.ts";
 import { Icon } from "./Icon.tsx";
-
-/** How long an ended screen stays visible before its tile is removed. */
-const ENDED_FOR_MS = 4_000;
 
 /** A remote agent's live screen as a call tile; clicking it hands mouse and keyboard to the remote machine. */
 export function RemoteScreen(props: {
   screen: { spaceId: string; sessionId: string; runner: string };
   task: string;
-  /** Called once an ended screen has been shown long enough to read why. */
-  onEnded?: () => void;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   const [focused, setFocused] = createSignal(false);
+  const [hasFrame, setHasFrame] = createSignal(false);
   const remote = useRemoteScreen(props.screen, (frame) => {
     if (canvas) {
       if (canvas.width !== frame.displayWidth) canvas.width = frame.displayWidth;
       if (canvas.height !== frame.displayHeight) canvas.height = frame.displayHeight;
       canvas.getContext("2d")?.drawImage(frame, 0, 0);
+      setHasFrame(true);
     }
     frame.close();
   });
@@ -42,12 +39,6 @@ export function RemoteScreen(props: {
   function key(event: KeyboardEvent) {
     if (remote.key(event)) event.preventDefault();
   }
-
-  createEffect(() => {
-    if (remote.state() !== "ended") return;
-    const timer = setTimeout(() => props.onEnded?.(), ENDED_FOR_MS);
-    onCleanup(() => clearTimeout(timer));
-  });
 
   return (
     <div
@@ -82,7 +73,7 @@ export function RemoteScreen(props: {
         onKeyUp={key}
       />
 
-      <Show when={remote.state() !== "live"}>
+      <Show when={remote.state() === "connecting" || (remote.state() === "ended" && !hasFrame())}>
         <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 px-4 text-center">
           <Show
             when={remote.state() === "connecting"}
@@ -114,6 +105,9 @@ export function RemoteScreen(props: {
             <span class="truncate font-medium text-size-small text-white">
               {props.screen.runner}
             </span>
+            <Show when={remote.state() === "ended"}>
+              <span class="shrink-0 text-size-extra-small text-white/40">ended</span>
+            </Show>
           </div>
           <p class="truncate text-size-extra-small text-white/60">{props.task}</p>
         </div>

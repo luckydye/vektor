@@ -317,17 +317,22 @@ export function useChatSession(options: {
   /** Shows what was posted, then streams the round answering it. */
   async function follow() {
     if (isGenerating()) return;
-    await load();
+    // A stream that starts while the history loads would be wiped by its page.
+    await load(true);
     await reconnectSession();
   }
 
+  /** The session whose transcript is loaded; a null blip from a refreshing list must not clear it. */
+  let loadedSession: string | null = null;
+
   createEffect(
     on(options.sessionId, (sessionId) => {
+      if (!sessionId || sessionId === loadedSession) return;
+      loadedSession = sessionId;
       setMessages([]);
       setHasMore(false);
       setMessageInput("");
       setUploadError("");
-      if (!sessionId) return;
       const running = untrack(options.running);
       void (running ? follow() : load()).then(() => messagesRef()?.scrollToBottom());
     }),

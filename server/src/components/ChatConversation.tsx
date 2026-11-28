@@ -35,7 +35,6 @@ type PinnedScreen = {
 /** A session's transcript with its composer, and any remote screens pinned above. */
 export function ChatConversation(props: Props) {
   const chat = () => props.chat;
-  const [endedScreens, setEndedScreens] = createSignal<ReadonlySet<string>>(new Set());
   /** Per chat, so a conversation that does not need the screen stays uncluttered. */
   const screensHidden = usePersistedState({
     key: () => {
@@ -57,8 +56,7 @@ export function ChatConversation(props: Props) {
         });
       }
     }
-    const ended = endedScreens();
-    return new Map([...bySession].filter(([, entry]) => !ended.has(entry.key)));
+    return bySession;
   });
   const screenKeys = createMemo(
     () => [...screens().values()].map((entry) => entry.key),
@@ -132,13 +130,7 @@ export function ChatConversation(props: Props) {
                         return (
                           <Show when={entry()}>
                             {(pinned) => (
-                              <RemoteScreen
-                                screen={pinned().screen}
-                                task={pinned().task}
-                                onEnded={() =>
-                                  setEndedScreens((previous) => new Set(previous).add(key))
-                                }
-                              />
+                              <RemoteScreen screen={pinned().screen} task={pinned().task} />
                             )}
                           </Show>
                         );
