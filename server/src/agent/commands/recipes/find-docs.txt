@@ -17,5 +17,5 @@ keywords: search, find, list, read, lookup
    `cursor` to continue.
 6. Use `read_document` with the returned ID to read the live draft. Pass `rev`
    only when a historical revision is specifically required.
-7. To keep selected content in the virtual filesystem, write it with
-   `write_file`; do not claim a sandbox path is a user-downloadable URL.
+7. To keep selected content in the virtual filesystem, write it with a
+   quoted heredoc in `bash`; do not claim a sandbox path is a user-downloadable URL.

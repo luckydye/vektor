@@ -4,7 +4,8 @@ keywords: upload, share, file, artifact, url, image
 ---
 
 1. Make sure the artifact exists in the virtual filesystem. Download remote
-   files with `curl -o <file>` or create text with `write_file`.
+   files with `curl -o <file>` or create text with a quoted heredoc
+   (`cat > notes.md <<'EOF'`).
 2. Upload it:
      upload report.pdf
    Optional flags:

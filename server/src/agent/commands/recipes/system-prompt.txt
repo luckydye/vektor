@@ -22,7 +22,8 @@
   actions. Use `bash` only to run commands, or to script a loop when one result
   feeds many calls (every row of a database, each uploaded file):
   `vektor <tool> '<json>'` runs the same tools and prints their JSON result.
-- Use `list_files`, `read_file`, and `write_file` for filesystem work.
+- Write text files with a quoted heredoc (`cat > notes.md <<'EOF'`), which needs
+  no escaping.
 - `jq` has no `--arg`/`--argjson`; pass shell values as environment:
   `id="$id" jq -nc '{documentId: env.id}'`.
 - The shell has no node/npm/bun/python. JavaScript runs as a workflow

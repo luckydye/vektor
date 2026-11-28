@@ -245,7 +245,7 @@ describe("agent model loop", () => {
     ).rejects.toThrow("empty response 3 times");
   });
 
-  it("reads, overwrites, and appends files without shell commands", async () => {
+  it("writes and appends files through bash with quoted heredocs", async () => {
     const bash = createAgentShell({
       current: {
         apiUrl: "http://unused.invalid",
@@ -254,43 +254,19 @@ describe("agent model loop", () => {
       },
     }, platform.fetch);
     const initialContent = 'ablausd "aslnads"\n$HOME `oops`\n';
+    const call = (id: string, command: string) => ({
+      id,
+      type: "function" as const,
+      function: { name: "bash", arguments: JSON.stringify({ command }) },
+    });
     const responses: Array<{ message: ChatMessage; finishReason: string }> = [
       {
         message: {
           role: "assistant",
           content: null,
           tool_calls: [
-            {
-              id: "write-1",
-              type: "function",
-              function: {
-                name: "write_file",
-                arguments: JSON.stringify({
-                  path: "./asd.txt",
-                  content: initialContent,
-                }),
-              },
-            },
-            {
-              id: "write-2",
-              type: "function",
-              function: {
-                name: "write_file",
-                arguments: JSON.stringify({
-                  path: "./asd.txt",
-                  content: "emoji: 🧪\n",
-                  mode: "append",
-                }),
-              },
-            },
-            {
-              id: "read-1",
-              type: "function",
-              function: {
-                name: "read_file",
-                arguments: JSON.stringify({ path: "./asd.txt" }),
-              },
-            },
+            call("write-1", `cat > asd.txt <<'EOF'\n${initialContent}EOF`),
+            call("write-2", "cat >> asd.txt <<'EOF'\nemoji: 🧪\nEOF"),
           ],
         },
         finishReason: "tool_calls",
@@ -315,19 +291,9 @@ describe("agent model loop", () => {
           const toolNames = (options.tools as Array<{ function: { name: string } }>).map(
             (tool) => tool.function.name,
           );
-          expect(toolNames.slice(0, 4)).toEqual([
-            "bash",
-            "list_files",
-            "read_file",
-            "write_file",
-          ]);
+          expect(toolNames[0]).toBe("bash");
           expect(toolNames).toContain("list_documents");
           expect(toolNames).toContain("edit_document");
-        } else {
-          const toolResults = options.messages.filter(
-            (message) => message.role === "tool",
-          );
-          expect(toolResults.at(-1)?.content).toBe(`${initialContent}emoji: 🧪\n`);
         }
         callCount += 1;
         const response = responses.shift();
@@ -341,87 +307,6 @@ describe("agent model loop", () => {
 
     const filePath = bash.fs.resolvePath(bash.getCwd(), "./asd.txt");
     expect(await bash.fs.readFile(filePath, "utf8")).toBe(`${initialContent}emoji: 🧪\n`);
-  });
-
-  it("lists a directory and its recursive file tree", async () => {
-    const bash = createAgentShell({
-      current: {
-        apiUrl: "http://unused.invalid",
-        spaceId: "space",
-        jobToken: "token",
-      },
-    }, platform.fetch);
-    const projectPath = bash.fs.resolvePath(bash.getCwd(), "project");
-    await bash.fs.mkdir(`${projectPath}/src/nested`, { recursive: true });
-    await bash.fs.writeFile(`${projectPath}/README.md`, "readme", "utf8");
-    await bash.fs.writeFile(`${projectPath}/src/index.ts`, "export {};", "utf8");
-    await bash.fs.writeFile(`${projectPath}/src/nested/value.txt`, "value", "utf8");
-
-    const responses: Array<{ message: ChatMessage; finishReason: string }> = [
-      {
-        message: {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "list-flat",
-              type: "function",
-              function: {
-                name: "list_files",
-                arguments: JSON.stringify({ path: "project" }),
-              },
-            },
-            {
-              id: "list-tree",
-              type: "function",
-              function: {
-                name: "list_files",
-                arguments: JSON.stringify({ path: "project", recursive: true }),
-              },
-            },
-          ],
-        },
-        finishReason: "tool_calls",
-      },
-      {
-        message: { role: "assistant", content: "Done." },
-        finishReason: "stop",
-      },
-    ];
-
-    await runAgentPrompt({
-      fetch: platform.fetch,
-      messages: [{ role: "user", content: "List the project" }],
-      apiUrl: "http://unused.invalid",
-      spaceId: "space",
-      jobToken: "token",
-      provider,
-      bash,
-      modelCaller: async (options) => {
-        const response = responses.shift();
-        if (!response) throw new Error("No mock model response remaining");
-        if (responses.length === 0) {
-          const toolResults = options.messages.filter(
-            (message) => message.role === "tool",
-          );
-          expect(toolResults.at(-2)?.content).toBe("README.md\nsrc/");
-          expect(toolResults.at(-1)?.content).toBe(
-            [
-              "project/",
-              "├── README.md",
-              "└── src/",
-              "    ├── index.ts",
-              "    └── nested/",
-              "        └── value.txt",
-            ].join("\n"),
-          );
-        }
-        if (response.message.content) {
-          await options.onText?.(response.message.content);
-        }
-        return response;
-      },
-    });
   });
 
   it("tells the model that locked documents are readonly", async () => {
@@ -679,8 +564,8 @@ describe("agent model loop", () => {
               id: "read-large",
               type: "function",
               function: {
-                name: "read_file",
-                arguments: JSON.stringify({ path: "large.txt" }),
+                name: "bash",
+                arguments: JSON.stringify({ command: "cat large.txt" }),
               },
             },
           ],

@@ -208,66 +208,6 @@ ${
 }`;
 }
 
-async function listFiles(
-  bash: Bash,
-  requestedPath: string,
-  recursive: boolean,
-): Promise<string> {
-  const rootPath = bash.fs.resolvePath(bash.getCwd(), requestedPath);
-  const rootStat = await bash.fs.lstat(rootPath);
-  if (!rootStat.isDirectory) {
-    throw new Error(`list_files path is not a directory: ${requestedPath}`);
-  }
-
-  const entriesAt = async (directoryPath: string) => {
-    const names = await bash.fs.readdir(directoryPath);
-    return names.sort((left, right) => left.localeCompare(right));
-  };
-  const describeEntry = async (directoryPath: string, name: string) => {
-    const entryPath = bash.fs.resolvePath(directoryPath, name);
-    const stat = await bash.fs.lstat(entryPath);
-    if (stat.isDirectory) return { entryPath, label: `${name}/`, isDirectory: true };
-    if (stat.isSymbolicLink) {
-      return {
-        entryPath,
-        label: `${name} -> ${await bash.fs.readlink(entryPath)}`,
-        isDirectory: false,
-      };
-    }
-    return { entryPath, label: name, isDirectory: false };
-  };
-
-  const rootEntries = await entriesAt(rootPath);
-  if (!recursive) {
-    if (rootEntries.length === 0) return "(empty directory)";
-    const labels = await Promise.all(
-      rootEntries.map(async (name) => (await describeEntry(rootPath, name)).label),
-    );
-    return labels.join("\n");
-  }
-
-  const rootLabel =
-    requestedPath === "."
-      ? "."
-      : requestedPath.endsWith("/")
-        ? requestedPath
-        : `${requestedPath}/`;
-  const lines = [rootLabel];
-  const walk = async (directoryPath: string, prefix: string): Promise<void> => {
-    const names = await entriesAt(directoryPath);
-    for (const [index, name] of names.entries()) {
-      const isLast = index === names.length - 1;
-      const entry = await describeEntry(directoryPath, name);
-      lines.push(`${prefix}${isLast ? "└── " : "├── "}${entry.label}`);
-      if (entry.isDirectory) {
-        await walk(entry.entryPath, `${prefix}${isLast ? "    " : "│   "}`);
-      }
-    }
-  };
-  await walk(rootPath, "");
-  return lines.join("\n");
-}
-
 type AgentDocumentContext = {
   type: string | null;
   readonly: boolean;
@@ -371,76 +311,6 @@ async function prepareAgentTurn(options: {
           type: "object",
           properties: { command: { type: "string" } },
           required: ["command"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "list_files",
-        description:
-          "List entries in a directory in the isolated in-memory filesystem. Set recursive to true to return a complete file tree. Use this instead of ls or find.",
-        parameters: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description:
-                'Directory path, absolute or relative to the current directory. Defaults to ".".',
-              default: ".",
-            },
-            recursive: {
-              type: "boolean",
-              description: "List the complete nested tree instead of immediate entries.",
-              default: false,
-            },
-          },
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "read_file",
-        description:
-          "Read a UTF-8 text file from the isolated in-memory filesystem. Use this instead of cat.",
-        parameters: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "File path, absolute or relative to the current directory.",
-            },
-          },
-          required: ["path"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "write_file",
-        description:
-          "Write UTF-8 text directly to the isolated in-memory filesystem. Use this instead of shell redirection, printf, or cat. Overwrites by default; set mode to append only when preserving existing content is required.",
-        parameters: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "File path, absolute or relative to the current directory.",
-            },
-            content: {
-              type: "string",
-              description: "Exact text to write; no shell escaping is needed.",
-            },
-            mode: {
-              type: "string",
-              enum: ["overwrite", "append"],
-              description: "Whether to replace the file or append to it.",
-              default: "overwrite",
-            },
-          },
-          required: ["path", "content"],
         },
       },
     },
@@ -726,43 +596,6 @@ export async function runAgentPrompt(options: {
               result = output || "(no output)";
             }
             isError = res.exitCode !== 0;
-          } else if (toolCall.function.name === "list_files") {
-            const path = record.path ?? ".";
-            const recursive = record.recursive ?? false;
-            if (typeof path !== "string" || !path.trim()) {
-              throw new Error('list_files "path" must be a non-empty string.');
-            }
-            if (typeof recursive !== "boolean") {
-              throw new Error('list_files "recursive" must be a boolean.');
-            }
-            result = await listFiles(bash, path, recursive);
-          } else if (toolCall.function.name === "read_file") {
-            const path = record.path;
-            if (typeof path !== "string" || !path.trim()) {
-              throw new Error('read_file requires a non-empty "path".');
-            }
-            const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
-            result = await bash.fs.readFile(resolvedPath, "utf8");
-          } else if (toolCall.function.name === "write_file") {
-            const path = record.path;
-            const content = record.content;
-            const mode = record.mode ?? "overwrite";
-            if (typeof path !== "string" || !path.trim()) {
-              throw new Error('write_file requires a non-empty "path".');
-            }
-            if (typeof content !== "string") {
-              throw new Error('write_file requires string "content".');
-            }
-            if (mode !== "overwrite" && mode !== "append") {
-              throw new Error('write_file "mode" must be "overwrite" or "append".');
-            }
-            const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
-            if (mode === "append") {
-              await bash.fs.appendFile(resolvedPath, content, "utf8");
-            } else {
-              await bash.fs.writeFile(resolvedPath, content, "utf8");
-            }
-            result = `${mode === "append" ? "Appended" : "Wrote"} ${Buffer.byteLength(content, "utf8")} bytes to ${resolvedPath}.`;
           } else if (toolCall.function.name === "recipes") {
             const name = record.name;
             const search = record.search;
