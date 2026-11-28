@@ -8,6 +8,7 @@ import {
   Show,
 } from "solid-js";
 import type { AIChatMessage } from "#api/client.ts";
+import type { ChatAuthor } from "#composeables/useBotChannels.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import { formatTime } from "#utils/dateFormat.ts";
@@ -31,7 +32,7 @@ interface Props {
   emptyTitle: string;
   emptyHint: string;
   /** Who posted a user message, by id. */
-  authorOf?: (authorId: string) => { name: string; image?: string | null } | undefined;
+  authorOf?: (authorId: string) => ChatAuthor | undefined;
   /** The viewer: their own posts sit on the right, everyone else's on the left. */
   currentUserId?: string | null;
   /** Labels the start of each of the bot's answers. */
@@ -410,19 +411,26 @@ export function AIChatMessages(props: Props) {
     return starts;
   });
 
-  /** Who a message is from, as its group header shows them. */
-  function senderOf(message: AIChatMessage): { name: string; avatar: JSX.Element } {
+  /** Who a message is from, as its group header shows them, and the tag beside the name. */
+  function senderOf(message: AIChatMessage): {
+    name: string;
+    avatar: JSX.Element;
+    tag?: string;
+  } {
+    const botAvatar = (avatar: string | null) => (
+      <BotAvatar avatar={avatar} class="h-10 w-10 rounded-full text-size-large" />
+    );
     if (message.role !== "user") {
       const bot = props.bot ?? { name: "Assistant", avatar: null };
-      return {
-        name: bot.name,
-        avatar: <BotAvatar avatar={bot.avatar} class="h-10 w-10 rounded-full text-size-large" />,
-      };
+      return { name: bot.name, avatar: botAvatar(bot.avatar), tag: "Bot" };
     }
-    const person = message.authorId ? props.authorOf?.(message.authorId) : undefined;
+    const author = message.authorId ? props.authorOf?.(message.authorId) : undefined;
+    if (author?.bot) {
+      return { name: author.name, avatar: botAvatar(author.bot.avatar), tag: "Scheduled" };
+    }
     const name =
-      person?.name ?? (message.authorId === props.currentUserId ? "You" : "Someone");
-    return { name, avatar: <PersonAvatar name={name} image={person?.image} /> };
+      author?.name ?? (message.authorId === props.currentUserId ? "You" : "Someone");
+    return { name, avatar: <PersonAvatar name={name} image={author?.image} /> };
   }
 
   function renderUserContent(message: AIChatMessage) {
@@ -543,9 +551,9 @@ export function AIChatMessages(props: Props) {
           <Show when={start()}>
             <div class="flex items-baseline gap-2">
               <span class="font-semibold text-neutral-900 text-size-medium">{sender().name}</span>
-              <Show when={message.role !== "user"}>
+              <Show when={sender().tag}>
                 <span class="rounded bg-primary-500/15 px-1 font-semibold text-[0.6rem] text-primary-700 uppercase">
-                  Bot
+                  {sender().tag}
                 </span>
               </Show>
               <span class="text-neutral-400 text-size-extra-small">

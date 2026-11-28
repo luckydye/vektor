@@ -310,6 +310,10 @@ A session is one of:
   next start.
 - The bot remembers on its own: once a session's log outgrows the model's budget, its
   oldest part is summarized into the session's memory.
+- A bot with `editor` access can schedule itself: it knows its session id and passes
+  it as `sessionId` to an agent trigger. When the trigger fires, its prompt is posted
+  with the bot's own principal (`bot:<channelId>`) as `authorId`. Deleting a channel
+  deletes the triggers that post into it or its threads, and those the bot created.
 - Any other `method` → `400`.
 - **Returns** (`session/new`): `200 { jsonrpc, id, result: { sessionId } }`.
 - **Returns** (`session/prompt`, `session/load`): `text/event-stream` — replays buffered

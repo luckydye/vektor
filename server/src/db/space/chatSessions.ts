@@ -1,4 +1,17 @@
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, max, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  max,
+  or,
+  sql,
+} from "drizzle-orm";
 import { AclKind, botPrincipal, ResourceType } from "#acl/permissions.ts";
 import { logAclChange } from "#acl/store.ts";
 import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
@@ -10,6 +23,7 @@ import {
   type ChatSessionRow,
   chatMessage,
   chatSession,
+  workflowSchedule,
 } from "#db/schema/space.ts";
 import { mentionsToText } from "#utils/markdown.ts";
 
@@ -308,6 +322,15 @@ export async function deleteChatSession(
     const ids = [sessionId, ...threads.map((thread) => thread.id)];
     await tx.db.delete(chatMessage).where(inArray(chatMessage.sessionId, ids));
     await tx.db.delete(chatSession).where(inArray(chatSession.id, ids));
+    // Schedules posting here, and the bot's own, would only fail from now on.
+    await tx.db
+      .delete(workflowSchedule)
+      .where(
+        or(
+          inArray(workflowSchedule.sessionId, ids),
+          eq(workflowSchedule.createdBy, botPrincipal(sessionId)),
+        ),
+      );
     const removed = await tx.db
       .delete(acl)
       .where(and(eq(acl.userId, botPrincipal(sessionId)), eq(acl.kind, AclKind.BOT)))

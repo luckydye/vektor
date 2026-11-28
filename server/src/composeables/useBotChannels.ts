@@ -1,4 +1,5 @@
 import { type Accessor, createMemo } from "solid-js";
+import { channelOfBotPrincipal } from "#acl/permissions.ts";
 import { api, type ChatSession, type CurrentUser, type User } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useQuery, useQueryClient } from "./query.ts";
@@ -56,12 +57,27 @@ export function useChatPeople() {
     queryKey: ["current_user"],
     queryFn: () => api.users.me(),
   });
+  const channels = useBotChannels();
   const byId = createMemo(() => new Map((members() ?? []).map((user) => [user.id, user])));
   return {
     currentUserId: createMemo(() => me()?.id ?? null),
-    authorOf: (id: string) => byId().get(id),
+    /** A person, or a bot posting through a task it scheduled itself. */
+    authorOf: (id: string): ChatAuthor | undefined => {
+      const channelId = channelOfBotPrincipal(id);
+      if (!channelId) return byId().get(id);
+      const channel = channels()?.find((candidate) => candidate.id === channelId);
+      return channel && { name: channel.title, bot: { avatar: channel.avatar } };
+    },
   };
 }
+
+/** Who posted a message, as the timeline draws them. */
+export type ChatAuthor = {
+  name: string;
+  image?: string | null;
+  /** Set when a bot posted it: a task the bot scheduled itself. */
+  bot?: { avatar: string | null };
+};
 
 /** A bot as its editor fills it in. */
 export type BotDraft = {

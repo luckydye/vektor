@@ -10,7 +10,12 @@
 
 import { resolveGranteeName } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
-import { botPrincipal, Permission, ResourceType } from "#acl/permissions.ts";
+import {
+  botPrincipal,
+  channelOfBotPrincipal,
+  Permission,
+  ResourceType,
+} from "#acl/permissions.ts";
 import type { ChatImage, ChatMessage } from "#api/provider/types.ts";
 import { getLocalOrigin } from "#config";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -338,17 +343,30 @@ async function roundContext(
 
 const isUserRow = (row: StoredChatMessage) => row.role === "user" && !!row.authorId;
 
-/** Display names of the people who posted `rows`, by id. */
+/**
+ * Display names of who posted `rows`, by id. A bot posts only through a task
+ * it scheduled itself, so its posts are named as that.
+ */
 async function authorNames(
-  platform: Platform,
+  store: SpaceStore,
   rows: StoredChatMessage[],
 ): Promise<Map<string, string>> {
   const ids = [...new Set(rows.flatMap((row) => (row.authorId ? [row.authorId] : [])))];
   const names = await Promise.all(
-    ids.map(async (id) => [id, (await resolveGranteeName(platform, id)) ?? id] as const),
+    ids.map(async (id) => {
+      const channelId = channelOfBotPrincipal(id);
+      if (channelId) {
+        const channel = await getChatSession(store, channelId);
+        return [id, `${channel?.title ?? id} (${SCHEDULED_TASK})`] as const;
+      }
+      return [id, (await resolveGranteeName(store.platform, id)) ?? id] as const;
+    }),
   );
   return new Map(names);
 }
+
+/** How a bot's own scheduled posts are labelled for the model. */
+const SCHEDULED_TASK = "a task it scheduled";
 
 /** A row as the model reads it: a person's post is prefixed with their name. */
 function toModelMessage(
@@ -401,7 +419,11 @@ async function sessionSections(
   if (context.bot) {
     sections.push(
       `## Bot Role\nYou are "${context.bot.name}", a bot in a channel shared by the people of this space. ` +
-        "Each message from a person starts with their name; several people may be talking.\n\n" +
+        "Each message from a person starts with their name; several people may be talking.\n" +
+        `This conversation's session id is \`${session.id}\`. To act here later — a reminder, a recurring check — ` +
+        "call `create_agent_trigger` with that `sessionId`; the prompt then arrives in this conversation " +
+        `as a message from "${context.bot.name} (${SCHEDULED_TASK})", an instruction from your earlier self ` +
+        "rather than from a person.\n\n" +
         (context.bot.rolePrompt?.trim() || "You are a general assistant."),
     );
   }
@@ -412,7 +434,7 @@ async function sessionSections(
       memory.push(`### Channel memory\n${context.channel.memory.trim()}`);
     }
     if (context.root) {
-      const rootNames = await authorNames(store.platform, [context.root]);
+      const rootNames = await authorNames(store, [context.root]);
       memory.push(
         `### This thread replies to\n${rowLine(context.root, new Map([...names, ...rootNames]))}`,
       );
@@ -553,7 +575,7 @@ async function runRound(
     (row) => row.seq > session.repliedThroughSeq && row.seq <= round.target,
   );
   const latest = batch.filter(isUserRow).at(-1) as StoredChatMessage;
-  const names = await authorNames(platform, rows);
+  const names = await authorNames(store, rows);
   // Rows posted after the target wait for the next round.
   const history = rows.filter((row) => row.seq <= round.target);
 
@@ -707,7 +729,7 @@ async function compactMemory(
     }
     if (end < 0) return;
     const chunk = rows.slice(0, end + 1);
-    const names = await authorNames(platform, chunk);
+    const names = await authorNames(store, chunk);
     const transcript = chunk
       .filter((row) => row.visible)
       .map((row) => rowLine(row, names))

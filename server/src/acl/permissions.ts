@@ -82,6 +82,11 @@ export function botPrincipal(channelId: string): string {
   return `bot:${channelId}`;
 }
 
+/** The channel a bot principal runs, or null for any other principal. */
+export function channelOfBotPrincipal(principal: string): string | null {
+  return principal.startsWith("bot:") ? principal.slice("bot:".length) : null;
+}
+
 /**
  * Canonical shape of a group name. Group membership drives ACL access, so
  * every write AND read path must enforce this: it keeps LIKE wildcards

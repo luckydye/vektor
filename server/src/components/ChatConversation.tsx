@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
+import type { ChatAuthor } from "#composeables/useBotChannels.ts";
 import type { ChatSessionHandle } from "#composeables/useChatSession.ts";
 import { AIChatMessages } from "./AIChatMessages.tsx";
 import { Icon } from "./Icon.tsx";
@@ -15,7 +16,7 @@ interface Props {
   /** Why the viewer cannot post here; unset lets them. */
   readonlyReason?: string;
   bot?: { name: string; avatar: string | null };
-  authorOf?: (authorId: string) => { name: string; image?: string | null } | undefined;
+  authorOf?: (authorId: string) => ChatAuthor | undefined;
   currentUserId?: string | null;
   threadOf?: (seq: number) => { messageCount?: number } | undefined;
   onOpenThread?: (seq: number) => void;
