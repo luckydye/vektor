@@ -80,6 +80,5 @@ jobs:
             set -eu
             sudo install -m 755 /tmp/vektor-linux-x64 /usr/local/bin/vektor.new
             sudo mv -f /usr/local/bin/vektor.new /usr/local/bin/vektor
-            tmux send-keys -t 0:0.0 C-c
-            sleep 1
-            tmux send-keys -t 0:0.0 '/usr/local/bin/vektor serve --port 3000' Enter
+            sudo systemctl restart vektor
+            sudo systemctl is-active --quiet vektor
