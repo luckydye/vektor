@@ -125,9 +125,9 @@ function h264Codec(data: Uint8Array): string {
 }
 
 /**
- * Watches and drives a remote sub-agent's screen: H.264 decoded to
- * `VideoFrame`s for `draw`, which must close them, Opus to the speakers once
- * sound is on, and mouse and keyboard sent back as evdev events.
+ * Watches and drives a remote agent's screen: H.264 decoded to `VideoFrame`s
+ * for `draw`, which must close them, Opus to the speakers once sound is on,
+ * and mouse and keyboard sent back as evdev events.
  */
 export function useRemoteScreen(
   screen: { spaceId: string; sessionId: string },

@@ -49,6 +49,12 @@ export function ChatConversation(props: Props) {
   const screenIds = createMemo(() => [...screens().keys()], [], {
     equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
   });
+  /** Call-tile layout: two side by side, then a square grid as more screens join. */
+  const screenGrid = createMemo(() => {
+    const count = screenIds().length;
+    const columns = count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
+    return { columns, rows: Math.ceil(count / columns) };
+  });
   const [screenHeight, setScreenHeight] = createSignal(320);
 
   function resizeScreen(event: PointerEvent) {
@@ -74,18 +80,31 @@ export function ChatConversation(props: Props) {
     <div class={`flex h-full min-h-0 flex-col bg-neutral-10 ${props.class ?? ""}`}>
       <Show when={screenIds().length}>
         <div class="shrink-0 px-3 pt-3">
-          <div class="flex gap-2" style={{ height: `${screenHeight()}px` }}>
-            {/* Keyed by session id so a new response does not remount (and reload) the streams. */}
-            <For each={screenIds()}>
-              {(id) => {
-                const entry = () => screens().get(id);
-                return (
-                  <Show when={entry()}>
-                    {(pinned) => <RemoteScreen screen={pinned().screen} task={pinned().task} />}
-                  </Show>
-                );
+          <div
+            class="rounded-xl bg-neutral-900 p-2 shadow-sm"
+            style={{ height: `${screenHeight()}px` }}
+          >
+            <div
+              class="grid h-full gap-2"
+              style={{
+                "grid-template-columns": `repeat(${screenGrid().columns}, minmax(0, 1fr))`,
+                "grid-template-rows": `repeat(${screenGrid().rows}, minmax(0, 1fr))`,
               }}
-            </For>
+            >
+              {/* Keyed by session id so a new response does not remount (and reload) the streams. */}
+              <For each={screenIds()}>
+                {(id) => {
+                  const entry = () => screens().get(id);
+                  return (
+                    <Show when={entry()}>
+                      {(pinned) => (
+                        <RemoteScreen screen={pinned().screen} task={pinned().task} />
+                      )}
+                    </Show>
+                  );
+                }}
+              </For>
+            </div>
           </div>
           {/* biome-ignore lint/a11y/useSemanticElements: a drag handle, not a content separator */}
           <div

@@ -1,7 +1,8 @@
 import { createSignal, Show } from "solid-js";
 import { useRemoteScreen } from "#composeables/useRemoteScreen.ts";
+import { Icon } from "./Icon.tsx";
 
-/** A remote sub-agent's live screen, filling its container; clicking it hands mouse and keyboard to the remote machine. */
+/** A remote agent's live screen as a call tile; clicking it hands mouse and keyboard to the remote machine. */
 export function RemoteScreen(props: {
   screen: { spaceId: string; sessionId: string; runner: string };
   task: string;
@@ -38,54 +39,78 @@ export function RemoteScreen(props: {
   }
 
   return (
-    <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900">
-      <div class="flex shrink-0 items-center gap-2 px-3 py-1.5 text-size-small">
-        <span class="shrink-0 font-medium text-neutral-100">{props.screen.runner}</span>
-        <span class="min-w-0 flex-1 truncate text-neutral-500">{props.task}</span>
+    <div class="relative flex h-full min-h-0 min-w-0 overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
+      <canvas
+        ref={canvas}
+        tabIndex={0}
+        aria-label={`Screen of ${props.screen.runner}`}
+        class="block h-full w-full cursor-default bg-black object-contain outline-none"
+        classList={{ "ring-2 ring-primary-500 ring-inset": focused() }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          remote.releaseKeys();
+        }}
+        onMouseMove={(event) => pointer("move", event, 0)}
+        onMouseDown={(event) => pointer("down", event, event.button)}
+        onMouseUp={(event) => pointer("up", event, event.button)}
+        onContextMenu={(event) => event.preventDefault()}
+        on:wheel={{
+          passive: false,
+          handleEvent(event: WheelEvent) {
+            event.preventDefault();
+            pointer("wheel", event, event.deltaY);
+          },
+        }}
+        onKeyDown={key}
+        onKeyUp={key}
+      />
+
+      <Show when={remote.state() !== "live"}>
+        <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 px-4 text-center">
+          <Show
+            when={remote.state() === "connecting"}
+            fallback={
+              <p class="text-size-small text-white/70">
+                {remote.error() ?? "The screen has ended."}
+              </p>
+            }
+          >
+            <Icon class="h-5 w-5 animate-spin text-white/60" name="spinner" />
+            <p class="text-size-small text-white/70">
+              Connecting to {props.screen.runner}…
+            </p>
+          </Show>
+        </div>
+      </Show>
+
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-linear-to-t from-black/85 via-black/35 to-transparent px-3 pt-8 pb-2">
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span
+              class="h-1.5 w-1.5 shrink-0 rounded-full"
+              classList={{
+                "bg-green-500": remote.state() === "live",
+                "animate-pulse bg-amber-400": remote.state() === "connecting",
+                "bg-neutral-500": remote.state() === "ended",
+              }}
+            />
+            <span class="truncate font-medium text-size-small text-white">
+              {props.screen.runner}
+            </span>
+          </div>
+          <p class="truncate text-size-extra-small text-white/60">{props.task}</p>
+        </div>
         <Show when={remote.state() === "live"}>
           <button
             type="button"
-            class="shrink-0 text-neutral-400 hover:text-neutral-100"
+            class="pointer-events-auto shrink-0 rounded-full bg-white/15 px-2.5 py-1 font-medium text-size-extra-small text-white transition-colors hover:bg-white/25"
             onClick={remote.toggleSound}
           >
             {remote.sound() ? "Mute" : "Sound"}
           </button>
         </Show>
       </div>
-      <Show
-        when={remote.state() !== "ended"}
-        fallback={
-          <div class="border-neutral-200 border-t px-3 py-2 text-neutral-500 text-size-small">
-            {remote.error() ?? "The screen has ended."}
-          </div>
-        }
-      >
-        <canvas
-          ref={canvas}
-          tabIndex={0}
-          aria-label={`Screen of ${props.screen.runner}`}
-          class="block min-h-0 w-full flex-1 cursor-default bg-black object-contain outline-none"
-          classList={{ "ring-2 ring-primary-500 ring-inset": focused() }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false);
-            remote.releaseKeys();
-          }}
-          onMouseMove={(event) => pointer("move", event, 0)}
-          onMouseDown={(event) => pointer("down", event, event.button)}
-          onMouseUp={(event) => pointer("up", event, event.button)}
-          onContextMenu={(event) => event.preventDefault()}
-          on:wheel={{
-            passive: false,
-            handleEvent(event: WheelEvent) {
-              event.preventDefault();
-              pointer("wheel", event, event.deltaY);
-            },
-          }}
-          onKeyDown={key}
-          onKeyUp={key}
-        />
-      </Show>
     </div>
   );
 }
