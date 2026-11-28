@@ -1,8 +1,10 @@
 import { requireChatSession } from "#acl/guards.ts";
+import { channelOfBotPrincipal } from "#acl/permissions.ts";
 import { cancelChatRound, withRunning } from "#agent/chatTurns.ts";
 import {
   badRequestResponse,
   jsonResponse,
+  notFoundResponse,
   parseJsonBody,
   requireParam,
   withApiErrorHandling,
@@ -119,6 +121,11 @@ export const DELETE: ApiRouteHandler = (context) =>
       // A private session is its creator's; a bot and its threads are the editors'.
       "edit",
     );
+    // A bot may remove only the bots it manages, never other channels or its own.
+    const callerBot = channelOfBotPrincipal(userId);
+    if (callerBot && session.managedBy !== callerBot) {
+      throw notFoundResponse("Managed bot");
+    }
 
     const deleted = await deleteChatSession(
       await openSpaceStore(platform, spaceId),

@@ -25,36 +25,48 @@ export function BotChannelList(props: Props) {
       <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs">
         <SectionLabel text="Bots" />
         <For each={props.channels}>
-          {(channel) => (
-            <a
-              href={props.hrefOf(channel.id)}
-              data-tooltip={channel.title}
-              data-tooltip-pos="right"
-              class={twMerge(
-                rowClass,
-                props.activeId === channel.id
-                  ? "bg-primary-100 text-primary-700"
-                  : "hover:bg-primary-50 active:bg-primary-100",
-              )}
-            >
-              {/* The size sits in here: twMerge reads it as clashing with the active text colour. */}
-              <div class="flex min-w-0 flex-1 items-center text-size-normal">
-                <BotAvatar
-                  avatar={channel.avatar}
-                  class="h-[1.35em] w-[1.35em] rounded-full text-size-small"
-                />
-                <span class="@max-xs:hidden ml-3xs min-w-0 flex-1 truncate">
-                  {channel.title}
-                </span>
-              </div>
-              <Show when={channel.running}>
-                <span
-                  class="@max-xs:hidden h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary-500"
-                  title="Answering"
-                />
-              </Show>
-            </a>
-          )}
+          {(channel) => {
+            const manager = () =>
+              props.channels.find((candidate) => candidate.id === channel.managedBy);
+            return (
+              <a
+                href={props.hrefOf(channel.id)}
+                data-tooltip={channel.title}
+                data-tooltip-pos="right"
+                class={twMerge(
+                  rowClass,
+                  props.activeId === channel.id
+                    ? "bg-primary-100 text-primary-700"
+                    : "hover:bg-primary-50 active:bg-primary-100",
+                )}
+              >
+                {/* The size sits in here: twMerge reads it as clashing with the active text colour. */}
+                <div class="flex min-w-0 flex-1 items-center text-size-normal">
+                  <BotAvatar
+                    avatar={channel.avatar}
+                    class="h-[1.35em] w-[1.35em] rounded-full text-size-small"
+                  />
+                  <span class="@max-xs:hidden ml-3xs min-w-0 flex-1 truncate">
+                    {channel.title}
+                  </span>
+                  <Show when={channel.managedBy}>
+                    <span
+                      class="@max-xs:hidden ml-1.5 shrink-0 rounded-full bg-neutral-200/70 px-1.5 py-0.5 font-medium text-neutral-600 text-size-extra-small"
+                      title={`Managed by ${manager()?.title ?? "another bot"}`}
+                    >
+                      Managed
+                    </span>
+                  </Show>
+                </div>
+                <Show when={channel.running}>
+                  <span
+                    class="@max-xs:hidden h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary-500"
+                    title="Answering"
+                  />
+                </Show>
+              </a>
+            );
+          }}
         </For>
         {/* Once there are bots, the "Create bot" action makes more. */}
         <Show when={props.canCreate && props.channels.length === 0}>

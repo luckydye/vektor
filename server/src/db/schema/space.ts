@@ -433,6 +433,8 @@ export const chatSession = sqliteTable("chat_session", {
   threadRootSeq: integer("thread_root_seq"),
   /** The agent the session runs on `node`. */
   nodeAgent: text("node_agent"),
+  /** The bot channel that spawned and manages this one; null for a person's bot. */
+  managedBy: text("managed_by"),
 });
 
 export type ChatSessionRow = typeof chatSession.$inferSelect;

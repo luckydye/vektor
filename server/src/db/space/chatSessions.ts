@@ -125,6 +125,8 @@ export type ChatSessionSummary = {
   avatar: string | null;
   node: string | null;
   nodeAgent: string | null;
+  /** The bot channel that spawned and manages this one; null for a person's bot. */
+  managedBy: string | null;
   createdBy: string;
   parentSessionId: string | null;
   threadRootSeq: number | null;
@@ -154,6 +156,7 @@ export function toChatSessionSummary(session: StoredChatSession): ChatSessionSum
     avatar: session.avatar,
     node: session.node,
     nodeAgent: session.nodeAgent,
+    managedBy: session.managedBy,
     createdBy: session.createdBy,
     parentSessionId: session.parentSessionId,
     threadRootSeq: session.threadRootSeq,
@@ -203,6 +206,18 @@ export async function countConsecutiveBotMessages(
     count++;
   }
   return count;
+}
+
+/** How many bots a bot channel has spawned and still manages. */
+export async function countManagedBots(
+  s: SpaceStore,
+  parentId: string,
+): Promise<number> {
+  const [row] = await s.db
+    .select({ count: count() })
+    .from(chatSession)
+    .where(eq(chatSession.managedBy, parentId));
+  return Number(row?.count ?? 0);
 }
 
 /** Bot channels, newest activity first, with how many threads each has. */
@@ -270,6 +285,7 @@ export async function createChatSession(
     avatar: string | null;
     node: string | null;
     nodeAgent: string | null;
+    managedBy: string | null;
     parentSessionId: string | null;
     threadRootSeq: number | null;
   },
@@ -354,32 +370,50 @@ export async function updateChannel(
   });
 }
 
-/** Delete a session with its messages; a channel takes its threads and its bot's grant with it. */
+/**
+ * Delete a session with its messages; a channel takes its threads, the bots it
+ * manages, and their grants with it.
+ */
 export async function deleteChatSession(
   s: SpaceStore,
   sessionId: string,
   actorUserId: string,
 ): Promise<string[]> {
   return await s.tx(async (tx) => {
-    const threads = await tx.db
-      .select({ id: chatSession.id })
-      .from(chatSession)
-      .where(eq(chatSession.parentSessionId, sessionId));
-    const ids = [sessionId, ...threads.map((thread) => thread.id)];
-    await tx.db.delete(chatMessage).where(inArray(chatMessage.sessionId, ids));
-    await tx.db.delete(chatSession).where(inArray(chatSession.id, ids));
-    // Schedules posting here, and the bot's own, would only fail from now on.
+    const ids = new Set<string>();
+    async function collect(id: string) {
+      if (ids.has(id)) return;
+      ids.add(id);
+      const [threads, managed] = await Promise.all([
+        tx.db
+          .select({ id: chatSession.id })
+          .from(chatSession)
+          .where(eq(chatSession.parentSessionId, id)),
+        tx.db
+          .select({ id: chatSession.id })
+          .from(chatSession)
+          .where(eq(chatSession.managedBy, id)),
+      ]);
+      for (const row of [...threads, ...managed]) await collect(row.id);
+    }
+    await collect(sessionId);
+
+    const all = [...ids];
+    const principals = all.map(botPrincipal);
+    await tx.db.delete(chatMessage).where(inArray(chatMessage.sessionId, all));
+    await tx.db.delete(chatSession).where(inArray(chatSession.id, all));
+    // Schedules posting here, and the bots' own, would only fail from now on.
     await tx.db
       .delete(workflowSchedule)
       .where(
         or(
-          inArray(workflowSchedule.sessionId, ids),
-          eq(workflowSchedule.createdBy, botPrincipal(sessionId)),
+          inArray(workflowSchedule.sessionId, all),
+          inArray(workflowSchedule.createdBy, principals),
         ),
       );
     const removed = await tx.db
       .delete(acl)
-      .where(and(eq(acl.userId, botPrincipal(sessionId)), eq(acl.kind, AclKind.BOT)))
+      .where(and(inArray(acl.userId, principals), eq(acl.kind, AclKind.BOT)))
       .returning();
     for (const grant of removed) {
       await logAclChange(tx, tx.spaceId, {
@@ -392,7 +426,7 @@ export async function deleteChatSession(
         actorUserId,
       });
     }
-    return ids;
+    return all;
   });
 }
 

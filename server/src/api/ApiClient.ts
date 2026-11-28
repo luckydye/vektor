@@ -741,6 +741,8 @@ export interface ChatSession {
   /** The node the agent runs on; null runs it on the server. */
   node: string | null;
   nodeAgent: string | null;
+  /** The bot channel that spawned and manages this one; null for a person's bot. */
+  managedBy: string | null;
   /** The owner, whose provider and nodes the bot uses. */
   createdBy: string;
   parentSessionId: string | null;

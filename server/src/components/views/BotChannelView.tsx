@@ -55,6 +55,13 @@ export function BotChannelView() {
   const channel = createMemo(
     () => channels()?.find((candidate) => candidate.id === params.sessionId) ?? null,
   );
+  /** The bot that spawned this one, when it is managed. */
+  const manager = createMemo(() => {
+    const current = channel();
+    return current?.managedBy
+      ? channels()?.find((candidate) => candidate.id === current.managedBy)
+      : undefined;
+  });
   const threads = useChatThreads(() => channel()?.id ?? null);
   const thread = createMemo(
     () => [...threads().values()].find((candidate) => candidate.id === searchParams.thread) ?? null,
@@ -169,6 +176,14 @@ export function BotChannelView() {
                     class="h-6 w-6 rounded-full text-size-small"
                   />
                   <span class="shrink-0 font-semibold text-neutral-900">{current().title}</span>
+                  <Show when={current().managedBy}>
+                    <span
+                      class="shrink-0 rounded-full bg-neutral-200/70 px-1.5 py-0.5 font-medium text-neutral-600 text-size-extra-small"
+                      title={`Managed by ${manager()?.title ?? "another bot"}`}
+                    >
+                      Managed
+                    </span>
+                  </Show>
                   <span class="h-5 w-px shrink-0 bg-neutral-200" />
                   <span
                     class="min-w-0 flex-1 truncate text-size-small"

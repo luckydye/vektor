@@ -91,7 +91,7 @@ async function open(
     runner?: string;
     agent?: string;
   },
-  chat: { key: string; environmentId: string } | null,
+  chat: { key: string; environmentId?: string } | null,
 ) {
   const runners = await agentRunners(platform, request);
   const runner = request.runner
@@ -251,8 +251,8 @@ export async function promptChat(
   request: ChatScope & {
     /** The owner, whose runners the chat may use. */
     userId: string;
-    /** The bot's channel id, shared by the channel and all its threads. */
-    environmentId: string;
+    /** The bot's channel id, shared by the channel and all its threads; managed bots leave it unset. */
+    environmentId?: string;
     runner: string;
     agent: string;
     jobToken: string;

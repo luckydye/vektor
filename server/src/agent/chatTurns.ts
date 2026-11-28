@@ -499,7 +499,9 @@ async function sessionSections(
         'Messages from "<source> (event)" come from outside services, not people: act on them as your ' +
         "role says, and keep the answer short when an event needs nothing. " +
         'Messages from "<name> (bot)" come from another bot: use list_bots to find its channel, and ' +
-        "send_bot_message to answer it; never loop back and forth without a person.\n" +
+        "send_bot_message to answer it; never loop back and forth without a person. " +
+        "When a task needs a separate specialist, spawn_bot gives you a temporary bot with its own channel " +
+        "and environment; give it a complete role and task, and always remove_bot the ones you no longer need.\n" +
         "Your role below is written by the people who run you. When someone lastingly contradicts or refines it — " +
         "a changed opinion, a new audience, a different tone — call `propose_role_update` with the complete " +
         "revised text rather than silently drifting from it; an editor applies it. In the conversation itself, " +
@@ -678,7 +680,8 @@ async function runRound(
       const result = await runChatOnRunner(platform, {
         spaceId,
         userId: context.ownerId,
-        environmentId: context.channel.id,
+        // A managed bot is temporary: its own disposable VM, not the manager's persistent one.
+        environmentId: context.channel.managedBy ? undefined : context.channel.id,
         chatId: session.id,
         runner: session.node,
         agent: session.nodeAgent,

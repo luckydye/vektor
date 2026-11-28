@@ -444,6 +444,7 @@ async function newSession(
       avatar: null,
       node: parent.node,
       nodeAgent: parent.nodeAgent,
+      managedBy: null,
       parentSessionId: parent.id,
       threadRootSeq: rootSeq,
     });
@@ -483,6 +484,7 @@ async function newSession(
       avatar: null,
       node,
       nodeAgent,
+      managedBy: null,
       parentSessionId: null,
       threadRootSeq: null,
     });
@@ -510,6 +512,7 @@ async function newSession(
     avatar: optionalStringParam(params, "avatar")?.trim() || null,
     node,
     nodeAgent,
+    managedBy: null,
     parentSessionId: null,
     threadRootSeq: null,
   });

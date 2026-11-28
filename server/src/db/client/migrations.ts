@@ -149,7 +149,15 @@ async function chatSessions(db: Database): Promise<void> {
   ]);
 }
 
+async function managedBots(db: Database): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.chatSession.managedBy);
+  await run(db, [
+    "CREATE INDEX IF NOT EXISTS chat_session_managed_by_idx ON chat_session (managed_by)",
+  ]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 23, name: "baseline", up: baseline },
   { id: 24, name: "chat sessions", up: chatSessions },
+  { id: 25, name: "managed bots", up: managedBots },
 ];

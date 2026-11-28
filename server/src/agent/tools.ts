@@ -659,6 +659,40 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
               required: ["botId", "message"],
             },
           },
+          {
+            name: "spawn_bot",
+            description:
+              "Spawn a temporary bot with its own channel and environment, managed by you. Give it a name " +
+              "and role, and optionally a task to start now. Remove it with remove_bot when it is done.",
+            inputSchema: {
+              type: "object" as const,
+              properties: {
+                name: { type: "string", description: "The bot's name, shown in its channel." },
+                rolePrompt: {
+                  type: "string",
+                  description:
+                    "The bot's complete role and instructions. Give it everything it needs; it starts with none of this conversation.",
+                },
+                task: {
+                  type: "string",
+                  description: "What to ask it to do now. Omit to message it later.",
+                },
+              },
+              required: ["name"],
+            },
+          },
+          {
+            name: "remove_bot",
+            description:
+              "Remove a bot you spawned, with its channel, threads and temporary environment.",
+            inputSchema: {
+              type: "object" as const,
+              properties: {
+                botId: { type: "string", description: "The managed bot's channel id." },
+              },
+              required: ["botId"],
+            },
+          },
         ]
       : []),
     {
@@ -1278,7 +1312,12 @@ export async function callTool(
         `/api/v1/spaces/${config.spaceId}/chat/sessions`,
       )) as { sessions: ChatSessionSummary[] };
       return {
-        bots: sessions.map(({ id, title, access }) => ({ id, title, access })),
+        bots: sessions.map(({ id, title, access, managedBy }) => ({
+          id,
+          title,
+          access,
+          managedBy,
+        })),
       };
     }
     case "send_bot_message": {
@@ -1298,6 +1337,34 @@ export async function callTool(
         seq,
         note: "Delivered; it starts that bot's next turn. Use read_chat to read the reply.",
       };
+    }
+    case "spawn_bot": {
+      const name = expectString(args, "name");
+      const rolePrompt = expectString(args, "rolePrompt", { optional: true });
+      const task = expectString(args, "task", { optional: true });
+      const { bot } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/chat/sessions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, rolePrompt, task }),
+        },
+      )) as { bot: ChatSessionSummary };
+      return {
+        botId: bot.id,
+        name: bot.title,
+        note: "Started; give it a task with send_bot_message or wait for the one it has, then remove_bot when done.",
+      };
+    }
+    case "remove_bot": {
+      const botId = expectString(args, "botId");
+      await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/chat/sessions/${encodeURIComponent(botId)}`,
+        { method: "DELETE" },
+      );
+      return { botId, removed: true };
     }
     case "read_chat": {
       const chatId = expectString(args, "chatId");
