@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { homedir, networkInterfaces } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { openAcpSession, spawnTransport } from "./acpClient.ts";
 import type { Adapter, ScreenSession } from "./types.ts";
@@ -13,14 +13,13 @@ import type { Adapter, ScreenSession } from "./types.ts";
  *   <manager> run [args...]                  prints the environment's id
  *   <manager> run <id> -- <argv...>
  *   <manager> stop <id>
- *   <manager> address <id>                   optional
  *   <manager> stream <id>                    optional, the screen as H.264 and Opus
  *   <manager> input <id>                     optional, mouse and keyboard as JSON lines
  *
  * `run`'s stdio is the ACP pipe. A disposable environment lives as long as the
  * task's session and is stopped when it ends; `persistent` ones stay for the
- * next session. It reaches the Vektor server only through this node's proxy,
- * which carries the task's job token and never the node's own login.
+ * next session. It reaches the Vektor server directly, with the task's job
+ * token and never the node's own login.
  */
 export type ManagedOptions = {
   /** The adapter name, so two managers do not share an environment. */
@@ -39,10 +38,8 @@ export type ManagedOptions = {
   files: Array<{ from: string; to: string }>;
   /** The agent started in the environment, e.g. `["opencode", "acp"]`. */
   inner: string[];
-  /** The Vektor server the proxy forwards to. */
+  /** The Vektor server the environment calls directly. */
   host: string;
-  /** Where environments reach this node, when `address` is not offered. */
-  gateway?: string;
   /** The session's directory inside the environment; default is the one `exec` starts in. */
   cwd?: string;
 };
@@ -152,40 +149,7 @@ const WRITE_FILE =
 const localPath = (path: string) =>
   path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
 
-function localAddress(): string {
-  for (const addresses of Object.values(networkInterfaces())) {
-    const found = addresses?.find((a) => a.family === "IPv4" && !a.internal);
-    if (found) return found.address;
-  }
-  return "127.0.0.1";
-}
-
-/** Forwards the API to the Vektor server for environments that cannot reach it directly. */
-function startProxy(host: string) {
-  const target = new URL(host);
-  return Bun.serve({
-    hostname: "0.0.0.0",
-    port: 0,
-    fetch(request) {
-      const url = new URL(request.url);
-      if (!url.pathname.startsWith("/api/v1/")) {
-        return new Response("Not found", { status: 404 });
-      }
-      const headers = new Headers(request.headers);
-      headers.delete("host");
-      // The server checks the origin against its own.
-      headers.set("Origin", target.origin);
-      return fetch(`${target.origin}${url.pathname}${url.search}`, {
-        method: request.method,
-        headers,
-        body: request.body,
-      });
-    },
-  });
-}
-
 export function managedAdapter(options: ManagedOptions): Adapter {
-  let proxy: ReturnType<typeof startProxy> | undefined;
   const { manager } = options;
   /** Starts for one persistent environment, in order, so two threads cannot create it at once. */
   const starts = new Map<string, Promise<string>>();
@@ -227,7 +191,6 @@ export function managedAdapter(options: ManagedOptions): Adapter {
 
   return {
     async open(init) {
-      proxy ??= startProxy(options.host);
       const name =
         options.persistent && init.environmentId
           ? environmentName(options.name, init.spaceId, init.environmentId)
@@ -239,11 +202,6 @@ export function managedAdapter(options: ManagedOptions): Adapter {
       const stop = () => run([...manager, "stop", id]).catch(() => {});
 
       try {
-        // The protocol's optional `address`; a manager without it falls back to the node's own.
-        const address =
-          (await run([...manager, "address", id]).catch(() => "")) ||
-          options.gateway ||
-          localAddress();
         // The agents' own logins are the node host's to supply, and are read
         // anew for each task so a refreshed login is picked up.
         for (const file of options.files) {
@@ -258,7 +216,7 @@ export function managedAdapter(options: ManagedOptions): Adapter {
         const cwd = options.cwd ?? (await run([...manager, "run", id, "--", "pwd"]));
         const env = {
           ...options.env,
-          VEKTOR_HOST: `http://${address}:${proxy.port}`,
+          VEKTOR_HOST: options.host,
           VEKTOR_SPACE_ID: init.spaceId,
           VEKTOR_JOB_TOKEN: init.jobToken,
         };
@@ -276,7 +234,9 @@ export function managedAdapter(options: ManagedOptions): Adapter {
           {
             ...init,
             cwd,
-            mcp: { command: "vektor", args: ["mcp"], env },
+            // The agent reads MCP servers from its own config; the node never
+            // passes them over ACP, where they would override that config.
+            mcp: null,
             // The environment is disposable, and its paths are not this node's.
             policy: { ...init.policy, workdir: cwd, autoApprove: true, readonly: false },
           },

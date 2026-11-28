@@ -9,7 +9,7 @@
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
  *   vektor mcp
  *   vektor agent [prompt...] [--doc <slug|id>] [--once]
- *   vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path[:path-in-env]>]... [--gateway <ip>] [--env-workdir <dir>]
+ *   vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--manager <name=command>]... [--run-args <args>] [--resume-args <args>] [--persist-environments] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path[:path-in-env]>]... [--env-workdir <dir>]
  *   vektor workflow run <docId> [--input key=value ...] [--node <name>] [--json]
  *   vektor workflow logs <runId>
  *   vektor extension create <id>
@@ -184,7 +184,6 @@ function parseServeArgs(args: string[]): ServeOptions {
       inner: (one("inner") ?? "opencode acp").split(/\s+/),
       resumeArgs: one("resume-args")?.split(/\s+/).filter(Boolean) ?? [],
       persistent: flags.has("persist-environments"),
-      gateway: one("gateway"),
       cwd: one("env-workdir"),
     },
   };

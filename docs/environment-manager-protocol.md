@@ -15,7 +15,6 @@ vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--resu
 | `<mgr> run [args...]` | Create and start an environment | Prints its id as the last line of stdout and exits 0 once a command can run inside. `args` are whatever `--run-args` gave (image, mounts, …). |
 | `<mgr> run <id> -- <argv...>` | Run a command inside | stdin, stdout and stderr pass through unchanged (the ACP pipe: line-delimited JSON-RPC). Runs in the environment's default directory. Ends when the command ends or the process is killed. Without this form the environment is left running and nothing else is printed on stdout. |
 | `<mgr> stop <id>` | Dispose of the environment | Called when a disposable session ends, not for a persistent one. It must not outlive a disposable session, so its `run` has to make an ephemeral environment. Idempotent; exit 0 if it is already gone. |
-| `<mgr> address <id>` | *Optional.* Print the host the environment reaches the node at | One line on stdout. A non-zero exit means "not supported"; the node uses `--gateway`, else its own first non-loopback IPv4. |
 | `<mgr> stream <id>` | *Optional.* Stream the environment's screen and sound | Writes the media below to stdout until it is killed. Run once per viewer, so each starts with a keyframe. A non-zero exit means "not supported" or failed; its stderr is shown to the viewer. |
 | `<mgr> input <id>` | *Optional.* Drive the screen | Reads one JSON event per line from stdin until it closes. |
 
@@ -38,8 +37,7 @@ For `vm`, `--persist` and `--base` are create-only and fail on an existing VM, s
 vektor agent serve --manager opencode=vm \
   --run-args "--persist --base vektor-agent --wait-network" \
   --resume-args "--wait-network" \
-  --persist-environments \
-  --gateway <host-ip>
+  --persist-environments
 ```
 
 ## Screen
@@ -64,7 +62,9 @@ The chat shows a managed task's screen and lets its user drive it. `stream` writ
 
 - `env` and `pwd` on its PATH, plus `sh`, `mkdir`, `dirname` and `cat` when `--copy-file` is used. The task's variables are set with `run <id> -- env K=V... <agent command>`.
 - The agent command (`--inner`, default `opencode acp`) and the `vektor` binary, whose `vektor mcp` gives the agent Vektor's tools and messaging.
-- A network route to `<address>:<port>`, the node's proxy to the Vektor server. It forwards only `/api/v1/` and carries the task's short-lived job token, never the node's login.
+- A network route to the Vektor server. The environment calls it directly with the task's short-lived job token, never the node's login.
+
+The node does not pass MCP servers over ACP. The agent reads them from its own config — for OpenCode, `~/.config/opencode/opencode.json` — and the node supplies `VEKTOR_HOST`, `VEKTOR_SPACE_ID` and `VEKTOR_JOB_TOKEN` in its environment.
 
 ## Logins for the agent
 
@@ -82,5 +82,5 @@ Environments are disposable, so the node auto-approves the agent's permission re
 ## Example: vm
 
 ```
-vektor agent serve --manager claude=vm --run-args "--base vektor-agent --wait-network --store shared" --gateway <host-ip>
+vektor agent serve --manager claude=vm --run-args "--persist --base vektor-agent --wait-network" --resume-args "--wait-network" --persist-environments
 ```
