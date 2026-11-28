@@ -246,6 +246,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET | `/spaces/:spaceId/chat/sessions` | List the space's bot channels, or a channel's threads |
 | GET/PATCH/DELETE | `/spaces/:spaceId/chat/sessions/:sessionId` | Read / edit a bot / delete a chat session |
 | GET | `/spaces/:spaceId/chat/sessions/:sessionId/messages` | Page through a chat session's messages |
+| POST | `/spaces/:spaceId/chat/sessions/:sessionId/events` | Post an event from an outside service to a chat session |
 | GET/POST | `/spaces/:spaceId/documents` | List documents (with filters) / create a document |
 | GET/PUT/PATCH/DELETE/POST | `/spaces/:spaceId/documents/:documentId` | Read / replace content / patch metadata / archive-delete / create revision |
 | GET | `/spaces/:spaceId/documents/:documentId/access` | Everyone who can reach the document, and the grant that gets them there |
@@ -2027,6 +2028,31 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/chat/sessions/chat_2026-0
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/chat/sessions/chat_2026-08-17-1/messages?limit=20"
+```
+
+### `POST /spaces/:spaceId/chat/sessions/:sessionId/events`
+
+Hands the bot something that happened elsewhere — a failed build, a new ticket, a
+sensor reading. The event lands in the session's log as a message from
+`event:<source>`; the bot reads it as `<source> (event): …`, with `data` as JSON,
+and knows it comes from a service rather than a person.
+
+- **Auth**: anything that may post to the session. An outside service holds a space
+  access token with the channel's `access` role; workflows and extensions use their
+  job token. The poster is kept in the event's `metadata.event.sentBy`.
+- **Body**: `{ source, text, data?, wake? }`. `source` names the service (letters,
+  digits, `.`, `_`, `-`; up to 64). `text` is what happened (up to 20,000
+  characters); `data` is any JSON payload (up to 20,000 characters encoded).
+  `wake: false` posts it quietly: no round starts for it and none has to answer it,
+  but the next round reads it — for chatter the bot should know about without
+  replying to each one. A waking event starts a round, batched with whatever else
+  arrived meanwhile.
+- **Returns**: `200 { seq }` once the event is logged; the round runs on its own.
+
+```bash
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"source":"github","text":"CI failed on main","data":{"run":4812,"job":"test"}}' \
+  "$VEKTOR/spaces/$SPACE/chat/sessions/chat_2026-08-17-1/events"
 ```
 
 ## Documents

@@ -1,21 +1,25 @@
 import {
+  createEffect,
   createMemo,
   createSignal,
   For,
   Index,
   type JSX,
   onCleanup,
+  onMount,
   Show,
 } from "solid-js";
 import type { AIChatMessage } from "#api/client.ts";
 import type { ChatAuthor } from "#composeables/useBotChannels.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
+import { highlightStaticCodeBlocks } from "#editor/prism.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import { formatTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
+import "./AvatarElement.ts";
 
 export interface AIChatMessagesHandle {
   scrollToBottom: () => void;
@@ -33,8 +37,6 @@ interface Props {
   emptyHint: string;
   /** Who posted a user message, by id. */
   authorOf?: (authorId: string) => ChatAuthor | undefined;
-  /** The viewer: their own posts sit on the right, everyone else's on the left. */
-  currentUserId?: string | null;
   /** Labels the start of each of the bot's answers. */
   bot?: { name: string; avatar: string | null };
   /** The thread replying to a message, by the message's seq. */
@@ -333,23 +335,104 @@ export function BotAvatar(props: { avatar: string | null; class?: string }) {
   );
 }
 
-/** Within this long, one author's messages share one header. */
-const GROUP_GAP_MS = 7 * 60_000;
+/**
+ * Wraps each code block with its language and a copy button. Plain DOM: the
+ * markup comes from `innerHTML`, so there is no component to hang them on.
+ */
+function decorateCodeBlocks(root: HTMLElement) {
+  for (const pre of root.querySelectorAll("pre")) {
+    const code = pre.querySelector("code");
+    const language =
+      [...(code?.classList ?? [])]
+        .find((name) => name.startsWith("language-"))
+        ?.slice("language-".length) ?? "";
+    const wrapper = document.createElement("div");
+    wrapper.className = "code-block";
+    const bar = document.createElement("div");
+    bar.className = "code-block-bar";
+    const label = document.createElement("span");
+    label.textContent = language;
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", () => {
+      void navigator.clipboard.writeText(pre.textContent ?? "").then(() => {
+        copy.textContent = "Copied";
+        setTimeout(() => {
+          copy.textContent = "Copy";
+        }, 1500);
+      });
+    });
+    bar.append(label, copy);
+    pre.replaceWith(wrapper);
+    wrapper.append(bar, pre);
+  }
+}
 
-function PersonAvatar(props: { name: string; image?: string | null }) {
+/**
+ * A message's markdown, with its code blocks labelled, copyable and
+ * highlighted. Re-rendered as a message streams in; a fence still open renders
+ * as code until it closes.
+ */
+function MarkdownContent(props: { content: string; class?: string }) {
+  let element: HTMLDivElement | undefined;
+  createEffect(() => {
+    const html = renderMessageMarkdown(props.content);
+    if (!element) return;
+    element.innerHTML = html;
+    decorateCodeBlocks(element);
+    void highlightStaticCodeBlocks(element);
+  });
+  return <div ref={element} class={`markdown-content ${props.class ?? ""}`} />;
+}
+
+/** Fields shown before the rest fold behind "+N more". */
+const VISIBLE_EVENT_FIELDS = 6;
+
+/**
+ * An event's payload as small labelled chips, the way properties read, and
+ * whether it was read without a reply. Per message rather than in the group's
+ * tag: one group can mix quiet and waking events.
+ */
+function EventFields(props: {
+  fields: Array<{ label: string; value: string }>;
+  quiet: boolean;
+}) {
+  const [expanded, setExpanded] = createSignal(false);
+  const shown = () =>
+    expanded() ? props.fields : props.fields.slice(0, VISIBLE_EVENT_FIELDS);
+  const hidden = () => props.fields.length - shown().length;
   return (
-    <Show
-      when={props.image}
-      fallback={
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-200 font-medium text-neutral-600 text-size-medium">
-          {props.name.slice(0, 1).toUpperCase()}
-        </span>
-      }
-    >
-      {(image) => <img src={image()} alt="" class="h-10 w-10 shrink-0 rounded-full object-cover" />}
-    </Show>
+    <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-size-extra-small">
+      <For each={shown()}>
+        {(field) => (
+          <span
+            class="inline-flex max-w-full items-center gap-1 rounded-md bg-neutral-500/10 px-1.5 py-0.5"
+            title={`${field.label}: ${field.value}`}
+          >
+            <span class="shrink-0 text-neutral-500">{field.label}</span>
+            <span class="truncate font-medium text-neutral-800">{field.value}</span>
+          </span>
+        )}
+      </For>
+      <Show when={hidden() > 0}>
+        <button
+          type="button"
+          class="rounded-md px-1.5 py-0.5 text-neutral-500 hover:bg-neutral-500/10 hover:text-neutral-800"
+          onClick={() => setExpanded(true)}
+        >
+          +{hidden()} more
+        </button>
+      </Show>
+      <Show when={props.quiet}>
+        <span class="text-neutral-400">No reply needed</span>
+      </Show>
+    </div>
   );
 }
+
+/** Within this long, one author's messages share one header. */
+const GROUP_GAP_MS = 7 * 60_000;
 
 export function AIChatMessages(props: Props) {
   const lang = useLocale();
@@ -428,44 +511,79 @@ export function AIChatMessages(props: Props) {
     if (author?.bot) {
       return { name: author.name, avatar: botAvatar(author.bot.avatar), tag: "Scheduled" };
     }
-    const name =
-      author?.name ?? (message.authorId === props.currentUserId ? "You" : "Someone");
-    return { name, avatar: <PersonAvatar name={name} image={author?.image} /> };
+    if (author?.event) {
+      return {
+        name: author.name,
+        avatar: (
+          <span class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/15 text-amber-600">
+            <Icon class="h-5 w-5" name="bolt" />
+          </span>
+        ),
+        tag: "Event",
+      };
+    }
+    return {
+      name: author?.name ?? "Someone",
+      // The app's own avatar: the profile image, or the cosmetics the person wears.
+      avatar: (
+        <vektor-avatar
+          size="40"
+          attr:user-id={message.authorId ?? undefined}
+          prop:user={author}
+        />
+      ),
+    };
   }
 
   function renderUserContent(message: AIChatMessage) {
     return (
       <>
-        <div
-          class="markdown-content text-size-medium leading-relaxed"
-          innerHTML={renderMessageMarkdown(message.content)}
-        />
+        <MarkdownContent content={message.content} class="text-size-medium leading-relaxed" />
+        <Show when={message.eventFields?.length || message.quiet}>
+          <EventFields fields={message.eventFields ?? []} quiet={!!message.quiet} />
+        </Show>
         <Show when={message.attachments?.length}>
           <div class="mt-2 mb-1 space-y-1.5">
             <For each={message.attachments}>
               {(attachment) => (
-                <a
-                  href={attachment.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="block overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small transition-colors hover:bg-neutral-50"
-                >
+                // A plain card, not one link: a player's controls inside a link would follow it.
+                <div class="max-w-md overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small">
                   <Show when={attachment.isImage}>
-                    <img
-                      src={attachmentPreviewUrl(attachment)}
-                      alt={attachment.name}
-                      class="block max-h-80 w-full bg-neutral-50 object-contain"
-                      decoding="async"
-                      loading="lazy"
+                    <a href={attachment.url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={attachmentPreviewUrl(attachment)}
+                        alt={attachment.name}
+                        class="block max-h-80 w-full bg-neutral-50 object-contain"
+                        decoding="async"
+                        loading="lazy"
+                      />
+                    </a>
+                  </Show>
+                  <Show when={attachment.type.startsWith("video/")}>
+                    {/* biome-ignore lint/a11y/useMediaCaption: a user's upload comes with no captions to offer. */}
+                    <video
+                      src={attachment.url}
+                      controls
+                      preload="metadata"
+                      class="block max-h-80 w-full bg-black"
                     />
                   </Show>
-                  <span class="block px-2 py-1.5">
+                  <Show when={attachment.type.startsWith("audio/")}>
+                    {/* biome-ignore lint/a11y/useMediaCaption: a user's upload comes with no captions to offer. */}
+                    <audio src={attachment.url} controls preload="metadata" class="block w-full" />
+                  </Show>
+                  <a
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="block px-2 py-1.5 transition-colors hover:bg-neutral-50"
+                  >
                     <span class="font-medium">{attachment.name}</span>
                     <span class="ml-1 text-neutral-500">
                       {formatFileSize(attachment.size)}
                     </span>
-                  </span>
-                </a>
+                  </a>
+                </div>
               )}
             </For>
           </div>
@@ -539,7 +657,7 @@ export function AIChatMessages(props: Props) {
           <Show
             when={start()}
             fallback={
-              <span class="block pt-1 text-right text-[0.65rem] text-neutral-400 opacity-0 group-hover/message:opacity-100">
+              <span class="-ml-2 block whitespace-nowrap pt-1 text-right text-[0.6rem] text-neutral-400 opacity-0 group-hover/message:opacity-100">
                 {formatTime(message.timestamp, lang)}
               </span>
             }
@@ -711,7 +829,18 @@ export function AIChatMessages(props: Props) {
     );
   }
 
+  /**
+   * Set while the scroll event of our own scroll to the bottom is on its way.
+   * That event can arrive after the content grew again (an image loading), and
+   * must not read as the reader scrolling away.
+   */
+  let ownScroll = false;
+
   function onMessagesScroll() {
+    if (ownScroll) {
+      ownScroll = false;
+      return;
+    }
     setShouldFollowMessages(isNearBottom());
   }
 
@@ -720,7 +849,10 @@ export function AIChatMessages(props: Props) {
     scrollAnimationFrame = requestAnimationFrame(() => {
       scrollAnimationFrame = null;
       if (!shouldFollowMessages() || !messagesContainer) return;
+      const before = messagesContainer.scrollTop;
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      // No event fires for a scroll that went nowhere.
+      ownScroll = messagesContainer.scrollTop !== before;
     });
   }
 
@@ -752,6 +884,19 @@ export function AIChatMessages(props: Props) {
   });
 
   props.ref?.({ scrollToBottom, scrollToBottomIfFollowing, scrollThinkingToBottom });
+
+  // A picture or video that finishes loading grows the timeline without a
+  // scroll event, which would leave a following reader above the bottom.
+  // `load` does not bubble, so it is caught on the way down.
+  onMount(() => {
+    const follow = () => scrollToBottomIfFollowing();
+    messagesContainer?.addEventListener("load", follow, true);
+    messagesContainer?.addEventListener("loadedmetadata", follow, true);
+    onCleanup(() => {
+      messagesContainer?.removeEventListener("load", follow, true);
+      messagesContainer?.removeEventListener("loadedmetadata", follow, true);
+    });
+  });
 
   return (
     <div
@@ -824,15 +969,23 @@ export function AIChatMessages(props: Props) {
               <Show when={message.role === "thinking"}>
                 {renderRow(
                   message,
-                  <div class="my-1 border-neutral-200 border-l-2 pl-3">
-                    <div class="mb-1 flex items-center gap-1.5 font-medium text-neutral-500 text-size-small">
+                  // Open while it streams in (no `seq` yet), folded away once logged.
+                  <details
+                    class="group/thinking my-1 border-neutral-200 border-l-2 pl-3"
+                    open={message.seq === undefined}
+                  >
+                    <summary class="flex cursor-pointer list-none items-center gap-1.5 font-medium text-neutral-500 text-size-small hover:text-neutral-800">
                       <Icon class="h-3.5 w-3.5" name="thinking" />
                       Thinking
-                    </div>
-                    <pre class="thinking-content max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-neutral-500 text-size-small leading-relaxed">
+                      <Icon
+                        class="h-3 w-3 transition-transform group-open/thinking:rotate-90"
+                        name="chevron-right-small"
+                      />
+                    </summary>
+                    <pre class="thinking-content mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-neutral-500 text-size-small leading-relaxed">
                       {message.content}
                     </pre>
-                  </div>,
+                  </details>,
                   false,
                 )}
               </Show>
@@ -840,13 +993,9 @@ export function AIChatMessages(props: Props) {
               <Show when={message.role === "assistant"}>
                 {renderRow(
                   message,
-                  <div
-                    class="markdown-content text-size-medium leading-relaxed"
-                    classList={{
-                      "text-neutral-800": !message.isError,
-                      "text-red-600": message.isError,
-                    }}
-                    innerHTML={renderMessageMarkdown(message.content)}
+                  <MarkdownContent
+                    content={message.content}
+                    class={`text-size-medium leading-relaxed ${message.isError ? "text-red-600" : "text-neutral-800"}`}
                   />,
                   true,
                 )}

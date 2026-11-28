@@ -14,7 +14,9 @@ import {
   useAIChat,
 } from "#composeables/useAIChat.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { useUploads } from "#composeables/useUploads.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatFileSize } from "#utils/utils.ts";
 
 const PAGE_SIZE = 100;
@@ -39,6 +41,42 @@ function buildAttachmentContext(attachments: UploadedAttachment[]): string {
   return `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
 }
 
+/** `buildUrl` → "Build url", `failed_tests` → "Failed tests", `pr` → "PR". */
+function fieldLabel(key: string): string {
+  // A key of two letters is an abbreviation: `pr`, `id`.
+  if (/^[a-z]{1,2}$/i.test(key)) return key.toUpperCase();
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const MAX_FIELD_CHARS = 80;
+
+function fieldValue(value: unknown): string {
+  const text =
+    value === null || typeof value !== "object"
+      ? String(value)
+      : Array.isArray(value) && value.every((item) => item === null || typeof item !== "object")
+        ? value.join(", ")
+        : JSON.stringify(value);
+  return text.length > MAX_FIELD_CHARS ? `${text.slice(0, MAX_FIELD_CHARS - 1)}…` : text;
+}
+
+/** An event's payload as labelled fields, the way properties read. */
+export function eventFields(data: unknown): Array<{ label: string; value: string }> {
+  if (data === undefined) return [];
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return [{ label: "Data", value: fieldValue(data) }];
+  }
+  return Object.entries(data).map(([key, value]) => ({
+    label: fieldLabel(key),
+    value: fieldValue(value),
+  }));
+}
+
 /**
  * A session's log rows as the transcript draws them: an assistant row's tool
  * calls become tool messages of their own, paired with their results by id.
@@ -56,6 +94,8 @@ export function rowsToMessages(rows: ChatMessageRow[]): AIChatMessage[] {
           seq: row.seq,
           authorId: row.authorId,
           attachments: metadata.attachments,
+          eventFields: eventFields(metadata.event?.data),
+          quiet: metadata.quiet,
         },
       ];
     }
@@ -74,6 +114,17 @@ export function rowsToMessages(rows: ChatMessageRow[]): AIChatMessage[] {
       ];
     }
     return [
+      // The model's reasoning, logged with the answer it led to.
+      ...(metadata.thinking?.trim()
+        ? [
+            {
+              role: "thinking" as const,
+              content: metadata.thinking,
+              timestamp,
+              seq: row.seq,
+            },
+          ]
+        : []),
       ...(row.content.trim()
         ? [
             {
@@ -125,16 +176,23 @@ export function useChatSession(options: {
   const [isUploadingFiles, setIsUploadingFiles] = createSignal(false);
   const [uploadError, setUploadError] = createSignal("");
 
-  /** Replaces the transcript with the newest page of the log. */
-  async function load() {
+  /**
+   * Replaces the transcript with the newest page of the log. `unlessStreaming`
+   * drops the page if a round began streaming in meanwhile, which it would wipe.
+   */
+  async function load(unlessStreaming = false) {
     const spaceId = currentSpaceId();
     const sessionId = options.sessionId();
     if (!spaceId || !sessionId) return;
     const page = await api.chatSessions.messages(spaceId, sessionId, { limit: PAGE_SIZE });
     // Switched to another session meanwhile.
     if (options.sessionId() !== sessionId) return;
+    if (unlessStreaming && isGenerating()) return;
     setMessages(reconcile(rowsToMessages(page.messages)));
     setHasMore(page.hasMore);
+    // Replacing the rows briefly changes the height; keep a reader who was
+    // following at the bottom rather than wherever the scroll lands.
+    messagesRef()?.scrollToBottomIfFollowing();
   }
 
   async function loadOlder() {
@@ -195,6 +253,12 @@ export function useChatSession(options: {
       { defer: true },
     ),
   );
+
+  // Rows that start no round, like quiet events. Any chat event reloads: they
+  // coalesce per topic, so which session one names cannot be relied on.
+  useSync(currentSpaceId, [realtimeTopics.chat], () => {
+    if (!isGenerating() && options.sessionId()) void load(true);
+  });
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
 

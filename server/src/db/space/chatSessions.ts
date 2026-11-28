@@ -68,7 +68,27 @@ export type ChatMessageMetadata = {
   documentId?: string;
   /** The poster's IANA time zone. */
   timeZone?: string;
+  /** On an event row: where it came from, who posted it, and its payload. */
+  event?: { source: string; sentBy: string; data?: unknown };
+  /** Read by the next round, but starts none and needs no answer of its own. */
+  quiet?: boolean;
 };
+
+/**
+ * Rows a round must answer: posted by someone, and not quiet. Kept beside
+ * {@link isAnsweredRow} so the SQL and the in-memory rule cannot drift apart.
+ */
+const answerableRow = () =>
+  and(
+    eq(chatMessage.role, "user"),
+    sql`${chatMessage.authorId} IS NOT NULL`,
+    sql`coalesce(json_extract(${chatMessage.metadata}, '$.quiet'), 0) = 0`,
+  );
+
+/** Whether a round must answer `row`; see {@link answerableRow}. */
+export function isAnsweredRow(row: StoredChatMessage): boolean {
+  return row.role === "user" && !!row.authorId && !row.metadata.quiet;
+}
 
 export type StoredChatMessage = {
   seq: number;
@@ -435,18 +455,12 @@ export async function getChatMessage(
   return row ? toStoredChatMessage(row) : null;
 }
 
-/** The newest user row, or 0 when nobody has posted. */
+/** The newest row a round must answer, or 0 when there is none. */
 export async function lastUserSeq(s: SpaceStore, sessionId: string): Promise<number> {
   const [row] = await s.db
     .select({ seq: max(chatMessage.seq) })
     .from(chatMessage)
-    .where(
-      and(
-        eq(chatMessage.sessionId, sessionId),
-        eq(chatMessage.role, "user"),
-        sql`${chatMessage.authorId} IS NOT NULL`,
-      ),
-    );
+    .where(and(eq(chatMessage.sessionId, sessionId), answerableRow()));
   return row?.seq ?? 0;
 }
 
@@ -474,13 +488,7 @@ export async function failInterruptedChatTurns(s: SpaceStore): Promise<void> {
     .select({ id: chatSession.id, target: max(chatMessage.seq) })
     .from(chatSession)
     .innerJoin(chatMessage, eq(chatMessage.sessionId, chatSession.id))
-    .where(
-      and(
-        eq(chatMessage.role, "user"),
-        sql`${chatMessage.authorId} IS NOT NULL`,
-        gt(chatMessage.seq, chatSession.repliedThroughSeq),
-      ),
-    )
+    .where(and(answerableRow(), gt(chatMessage.seq, chatSession.repliedThroughSeq)))
     .groupBy(chatSession.id);
 
   for (const row of rows) {

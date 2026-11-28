@@ -210,7 +210,6 @@ export function BotChannelView() {
                   }
                   bot={bot()}
                   authorOf={people.authorOf}
-                  currentUserId={people.currentUserId()}
                   threadOf={(seq) => threads().get(seq)}
                   onOpenThread={(seq) => void openThread(seq)}
                 />
@@ -246,7 +245,6 @@ export function BotChannelView() {
                         }
                         bot={bot()}
                         authorOf={people.authorOf}
-                        currentUserId={people.currentUserId()}
                       />
                     </div>
                   )}

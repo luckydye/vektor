@@ -17,7 +17,6 @@ interface Props {
   readonlyReason?: string;
   bot?: { name: string; avatar: string | null };
   authorOf?: (authorId: string) => ChatAuthor | undefined;
-  currentUserId?: string | null;
   threadOf?: (seq: number) => { messageCount?: number } | undefined;
   onOpenThread?: (seq: number) => void;
   /** The bot's name while it answers, for the line under the composer. */
@@ -109,7 +108,6 @@ export function ChatConversation(props: Props) {
         emptyHint={props.emptyHint}
         bot={props.bot}
         authorOf={props.authorOf}
-        currentUserId={props.currentUserId}
         threadOf={props.threadOf}
         onOpenThread={props.onOpenThread}
         onLoadOlder={chat().hasMore() ? () => void chat().loadOlder() : undefined}

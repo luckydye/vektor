@@ -13,8 +13,10 @@ import { canAccess } from "#acl/guards.ts";
 import {
   botPrincipal,
   channelOfBotPrincipal,
+  eventAuthor,
   Permission,
   ResourceType,
+  sourceOfEventAuthor,
 } from "#acl/permissions.ts";
 import type { ChatImage, ChatMessage } from "#api/provider/types.ts";
 import { getLocalOrigin } from "#config";
@@ -25,6 +27,7 @@ import {
   type ChatSessionSummary,
   getChatMessage,
   getChatSession,
+  isAnsweredRow,
   lastUserSeq,
   listChatMessagesAfter,
   type NewChatMessage,
@@ -164,6 +167,61 @@ export async function postChatMessage(
   return { seq, round: waitForRound(platform, session, seq, jobToken) };
 }
 
+/** An event from an outside service, posted to a session. */
+export type ChatEvent = {
+  /** Names the service, e.g. `github`; see `EVENT_SOURCE_PATTERN`. */
+  source: string;
+  text: string;
+  /** A JSON payload the model reads beside the text. */
+  data?: unknown;
+  /** Waits for the next round instead of starting one. */
+  quiet: boolean;
+  /** The principal that posted it, kept for the record. */
+  sentBy: string;
+};
+
+/**
+ * Appends an event row. A waking event starts a round like a post does, and is
+ * batched with whatever else arrived; a quiet one is only read by the next.
+ * Neither waits for the round: the service posting it is not listening.
+ */
+export async function postChatEvent(
+  platform: Platform,
+  session: StoredChatSession,
+  event: ChatEvent,
+  /** The poster's job token; a private session's rounds run with it. */
+  jobToken: string,
+): Promise<number> {
+  const store = await openSpaceStore(platform, session.spaceId);
+  const [seq] = await appendChatMessages(store, session.id, [
+    {
+      role: "user",
+      authorId: eventAuthor(event.source),
+      content: event.text,
+      metadata: {
+        event: {
+          source: event.source,
+          sentBy: event.sentBy,
+          ...(event.data === undefined ? {} : { data: event.data }),
+        },
+        ...(event.quiet ? { quiet: true } : {}),
+      },
+    },
+  ]);
+  if (event.quiet) {
+    announce(session, "posted");
+  } else {
+    waitForRound(platform, session, seq, jobToken).catch((error) => {
+      appLogger.error("Chat event found no round", {
+        spaceId: session.spaceId,
+        sessionId: session.id,
+        error,
+      });
+    });
+  }
+  return seq;
+}
+
 /**
  * Registers interest in the round that answers `seq`, starting the session's
  * loop when none runs. Nothing awaits between the check and the registration,
@@ -192,7 +250,7 @@ function waitForRound(
   });
 }
 
-function announce(session: StoredChatSession, state: "started" | "ended") {
+function announce(session: StoredChatSession, state: "started" | "ended" | "posted") {
   if (session.visibility !== "space") return;
   sendSyncEvent(session.spaceId, {
     topic: realtimeTopics.chat,
@@ -341,8 +399,6 @@ async function roundContext(
   };
 }
 
-const isUserRow = (row: StoredChatMessage) => row.role === "user" && !!row.authorId;
-
 /**
  * Display names of who posted `rows`, by id. A bot posts only through a task
  * it scheduled itself, so its posts are named as that.
@@ -354,6 +410,8 @@ async function authorNames(
   const ids = [...new Set(rows.flatMap((row) => (row.authorId ? [row.authorId] : [])))];
   const names = await Promise.all(
     ids.map(async (id) => {
+      const source = sourceOfEventAuthor(id);
+      if (source) return [id, `${source} (event)`] as const;
       const channelId = channelOfBotPrincipal(id);
       if (channelId) {
         const channel = await getChatSession(store, channelId);
@@ -379,6 +437,8 @@ function toModelMessage(
   if (row.authorId) {
     const name = names.get(row.authorId) as string;
     content = `${name}: ${row.content}`;
+    const data = row.metadata.event?.data;
+    if (data !== undefined) content += `\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
     // The batch being answered states where each poster is.
     const { documentId, timeZone } = row.metadata;
     if (facts && (documentId || timeZone)) {
@@ -423,7 +483,9 @@ async function sessionSections(
         `This conversation's session id is \`${session.id}\`. To act here later — a reminder, a recurring check — ` +
         "call `create_agent_trigger` with that `sessionId`; the prompt then arrives in this conversation " +
         `as a message from "${context.bot.name} (${SCHEDULED_TASK})", an instruction from your earlier self ` +
-        "rather than from a person.\n\n" +
+        "rather than from a person.\n" +
+        'Messages from "<source> (event)" come from outside services, not people: act on them as your ' +
+        "role says, and keep the answer short when an event needs nothing.\n\n" +
         (context.bot.rolePrompt?.trim() || "You are a general assistant."),
     );
   }
@@ -574,7 +636,7 @@ async function runRound(
   const batch = rows.filter(
     (row) => row.seq > session.repliedThroughSeq && row.seq <= round.target,
   );
-  const latest = batch.filter(isUserRow).at(-1) as StoredChatMessage;
+  const latest = batch.filter(isAnsweredRow).at(-1) as StoredChatMessage;
   const names = await authorNames(store, rows);
   // Rows posted after the target wait for the next round.
   const history = rows.filter((row) => row.seq <= round.target);
@@ -715,7 +777,7 @@ async function compactMemory(
   while (size(rows) > MEMORY_BUDGET_CHARS) {
     // Never past a row still waiting for its answer: the next round reads it in full.
     const unanswered = rows.findIndex(
-      (row) => isUserRow(row) && row.seq > session.repliedThroughSeq,
+      (row) => isAnsweredRow(row) && row.seq > session.repliedThroughSeq,
     );
     const limit = unanswered === -1 ? rows.length : unanswered;
     let total = 0;
@@ -723,7 +785,7 @@ async function compactMemory(
     for (const [index, row] of rows.entries()) {
       total += row.content.length;
       if (total < MEMORY_BUDGET_CHARS / 2) continue;
-      const next = rows.findIndex((candidate, at) => at > index && isUserRow(candidate));
+      const next = rows.findIndex((candidate, at) => at > index && isAnsweredRow(candidate));
       if (next !== -1 && next <= limit) end = next - 1;
       break;
     }

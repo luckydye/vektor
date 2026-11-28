@@ -18,6 +18,7 @@ import * as agentSessionMessages from "./routes/spaces/agent-session-messages.ts
 import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
 import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
 import * as chatSession from "./routes/spaces/chat-session.ts";
+import * as chatSessionEvents from "./routes/spaces/chat-session-events.ts";
 import * as chatSessionMessages from "./routes/spaces/chat-session-messages.ts";
 import * as chatSessions from "./routes/spaces/chat-sessions.ts";
 import * as spaceAuditLogs from "./routes/spaces/audit-logs.ts";
@@ -136,6 +137,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/messages",
     module: chatSessionMessages,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/events",
+    module: chatSessionEvents,
   },
 
   { pattern: "/api/v1/spaces/[spaceId]/categories", module: categories },

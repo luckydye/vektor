@@ -686,6 +686,10 @@ export interface AIChatMessage {
   seq?: number;
   /** Who posted a user message. */
   authorId?: string | null;
+  /** The payload of an event an outside service posted, as labelled fields. */
+  eventFields?: Array<{ label: string; value: string }>;
+  /** An event the bot reads without answering it. */
+  quiet?: boolean;
   /** A remote sub-agent's screen, on a `screen` message; live only during its turn. */
   screen?: { spaceId: string; sessionId: string; runner: string };
   toolName?: string;
@@ -749,10 +753,16 @@ export interface ChatMessageRow {
     tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
     tool_call_id?: string;
     toolName?: string;
+    /** The model's reasoning before this answer. */
+    thinking?: string | null;
     attachments?: AIChatMessage["attachments"];
     isError?: boolean;
     documentId?: string;
     timeZone?: string;
+    /** On an event an outside service posted. */
+    event?: { source: string; sentBy: string; data?: unknown };
+    /** Read by the next round without starting one. */
+    quiet?: boolean;
   };
   createdAt: number;
 }

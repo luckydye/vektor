@@ -88,6 +88,22 @@ export function channelOfBotPrincipal(principal: string): string | null {
 }
 
 /**
+ * The author of an event posted to a chat session, e.g. `event:github`. Not an
+ * ACL principal: nothing is granted to it, it only names where a message came from.
+ */
+export function eventAuthor(source: string): string {
+  return `event:${source}`;
+}
+
+/** The source an event author names, or null for any other author. */
+export function sourceOfEventAuthor(author: string): string | null {
+  return author.startsWith("event:") ? author.slice("event:".length) : null;
+}
+
+/** What an event source may be called: short, and safe in a name or a prompt. */
+export const EVENT_SOURCE_PATTERN = /^[a-z0-9][a-z0-9_.-]{0,63}$/i;
+
+/**
  * Canonical shape of a group name. Group membership drives ACL access, so
  * every write AND read path must enforce this: it keeps LIKE wildcards
  * (`%`/`_`) and JSON-breaking characters out of stored group ids, and drops

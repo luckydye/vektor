@@ -1,10 +1,13 @@
 import { type Accessor, createMemo } from "solid-js";
-import { channelOfBotPrincipal } from "#acl/permissions.ts";
+import { channelOfBotPrincipal, sourceOfEventAuthor } from "#acl/permissions.ts";
 import { api, type ChatSession, type CurrentUser, type User } from "#api/client.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useQuery, useQueryClient } from "./query.ts";
+import { useCosmetics } from "./useCosmetics.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
+import { useUserProfile } from "./useUserProfile.ts";
 
 /**
  * Every chat query of the space refreshes on any `space:chat` event: the events
@@ -58,13 +61,23 @@ export function useChatPeople() {
     queryFn: () => api.users.me(),
   });
   const channels = useBotChannels();
+  // The viewer as their own avatar shows them: the profile with the cosmetics
+  // they wear. The member list can miss them too, as without an auth database.
+  const profile = useUserProfile();
+  const { appearance } = useCosmetics();
+  const viewer = createMemo((): ChatAuthor | undefined => {
+    const own = profile() ?? me();
+    return own && { ...own, appearance: appearance() };
+  });
   const byId = createMemo(() => new Map((members() ?? []).map((user) => [user.id, user])));
   return {
     currentUserId: createMemo(() => me()?.id ?? null),
     /** A person, or a bot posting through a task it scheduled itself. */
     authorOf: (id: string): ChatAuthor | undefined => {
+      const source = sourceOfEventAuthor(id);
+      if (source) return { name: source, event: true };
       const channelId = channelOfBotPrincipal(id);
-      if (!channelId) return byId().get(id);
+      if (!channelId) return id === me()?.id ? viewer() : byId().get(id);
       const channel = channels()?.find((candidate) => candidate.id === channelId);
       return channel && { name: channel.title, bot: { avatar: channel.avatar } };
     },
@@ -75,8 +88,13 @@ export function useChatPeople() {
 export type ChatAuthor = {
   name: string;
   image?: string | null;
+  email?: string | null;
+  /** The cosmetics a person's avatar wears. */
+  appearance?: PublicUserAppearance;
   /** Set when a bot posted it: a task the bot scheduled itself. */
   bot?: { avatar: string | null };
+  /** Set when an outside service posted it; `name` is the service. */
+  event?: true;
 };
 
 /** A bot as its editor fills it in. */
