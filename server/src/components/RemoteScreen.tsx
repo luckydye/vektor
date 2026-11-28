@@ -1,11 +1,16 @@
-import { createSignal, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { useRemoteScreen } from "#composeables/useRemoteScreen.ts";
 import { Icon } from "./Icon.tsx";
+
+/** How long an ended screen stays visible before its tile is removed. */
+const ENDED_FOR_MS = 4_000;
 
 /** A remote agent's live screen as a call tile; clicking it hands mouse and keyboard to the remote machine. */
 export function RemoteScreen(props: {
   screen: { spaceId: string; sessionId: string; runner: string };
   task: string;
+  /** Called once an ended screen has been shown long enough to read why. */
+  onEnded?: () => void;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   const [focused, setFocused] = createSignal(false);
@@ -38,14 +43,25 @@ export function RemoteScreen(props: {
     if (remote.key(event)) event.preventDefault();
   }
 
+  createEffect(() => {
+    if (remote.state() !== "ended") return;
+    const timer = setTimeout(() => props.onEnded?.(), ENDED_FOR_MS);
+    onCleanup(() => clearTimeout(timer));
+  });
+
   return (
-    <div class="relative flex h-full min-h-0 min-w-0 overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
+    <div
+      class="relative flex h-full min-h-0 min-w-0 overflow-hidden rounded-lg bg-black"
+      classList={{
+        "ring-1 ring-white/10": !focused(),
+        "ring-2 ring-primary-500/50 ring-inset": focused(),
+      }}
+    >
       <canvas
         ref={canvas}
         tabIndex={0}
         aria-label={`Screen of ${props.screen.runner}`}
         class="block h-full w-full cursor-default bg-black object-contain outline-none"
-        classList={{ "ring-2 ring-primary-500 ring-inset": focused() }}
         onFocus={() => setFocused(true)}
         onBlur={() => {
           setFocused(false);

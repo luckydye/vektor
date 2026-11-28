@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import type { ChatAuthor } from "#composeables/useBotChannels.ts";
 import type { ChatSessionHandle } from "#composeables/useChatSession.ts";
+import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { AIChatMessages, type RoleProposals } from "./AIChatMessages.tsx";
 import { Icon } from "./Icon.tsx";
 import { MessageInput } from "./MessageInput.tsx";
@@ -25,6 +26,8 @@ interface Props {
 }
 
 type PinnedScreen = {
+  /** Changes every time a turn announces its screen, so the stream reconnects. */
+  key: string;
   screen: NonNullable<ChatSessionHandle["messages"][number]["screen"]>;
   task: string;
 };
@@ -32,6 +35,15 @@ type PinnedScreen = {
 /** A session's transcript with its composer, and any remote screens pinned above. */
 export function ChatConversation(props: Props) {
   const chat = () => props.chat;
+  const [endedScreens, setEndedScreens] = createSignal<ReadonlySet<string>>(new Set());
+  /** Per chat, so a conversation that does not need the screen stays uncluttered. */
+  const screensHidden = usePersistedState({
+    key: () => {
+      const sessionId = chat().sessionId();
+      return sessionId ? `chat-screens-hidden:${sessionId}` : null;
+    },
+    fallback: false,
+  });
   /** Remote sessions' screens stay pinned above the transcript, like a screen share. */
   const screens = createMemo(() => {
     // Each turn on a runner re-announces its session; one tile per session, labelled by the latest task.
@@ -39,19 +51,28 @@ export function ChatConversation(props: Props) {
     for (const message of chat().messages) {
       if (message.role === "screen" && message.screen) {
         bySession.set(message.screen.sessionId, {
+          key: `${message.screen.sessionId}:${message.timestamp}`,
           screen: message.screen,
           task: message.content,
         });
       }
     }
-    return bySession;
+    const ended = endedScreens();
+    return new Map([...bySession].filter(([, entry]) => !ended.has(entry.key)));
   });
-  const screenIds = createMemo(() => [...screens().keys()], [], {
-    equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
-  });
+  const screenKeys = createMemo(
+    () => [...screens().values()].map((entry) => entry.key),
+    [],
+    {
+      equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
+    },
+  );
+  const screensByKey = createMemo(
+    () => new Map([...screens().values()].map((entry) => [entry.key, entry])),
+  );
   /** Call-tile layout: two side by side, then a square grid as more screens join. */
   const screenGrid = createMemo(() => {
-    const count = screenIds().length;
+    const count = screenKeys().length;
     const columns = count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
     return { columns, rows: Math.ceil(count / columns) };
   });
@@ -78,44 +99,75 @@ export function ChatConversation(props: Props) {
 
   return (
     <div class={`flex h-full min-h-0 flex-col bg-neutral-10 ${props.class ?? ""}`}>
-      <Show when={screenIds().length}>
+      <Show when={screenKeys().length}>
         <div class="shrink-0 px-3 pt-3">
-          <div
-            class="rounded-xl bg-neutral-900 p-2 shadow-sm"
-            style={{ height: `${screenHeight()}px` }}
+          <Show
+            when={screensHidden.value()}
+            fallback={
+              <>
+                <div
+                  class="relative rounded-xl bg-neutral-900 p-2 shadow-sm"
+                  style={{ height: `${screenHeight()}px` }}
+                >
+                  <button
+                    type="button"
+                    class="absolute top-3 right-3 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white"
+                    title="Hide screens"
+                    aria-label="Hide screens"
+                    onClick={() => screensHidden.commit(true)}
+                  >
+                    <Icon class="h-4 w-4" name="chevron-down" />
+                  </button>
+                  <div
+                    class="grid h-full gap-2"
+                    style={{
+                      "grid-template-columns": `repeat(${screenGrid().columns}, minmax(0, 1fr))`,
+                      "grid-template-rows": `repeat(${screenGrid().rows}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {/* Keyed by announcement, so a new screen on the same session reconnects. */}
+                    <For each={screenKeys()}>
+                      {(key) => {
+                        const entry = () => screensByKey().get(key);
+                        return (
+                          <Show when={entry()}>
+                            {(pinned) => (
+                              <RemoteScreen
+                                screen={pinned().screen}
+                                task={pinned().task}
+                                onEnded={() =>
+                                  setEndedScreens((previous) => new Set(previous).add(key))
+                                }
+                              />
+                            )}
+                          </Show>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </div>
+                {/* biome-ignore lint/a11y/useSemanticElements: a drag handle, not a content separator */}
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="Resize screen"
+                  class="group flex h-3 cursor-row-resize touch-none items-center justify-center"
+                  onPointerDown={resizeScreen}
+                >
+                  <div class="h-1 w-10 rounded-full bg-neutral-200 transition-colors group-hover:bg-neutral-400" />
+                </div>
+              </>
+            }
           >
-            <div
-              class="grid h-full gap-2"
-              style={{
-                "grid-template-columns": `repeat(${screenGrid().columns}, minmax(0, 1fr))`,
-                "grid-template-rows": `repeat(${screenGrid().rows}, minmax(0, 1fr))`,
-              }}
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-lg bg-neutral-900 px-3 py-2 text-left text-size-small text-white/70 transition-colors hover:bg-neutral-800 hover:text-white"
+              onClick={() => screensHidden.commit(false)}
             >
-              {/* Keyed by session id so a new response does not remount (and reload) the streams. */}
-              <For each={screenIds()}>
-                {(id) => {
-                  const entry = () => screens().get(id);
-                  return (
-                    <Show when={entry()}>
-                      {(pinned) => (
-                        <RemoteScreen screen={pinned().screen} task={pinned().task} />
-                      )}
-                    </Show>
-                  );
-                }}
-              </For>
-            </div>
-          </div>
-          {/* biome-ignore lint/a11y/useSemanticElements: a drag handle, not a content separator */}
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize screen"
-            class="group flex h-3 cursor-row-resize touch-none items-center justify-center"
-            onPointerDown={resizeScreen}
-          >
-            <div class="h-1 w-10 rounded-full bg-neutral-200 transition-colors group-hover:bg-neutral-400" />
-          </div>
+              <Icon class="h-3.5 w-3.5" name="chevron-right-small" />
+              Show {screenKeys().length === 1 ? "screen" : `${screenKeys().length} screens`}
+            </button>
+          </Show>
         </div>
       </Show>
 
