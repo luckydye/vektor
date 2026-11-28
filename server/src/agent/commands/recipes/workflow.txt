@@ -11,13 +11,13 @@ job id. If no job does what is asked, say so.
 1. Run it with `run_workflow` using the workflow document ID and optional
    object-valued `inputs`. It waits for the run and returns its `status`,
    `error`, `logs` and `resultArtifact`.
-2. While `status` is still `pending` or `running`, call `get_workflow_run` with
+2. While `status` is still `pending` or `running`, call `workflow_runs` with
    the `runId`; it waits again. Do not start duplicate runs.
 3. On success, report `resultArtifact`'s `url` and `key` when present; the
    current agent tools do not expose a direct artifact-content reader.
-4. Use `list_workflow_runs` for recent run history. Pass `documentId` to filter
-   by workflow, and follow `nextCursor` with the `cursor` argument to read
-   additional pages.
+4. Use `workflow_runs` without a `runId` for recent run history. Pass
+   `documentId` to filter by workflow, and follow `nextCursor` with the `cursor`
+   argument to read additional pages.
 
 The agent cannot create, list or delete workflow schedules: the schedule
 routes require a signed-in user and reject the agent's job token. Say so when

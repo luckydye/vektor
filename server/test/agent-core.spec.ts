@@ -292,7 +292,7 @@ describe("agent model loop", () => {
             (tool) => tool.function.name,
           );
           expect(toolNames[0]).toBe("bash");
-          expect(toolNames).toContain("list_documents");
+          expect(toolNames).toContain("search_documents");
           expect(toolNames).toContain("edit_document");
         }
         callCount += 1;
@@ -357,7 +357,7 @@ describe("agent model loop", () => {
           spaceId: "space",
           jobToken: "token",
         },
-        "list_workflow_runs",
+        "workflow_runs",
         {
           documentId: "doc-1",
           sourceExtensionId: "extension-1",
@@ -388,7 +388,7 @@ describe("agent model loop", () => {
         parentId: null,
         updatedAt: "2026-10-01T00:00:00.000Z",
       };
-      return new Response(JSON.stringify({ documents: [document], nextCursor: null }), {
+      return new Response(JSON.stringify({ results: [document], nextCursor: null }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -410,7 +410,7 @@ describe("agent model loop", () => {
               id: "documents-1",
               type: "function",
               function: {
-                name: "list_documents",
+                name: "search_documents",
                 arguments: JSON.stringify({ limit: 5 }),
               },
             },
@@ -452,7 +452,7 @@ describe("agent model loop", () => {
             // Listings are pointers: no properties unless the call names them.
             expect(options.messages.at(-1)?.content).toBe(
               JSON.stringify({
-                documents: [
+                results: [
                   {
                     id: "doc-1",
                     type: "document",
@@ -480,7 +480,7 @@ describe("agent model loop", () => {
     expect(shellCommands).toEqual([]);
     expect(requests).toHaveLength(1);
     expect(requests[0]?.url).toBe(
-      "http://vektor.test/api/v1/spaces/space/documents?limit=5",
+      "http://vektor.test/api/v1/spaces/space/search?limit=5",
     );
     expect(new Headers(requests[0]?.init?.headers).get("X-Job-Token")).toBe("token");
   });

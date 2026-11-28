@@ -244,59 +244,22 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
 async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
   return [
     {
-      name: "list_documents",
-      description:
-        "Browse documents in the current Vektor space by recency, newest first. Database rows (type \"record\") are left out unless type or parentId asks for them; to find something by content use search_documents. " +
-        "Pass nextCursor from a prior result as cursor to fetch the next page.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          limit: {
-            type: "number",
-            description: "Documents per page, 1 to 500 (default 100).",
-          },
-          cursor: {
-            type: "string",
-            description:
-              "nextCursor returned by a previous list_documents call. Omit for the first page.",
-          },
-          type: {
-            type: "string",
-            description:
-              'Only documents of this type, e.g. "database", "record" (a database row), "canvas", "workflow". Ignored with parentId.',
-          },
-          parentId: {
-            type: "string",
-            description:
-              "List the direct children of this document, e.g. a database's rows.",
-          },
-          categorySlugs: {
-            type: "string",
-            description:
-              "Comma-separated category slugs. Returns every match in one page: limit, cursor and parentId are ignored.",
-          },
-          properties: {
-            type: "array",
-            items: { type: "string" },
-            description:
-              'Properties to include for each document, e.g. ["Start","End"]; none are returned without this. Ask only for what the answer needs.',
-          },
-        },
-      },
-    },
-    {
       name: "search_documents",
       description:
-        "Search the current Vektor space by text (q), property filters, parent, or any combination; at least one is required. " +
+        "Find documents in the current Vektor space, by text (q), property filters, parent, or any " +
+        "combination; at least one is required. Without q it browses: filters pick a document type " +
+        '({"key":"_type","value":"database"}), a last-update range ({"key":"_date","value":"week"}) or any ' +
+        "property. parentId alone lists a document's children, such as a database's rows. " +
         "Date ranges over properties (e.g. a database's date column) go in filters, not in q. " +
         'Results can include uploaded files (type "file", id is the file path, fileUrl set), which read_document cannot open.',
       inputSchema: {
         type: "object",
         properties: {
-          q: { type: "string", description: "Search text." },
+          q: { type: "string", description: "Search text. Omit to browse by filters or parent." },
           limit: {
             type: "number",
-            description: "Results per page, 1 to 100 (default 20).",
+            description:
+              "Results per page (default 20): at most 100 with q, 500 without it.",
           },
           cursor: {
             type: "string",
@@ -489,7 +452,7 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "run_workflow",
       description:
-        "Run a workflow document and wait up to 50 seconds for it to settle. Returns {runId, status, error, logs, resultArtifact}; while status is still pending or running, call get_workflow_run to keep waiting.",
+        "Run a workflow document and wait up to 50 seconds for it to settle. Returns {runId, status, error, logs, resultArtifact}; while status is still pending or running, call workflow_runs with the runId to keep waiting.",
       inputSchema: {
         type: "object",
         properties: {
@@ -507,24 +470,17 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
-      name: "get_workflow_run",
+      name: "workflow_runs",
       description:
-        "Wait up to 50 seconds for a workflow run to settle, then return {runId, status, error, logs, resultArtifact}.",
+        "Workflow run history, or one run once it settles. With runId it waits up to 50 seconds and returns " +
+        "{runId, status, error, logs, resultArtifact}. Without, it lists a cursor-paginated page of recent runs.",
       inputSchema: {
         type: "object",
         properties: {
-          runId: { type: "string", description: "Workflow run ID" },
-        },
-        required: ["runId"],
-      },
-    },
-    {
-      name: "list_workflow_runs",
-      description:
-        "List a cursor-paginated page of recent workflow-run history in the current space.",
-      inputSchema: {
-        type: "object",
-        properties: {
+          runId: {
+            type: "string",
+            description: "Run to wait for. Omit to list recent runs.",
+          },
           documentId: {
             type: "string",
             description: "Filter run history to this workflow document ID.",
@@ -553,59 +509,23 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
       inputSchema: { type: "object", properties: {} },
     },
     {
-      name: "read_series_points",
-      description:
-        "Read raw points `{ts, type, fields}` of a time series in [from, to), cursor-paginated. " +
-        "Prefer query_series for counts, trends and statistics.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "Series name" },
-          from: { type: "integer", description: "Range start, epoch ms, inclusive" },
-          to: { type: "integer", description: "Range end, epoch ms, exclusive" },
-          filter: {
-            type: "string",
-            description:
-              "Terms ANDed together, e.g. `level:error -host:a speed:>=30 msg:*timeout*`.",
-          },
-          order: {
-            type: "string",
-            enum: ["asc", "desc"],
-            description: "`desc` reads newest first (default asc).",
-          },
-          limit: {
-            type: "integer",
-            minimum: 1,
-            maximum: 10000,
-            description: "Points per page (default 100)",
-          },
-          cursor: { type: "string", description: "Cursor returned by the previous page" },
-        },
-        required: ["name", "from", "to"],
-      },
-    },
-    {
       name: "query_series",
       description:
-        "Aggregate a time series over [from, to): bucket by `every` ms, optionally group by a field, " +
-        "and select count/sum/avg/min/max/first/last per bucket.",
+        "Read a time series over [from, to). Without `select` it returns raw points {ts, type, fields}, newest " +
+        "first with `order` and paged with `limit` and `cursor`. With `select` it aggregates into buckets of " +
+        "`every` ms, optionally grouped by a field: count/sum/avg/min/max/first/last per bucket.",
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Series name" },
           from: { type: "integer", description: "Range start, epoch ms, inclusive" },
           to: { type: "integer", description: "Range end, epoch ms, exclusive" },
-          every: {
-            type: "integer",
-            description: "Bucket width in ms. Omit for one bucket over the whole range.",
-          },
-          groupBy: { type: "string", description: "Field to group rows by" },
           select: {
             type: "array",
             minItems: 1,
             maxItems: 32,
             description:
-              'Aggregates, e.g. [{"fn":"count"},{"fn":"avg","column":"speed"}]. Every fn but count needs a column.',
+              'Aggregates, e.g. [{"fn":"count"},{"fn":"avg","column":"speed"}]. Every fn but count needs a column. Omit for raw points.',
             items: {
               type: "object",
               properties: {
@@ -618,12 +538,34 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
               required: ["fn"],
             },
           },
+          every: {
+            type: "integer",
+            description:
+              "Bucket width in ms (with select). Omit for one bucket over the whole range.",
+          },
+          groupBy: { type: "string", description: "Field to group buckets by (with select)" },
           filter: {
             type: "string",
-            description: "Terms ANDed together, as in read_series_points.",
+            description:
+              "Terms ANDed together, e.g. `level:error -host:a speed:>=30 msg:*timeout*`.",
+          },
+          order: {
+            type: "string",
+            enum: ["asc", "desc"],
+            description: "Raw points only: `desc` reads newest first (default asc).",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 10000,
+            description: "Raw points per page (default 100)",
+          },
+          cursor: {
+            type: "string",
+            description: "Raw points only: cursor returned by the previous page",
           },
         },
-        required: ["name", "from", "to", "select"],
+        required: ["name", "from", "to"],
       },
     },
     {
@@ -1039,27 +981,6 @@ export async function callTool(
   const config = spaceId === undefined ? baseConfig : spaceConfig(baseConfig, spaceId);
 
   switch (name) {
-    case "list_documents": {
-      const parentId = expectString(args, "parentId", { optional: true });
-      const properties = expectStringArray(args, "properties");
-      const response = (await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents${buildQuery({
-          limit: expectNumber(args, "limit", { optional: true }) ?? 100,
-          cursor: expectString(args, "cursor", { optional: true }),
-          type: expectString(args, "type", { optional: true }),
-          excludeType: args.type === undefined ? "record" : undefined,
-          parentId,
-          categorySlugs: expectString(args, "categorySlugs", { optional: true }),
-        })}`,
-      )) as { documents: Array<Record<string, unknown>>; nextCursor: string | null };
-      return {
-        documents: response.documents.map((doc) =>
-          summarizeDocument(doc, { parentId, hasQuery: false, properties }),
-        ),
-        nextCursor: response.nextCursor,
-      };
-    }
     case "search_documents": {
       const q = expectString(args, "q", { optional: true });
       const parentId = expectString(args, "parentId", { optional: true });
@@ -1281,10 +1202,9 @@ export async function callTool(
       )) as { runId: string };
       return await awaitWorkflowRun(config, runId);
     }
-    case "get_workflow_run": {
-      return await awaitWorkflowRun(config, expectString(args, "runId"));
-    }
-    case "list_workflow_runs": {
+    case "workflow_runs": {
+      const runId = expectString(args, "runId", { optional: true });
+      if (runId !== undefined) return await awaitWorkflowRun(config, runId);
       const documentId = expectString(args, "documentId", { optional: true });
       const sourceExtensionId = expectString(args, "sourceExtensionId", {
         optional: true,
@@ -1303,24 +1223,23 @@ export async function callTool(
     }
     case "list_series":
       return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/series`);
-    case "read_series_points": {
-      const seriesName = expectString(args, "name");
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/series/${encodeURIComponent(seriesName)}/points${buildQuery(
-          {
-            from: expectNumber(args, "from"),
-            to: expectNumber(args, "to"),
-            filter: expectString(args, "filter", { optional: true }),
-            order: expectString(args, "order", { optional: true }),
-            limit: expectNumber(args, "limit", { optional: true }) ?? 100,
-            cursor: expectString(args, "cursor", { optional: true }),
-          },
-        )}`,
-      );
-    }
     case "query_series": {
       const seriesName = expectString(args, "name");
+      if (args.select === undefined) {
+        return await apiRequest(
+          config,
+          `/api/v1/spaces/${config.spaceId}/series/${encodeURIComponent(seriesName)}/points${buildQuery(
+            {
+              from: expectNumber(args, "from"),
+              to: expectNumber(args, "to"),
+              filter: expectString(args, "filter", { optional: true }),
+              order: expectString(args, "order", { optional: true }),
+              limit: expectNumber(args, "limit", { optional: true }) ?? 100,
+              cursor: expectString(args, "cursor", { optional: true }),
+            },
+          )}`,
+        );
+      }
       const groupBy = expectString(args, "groupBy", { optional: true });
       return await apiRequest(
         config,

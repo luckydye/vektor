@@ -237,7 +237,7 @@ function formatToolPreview(
     }
   }
 
-  if (message.toolName === "list_documents" || message.toolName === "search_documents") {
+  if (message.toolName === "search_documents") {
     const summary = summarizeCollectionResult(result);
     if (summary) {
       return summary;

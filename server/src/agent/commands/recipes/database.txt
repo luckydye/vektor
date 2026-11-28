@@ -19,12 +19,12 @@ document tools — there is no dedicated database tool.
   title column; all other properties are ordinary columns.
 
 ## Read a database
-1. Find it: `list_documents` with {"type":"database"} (or
+1. Find it: `search_documents` with {"filters":[{"key":"_type","value":"database"}]} (or
    `get_current_document` if the database is the open page).
 2. Read columns: `read_document` on the database id returns `columns`, the
    declared `_schema` columns or, when it declares none, the keys its rows use.
-3. List rows directly with `list_documents`, naming the columns you need
-   (rows carry only `properties.title` otherwise):
+3. List rows directly with `search_documents` and `parentId`, naming the
+   columns you need (rows carry only `properties.title` otherwise):
    {"parentId":"<database-id>","properties":["status","priority"],"limit":500}.
 4. Query rows by a date column with `search_documents`, never by putting dates
    in `q`. Take the column from `columns`; `from` is inclusive, `before`
@@ -55,7 +55,7 @@ document tools — there is no dedicated database tool.
   columns. Set a value to null to clear a cell.
 - Change many rows: loop in `bash`, reading rows and writing cells with
   `vektor`:
-    vektor list_documents '{"parentId":"<dbId>","limit":500}' |
+    vektor search_documents '{"parentId":"<dbId>","limit":500}' |
       jq -r '.documents[] | [.id, .properties.title] | @tsv' |
       while IFS=$'\t' read -r id title; do
         id="$id" jq -nc '{documentId:env.id,properties:{status:"done"}}' |

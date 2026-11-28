@@ -109,7 +109,7 @@ describe("MCP stdio server", () => {
       method: "tools/call",
       params: {
         _meta: requestMeta,
-        name: "list_documents",
+        name: "search_documents",
         arguments: "{}",
       },
     });
