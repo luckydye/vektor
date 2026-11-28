@@ -279,7 +279,19 @@ export function useChatSession(options: {
     // Switched to another session meanwhile.
     if (options.sessionId() !== sessionId) return;
     if (unlessStreaming && isGenerating()) return;
-    setMessages(reconcile(rowsToMessages(page.messages)));
+    // Screen shares are streamed, never stored; a refresh must not drop a tile
+    // that is still on screen. Keep only the latest announcement per session.
+    const screens = [
+      ...new Map(
+        messages.flatMap((message) =>
+          message.role === "screen" && message.screen
+            ? [[message.screen.sessionId, message] as const]
+            : [],
+        ),
+      ).values(),
+    ];
+    const loaded = rowsToMessages(page.messages);
+    setMessages(reconcile(screens.length ? [...loaded, ...screens] : loaded));
     setHasMore(page.hasMore);
     // Replacing the rows briefly changes the height; keep a reader who was
     // following at the bottom rather than wherever the scroll lands.
