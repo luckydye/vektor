@@ -72,6 +72,8 @@ export type ChatMessageMetadata = {
   event?: { source: string; sentBy: string; data?: unknown };
   /** Read by the next round, but starts none and needs no answer of its own. */
   quiet?: boolean;
+  /** On an editor's row applying the bot's role proposal made by this tool call. */
+  roleApplied?: { callId: string };
 };
 
 /**
@@ -439,6 +441,28 @@ export async function listChatMessagesAfter(
     .select()
     .from(chatMessage)
     .where(and(eq(chatMessage.sessionId, sessionId), gt(chatMessage.seq, afterSeq)))
+    .orderBy(asc(chatMessage.seq));
+  return rows.map(toStoredChatMessage);
+}
+
+/**
+ * The rows of a session whose metadata names a tool call: the call, its result,
+ * and anything recorded about it since. Oldest first.
+ */
+export async function listChatMessagesForToolCall(
+  s: SpaceStore,
+  sessionId: string,
+  callId: string,
+): Promise<StoredChatMessage[]> {
+  const rows = await s.db
+    .select()
+    .from(chatMessage)
+    .where(
+      and(
+        eq(chatMessage.sessionId, sessionId),
+        sql`instr(${chatMessage.metadata}, ${JSON.stringify(callId)}) > 0`,
+      ),
+    )
     .orderBy(asc(chatMessage.seq));
   return rows.map(toStoredChatMessage);
 }

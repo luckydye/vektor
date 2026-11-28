@@ -1,3 +1,4 @@
+import { diffWords } from "diff";
 import { type Accessor, createEffect, createMemo, createSignal, on, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
@@ -77,15 +78,83 @@ export function eventFields(data: unknown): Array<{ label: string; value: string
   }));
 }
 
+/** The role text a well-formed `propose_role_update` call proposes, or null. */
+function proposedRole(args: string): { rolePrompt: string } | null {
+  try {
+    const parsed = JSON.parse(args) as { rolePrompt?: unknown };
+    if (typeof parsed.rolePrompt !== "string" || !parsed.rolePrompt.trim()) return null;
+    return { rolePrompt: parsed.rolePrompt.trim() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The role as it read when a proposal was made, from the proposal's tool
+ * result; undefined for one made before results carried it.
+ */
+function previousRole(result: string): string | null | undefined {
+  try {
+    const parsed = JSON.parse(result) as { previous?: unknown };
+    if (parsed.previous === null || typeof parsed.previous === "string") return parsed.previous;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type RoleChange = { text: string; kind: "same" | "add" | "remove" };
+
+/** What a proposal changes in the role it was made against, word by word. */
+export function roleChanges(previous: string | null, proposed: string): RoleChange[] {
+  return diffWords(previous ?? "", proposed).map((part) => ({
+    text: part.value,
+    kind: part.added ? "add" : part.removed ? "remove" : "same",
+  }));
+}
+
+export type RoleProposalStatus = "applied" | "outdated" | "pending";
+
+/**
+ * Where a proposal stands, from the log and the role as it reads now: applied
+ * once an editor's row says so; outdated when the role moved on since, or it is
+ * not known what it was made against; pending otherwise. The server applies the
+ * same rule.
+ */
+export function roleProposalStatus(
+  proposal: NonNullable<AIChatMessage["proposal"]>,
+  currentRole: string | null,
+): RoleProposalStatus {
+  if (proposal.applied) return "applied";
+  if (proposal.previous === undefined) return "outdated";
+  return (proposal.previous ?? "").trim() === (currentRole ?? "").trim()
+    ? "pending"
+    : "outdated";
+}
+
 /**
  * A session's log rows as the transcript draws them: an assistant row's tool
  * calls become tool messages of their own, paired with their results by id.
+ * A bot's role proposal becomes a proposal of its own instead.
  */
 export function rowsToMessages(rows: ChatMessageRow[]): AIChatMessage[] {
+  /**
+   * Proposals by the call that made them. Their results are not drawn: they
+   * only carry the role as it read when proposed, which completes the proposal.
+   */
+  const proposals = new Map<string, NonNullable<AIChatMessage["proposal"]>>();
   return rows.flatMap((row): AIChatMessage[] => {
     const timestamp = row.createdAt;
     const { metadata } = row;
     if (row.role === "user") {
+      // An editor applying a proposal: drawn on the proposal, not as a message.
+      const applied = metadata.roleApplied
+        ? proposals.get(metadata.roleApplied.callId)
+        : undefined;
+      if (applied) {
+        applied.applied = { by: row.authorId, at: timestamp };
+        return [];
+      }
       return [
         {
           role: "user",
@@ -100,6 +169,11 @@ export function rowsToMessages(rows: ChatMessageRow[]): AIChatMessage[] {
       ];
     }
     if (row.role === "tool") {
+      const proposal = metadata.tool_call_id ? proposals.get(metadata.tool_call_id) : undefined;
+      if (proposal) {
+        proposal.previous = previousRole(row.content);
+        return [];
+      }
       return [
         {
           role: "tool",
@@ -136,15 +210,32 @@ export function rowsToMessages(rows: ChatMessageRow[]): AIChatMessage[] {
             },
           ]
         : []),
-      ...(metadata.tool_calls ?? []).map((call) => ({
-        role: "tool" as const,
-        content: call.function.arguments,
-        timestamp,
-        toolName: call.function.name,
-        toolCallId: call.id,
-        toolPhase: "call" as const,
-        isError: false,
-      })),
+      ...(metadata.tool_calls ?? []).map((call): AIChatMessage => {
+        const proposal =
+          call.function.name === "propose_role_update"
+            ? proposedRole(call.function.arguments)
+            : null;
+        if (proposal) {
+          const shown = { ...proposal, callId: call.id };
+          proposals.set(call.id, shown);
+          return {
+            role: "proposal",
+            content: proposal.rolePrompt,
+            timestamp,
+            seq: row.seq,
+            proposal: shown,
+          };
+        }
+        return {
+          role: "tool",
+          content: call.function.arguments,
+          timestamp,
+          toolName: call.function.name,
+          toolCallId: call.id,
+          toolPhase: "call",
+          isError: false,
+        };
+      }),
     ];
   });
 }

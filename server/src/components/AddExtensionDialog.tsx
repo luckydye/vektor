@@ -81,13 +81,11 @@ export function AddExtensionDialog(props: Props) {
     >
       <Show when={storeAllowed()}>
         <Show when={store.installError()}>
-          <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-3">
-            <p class="text-red-600 text-size-medium">{store.installError()}</p>
-          </div>
+          <p class="mb-3 form-error">{store.installError()}</p>
         </Show>
 
         <Show when={store.error()}>
-          <div class="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <div class="mb-3 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2">
             <p class="text-amber-700 text-size-medium">
               {store.error()?.message ?? "Could not reach the extension store."}
             </p>
@@ -106,7 +104,7 @@ export function AddExtensionDialog(props: Props) {
           value={store.search()}
           onInput={(event) => store.setSearch(event.currentTarget.value)}
           placeholder="Search the store"
-          class="w-full rounded-md border border-neutral-200 px-3 py-2 text-size-medium outline-none focus:border-neutral-400"
+          class="form-control"
         />
 
         <Show
@@ -272,9 +270,7 @@ export function AddExtensionDialog(props: Props) {
           hides one behind the other. */}
       <Show when={props.uploadAllowed}>
         <Show when={props.uploadError}>
-          <div class="mt-4 rounded-md border border-red-200 bg-red-50 p-3">
-            <p class="text-red-600 text-size-medium">{props.uploadError}</p>
-          </div>
+          <p class="mt-4 form-error">{props.uploadError}</p>
         </Show>
 
         <div classList={{ "mt-5 border-neutral-100 border-t pt-4": storeAllowed() }}>

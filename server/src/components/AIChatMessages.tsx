@@ -11,13 +11,14 @@ import {
 } from "solid-js";
 import type { AIChatMessage } from "#api/client.ts";
 import type { ChatAuthor } from "#composeables/useBotChannels.ts";
+import type { RoleChange, RoleProposalStatus } from "#composeables/useChatSession.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { highlightStaticCodeBlocks } from "#editor/prism.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import { formatTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
-import { Icon } from "./Icon.tsx";
+import { Icon, type IconName } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import "./AvatarElement.ts";
 
@@ -45,6 +46,8 @@ interface Props {
   onOpenThread?: (seq: number) => void;
   /** Offers older messages above the first. */
   onLoadOlder?: () => void;
+  /** Shows the bot's role proposals, and lets an editor apply them. */
+  roleProposals?: RoleProposals;
 }
 
 function attachmentPreviewUrl(attachment: { url: string }): string {
@@ -307,11 +310,31 @@ function groupToolRuns(messages: readonly AIChatMessage[]): Map<AIChatMessage, T
   return runs;
 }
 
-/** Tool names in first-use order with repeat counts, e.g. `bash, search_documents ×14`. */
+/** What a tool does, as a row's label: `search_documents` → "Search documents". */
+function toolLabel(name: string | undefined): string {
+  if (!name) return "Tool";
+  if (name === "bash") return "Command";
+  const words = name.replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** An icon for the kind of thing a tool does, read from its name. */
+function toolIcon(name: string | undefined): IconName {
+  if (!name) return "function";
+  if (name === "bash") return "source-code";
+  if (name.startsWith("search_") || name.startsWith("find_") || name === "web_search")
+    return "search";
+  if (/^(get|read|list)_/.test(name)) return "document";
+  if (/^(create|update|edit|write|upload)_/.test(name)) return "edit-entry";
+  if (/^(delete|remove)_/.test(name)) return "delete-entry";
+  return "function";
+}
+
+/** Tool labels in first-use order with repeat counts, e.g. `Command ×2, Search documents`. */
 function summarizeToolRun(run: ToolRun): string {
   const counts = new Map<string, number>();
   for (const { message } of run.items) {
-    const name = message.toolName || "Tool";
+    const name = toolLabel(message.toolName);
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   return [...counts]
@@ -384,6 +407,149 @@ function MarkdownContent(props: { content: string; class?: string }) {
     void highlightStaticCodeBlocks(element);
   });
   return <div ref={element} class={`markdown-content ${props.class ?? ""}`} />;
+}
+
+/** How proposals to change the bot's role are shown and applied. */
+export type RoleProposals = {
+  /** What a proposal changes in the role it was made against. */
+  changes: (proposal: RoleProposalData) => RoleChange[];
+  status: (proposal: RoleProposalData) => RoleProposalStatus;
+  /** Unset for a viewer who may not edit the bot. */
+  apply?: (proposal: RoleProposalData) => Promise<void>;
+};
+
+type RoleProposalData = NonNullable<AIChatMessage["proposal"]>;
+
+const PROPOSAL_STATUS = {
+  pending: { label: "Pending", class: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+  applied: { label: "Applied", class: "bg-green-500/15 text-green-700 dark:text-green-400" },
+  outdated: { label: "Outdated", class: "bg-neutral-500/15 text-neutral-600" },
+} as const;
+
+/**
+ * A bot's proposal to change its role: what changes, and applying it.
+ * Once applied or outdated, the changes fold away behind "Show changes".
+ */
+function RoleProposal(props: {
+  proposal: RoleProposalData;
+  proposals: RoleProposals;
+  /** Who applied it, by name. */
+  nameOf: (authorId: string | null) => string;
+}) {
+  const [pending, setPending] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const [showChanges, setShowChanges] = createSignal(false);
+  const lang = useLocale();
+  const status = () => props.proposals.status(props.proposal);
+  /** Applied or outdated: nothing left to decide. */
+  const settled = () => status() !== "pending";
+
+  async function apply(run: (proposal: RoleProposalData) => Promise<void>) {
+    setPending(true);
+    setError("");
+    try {
+      await run(props.proposal);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not apply the change");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div class="my-1.5 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-10 shadow-xs">
+      <div class="flex items-start gap-3 p-3">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-primary-600">
+          <Icon class="h-4 w-4" name="edit-entry" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-neutral-900 text-size-small">Role update</span>
+            <span
+              class={`flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-[0.65rem] uppercase tracking-wide ${PROPOSAL_STATUS[status()].class}`}
+            >
+              <Show when={status() === "applied"}>
+                <Icon class="h-3 w-3" name="confirmation" />
+              </Show>
+              {PROPOSAL_STATUS[status()].label}
+            </span>
+          </div>
+          <Show when={props.proposal.applied}>
+            {(applied) => (
+              <p class="mt-1 text-neutral-500 text-size-extra-small">
+                Applied by {props.nameOf(applied().by)} · {formatTime(applied().at, lang)}
+              </p>
+            )}
+          </Show>
+          <Show when={status() === "outdated"}>
+            <p class="mt-1 text-neutral-500 text-size-extra-small">
+              The role changed since this was proposed.
+            </p>
+          </Show>
+        </div>
+        <Show when={!settled()}>
+          <Show
+            when={props.proposals.apply}
+            fallback={
+              <span class="shrink-0 self-center text-neutral-500 text-size-extra-small">
+                Waiting for an editor
+              </span>
+            }
+          >
+            {(run) => (
+              <button
+                type="button"
+                disabled={pending()}
+                class="shrink-0 self-center rounded-lg bg-primary-600 px-3 py-1.5 font-medium text-size-small text-white shadow-xs transition-colors hover:bg-primary-700 disabled:opacity-60"
+                onClick={() => void apply(run())}
+              >
+                {pending() ? "Applying…" : "Apply"}
+              </button>
+            )}
+          </Show>
+        </Show>
+      </div>
+
+      <Show
+        when={!settled() || showChanges()}
+        fallback={
+          <button
+            type="button"
+            class="flex w-full items-center gap-1 border-neutral-100 border-t px-3 py-2 text-neutral-500 text-size-extra-small transition-colors hover:bg-neutral-500/5 hover:text-neutral-800"
+            onClick={() => setShowChanges(true)}
+          >
+            <Icon class="h-3 w-3" name="chevron-right-small" />
+            Show changes
+          </button>
+        }
+      >
+        <div class="max-h-64 overflow-auto whitespace-pre-wrap border-neutral-100 border-t bg-neutral-50 px-4 py-3 text-neutral-700 text-size-small leading-relaxed">
+          <For each={props.proposals.changes(props.proposal)}>
+            {(part) => (
+              <Show when={part.kind !== "same"} fallback={<span>{part.text}</span>}>
+                <Show
+                  when={part.kind === "add"}
+                  fallback={
+                    <del class="text-neutral-500 decoration-red-500/70 line-through">
+                      {part.text}
+                    </del>
+                  }
+                >
+                  <ins class="rounded bg-green-500/15 px-0.5 text-green-700 no-underline dark:text-green-400">
+                    {part.text}
+                  </ins>
+                </Show>
+              </Show>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={error()}>
+        <p class="border-neutral-100 border-t px-3 py-2 text-red-600 text-size-small">{error()}</p>
+      </Show>
+    </div>
+  );
 }
 
 /** Fields shown before the rest fold behind "+N more". */
@@ -547,7 +713,7 @@ export function AIChatMessages(props: Props) {
             <For each={message.attachments}>
               {(attachment) => (
                 // A plain card, not one link: a player's controls inside a link would follow it.
-                <div class="max-w-md overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small">
+                <div class="max-w-[28rem] overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10 text-size-small">
                   <Show when={attachment.isImage}>
                     <a href={attachment.url} target="_blank" rel="noopener noreferrer">
                       <img
@@ -706,85 +872,96 @@ export function AIChatMessages(props: Props) {
     setExpandedToolMessages(next);
   }
 
-  function renderToolHeader(
-    key: string,
-    label: string,
-    name: string,
-    detail: string,
-    isError: boolean,
-  ) {
+  const chevron = (open: boolean) => (
+    <Icon
+      class={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${open ? "rotate-90" : ""}`}
+      name="chevron-right-small"
+    />
+  );
+
+  /** A tool's output, with a `$ command` line muted and stderr lines red. */
+  function renderToolOutput(message: AIChatMessage) {
     return (
-      <button
-        type="button"
-        class="flex min-w-0 max-w-full items-center gap-1.5 pointer-coarse:py-2 py-0.5 text-left text-size-small transition-colors"
-        classList={{
-          "text-red-600 hover:text-red-700": isError,
-          "text-neutral-500 hover:text-neutral-800": !isError,
-        }}
-        onClick={() => toggleToolMessageExpanded(key)}
-      >
-        <Icon
-          class={`h-3.5 w-3.5 shrink-0 transition-transform ${isToolMessageExpanded(key) ? "rotate-90" : ""}`}
-          name="chevron-right-small"
-        />
-        <span class="shrink-0">{label}</span>
-        <span class="truncate font-medium">{name}</span>
-        <Show when={detail}>
-          <span class="min-w-0 flex-1 truncate text-neutral-400">{detail}</span>
-        </Show>
-      </button>
+      <pre class="max-h-80 overflow-auto whitespace-pre-wrap border-neutral-200 border-t bg-neutral-50 px-3 py-2 font-mono text-neutral-700 text-size-extra-small leading-relaxed">
+        <For each={toolPreview(message).split("\n")}>
+          {(line) => (
+            <div
+              classList={{
+                "text-neutral-400": line.startsWith("$ "),
+                "text-red-600": line.startsWith("stderr:"),
+              }}
+            >
+              {line || " "}
+            </div>
+          )}
+        </For>
+      </pre>
     );
   }
 
-  function renderToolMessage(message: AIChatMessage, key: string) {
+  /** One tool call as a row: what it did, its key input, and how it ended. */
+  function renderToolRow(message: AIChatMessage, key: string) {
+    const open = () => isToolMessageExpanded(key);
     return (
       <div class="min-w-0">
-        {renderToolHeader(
-          key,
-          "Used",
-          message.toolName || "Tool",
-          collapsedToolInput(message),
-          Boolean(message.isError),
-        )}
-        <Show when={isToolMessageExpanded(key)}>
-          <pre
-            class="mt-1 mb-2 ml-5 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 font-mono text-size-extra-small leading-relaxed"
-            classList={{
-              "border-red-500/30 bg-red-500/5 text-red-600": message.isError,
-              "border-neutral-200 bg-neutral-50 text-neutral-700": !message.isError,
-            }}
-          >
-            {toolPreview(message)}
-          </pre>
-        </Show>
+        <button
+          type="button"
+          class="flex w-full min-w-0 items-center gap-2 px-3 pointer-coarse:py-2.5 py-1.5 text-left text-size-small transition-colors hover:bg-neutral-500/5"
+          onClick={() => toggleToolMessageExpanded(key)}
+        >
+          <Icon class="h-3.5 w-3.5 shrink-0 text-neutral-500" name={toolIcon(message.toolName)} />
+          <span class="shrink-0 font-medium text-neutral-800">{toolLabel(message.toolName)}</span>
+          <span class="min-w-0 flex-1 truncate font-mono text-neutral-500 text-size-extra-small">
+            {collapsedToolInput(message)}
+          </span>
+          <Icon
+            class={`h-3.5 w-3.5 shrink-0 ${message.isError ? "text-red-600" : "text-green-600"}`}
+            name={message.isError ? "cancel" : "confirmation"}
+          />
+          {chevron(open())}
+        </button>
+        <Show when={open()}>{renderToolOutput(message)}</Show>
       </div>
     );
   }
 
+  /** A run of tool calls as one card; several fold behind a summary line. */
   function renderToolRun(run: () => ToolRun) {
     const failed = () => run().items.filter(({ message }) => message.isError).length;
     return (
-      <Show
-        when={run().items.length > 1}
-        fallback={renderToolMessage(run().items[0].message, run().items[0].key)}
-      >
-        <div class="min-w-0 flex-1">
-          {renderToolHeader(
-            run().key,
-            `Used ${run().items.length} tools`,
-            summarizeToolRun(run()),
-            failed() ? `· ${failed()} failed` : "",
-            false,
-          )}
+      <div class="my-1 min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-10">
+        <Show
+          when={run().items.length > 1}
+          fallback={renderToolRow(run().items[0].message, run().items[0].key)}
+        >
+          <button
+            type="button"
+            class="flex w-full min-w-0 items-center gap-2 px-3 pointer-coarse:py-2.5 py-1.5 text-left text-size-small transition-colors hover:bg-neutral-500/5"
+            onClick={() => toggleToolMessageExpanded(run().key)}
+          >
+            <Icon class="h-3.5 w-3.5 shrink-0 text-neutral-500" name="function" />
+            <span class="shrink-0 font-medium text-neutral-800">
+              {run().items.length} tool calls
+            </span>
+            <span class="min-w-0 flex-1 truncate text-neutral-500">
+              {summarizeToolRun(run())}
+            </span>
+            <Show when={failed()}>
+              <span class="shrink-0 rounded-full bg-red-500/10 px-1.5 font-medium text-red-600 text-size-extra-small">
+                {failed()} failed
+              </span>
+            </Show>
+            {chevron(isToolMessageExpanded(run().key))}
+          </button>
           <Show when={isToolMessageExpanded(run().key)}>
-            <div class="mt-1 ml-[7px] border-neutral-200 border-l pl-3">
+            <div class="divide-y divide-neutral-200 border-neutral-200 border-t">
               <Index each={run().items}>
-                {(item) => renderToolMessage(item().message, item().key)}
+                {(item) => renderToolRow(item().message, item().key)}
               </Index>
             </div>
           </Show>
-        </div>
-      </Show>
+        </Show>
+      </div>
     );
   }
 
@@ -1001,6 +1178,26 @@ export function AIChatMessages(props: Props) {
                 )}
               </Show>
 
+              <Show
+                when={
+                  message.role === "proposal" && props.roleProposals && message.proposal
+                    ? { proposal: message.proposal, proposals: props.roleProposals }
+                    : undefined
+                }
+              >
+                {(shown) =>
+                  renderRow(
+                    message,
+                    <RoleProposal
+                      proposal={shown().proposal}
+                      proposals={shown().proposals}
+                      nameOf={(id) => (id ? props.authorOf?.(id)?.name : undefined) ?? "Someone"}
+                    />,
+                    false,
+                  )
+                }
+              </Show>
+
               <Show when={message.role === "tool" && toolRuns().get(message)}>
                 {(run) => renderRow(message, renderToolRun(run), false)}
               </Show>
@@ -1022,15 +1219,20 @@ export function AIChatMessages(props: Props) {
           const state = waitingState();
           if (state?.kind !== "tool_executing") return null;
           return (
-            <div class="flex min-w-0 animate-message-slide-in items-center gap-1.5 py-1 pr-4 pl-18 text-neutral-500 text-size-small">
-              <Icon class="h-3.5 w-3.5 shrink-0 animate-spin" name="spinner" />
-              <span class="shrink-0">Running</span>
-              <span class="truncate font-medium">{state.tool.toolName}</span>
-              <Show when={collapsedToolInput(state.tool)}>
-                <span class="min-w-0 truncate text-neutral-400">
+            <div class="pr-4 pl-18">
+              <div class="my-1 flex min-w-0 animate-message-slide-in items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-10 px-3 py-1.5 text-size-small">
+                <Icon
+                  class="h-3.5 w-3.5 shrink-0 text-neutral-500"
+                  name={toolIcon(state.tool.toolName)}
+                />
+                <span class="shrink-0 font-medium text-neutral-800">
+                  {toolLabel(state.tool.toolName)}
+                </span>
+                <span class="min-w-0 flex-1 truncate font-mono text-neutral-500 text-size-extra-small">
                   {collapsedToolInput(state.tool)}
                 </span>
-              </Show>
+                <Icon class="h-3.5 w-3.5 shrink-0 animate-spin text-neutral-400" name="spinner" />
+              </div>
             </div>
           );
         }}

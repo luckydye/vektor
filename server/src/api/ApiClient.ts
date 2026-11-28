@@ -679,7 +679,24 @@ export interface Comment {
 }
 
 export interface AIChatMessage {
-  role: "user" | "assistant" | "system" | "tool" | "status" | "thinking" | "screen";
+  role:
+    | "user"
+    | "assistant"
+    | "system"
+    | "tool"
+    | "status"
+    | "thinking"
+    | "screen"
+    | "proposal";
+  /** On a `proposal`: the role text a bot proposes, and the role it would replace. */
+  proposal?: {
+    /** The tool call that made it, which applying it names. */
+    callId: string;
+    rolePrompt: string;
+    previous?: string | null;
+    /** Who applied it and when, from the log. */
+    applied?: { by: string | null; at: number };
+  };
   content: string;
   timestamp: number;
   /** The log row it renders; unset while it streams. */
@@ -763,6 +780,8 @@ export interface ChatMessageRow {
     event?: { source: string; sentBy: string; data?: unknown };
     /** Read by the next round without starting one. */
     quiet?: boolean;
+    /** On an editor's row applying the role proposal this tool call made. */
+    roleApplied?: { callId: string };
   };
   createdAt: number;
 }
@@ -3000,6 +3019,19 @@ export class ApiClient {
       await this.apiDelete(
         this.baseUrl,
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions/${encodeURIComponent(sessionId)}`,
+      );
+    },
+
+    /** Applies the role change a bot proposed in `sessionId` with tool call `callId`. */
+    applyRoleProposal: async (
+      spaceId: string,
+      sessionId: string,
+      callId: string,
+    ): Promise<void> => {
+      await this.apiPost(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/chat/sessions/${encodeURIComponent(sessionId)}/role-proposals`,
+        { callId },
       );
     },
 

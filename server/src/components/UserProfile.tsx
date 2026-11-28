@@ -144,7 +144,7 @@ export function UserProfile() {
                 </Show>
               </div>
 
-              <div class="border-neutral-100 border-t p-4 dark:border-white/10">
+              <div class="border-(--menu-surface-border) border-t p-4">
                 <div class="flex items-center gap-3">
                   <div class="min-w-0 flex-1">
                     <p class="truncate font-medium text-foreground text-size-medium">

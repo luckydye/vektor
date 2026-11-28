@@ -47,7 +47,7 @@ export function HeaderImageDialog(props: Props) {
         on:exit={() => props.onUpdateShow?.(false)}
       >
         <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-          <div class="w-[400px] origin-top-right scale-95 rounded-2xl border border-neutral-100 bg-background p-m shadow-large transition-all duration-150 group-[&[enabled]]:scale-100">
+          <div class="w-[400px] origin-top-right scale-95 rounded-xl border border-neutral-100 bg-background p-m shadow-large transition-all duration-150 group-[&[enabled]]:scale-100">
             <div class="flex flex-col gap-s">
               <div class="flex flex-col items-center gap-5xs text-center">
                 <h2 class="font-semibold text-neutral-900 text-size-large">

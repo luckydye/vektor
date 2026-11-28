@@ -2,7 +2,6 @@ import { createEffect, createSignal, Show } from "solid-js";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
-import { imageFileAsDataUrl } from "#utils/image.ts";
 import {
   isRepositoryCreationEnabled,
   isWorkflowCreationEnabled,
@@ -12,7 +11,7 @@ import { Button } from "./Button.tsx";
 import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
 import { SpaceMembers } from "./SpaceMembers.tsx";
-import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
+import { SpaceAppearance } from "./SpaceAppearance.tsx";
 import { SpaceShareLinks } from "./SpaceShareLinks.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
@@ -61,18 +60,6 @@ export function SpaceGeneralSettings(props: Props) {
       setError(err instanceof Error ? err.message : "Failed to update feature settings");
     } finally {
       setSavingFeature(null);
-    }
-  }
-
-  async function handleLogoUpload(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    try {
-      setLocalLogoSvg(await imageFileAsDataUrl(file));
-      setError(null);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to read image file");
     }
   }
 
@@ -128,75 +115,61 @@ export function SpaceGeneralSettings(props: Props) {
           title="Space Settings"
           description="Personalize your space with settings and preferences."
         >
-          <div class="flex flex-col items-start gap-8 sm:flex-row sm:gap-10">
-            <div class="w-full shrink-0 sm:w-72">
-              <SpaceProfileCard
-                name={localName()}
-                slug={currentSpace()?.slug ?? ""}
-                description={localDescription()}
-                brandColor={localBrandColor()}
-                logo={localLogoSvg()}
-                onUpdateBrandColor={setLocalBrandColor}
-                onLogoUpload={(event) => void handleLogoUpload(event)}
-                onRemoveLogo={() => setLocalLogoSvg("")}
-              />
-            </div>
-
-            <form
-              class="w-full min-w-0 flex-1"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleSave();
-              }}
-            >
-              <div class="space-y-4">
-                <div>
-                  <label
-                    for="settings-space-name"
-                    class="mb-1 block font-medium text-neutral-700 text-size-small"
-                  >
-                    Name
-                  </label>
+          <form
+            class="max-w-xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSave();
+            }}
+          >
+            <div class="space-y-4">
+              <div>
+                <label for="settings-space-name" class="form-label">
+                  Name
+                </label>
+                <div class="flex gap-2">
+                  <SpaceAppearance
+                    name={localName()}
+                    brandColor={localBrandColor()}
+                    logo={localLogoSvg()}
+                    onUpdateBrandColor={setLocalBrandColor}
+                    onUpdateLogo={setLocalLogoSvg}
+                  />
                   <input
                     id="settings-space-name"
                     value={localName()}
                     onInput={(e) => setLocalName(e.currentTarget.value)}
                     type="text"
                     required
-                    class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 text-size-medium"
-                  />
-                </div>
-                <div>
-                  <label
-                    for="settings-space-description"
-                    class="mb-1 block font-medium text-neutral-700 text-size-small"
-                  >
-                    Description
-                  </label>
-                  <input
-                    id="settings-space-description"
-                    value={localDescription()}
-                    onInput={(e) => setLocalDescription(e.currentTarget.value)}
-                    type="text"
-                    placeholder="e.g., Engineering / Documentation"
-                    class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 text-size-medium"
+                    class="form-control"
                   />
                 </div>
               </div>
-              <Show when={error()}>
-                <div class="mt-4 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
-                  {error()}
-                </div>
-              </Show>
-              <div class="mt-6 flex justify-end">
-                <Button
-                  type="submit"
-                  disabled={isSaving()}
-                  text={isSaving() ? "Saving…" : "Save Changes"}
+              <div>
+                <label for="settings-space-description" class="form-label">
+                  Description
+                </label>
+                <input
+                  id="settings-space-description"
+                  value={localDescription()}
+                  onInput={(e) => setLocalDescription(e.currentTarget.value)}
+                  type="text"
+                  placeholder="e.g., Engineering / Documentation"
+                  class="form-control"
                 />
               </div>
-            </form>
-          </div>
+            </div>
+            <Show when={error()}>
+              <p class="mt-4 form-error">{error()}</p>
+            </Show>
+            <div class="mt-6 flex justify-end">
+              <Button
+                type="submit"
+                disabled={isSaving()}
+                text={isSaving() ? "Saving…" : "Save Changes"}
+              />
+            </div>
+          </form>
         </SettingsSection>
 
         <SettingsSection

@@ -247,6 +247,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET/PATCH/DELETE | `/spaces/:spaceId/chat/sessions/:sessionId` | Read / edit a bot / delete a chat session |
 | GET | `/spaces/:spaceId/chat/sessions/:sessionId/messages` | Page through a chat session's messages |
 | POST | `/spaces/:spaceId/chat/sessions/:sessionId/events` | Post an event from an outside service to a chat session |
+| POST | `/spaces/:spaceId/chat/sessions/:sessionId/role-proposals` | Apply a role change a bot proposed |
 | GET/POST | `/spaces/:spaceId/documents` | List documents (with filters) / create a document |
 | GET/PUT/PATCH/DELETE/POST | `/spaces/:spaceId/documents/:documentId` | Read / replace content / patch metadata / archive-delete / create revision |
 | GET | `/spaces/:spaceId/documents/:documentId/access` | Everyone who can reach the document, and the grant that gets them there |
@@ -311,6 +312,11 @@ A session is one of:
   next start.
 - The bot remembers on its own: once a session's log outgrows the model's budget, its
   oldest part is summarized into the session's memory.
+- A bot never changes its own role. When someone contradicts or refines it, the bot
+  calls its `propose_role_update` tool with the complete revised text; the call stays
+  in the log as a proposal, its result records the role it was made against, and an
+  editor applies it with `POST /spaces/:spaceId/chat/sessions/:sessionId/role-proposals`
+  `{ callId }` (`409` once the role has changed since).
 - A bot with `editor` access can schedule itself: it knows its session id and passes
   it as `sessionId` to an agent trigger. When the trigger fires, its prompt is posted
   with the bot's own principal (`bot:<channelId>`) as `authorId`. Deleting a channel

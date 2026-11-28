@@ -66,13 +66,14 @@
   --spacing-4xl: 7.5rem; /* 120px */
   --spacing-5xl: 10rem; /* 160px */
 
-  /* radius */
-  --radius-sm: 0.375rem; /* 6px */
-  --radius-md: 0.5rem; /* 8px */
-  --radius-lg: 0.75rem; /* 12px */
-  --radius-xl: 1rem; /* 16px */
-  --radius-2xl: 1.5rem; /* 24px */
-  --radius-full: 6.25rem; /* 100px */
+  /* radius: controls md, small surfaces lg, panels and dialogs xl. */
+  --radius-xs: 0.125rem; /* 2px */
+  --radius-sm: 0.25rem; /* 4px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-2xl: 1rem; /* 16px */
+  --radius-full: 9999px;
 
   /* colors */
   --color-primary-10: #e0d1e6;
@@ -361,7 +362,7 @@
 
 @utility button-with-icon {
   @apply [&_.svg-icon]:align-middle [&_.svg-icon]:w-[1.35em] [&_.svg-icon]:h-[1.35em] [&_.svg-icon]:block [&_.svg-icon]:text-inherit;
-  @apply [&_.svg-icon+span]:ml-3xs;
+  @apply [&_.svg-icon+span]:ml-1.5;
 }
 @utility svg-icon {
   @apply inline-block flex-none [&_svg]:block [&_svg]:w-full [&_svg]:h-full;
@@ -393,6 +394,13 @@
   @apply transition-shadow duration-200 shadow-2xs hover:shadow-xs;
   @apply button-with-icon;
 }
+/* A quiet action beside a primary one, like a dialog's cancel. */
+@utility button-neutral {
+  @apply flex-none cursor-pointer whitespace-nowrap inline-flex items-center bg-(--control-fill) border border-(--control-border) rounded-md font-medium text-interactive min-h-[2rem] text-neutral-800 transition-colors px-3xs;
+  @apply enabled:hover:border-(--control-border-hover) enabled:active:bg-(--control-border);
+  @apply disabled:button-disabled;
+  @apply button-with-icon;
+}
 @utility button-outline {
   @apply flex-none cursor-pointer whitespace-nowrap inline-flex items-center bg-background border border-primary-100 rounded-md font-medium text-interactive min-h-[2rem] text-primary-400 transition-colors px-3xs;
   @apply enabled:hover:bg-primary-10 enabled:active:bg-primary-50;
@@ -413,7 +421,7 @@
   @apply !border-red-600 !bg-red-600 enabled:hover:!bg-red-700 enabled:active:!bg-red-800;
 }
 @utility button-small {
-  @apply min-h-0 h-[1.75rem] px-4xs gap-5xs;
+  @apply min-h-0 h-[1.75rem] px-4xs;
   @apply [&_svg]:w-[18px] [&_svg]:h-[18px];
 }
 
@@ -687,7 +695,11 @@
    so a dark app on a light desktop still gets the dark surface. */
 :root {
   --menu-surface-background: rgb(255 255 255 / 0.6);
-  --menu-surface-border: var(--color-neutral-100);
+  --menu-surface-border: rgb(0 0 0 / 0.08);
+  /* Form controls tint whatever they sit on, so they fit opaque and translucent surfaces alike. */
+  --control-fill: rgb(0 0 0 / 0.02);
+  --control-border: rgb(0 0 0 / 0.14);
+  --control-border-hover: rgb(0 0 0 / 0.24);
   --menu-surface-shadow:
     0 4px 16px rgb(15 23 42 / 0.08),
     0 1px 3px rgb(15 23 42 / 0.08);
@@ -697,6 +709,9 @@
   :root:not([data-theme]) {
     --menu-surface-background: rgb(39 39 42 / 0.6);
     --menu-surface-border: rgb(255 255 255 / 0.1);
+    --control-fill: rgb(255 255 255 / 0.04);
+    --control-border: rgb(255 255 255 / 0.12);
+    --control-border-hover: rgb(255 255 255 / 0.2);
     --menu-surface-shadow:
       0 4px 16px rgb(0 0 0 / 0.3),
       0 1px 3px rgb(0 0 0 / 0.3);
@@ -706,6 +721,9 @@
 :root[data-theme="dark"] {
   --menu-surface-background: rgb(39 39 42 / 0.6);
   --menu-surface-border: rgb(255 255 255 / 0.1);
+  --control-fill: rgb(255 255 255 / 0.04);
+  --control-border: rgb(255 255 255 / 0.12);
+  --control-border-hover: rgb(255 255 255 / 0.2);
   --menu-surface-shadow:
     0 4px 16px rgb(0 0 0 / 0.3),
     0 1px 3px rgb(0 0 0 / 0.3);
@@ -721,6 +739,33 @@
 
 @utility focus-ring {
   @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+/* Text inputs, textareas and selects in forms and dialogs. */
+@utility form-control {
+  @apply w-full rounded-md border border-(--control-border) bg-(--control-fill) px-3 py-2 text-neutral-900 text-size-medium outline-none transition-[border-color,box-shadow] duration-150;
+  @apply placeholder:text-neutral-400 enabled:hover:border-(--control-border-hover);
+  @apply focus:border-primary-500 focus:ring-3 focus:ring-primary-500/20;
+  @apply disabled:cursor-not-allowed disabled:opacity-60;
+
+  &:is(select) {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem;
+  }
+}
+@utility form-label {
+  @apply mb-1.5 block font-medium text-neutral-800 text-size-small;
+}
+@utility form-hint {
+  @apply mt-1.5 text-neutral-500 text-size-small;
+}
+/* An error line inside a form; translucent so it sits well on light and dark. */
+@utility form-error {
+  @apply rounded-md border border-red-500/25 bg-red-500/10 px-3 py-2 text-red-600 text-size-small;
 }
 
 @utility clip-right {

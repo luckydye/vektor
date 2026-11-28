@@ -631,7 +631,7 @@ export function DocumentSharePopover(props: Props) {
           {/* Fade the panel itself, not the wrapper: an ancestor with opacity
               below 1 becomes the backdrop root and its backdrop-filter would
               blur nothing until the fade ends. */}
-          <div class="max-h-[min(40rem,80vh)] origin-top scale-95 opacity-0 overflow-y-auto rounded-2xl surface-menu transition-all duration-150 group-[&[enabled]]:scale-100 group-[&[enabled]]:opacity-100 md:w-[32rem]">
+          <div class="max-h-[min(40rem,80vh)] origin-top scale-95 opacity-0 overflow-y-auto rounded-xl surface-menu transition-all duration-150 group-[&[enabled]]:scale-100 group-[&[enabled]]:opacity-100 md:w-[32rem]">
             <div class="px-5 pt-4 pb-5">
               <Show when={props.canManageLinks}>
                 {/* Not TabsList: a-tabs-list slots its tabs into a shadow track that cannot stretch them. */}

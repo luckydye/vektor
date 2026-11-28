@@ -559,7 +559,7 @@ export function DocumentActions(props: Props) {
             <Show when={saveStatus() === "error"}>
               <p
                 role="alert"
-                class="pointer-events-none absolute top-[calc(100%+9px)] right-0 z-[100] w-max max-w-[280px] rounded-[7px] bg-red-600 px-2.5 py-1.5 text-size-small text-white shadow-large"
+                class="pointer-events-none absolute top-[calc(100%+9px)] right-0 z-[100] w-max max-w-[280px] rounded-md bg-red-600 px-2.5 py-1.5 text-size-small text-white shadow-large"
               >
                 <span class="absolute -top-1 right-4 h-2 w-2 rotate-45 bg-red-600" />
                 {saveError()?.message ?? t("Publishing failed")}

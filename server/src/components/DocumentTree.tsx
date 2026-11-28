@@ -974,87 +974,79 @@ export function DocumentTree(props: Props) {
             }}
             class="space-y-4"
           >
-            <CategoryAppearance
-              name={formData().name}
-              color={formData().color || DEFAULT_CATEGORY_COLOR}
-              icon={formData().icon || ""}
-              onUpdateColor={(color) => patchForm({ color })}
-              onUpdateIcon={(icon) => patchForm({ icon })}
-            />
-
             <div>
-              <label
-                for="category-name"
-                class="mb-1 block font-medium text-neutral-900 text-size-small"
-              >
+              <label for="category-name" class="form-label">
                 {t("Name")}
               </label>
-              <input
-                id="category-name"
-                value={formData().name}
-                onInput={(e) => patchForm({ name: e.currentTarget.value })}
-                type="text"
-                required
-                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                placeholder={t("Category name")}
-              />
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label
-                  for="category-document-sort"
-                  class="mb-1 block font-medium text-neutral-900 text-size-small"
-                >
-                  {t("Sort documents by")}
-                </label>
-                <select
-                  id="category-document-sort"
-                  value={formData().documentSort}
-                  onChange={(e) =>
-                    patchForm({
-                      documentSort: e.currentTarget.value as CategoryDocumentSort,
-                    })
-                  }
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                >
-                  <For each={CATEGORY_DOCUMENT_SORTS}>
-                    {(sort) => (
-                      <option value={sort}>{t(CATEGORY_SORT_LABELS[sort])}</option>
-                    )}
-                  </For>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  for="category-document-limit"
-                  class="mb-1 block font-medium text-neutral-900 text-size-small"
-                >
-                  {t("Documents to show")}
-                </label>
+              <div class="flex gap-2">
+                <CategoryAppearance
+                  name={formData().name}
+                  color={formData().color || DEFAULT_CATEGORY_COLOR}
+                  icon={formData().icon || ""}
+                  onUpdateColor={(color) => patchForm({ color })}
+                  onUpdateIcon={(icon) => patchForm({ icon })}
+                />
                 <input
-                  id="category-document-limit"
-                  value={formData().documentLimit}
-                  onInput={(e) => patchForm({ documentLimit: e.currentTarget.value })}
-                  type="number"
-                  min="1"
-                  step="1"
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                  placeholder={t("All")}
+                  id="category-name"
+                  value={formData().name}
+                  onInput={(e) => patchForm({ name: e.currentTarget.value })}
+                  type="text"
+                  required
+                  class="form-control"
+                  placeholder={t("Category name")}
                 />
               </div>
             </div>
-            <p class="-mt-2 text-neutral-500 text-size-extra-small">
-              {t(
-                'Limits the top-level documents listed in the sidebar; the rest are behind "Show more".',
-              )}
-            </p>
+
+            <div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="category-document-sort" class="form-label">
+                    {t("Sort documents by")}
+                  </label>
+                  <select
+                    id="category-document-sort"
+                    value={formData().documentSort}
+                    onChange={(e) =>
+                      patchForm({
+                        documentSort: e.currentTarget.value as CategoryDocumentSort,
+                      })
+                    }
+                    class="form-control"
+                  >
+                    <For each={CATEGORY_DOCUMENT_SORTS}>
+                      {(sort) => (
+                        <option value={sort}>{t(CATEGORY_SORT_LABELS[sort])}</option>
+                      )}
+                    </For>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="category-document-limit" class="form-label">
+                    {t("Documents to show")}
+                  </label>
+                  <input
+                    id="category-document-limit"
+                    value={formData().documentLimit}
+                    onInput={(e) => patchForm({ documentLimit: e.currentTarget.value })}
+                    type="number"
+                    min="1"
+                    step="1"
+                    class="form-control"
+                    placeholder={t("All")}
+                  />
+                </div>
+              </div>
+              <p class="form-hint">
+                {t(
+                  'Limits the top-level documents listed in the sidebar; the rest are behind "Show more".',
+                )}
+              </p>
+            </div>
 
             <Show when={formError()}>
-              <div class="rounded-md border border-red-200 bg-red-50 p-3">
-                <p class="text-red-600 text-size-small">{formError()}</p>
-              </div>
+              <p class="form-error">{formError()}</p>
             </Show>
           </form>
         </Dialog>
@@ -1084,9 +1076,7 @@ export function DocumentTree(props: Props) {
           </p>
 
           <Show when={deleteError()}>
-            <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
-              <p class="text-red-600 text-size-small">{deleteError()}</p>
-            </div>
+            <p class="mt-3 form-error">{deleteError()}</p>
           </Show>
         </Dialog>
       </Show>

@@ -1,10 +1,9 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
 import { isHexColor } from "#utils/color.ts";
-import { imageFileAsDataUrl } from "#utils/image.ts";
 import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
-import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
+import { SpaceAppearance } from "./SpaceAppearance.tsx";
 
 const DEFAULT_BRAND_COLOR = "#42516d";
 
@@ -40,18 +39,6 @@ export function CreateSpaceDialog(props: Props) {
   function handleClose() {
     setFormError("");
     props.onUpdateShow?.(false);
-  }
-
-  async function handleLogoUpload(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    try {
-      setLogoSvg(await imageFileAsDataUrl(file));
-      setFormError("");
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Failed to read image file");
-    }
   }
 
   async function handleSubmit(event: Event) {
@@ -115,42 +102,35 @@ export function CreateSpaceDialog(props: Props) {
       }
     >
       <form id="create-space-form" onSubmit={handleSubmit} class="space-y-4">
-        <SpaceProfileCard
-          name={name()}
-          slug={slug()}
-          brandColor={brandColor()}
-          logo={logoSvg()}
-          onUpdateBrandColor={setBrandColor}
-          onLogoUpload={handleLogoUpload}
-          onRemoveLogo={() => setLogoSvg("")}
-        />
-
         <div>
-          <label
-            for="space-name"
-            class="mb-1 block font-medium text-neutral-900 text-size-small"
-          >
+          <label for="space-name" class="form-label">
             Space Name
           </label>
-          <input
-            id="space-name"
-            type="text"
-            required
-            value={name()}
-            class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-            placeholder="My Space"
-            onInput={(event) => {
-              setName(event.currentTarget.value);
-              setSlug(slugify(event.currentTarget.value));
-            }}
-          />
+          <div class="flex gap-2">
+            <SpaceAppearance
+              name={name()}
+              brandColor={brandColor()}
+              logo={logoSvg()}
+              onUpdateBrandColor={setBrandColor}
+              onUpdateLogo={setLogoSvg}
+            />
+            <input
+              id="space-name"
+              type="text"
+              required
+              value={name()}
+              class="form-control"
+              placeholder="My Space"
+              onInput={(event) => {
+                setName(event.currentTarget.value);
+                setSlug(slugify(event.currentTarget.value));
+              }}
+            />
+          </div>
         </div>
 
         <div>
-          <label
-            for="space-slug"
-            class="mb-1 block font-medium text-neutral-900 text-size-small"
-          >
+          <label for="space-slug" class="form-label">
             Slug
           </label>
           <input
@@ -159,19 +139,15 @@ export function CreateSpaceDialog(props: Props) {
             required
             pattern="[a-z0-9-]+"
             value={slug()}
-            class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
+            class="form-control"
             placeholder="my-wiki"
             onInput={(event) => setSlug(event.currentTarget.value)}
           />
-          <p class="mt-1 text-neutral text-size-small">
-            Lowercase letters, numbers and single inner hyphens
-          </p>
+          <p class="form-hint">Lowercase letters, numbers and single inner hyphens</p>
         </div>
 
         <Show when={formError()}>
-          <div class="rounded-md border border-red-200 bg-red-50 p-3">
-            <p class="text-red-600 text-size-small">{formError()}</p>
-          </div>
+          <p class="form-error">{formError()}</p>
         </Show>
       </form>
     </Dialog>

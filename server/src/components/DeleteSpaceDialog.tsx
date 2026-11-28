@@ -110,14 +110,12 @@ export function DeleteSpaceDialog(props: Props) {
             value={typed()}
             disabled={pending()}
             onInput={(event) => setTyped(event.currentTarget.value)}
-            class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
+            class="form-control"
           />
         </div>
 
         <Show when={error()}>
-          <div class="rounded-md border border-red-200 bg-red-50 p-3">
-            <p class="text-red-600 text-size-small">{error()}</p>
-          </div>
+          <p class="form-error">{error()}</p>
         </Show>
       </form>
     </Dialog>

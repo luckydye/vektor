@@ -1,4 +1,13 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  on,
+  Show,
+  Switch,
+} from "solid-js";
 import type { PersonalAccessToken, Space } from "#api/client.ts";
 import type {
   CreatedPersonalToken,
@@ -27,6 +36,9 @@ interface Props {
   pendingTokenId: string | null;
   createdToken: CreatedPersonalToken | null;
   error: string | null;
+  /** Whether the create form takes the list's place; the parent's header opens it. */
+  isFormOpen: boolean;
+  onCloseForm: () => void;
   onCreate: (input: CreatePersonalTokenInput) => Promise<boolean>;
   onDismissCreatedToken: () => void;
   onRevoke: (token: PersonalAccessToken) => void;
@@ -47,7 +59,6 @@ export function AccessTokensPanel(props: Props) {
   const statusLabel = (status: AccessTokenStatus): string =>
     ({ Active: t("Active"), Expired: t("Expired"), Revoked: t("Revoked") })[status];
 
-  const [isFormOpen, setIsFormOpen] = createSignal(false);
   const [name, setName] = createSignal("");
   const [spaceId, setSpaceId] = createSignal("");
   const [expiresInDays, setExpiresInDays] = createSignal<number | null>(30);
@@ -58,17 +69,21 @@ export function AccessTokensPanel(props: Props) {
    * the list's place rather than stacking above it, so nothing below moves.
    */
   const view = createMemo<"form" | "created" | "list">(() => {
-    if (isFormOpen()) return "form";
+    if (props.isFormOpen) return "form";
     return props.createdToken ? "created" : "list";
   });
 
-  function openForm() {
-    setName("");
-    setSpaceId(props.defaultSpaceId ?? props.spaces[0]?.id ?? "");
-    setExpiresInDays(30);
-    props.onDismissCreatedToken();
-    setIsFormOpen(true);
-  }
+  createEffect(
+    on(
+      () => props.isFormOpen,
+      (open) => {
+        if (!open) return;
+        setName("");
+        setSpaceId(props.defaultSpaceId ?? props.spaces[0]?.id ?? "");
+        setExpiresInDays(30);
+      },
+    ),
+  );
 
   async function submitForm(event: Event) {
     event.preventDefault();
@@ -78,7 +93,7 @@ export function AccessTokensPanel(props: Props) {
       spaceId: spaceId(),
       expiresInDays: expiresInDays(),
     });
-    if (created) setIsFormOpen(false);
+    if (created) props.onCloseForm();
   }
 
   async function copyToken() {
@@ -103,18 +118,6 @@ export function AccessTokensPanel(props: Props) {
 
   return (
     <section>
-      <Show when={props.spaces.length > 0 && view() === "list"}>
-        <div class="mb-1 flex justify-end">
-          <button
-            type="button"
-            onClick={openForm}
-            class="rounded-lg px-2 py-1 font-medium text-blue-600 text-size-small transition-colors hover:bg-blue-50"
-          >
-            {t("+ New token")}
-          </button>
-        </div>
-      </Show>
-
       <Show when={props.error}>
         <div class="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2.5 text-red-600 text-size-small">
           {props.error}
@@ -125,14 +128,11 @@ export function AccessTokensPanel(props: Props) {
       <div>
         <Switch>
           <Match when={view() === "form"}>
-            <form
-              onSubmit={(event) => void submitForm(event)}
-              class="space-y-3"
-            >
+            <form onSubmit={(event) => void submitForm(event)} class="space-y-3">
               <div>
                 <label
                   for="personal-token-name"
-                  class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  class="form-label"
                 >
                   {t("Name")}
                 </label>
@@ -143,7 +143,7 @@ export function AccessTokensPanel(props: Props) {
                   type="text"
                   required
                   placeholder={t("e.g. Laptop CLI")}
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                  class="form-control py-1.5"
                 />
               </div>
 
@@ -151,7 +151,7 @@ export function AccessTokensPanel(props: Props) {
                 <div>
                   <label
                     for="personal-token-space"
-                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                    class="form-label"
                   >
                     {t("Space")}
                   </label>
@@ -159,7 +159,7 @@ export function AccessTokensPanel(props: Props) {
                     id="personal-token-space"
                     value={spaceId()}
                     onChange={(event) => setSpaceId(event.currentTarget.value)}
-                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                    class="form-control py-1.5"
                   >
                     <For each={props.spaces}>
                       {(space) => <option value={space.id}>{space.name}</option>}
@@ -169,7 +169,7 @@ export function AccessTokensPanel(props: Props) {
                 <div>
                   <label
                     for="personal-token-expiry"
-                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                    class="form-label"
                   >
                     {t("Expiration")}
                   </label>
@@ -183,7 +183,7 @@ export function AccessTokensPanel(props: Props) {
                           : null,
                       )
                     }
-                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                    class="form-control py-1.5"
                   >
                     <For each={expiryOptions()}>
                       {(option) => (
@@ -203,7 +203,7 @@ export function AccessTokensPanel(props: Props) {
                   size="small"
                   variant="ghost"
                   text={t("Cancel")}
-                  onClick={() => setIsFormOpen(false)}
+                  onClick={() => props.onCloseForm()}
                 />
                 <Button
                   type="submit"
@@ -252,7 +252,7 @@ export function AccessTokensPanel(props: Props) {
             <Show
               when={!props.isLoading}
               fallback={
-                <div class="divide-y divide-neutral-100">
+                <div class="divide-y divide-(--menu-surface-border)">
                   <For each={[0, 1, 2]}>
                     {() => (
                       <div class="flex items-center gap-3 py-3">
@@ -280,7 +280,7 @@ export function AccessTokensPanel(props: Props) {
                   </div>
                 }
               >
-                <div class="divide-y divide-neutral-100">
+                <div class="divide-y divide-(--menu-surface-border)">
                   <For each={props.tokens}>
                     {(token) => (
                       <div class="group flex items-center gap-3 py-3">

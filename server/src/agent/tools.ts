@@ -5,6 +5,7 @@
  * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
  */
 
+import { channelOfBotPrincipal } from "#acl/permissions.ts";
 import { CANVAS_OPERATION_SCHEMA } from "#canvas/agent/schema.ts";
 import type { ChatSessionSummary, StoredChatMessage } from "#db/space/chatSessions.ts";
 import type { JobDefinition } from "#extensions/manifest.ts";
@@ -202,6 +203,18 @@ async function apiResponse(
     );
   }
   return response;
+}
+
+/**
+ * The channel whose bot a turn runs as, read from the principal its job token
+ * carries; null for any other caller. Only decides which tools are offered:
+ * nothing is granted on it, and applying a role proposal goes through an
+ * editor's own request.
+ */
+function botChannelOf(config: VektorMcpConfig): string | null {
+  const principal = config.jobToken?.split(".")[1];
+  if (!principal || principal === "-") return null;
+  return channelOfBotPrincipal(Buffer.from(principal, "base64url").toString("utf8"));
 }
 
 function remoteTaskMessagesPath(config: VektorMcpConfig): string {
@@ -671,6 +684,28 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["prompt"],
       },
     },
+    ...(botChannelOf(config)
+      ? [
+          {
+            name: "propose_role_update",
+            description:
+              "Propose a new version of your Bot Role text, for when a person contradicts, corrects or refines what it says " +
+              "(a changed opinion, a new audience, a different tone). Nothing changes yet: the proposal is shown in the " +
+              "channel with what changed, and an editor applies it. Give the complete new role text, not only the change, " +
+              "and keep everything that still holds.",
+            inputSchema: {
+              type: "object" as const,
+              properties: {
+                rolePrompt: {
+                  type: "string",
+                  description: "The complete role text as it should read once applied.",
+                },
+              },
+              required: ["rolePrompt"],
+            },
+          },
+        ]
+      : []),
     ...(config.agentSessionId
       ? [
           {
@@ -1306,6 +1341,25 @@ export async function callTool(
           }),
         },
       );
+    }
+    case "propose_role_update": {
+      // The call itself is the proposal: it stays in the channel's log, where
+      // the UI shows it for an editor to apply. Nothing is written here.
+      const channelId = botChannelOf(config);
+      if (!channelId) throw new Error("Only a bot has a role to propose changes to.");
+      const rolePrompt = expectString(args, "rolePrompt").trim();
+      if (!rolePrompt) throw new Error("rolePrompt must not be empty");
+      // The role as it reads now, so the proposal still shows what it changed
+      // once it has been applied.
+      const { session } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/chat/sessions/${encodeURIComponent(channelId)}`,
+      )) as { session: ChatSessionSummary };
+      return {
+        proposed: true,
+        previous: session.rolePrompt,
+        note: "Shown in the channel with what changed; your role text changes once an editor applies it. Meanwhile do what was asked in this conversation, and do not dwell on the proposal.",
+      };
     }
     case "read_chat": {
       const chatId = expectString(args, "chatId");

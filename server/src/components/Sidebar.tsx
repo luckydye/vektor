@@ -231,7 +231,7 @@ export function Sidebar(props: Props) {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle, not a control. */}
         <div
           class={twMerge(
-            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-neutral-200/50 md:block rounded-[99px]",
+            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-neutral-200/50 md:block rounded-full",
             isResizing() ? "bg-neutral-200 active:bg-neutral-200" : "",
           )}
           onMouseDown={startResize}

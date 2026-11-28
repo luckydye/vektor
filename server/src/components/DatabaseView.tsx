@@ -244,7 +244,7 @@ export function DatabaseView(props: Props) {
       </Show>
       {/* Centred on the cell's 1px right border, styled after the sidebar's handle. */}
       <div
-        class="absolute top-2 -right-[2.5px] bottom-2 z-10 w-1 cursor-col-resize rounded-[99px] transition-colors hover:bg-neutral-300 active:bg-neutral-300"
+        class="absolute top-2 -right-[2.5px] bottom-2 z-10 w-1 cursor-col-resize rounded-full transition-colors hover:bg-neutral-300 active:bg-neutral-300"
         onPointerDown={(event) => startResize(key, event)}
       >
         <div class="absolute -inset-x-1 inset-y-0" />

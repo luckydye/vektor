@@ -145,6 +145,11 @@ export function useBotActions() {
       });
       refresh();
     },
+    /** Applies the role change the bot proposed in `sessionId`, logged there as applied. */
+    async applyRoleProposal(sessionId: string, callId: string): Promise<void> {
+      await api.chatSessions.applyRoleProposal(spaceId(), sessionId, callId);
+      refresh();
+    },
     async remove(botId: string): Promise<void> {
       await api.chatSessions.delete(spaceId(), botId);
       refresh();

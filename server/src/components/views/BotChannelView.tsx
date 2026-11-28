@@ -2,7 +2,7 @@ import { useNavigate, useParams, useSearchParams } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
 import type { ChatSession } from "#api/client.ts";
-import { BotAvatar } from "#components/AIChatMessages.tsx";
+import { BotAvatar, type RoleProposals } from "#components/AIChatMessages.tsx";
 import { BotEditorDialog } from "#components/BotEditorDialog.tsx";
 import { ChatConversation } from "#components/ChatConversation.tsx";
 import { ContextMenu, ContextMenuSeparator } from "#components/ContextMenu.tsx";
@@ -16,7 +16,11 @@ import {
   useChatPeople,
   useChatThreads,
 } from "#composeables/useBotChannels.ts";
-import { useChatSession } from "#composeables/useChatSession.ts";
+import {
+  roleChanges,
+  roleProposalStatus,
+  useChatSession,
+} from "#composeables/useChatSession.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
@@ -80,6 +84,22 @@ export function BotChannelView() {
   const threadRoot = createMemo(() => {
     const seq = thread()?.threadRootSeq;
     return channelChat.messages.find((message) => message.seq === seq) ?? null;
+  });
+
+  /** The bot's proposals to change its role, applied by editors. */
+  /** The bot's role proposals in `sessionId`, the channel or a thread of it. */
+  const roleProposals = (sessionId: string | undefined): RoleProposals => ({
+    // Against the role it was made against, where that is known.
+    changes: (proposal) =>
+      roleChanges(
+        proposal.previous !== undefined ? proposal.previous : (channel()?.rolePrompt ?? null),
+        proposal.rolePrompt,
+      ),
+    status: (proposal) => roleProposalStatus(proposal, channel()?.rolePrompt ?? null),
+    apply:
+      mayEdit() && sessionId
+        ? (proposal) => actions.applyRoleProposal(sessionId, proposal.callId)
+        : undefined,
   });
 
   const [showEditor, setShowEditor] = createSignal(false);
@@ -212,6 +232,7 @@ export function BotChannelView() {
                   authorOf={people.authorOf}
                   threadOf={(seq) => threads().get(seq)}
                   onOpenThread={(seq) => void openThread(seq)}
+                  roleProposals={roleProposals(current().id)}
                 />
               </div>
 
@@ -245,6 +266,7 @@ export function BotChannelView() {
                         }
                         bot={bot()}
                         authorOf={people.authorOf}
+                        roleProposals={roleProposals(open().id)}
                       />
                     </div>
                   )}

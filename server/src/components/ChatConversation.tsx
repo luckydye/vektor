@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import type { ChatAuthor } from "#composeables/useBotChannels.ts";
 import type { ChatSessionHandle } from "#composeables/useChatSession.ts";
-import { AIChatMessages } from "./AIChatMessages.tsx";
+import { AIChatMessages, type RoleProposals } from "./AIChatMessages.tsx";
 import { Icon } from "./Icon.tsx";
 import { MessageInput } from "./MessageInput.tsx";
 import { RemoteScreen } from "./RemoteScreen.tsx";
@@ -21,6 +21,7 @@ interface Props {
   onOpenThread?: (seq: number) => void;
   /** The bot's name while it answers, for the line under the composer. */
   typing?: string;
+  roleProposals?: RoleProposals;
 }
 
 type PinnedScreen = {
@@ -111,6 +112,7 @@ export function ChatConversation(props: Props) {
         threadOf={props.threadOf}
         onOpenThread={props.onOpenThread}
         onLoadOlder={chat().hasMore() ? () => void chat().loadOlder() : undefined}
+        roleProposals={props.roleProposals}
       />
 
       <div class="mx-auto w-full max-w-[56rem] shrink-0 px-4">

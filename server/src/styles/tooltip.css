@@ -25,7 +25,7 @@
   left: 0;
   top: 0;
   padding: 5px 9px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--tooltip-bg);
   color: var(--tooltip-text);
   font-size: 12px;

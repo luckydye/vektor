@@ -22,16 +22,14 @@ export function DialogFooter(props: Props) {
     { tone: "default" as const, layout: "split" as const },
     props,
   );
-  const fill = () => (merged.layout === "split" ? "flex-1 justify-center" : "");
+  // Split fills the width of a phone sheet; on desktop both sit right-aligned.
+  const fill = () =>
+    `min-h-9 justify-center px-4 ${merged.layout === "split" ? "flex-1 md:flex-none md:min-w-24" : ""}`;
 
   return (
-    <div
-      class={
-        merged.layout === "split" ? "flex gap-2" : "flex items-center justify-end gap-2xs"
-      }
-    >
+    <div class="flex items-center justify-end gap-2">
       <Button
-        variant="secondary"
+        variant="neutral"
         class={fill()}
         disabled={merged.pending}
         text={merged.cancelLabel ?? t("Cancel")}

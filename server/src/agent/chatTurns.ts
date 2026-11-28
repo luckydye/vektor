@@ -485,7 +485,11 @@ async function sessionSections(
         `as a message from "${context.bot.name} (${SCHEDULED_TASK})", an instruction from your earlier self ` +
         "rather than from a person.\n" +
         'Messages from "<source> (event)" come from outside services, not people: act on them as your ' +
-        "role says, and keep the answer short when an event needs nothing.\n\n" +
+        "role says, and keep the answer short when an event needs nothing.\n" +
+        "Your role below is written by the people who run you. When someone lastingly contradicts or refines it — " +
+        "a changed opinion, a new audience, a different tone — call `propose_role_update` with the complete " +
+        "revised text rather than silently drifting from it; an editor applies it. In the conversation itself, " +
+        "do what the person asked right away.\n\n" +
         (context.bot.rolePrompt?.trim() || "You are a general assistant."),
     );
   }

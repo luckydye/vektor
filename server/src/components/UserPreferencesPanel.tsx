@@ -36,6 +36,7 @@ import {
   type ThemePreference,
 } from "#utils/themePreference.ts";
 import { AccessTokensPanel } from "./AccessTokensPanel.tsx";
+import { Button } from "./Button.tsx";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { DesktopAppPreferences } from "./DesktopAppPreferences.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -139,6 +140,18 @@ export function UserPreferencesPanel(props: Props) {
   const tokenSpaces = createMemo(() =>
     (spaces() ?? []).filter((space) => isPermission(space.userRole)),
   );
+  /** Creating a token takes the list's place; the header opens it. */
+  const [isTokenFormOpen, setIsTokenFormOpen] = createSignal(false);
+  const canOpenTokenForm = () =>
+    props.section === "tokens" &&
+    tokenSpaces().length > 0 &&
+    !isTokenFormOpen() &&
+    !accessTokens.createdToken();
+
+  function openTokenForm() {
+    accessTokens.dismissCreatedToken();
+    setIsTokenFormOpen(true);
+  }
 
   // Providers come from the space's installed extensions, so the cards are
   // whatever the API returned rather than a list the app knows in advance.
@@ -395,7 +408,9 @@ export function UserPreferencesPanel(props: Props) {
   });
 
   createEffect(() => {
-    if (props.section === "tokens") void accessTokens.load();
+    if (props.section !== "tokens") return;
+    setIsTokenFormOpen(false);
+    void accessTokens.load();
   });
 
   createEffect(
@@ -411,7 +426,7 @@ export function UserPreferencesPanel(props: Props) {
 
   return (
     <>
-      <div class="flex items-center gap-2 border-neutral-100 border-b px-4 py-3">
+      <div class="flex items-center gap-2 border-(--menu-surface-border) border-b px-4 py-3">
         <button
           type="button"
           onClick={() => props.onClose?.()}
@@ -420,9 +435,12 @@ export function UserPreferencesPanel(props: Props) {
         >
           <Icon class="h-4 w-4" name="chevron-left-large" />
         </button>
-        <p class="font-medium text-base text-foreground">
+        <p class="flex-1 font-medium text-base text-foreground">
           {t(sectionLabels[props.section])}
         </p>
+        <Show when={canOpenTokenForm()}>
+          <Button size="small" icon="add" text={t("New token")} onClick={openTokenForm} />
+        </Show>
       </div>
 
       <div
@@ -433,7 +451,7 @@ export function UserPreferencesPanel(props: Props) {
           {
             general: () => (
               <>
-              <div class="divide-y divide-neutral-100">
+              <div class="divide-y divide-(--menu-surface-border)">
                 <fieldset class="flex items-center justify-between gap-4 py-3">
                   <legend class="sr-only">{t("Theme")}</legend>
                   <span class="font-medium text-foreground text-size-small">
@@ -577,6 +595,8 @@ export function UserPreferencesPanel(props: Props) {
                 pendingTokenId={accessTokens.pendingTokenId()}
                 createdToken={accessTokens.createdToken()}
                 error={accessTokens.error()}
+                isFormOpen={isTokenFormOpen()}
+                onCloseForm={() => setIsTokenFormOpen(false)}
                 onCreate={accessTokens.create}
                 onDismissCreatedToken={accessTokens.dismissCreatedToken}
                 onRevoke={revokeToken}
@@ -610,7 +630,7 @@ export function UserPreferencesPanel(props: Props) {
                       </p>
                     }
                   >
-                    <div class="divide-y divide-neutral-100">
+                    <div class="divide-y divide-(--menu-surface-border)">
                       <For each={integrationCards()}>
                         {(card) => (
                           <div class="py-3">
@@ -689,7 +709,7 @@ export function UserPreferencesPanel(props: Props) {
                               <label class="mt-3 flex items-center justify-between gap-3 pl-12 text-label text-neutral-600">
                                 {t("Model for agent chats")}
                                 <select
-                                  class="min-w-0 max-w-[55%] rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
+                                  class="form-control w-auto min-w-0 max-w-[55%] py-1 text-size-small"
                                   disabled={updatingModelProvider() === card.provider}
                                   onChange={(event) =>
                                     void handleSelectAIModel(
@@ -755,14 +775,15 @@ export function UserPreferencesPanel(props: Props) {
                                   onInput={(event) =>
                                     setPastedAddress(event.currentTarget.value)
                                   }
-                                  class="rounded-md border border-neutral-200 bg-background px-2 py-1 text-size-small"
+                                  class="form-control px-2 py-1 text-size-small"
                                 />
-                                <button
+                                <Button
                                   type="submit"
-                                  class="rounded-md border border-neutral-200 px-3 py-1 font-medium text-size-small hover:bg-neutral-50"
-                                >
-                                  {t("Finish connecting")}
-                                </button>
+                                  variant="neutral"
+                                  size="small"
+                                  class="justify-center"
+                                  text={t("Finish connecting")}
+                                />
                               </form>
                             </Show>
                           </div>

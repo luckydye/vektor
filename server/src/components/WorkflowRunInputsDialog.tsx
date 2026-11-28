@@ -130,7 +130,7 @@ export function WorkflowRunInputsDialog(props: Props) {
                       onInput={(event) => setValue(field.name, event.currentTarget.value)}
                       type="text"
                       autocomplete="off"
-                      class="rounded-sm border border-neutral-200 bg-background px-2 py-1 text-neutral-700 text-size-small focus:border-primary-400 focus:outline-none"
+                      class="form-control"
                     />
                   }
                 >
@@ -141,7 +141,7 @@ export function WorkflowRunInputsDialog(props: Props) {
                       }
                       type="file"
                       disabled={uploading()[field.name] !== undefined}
-                      class="rounded-sm border border-neutral-200 bg-background px-2 py-1 text-neutral-700 text-size-small file:mr-2 file:rounded-xs file:border-0 file:bg-neutral-100 file:px-2 file:py-1 file:font-medium file:text-neutral-700 file:text-size-small"
+                      class="form-control file:mr-2 file:rounded-xs file:border-0 file:bg-neutral-100 file:px-2 file:py-1 file:font-medium file:text-neutral-700 file:text-size-small"
                     />
                     <Show when={uploading()[field.name] !== undefined}>
                       <span class="flex items-center gap-1.5 text-neutral-400 text-size-small">
@@ -168,7 +168,7 @@ export function WorkflowRunInputsDialog(props: Props) {
                       onChange={(event) =>
                         setValue(field.name, event.currentTarget.value)
                       }
-                      class="rounded-sm border border-neutral-200 bg-background px-2 py-1 text-neutral-700 text-size-small focus:border-primary-400 focus:outline-none"
+                      class="form-control"
                     >
                       <option value="">Select a document…</option>
                       <For each={documentOptions()}>
@@ -183,7 +183,7 @@ export function WorkflowRunInputsDialog(props: Props) {
         </div>
 
         <Show when={uploadError() ?? props.error}>
-          {(message) => <p class="text-red-600 text-size-small">{message()}</p>}
+          {(message) => <p class="form-error">{message()}</p>}
         </Show>
       </div>
     </Dialog>

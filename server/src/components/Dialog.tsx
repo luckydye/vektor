@@ -35,7 +35,7 @@ export function Dialog(props: Props) {
       closeOnBackdrop: true,
       maxWidth: "md:max-w-md",
       panelHeight: "",
-      bodyClass: "px-5 pt-1 pb-5 overflow-y-auto",
+      bodyClass: "px-5 pt-2 pb-5 overflow-y-auto",
       expand: false,
     },
     props,
@@ -86,7 +86,7 @@ export function Dialog(props: Props) {
         <div
           role="dialog"
           aria-modal="true"
-          class={`dialog-panel relative flex w-full flex-col overflow-clip rounded-t-2xl bg-background shadow-xl md:rounded-2xl ${merged.maxWidth} ${merged.panelHeight} ${
+          class={`dialog-panel relative flex w-full flex-col overflow-clip rounded-t-xl border border-(--menu-surface-border) bg-background shadow-2xl md:rounded-xl ${merged.maxWidth} ${merged.panelHeight} ${
             merged.expand ? "h-[90%] md:h-[85%]" : "max-h-[90%] md:max-h-[85%]"
           }`}
           onClick={(event) => event.stopPropagation()}
@@ -96,11 +96,11 @@ export function Dialog(props: Props) {
           </div>
 
           <Show when={merged.title || merged.header}>
-            <div class="flex flex-none items-center justify-between gap-3 px-5 pt-3 pb-2 md:pt-4">
+            <div class="flex flex-none items-center justify-between gap-3 px-5 pt-3 pb-2 md:pt-5">
               <Show
                 when={merged.header}
                 fallback={
-                  <h2 class="font-semibold text-neutral-900 text-size-medium">
+                  <h2 class="font-semibold text-neutral-900 text-size-large tracking-tight">
                     {merged.title}
                   </h2>
                 }
@@ -119,9 +119,7 @@ export function Dialog(props: Props) {
           <div class={`min-h-0 flex-1 ${merged.bodyClass}`}>{merged.children}</div>
 
           <Show when={merged.footer}>
-            <div class="flex-none border-neutral-100 border-t px-5 py-4">
-              {merged.footer}
-            </div>
+            <div class="flex-none px-5 pt-1 pb-5">{merged.footer}</div>
           </Show>
         </div>
       </a-blur>

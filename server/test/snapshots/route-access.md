@@ -45,6 +45,7 @@
 | `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]` | PATCH | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/events` | POST | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/messages` | GET | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/chat/sessions/[sessionId]/role-proposals` | POST | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/comments` | DELETE | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/comments` | GET | 404 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/comments` | PATCH | 401 | 403 | 403 | 400 | 400 |  |

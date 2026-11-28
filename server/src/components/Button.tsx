@@ -2,7 +2,7 @@ import { type JSX, mergeProps, Show } from "solid-js";
 import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
-  variant?: "primary" | "secondary" | "ghost" | "outline";
+  variant?: "primary" | "secondary" | "neutral" | "ghost" | "outline";
   tone?: "default" | "danger";
   size?: "medium" | "small";
   text?: string;
@@ -22,6 +22,7 @@ interface Props {
 const VARIANT_CLASS = {
   primary: "button-primary",
   secondary: "button-secondary",
+  neutral: "button-neutral",
   ghost: "button-ghost",
   outline: "button-outline",
 } as const;

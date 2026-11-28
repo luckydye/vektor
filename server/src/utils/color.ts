@@ -180,6 +180,18 @@ export function getTextColor(bgColor: string | undefined) {
   return brightness > 155 ? "#1F2937" : "#FFFFFF";
 }
 
+/** Preset colours offered in colour pickers; they stay readable behind an emoji at 24px, in either theme. */
+export const PRESET_COLORS = [
+  "#4ECDC4",
+  "#5B8DEF",
+  "#9B7EDE",
+  "#E8746C",
+  "#E8A34C",
+  "#6BBF59",
+  "#E87BA8",
+  "#7A8899",
+];
+
 /** A category with no background colour: its badge shows only the icon or initial. */
 export const TRANSPARENT_COLOR = "transparent";
 

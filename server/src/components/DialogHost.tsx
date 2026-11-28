@@ -65,7 +65,7 @@ export function DialogHost() {
             autocomplete="off"
             value={value()}
             onInput={(event) => setValue(event.currentTarget.value)}
-            class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
+            class="form-control"
           />
         </Show>
       </form>
