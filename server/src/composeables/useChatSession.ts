@@ -291,7 +291,10 @@ export function useChatSession(options: {
       ).values(),
     ];
     const loaded = rowsToMessages(page.messages);
-    setMessages(reconcile(screens.length ? [...loaded, ...screens] : loaded));
+    // `reconcile` keys rows by log id; screen messages have none, so keep them
+    // outside it or the refresh drops the tile.
+    if (screens.length) setMessages([...loaded, ...screens]);
+    else setMessages(reconcile(loaded));
     setHasMore(page.hasMore);
     // Replacing the rows briefly changes the height; keep a reader who was
     // following at the bottom rather than wherever the scroll lands.
