@@ -1,9 +1,9 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import type { ChatSession } from "#api/client.ts";
 import type { BotDraft } from "#composeables/useBotChannels.ts";
+import { BotAvatar } from "./AIChatMessages.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
-import { RunnerPicker } from "./RunnerPicker.tsx";
 
 interface Props {
   show: boolean;
@@ -13,28 +13,49 @@ interface Props {
   /** Nodes and runners the viewer may run agents on, with the agents each offers. */
   agentsByRunner: Record<string, string[]>;
   onSave: (draft: BotDraft) => Promise<void>;
-  onDelete?: () => Promise<void>;
 }
 
 const inputClass =
-  "focus-ring w-full rounded-md border border-neutral-100 bg-neutral-10 px-3 py-2 text-size-medium";
+  "focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium";
 const labelClass = "mb-1 block font-medium text-neutral-900 text-size-small";
 
-/** Creates or edits a bot: its name, avatar, role, where it runs and who may post. */
+/** A run target as one select value: the server, or an agent on a node. */
+const SERVER = "";
+const targetValue = (node: string | null, agent: string | null) =>
+  node ? `${node}\u0000${agent ?? ""}` : SERVER;
+
+/** Creates or edits a bot, laid out like the category dialog. */
 export function BotEditorDialog(props: Props) {
   const [title, setTitle] = createSignal("");
   const [avatar, setAvatar] = createSignal("");
   const [rolePrompt, setRolePrompt] = createSignal("");
   const [access, setAccess] = createSignal<"viewer" | "editor">("editor");
-  const [node, setNode] = createSignal<string | null>(null);
-  const [nodeAgent, setNodeAgent] = createSignal<string | null>(null);
+  const [target, setTarget] = createSignal(SERVER);
   const [formError, setFormError] = createSignal("");
   const [pending, setPending] = createSignal(false);
 
   const isNew = () => !props.bot;
-  const nodeAgents = createMemo(() => {
-    const chosen = node();
-    return chosen ? (props.agentsByRunner[chosen] ?? []) : [];
+  const node = () => (target() === SERVER ? null : target().split("\u0000")[0]);
+  const nodeAgent = () => (target() === SERVER ? null : target().split("\u0000")[1]);
+  /** Every place the bot could run; an existing bot only shows where it does. */
+  const targets = createMemo(() => {
+    if (props.bot) {
+      return [
+        {
+          value: targetValue(props.bot.node, props.bot.nodeAgent),
+          label: props.bot.node ? `${props.bot.nodeAgent} on ${props.bot.node}` : "Vektor",
+        },
+      ];
+    }
+    return [
+      { value: SERVER, label: "Vektor" },
+      ...Object.entries(props.agentsByRunner).flatMap(([runner, agents]) =>
+        agents.map((agent) => ({
+          value: targetValue(runner, agent),
+          label: `${agent} on ${runner}`,
+        })),
+      ),
+    ];
   });
 
   createEffect(
@@ -47,25 +68,33 @@ export function BotEditorDialog(props: Props) {
         setAvatar(bot?.avatar ?? "");
         setRolePrompt(bot?.rolePrompt ?? "");
         setAccess(bot?.access ?? "editor");
-        setNode(bot?.node ?? null);
-        setNodeAgent(bot?.nodeAgent ?? null);
+        setTarget(targetValue(bot?.node ?? null, bot?.nodeAgent ?? null));
         setFormError("");
       },
     ),
   );
 
-  function chooseNode(runner: string | null) {
-    setNode(runner);
-    setNodeAgent(runner ? (props.agentsByRunner[runner]?.[0] ?? null) : null);
-    if (runner) setAccess("editor");
+  function chooseTarget(value: string) {
+    setTarget(value);
+    // Whoever may post runs commands on the node.
+    if (value !== SERVER) setAccess("editor");
   }
 
-  async function run(action: () => Promise<void>) {
+  async function handleSubmit(event: Event) {
+    event.preventDefault();
     if (pending()) return;
+    if (!title().trim()) return setFormError("Give the bot a name");
     setPending(true);
     setFormError("");
     try {
-      await action();
+      await props.onSave({
+        title: title().trim(),
+        avatar: avatar().trim(),
+        rolePrompt: rolePrompt().trim(),
+        access: access(),
+        node: node(),
+        nodeAgent: nodeAgent(),
+      });
       props.onUpdateShow(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Failed to save the bot");
@@ -74,69 +103,60 @@ export function BotEditorDialog(props: Props) {
     }
   }
 
-  function handleSubmit(event: Event) {
-    event.preventDefault();
-    if (!title().trim()) return setFormError("Give the bot a name");
-    if (node() && !nodeAgent()) return setFormError("Pick the agent it runs on the node");
-    void run(() =>
-      props.onSave({
-        title: title().trim(),
-        avatar: avatar().trim(),
-        rolePrompt: rolePrompt().trim(),
-        access: access(),
-        node: node(),
-        nodeAgent: nodeAgent(),
-      }),
-    );
-  }
-
   return (
     <Dialog
       show={props.show}
       title={isNew() ? "New bot" : "Edit bot"}
+      closeOnBackdrop={!pending()}
       onUpdateShow={(value) => {
         if (!value) props.onUpdateShow(false);
       }}
       footer={
         <DialogFooter
           form="bot-editor-form"
-          confirmLabel={isNew() ? "Create" : "Save"}
-          pendingLabel={isNew() ? "Creating…" : "Saving…"}
+          confirmLabel={isNew() ? "Create" : "Update"}
+          pendingLabel="Saving..."
           pending={pending()}
           onCancel={() => props.onUpdateShow(false)}
         />
       }
     >
       <form id="bot-editor-form" onSubmit={handleSubmit} class="space-y-4">
-        <div class="flex gap-3">
-          <div class="w-20">
-            <label for="bot-avatar" class={labelClass}>
-              Avatar
-            </label>
+        {/* The bot as its sidebar row will show it. */}
+        <div class="space-y-2">
+          <div class="rounded-lg border border-neutral-100 bg-neutral-50 px-2 py-2">
+            <div class="flex items-center gap-2 text-neutral-900 text-size-normal">
+              <BotAvatar avatar={avatar() || null} class="h-6 w-6 rounded-full text-size-small" />
+              <span class="truncate font-medium">{title() || "Untitled bot"}</span>
+            </div>
+          </div>
+          <label class="flex items-center gap-1.5 text-neutral-500 text-size-small">
+            Icon
             <input
-              id="bot-avatar"
-              type="text"
-              maxLength={8}
+              title="Icon (emoji or text)"
               value={avatar()}
-              placeholder="🤖"
-              class={`${inputClass} text-center`}
               onInput={(event) => setAvatar(event.currentTarget.value)}
-            />
-          </div>
-          <div class="flex-1">
-            <label for="bot-name" class={labelClass}>
-              Name
-            </label>
-            <input
-              id="bot-name"
               type="text"
-              required
-              value={title()}
-              placeholder="Release helper"
-              class={inputClass}
-              onInput={(event) => setTitle(event.currentTarget.value)}
+              maxlength="8"
+              placeholder="🤖"
+              class="focus-ring h-7 w-10 flex-none rounded-md border border-neutral-100 text-center text-size-medium"
             />
-          </div>
+          </label>
+        </div>
+
+        <div>
+          <label for="bot-name" class={labelClass}>
+            Name
+          </label>
+          <input
+            id="bot-name"
+            type="text"
+            required
+            value={title()}
+            placeholder="Bot name"
+            class={inputClass}
+            onInput={(event) => setTitle(event.currentTarget.value)}
+          />
         </div>
 
         <div>
@@ -145,77 +165,68 @@ export function BotEditorDialog(props: Props) {
           </label>
           <textarea
             id="bot-role"
-            rows={5}
+            rows={4}
             value={rolePrompt()}
-            placeholder="What the bot does and how it answers. Leave empty for a general assistant."
-            class={inputClass}
+            placeholder="What the bot does and how it answers"
+            class={`${inputClass} resize-y`}
             onInput={(event) => setRolePrompt(event.currentTarget.value)}
           />
+          <p class="mt-1 text-neutral-500 text-size-extra-small">
+            Leave empty for a general assistant.
+          </p>
         </div>
 
-        <div>
-          <span class={labelClass}>Runs on</span>
-          <div class="flex flex-wrap items-center gap-2">
-            <RunnerPicker
-              runners={Object.keys(props.agentsByRunner)}
-              value={node()}
-              onChange={isNew() ? chooseNode : undefined}
-              label="Run the bot on"
-            />
-            <Show when={node() && isNew()}>
-              <select
-                aria-label="Agent"
-                class="focus-ring rounded-full border border-neutral-200 bg-neutral-10 px-3 py-1 text-neutral-600 text-size-small"
-                value={nodeAgent() ?? ""}
-                onChange={(event) => setNodeAgent(event.currentTarget.value || null)}
-              >
-                <For each={nodeAgents()}>{(agent) => <option value={agent}>{agent}</option>}</For>
-              </select>
-            </Show>
-            <Show when={node() && !isNew()}>
-              <span class="text-neutral-500 text-size-small">{nodeAgent()}</span>
-            </Show>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="bot-target" class={labelClass}>
+              Runs on
+            </label>
+            <select
+              id="bot-target"
+              class={inputClass}
+              value={target()}
+              disabled={!isNew()}
+              onChange={(event) => chooseTarget(event.currentTarget.value)}
+            >
+              <For each={targets()}>
+                {(option) => <option value={option.value}>{option.label}</option>}
+              </For>
+            </select>
           </div>
-          <Show when={node()}>
-            <p class="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-amber-800 text-size-small">
-              Every editor of this space will run commands on {node()} through this bot.
-            </p>
-          </Show>
+          <div>
+            <label for="bot-access" class={labelClass}>
+              Who can post
+            </label>
+            <select
+              id="bot-access"
+              class={inputClass}
+              value={access()}
+              disabled={!!node()}
+              onChange={(event) => setAccess(event.currentTarget.value as "viewer" | "editor")}
+            >
+              <option value="editor">Editors</option>
+              <option value="viewer">Everyone</option>
+            </select>
+          </div>
         </div>
-
-        <div>
-          <label for="bot-access" class={labelClass}>
-            Who can post
-          </label>
-          <select
-            id="bot-access"
-            class={inputClass}
-            value={access()}
-            disabled={!!node()}
-            onChange={(event) => setAccess(event.currentTarget.value as "viewer" | "editor")}
+        <p class="-mt-2 text-neutral-500 text-size-extra-small">
+          <Show
+            when={node()}
+            fallback={
+              access() === "editor"
+                ? "The bot can read and change the space, like an editor."
+                : "The bot can only read the space, like a viewer."
+            }
           >
-            <option value="editor">Editors — the bot can read and change the space</option>
-            <option value="viewer">Everyone — the bot can only read the space</option>
-          </select>
-        </div>
+            Every editor runs commands on {node()} through this bot. Where a bot runs is
+            fixed once it exists.
+          </Show>
+        </p>
 
         <Show when={formError()}>
-          <p class="text-red-600 text-size-small">{formError()}</p>
-        </Show>
-
-        <Show when={props.onDelete}>
-          {(onDelete) => (
-            <div class="border-neutral-100 border-t pt-3">
-              <button
-                type="button"
-                class="text-red-600 text-size-small hover:underline"
-                disabled={pending()}
-                onClick={() => void run(onDelete())}
-              >
-                Delete bot and all its messages
-              </button>
-            </div>
-          )}
+          <div class="rounded-md border border-red-200 bg-red-50 p-3">
+            <p class="text-red-600 text-size-small">{formError()}</p>
+          </div>
         </Show>
       </form>
     </Dialog>

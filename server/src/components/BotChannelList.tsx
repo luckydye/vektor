@@ -41,7 +41,7 @@ export function BotChannelList(props: Props) {
               <div class="flex min-w-0 flex-1 items-center text-size-normal">
                 <BotAvatar
                   avatar={channel.avatar}
-                  class="h-[1.35em] w-[1.35em] text-size-small"
+                  class="h-[1.35em] w-[1.35em] rounded-full text-size-small"
                 />
                 <span class="@max-xs:hidden ml-3xs min-w-0 flex-1 truncate">
                   {channel.title}

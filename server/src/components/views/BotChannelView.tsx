@@ -1,11 +1,14 @@
 import { useNavigate, useParams, useSearchParams } from "@solidjs/router";
-import { createMemo, createSignal, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
 import type { ChatSession } from "#api/client.ts";
 import { BotAvatar } from "#components/AIChatMessages.tsx";
 import { BotEditorDialog } from "#components/BotEditorDialog.tsx";
 import { ChatConversation } from "#components/ChatConversation.tsx";
-import { IconButton } from "#components/IconButton.tsx";
+import { ContextMenu, ContextMenuSeparator } from "#components/ContextMenu.tsx";
+import { ContextMenuItem } from "#components/ContextMenuItem.tsx";
+import { Icon } from "#components/Icon.tsx";
+import { DockedPanel } from "#components/DockedPanel.tsx";
 import {
   useAgentRunnerAgents,
   useBotActions,
@@ -15,6 +18,7 @@ import {
 } from "#composeables/useBotChannels.ts";
 import { useChatSession } from "#composeables/useChatSession.ts";
 import { confirmDialog } from "#composeables/useDialogs.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
@@ -23,6 +27,15 @@ function runsOn(channel: ChatSession): string {
   if (!channel.node) return "Runs on Vektor";
   const state = channel.nodeOnline === false ? " · offline" : "";
   return `Runs ${channel.nodeAgent} on ${channel.node}${state}`;
+}
+
+/** The docked window a channel's open thread shows in. */
+const THREAD_PANEL = "bot-thread";
+const THREAD_PANEL_DEFAULTS = { side: "right", width: 400 } as const;
+
+/** Closes the menu an item was picked from. */
+function closeMenu(event: Event) {
+  (event.currentTarget as Element).dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
 /** A bot's channel: its timeline and composer, and a thread beside it. */
@@ -74,6 +87,29 @@ export function BotChannelView() {
 
   usePageTitle(() => channel()?.title);
 
+  // The `thread` parameter says which thread is open; the docked panel shows it.
+  // Each side reacts only to the other changing, so neither can bounce back.
+  const { open: openWindow, close: closeWindow, windows } = useDockedWindows();
+  const panelOpen = () => windows().get(THREAD_PANEL)?.open ?? false;
+  createEffect(
+    on(
+      () => searchParams.thread,
+      (threadId) => {
+        // After the first registration, which restores the remembered state in a
+        // microtask of its own and would otherwise close the panel again.
+        if (threadId) queueMicrotask(() => openWindow(THREAD_PANEL, THREAD_PANEL_DEFAULTS));
+        else if (panelOpen()) closeWindow(THREAD_PANEL);
+      },
+    ),
+  );
+  createEffect(
+    on(panelOpen, (isOpen, wasOpen) => {
+      if (wasOpen && !isOpen && searchParams.thread) setSearchParams({ thread: undefined });
+      // Remembered as open from an earlier visit, but no thread is picked.
+      if (isOpen && !searchParams.thread) closeWindow(THREAD_PANEL);
+    }),
+  );
+
   async function openThread(seq: number) {
     const current = channel();
     if (!current) return;
@@ -107,28 +143,59 @@ export function BotChannelView() {
           {(current) => (
             <>
               <div class="flex min-w-0 flex-1 flex-col">
-                <div class="flex shrink-0 items-center gap-2 border-neutral-100 border-b px-4 py-2">
-                  <BotAvatar avatar={current().avatar} class="h-8 w-8 text-size-medium" />
-                  <div class="min-w-0 flex-1">
-                    <div class="truncate font-medium text-neutral-900">{current().title}</div>
-                    <div
-                      class="truncate text-size-extra-small"
-                      classList={{
-                        "text-neutral-500": current().nodeOnline !== false,
-                        "text-red-600": current().nodeOnline === false,
-                      }}
-                    >
-                      {runsOn(current())}
-                      {current().running ? " · answering…" : ""}
-                    </div>
-                  </div>
+                <div class="flex h-12 shrink-0 items-center gap-2 border-neutral-100 border-b px-4">
+                  <BotAvatar
+                    avatar={current().avatar}
+                    class="h-6 w-6 rounded-full text-size-small"
+                  />
+                  <span class="shrink-0 font-semibold text-neutral-900">{current().title}</span>
+                  <span class="h-5 w-px shrink-0 bg-neutral-200" />
+                  <span
+                    class="min-w-0 flex-1 truncate text-size-small"
+                    classList={{
+                      "text-neutral-500": current().nodeOnline !== false,
+                      "text-red-600": current().nodeOnline === false,
+                    }}
+                    title={current().rolePrompt ?? undefined}
+                  >
+                    {current().rolePrompt ? `${current().rolePrompt} · ` : ""}
+                    {runsOn(current())}
+                  </span>
                   <Show when={mayEdit()}>
-                    <IconButton
-                      icon="settings"
-                      label="Edit bot"
-                      tooltipPos="bottom"
-                      onClick={() => setShowEditor(true)}
-                    />
+                    <ContextMenu
+                      placements="bottom-end"
+                      ariaLabel="Bot actions"
+                      trigger={
+                        <button
+                          type="button"
+                          slot="trigger"
+                          aria-label="Bot actions"
+                          class="flex cursor-pointer rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 aria-expanded:bg-neutral-100 aria-expanded:text-neutral-900"
+                        >
+                          <Icon name="context-menu-more" class="h-4 w-4" />
+                        </button>
+                      }
+                    >
+                      <ContextMenuItem
+                        onClick={(event) => {
+                          closeMenu(event);
+                          setShowEditor(true);
+                        }}
+                      >
+                        <Icon name="settings" class="h-4 w-4 flex-none" />
+                        <span class="text-neutral-900">Edit bot</span>
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        onClick={(event) => {
+                          closeMenu(event);
+                          void deleteBot();
+                        }}
+                      >
+                        <Icon name="delete-entry" class="h-4 w-4 flex-none text-red-600" />
+                        <span class="text-red-600">Delete bot</span>
+                      </ContextMenuItem>
+                    </ContextMenu>
                   </Show>
                 </div>
                 <ChatConversation
@@ -138,6 +205,9 @@ export function BotChannelView() {
                   emptyTitle={`This is ${current().title}'s channel`}
                   emptyHint={current().rolePrompt ?? "Ask anything; everyone in the space sees the conversation."}
                   readonlyReason={readonlyReason()}
+                  typing={
+                    current().running || channelChat.isGenerating() ? current().title : undefined
+                  }
                   bot={bot()}
                   authorOf={people.authorOf}
                   currentUserId={people.currentUserId()}
@@ -146,44 +216,42 @@ export function BotChannelView() {
                 />
               </div>
 
-              <Show when={thread()}>
-                {(open) => (
-                  <aside class="flex w-[380px] min-w-0 shrink-0 flex-col border-neutral-100 border-l max-md:absolute max-md:inset-0 max-md:z-10 max-md:w-auto max-md:bg-neutral-10">
-                    <div class="flex shrink-0 items-center gap-2 border-neutral-100 border-b px-4 py-2">
-                      <div class="min-w-0 flex-1">
-                        <div class="font-medium text-neutral-900">Thread</div>
-                        <div class="truncate text-neutral-500 text-size-extra-small">
-                          {open().title}
-                        </div>
-                      </div>
-                      <IconButton
-                        icon="cancel"
-                        label="Close thread"
-                        tooltipPos="bottom"
-                        onClick={() => setSearchParams({ thread: undefined })}
+              <DockedPanel
+                id={THREAD_PANEL}
+                title={thread()?.title ?? "Thread"}
+                defaultSide={THREAD_PANEL_DEFAULTS.side}
+                defaultWidth={THREAD_PANEL_DEFAULTS.width}
+              >
+                <Show when={thread()}>
+                  {(open) => (
+                    <div class="flex h-full min-h-0 flex-col">
+                      <Show when={threadRoot()}>
+                        {(root) => (
+                          <div class="shrink-0 border-neutral-100 border-b bg-neutral-50 px-4 py-2 text-neutral-600 text-size-small">
+                            <div class="line-clamp-4 whitespace-pre-wrap">{root().content}</div>
+                          </div>
+                        )}
+                      </Show>
+                      <ChatConversation
+                        chat={threadChat}
+                        class="flex-1"
+                        placeholder="Reply…"
+                        emptyTitle="Start the thread"
+                        emptyHint={`${current().title} answers here, with the message above in mind.`}
+                        readonlyReason={readonlyReason()}
+                        typing={
+                          open().running || threadChat.isGenerating()
+                            ? current().title
+                            : undefined
+                        }
+                        bot={bot()}
+                        authorOf={people.authorOf}
+                        currentUserId={people.currentUserId()}
                       />
                     </div>
-                    <Show when={threadRoot()}>
-                      {(root) => (
-                        <div class="shrink-0 border-neutral-100 border-b bg-neutral-50 px-4 py-2 text-neutral-600 text-size-small">
-                          <div class="line-clamp-4 whitespace-pre-wrap">{root().content}</div>
-                        </div>
-                      )}
-                    </Show>
-                    <ChatConversation
-                      chat={threadChat}
-                      class="flex-1"
-                      placeholder="Reply…"
-                      emptyTitle="Start the thread"
-                      emptyHint={`${current().title} answers here, with the message above in mind.`}
-                      readonlyReason={readonlyReason()}
-                      bot={bot()}
-                      authorOf={people.authorOf}
-                      currentUserId={people.currentUserId()}
-                    />
-                  </aside>
-                )}
-              </Show>
+                  )}
+                </Show>
+              </DockedPanel>
 
               <BotEditorDialog
                 show={showEditor()}
@@ -191,7 +259,6 @@ export function BotChannelView() {
                 bot={current()}
                 agentsByRunner={agentsByRunner() ?? {}}
                 onSave={(draft) => actions.update(current().id, draft)}
-                onDelete={deleteBot}
               />
             </>
           )}

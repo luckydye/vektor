@@ -316,11 +316,14 @@ function summarizeToolRun(run: ToolRun): string {
     .join(", ");
 }
 
-/** A bot's avatar: an emoji or a few letters, else the agent icon. */
+/**
+ * A bot's avatar: an emoji or a few letters, else the agent icon. `class` sets
+ * its size and shape.
+ */
 export function BotAvatar(props: { avatar: string | null; class?: string }) {
   return (
     <span
-      class={`flex shrink-0 items-center justify-center rounded-md bg-primary-500/10 text-primary-700 ${props.class ?? "h-5 w-5 text-size-small"}`}
+      class={`flex shrink-0 items-center justify-center bg-primary-500/10 text-primary-700 ${props.class ?? "h-5 w-5 rounded-md text-size-small"}`}
     >
       <Show when={props.avatar} fallback={<Icon class="h-3.5 w-3.5" name="agent-chat" />}>
         {props.avatar}
@@ -329,28 +332,20 @@ export function BotAvatar(props: { avatar: string | null; class?: string }) {
   );
 }
 
-function BotLabel(props: { bot: { name: string; avatar: string | null } }) {
-  return (
-    <div class="mb-1 flex items-center gap-1.5 font-medium text-neutral-700 text-size-small">
-      <BotAvatar avatar={props.bot.avatar} />
-      {props.bot.name}
-    </div>
-  );
-}
+/** Within this long, one author's messages share one header. */
+const GROUP_GAP_MS = 7 * 60_000;
 
 function PersonAvatar(props: { name: string; image?: string | null }) {
   return (
     <Show
       when={props.image}
       fallback={
-        <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 font-medium text-neutral-600 text-size-extra-small">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-200 font-medium text-neutral-600 text-size-medium">
           {props.name.slice(0, 1).toUpperCase()}
         </span>
       }
     >
-      {(image) => (
-        <img src={image()} alt="" class="mt-0.5 h-6 w-6 shrink-0 rounded-full object-cover" />
-      )}
+      {(image) => <img src={image()} alt="" class="h-10 w-10 shrink-0 rounded-full object-cover" />}
     </Show>
   );
 }
@@ -392,23 +387,43 @@ export function AIChatMessages(props: Props) {
     return toolRuns().get(message)?.items[0]?.message === message;
   }
 
-  /** The first shown message of each of the bot's answers, which carries its name. */
-  const answerStarts = createMemo(() => {
+  /**
+   * The messages that open a group and so carry the author's avatar and name,
+   * as in Discord: a run by one author, broken by a pause of several minutes.
+   */
+  const groupStarts = createMemo(() => {
     const starts = new Set<AIChatMessage>();
-    let afterUser = true;
+    let author: string | null = null;
+    let last = 0;
     for (const message of props.messages) {
-      if (message.role === "user") afterUser = true;
-      else if (
-        afterUser &&
-        isMessageShown(message) &&
-        (message.role === "assistant" || message.role === "tool")
-      ) {
-        starts.add(message);
-        afterUser = false;
-      }
+      if (!isMessageShown(message)) continue;
+      const key =
+        message.role === "user"
+          ? `user:${message.authorId ?? ""}`
+          : message.role === "system" || message.role === "screen"
+            ? null
+            : "bot";
+      if (key !== author || message.timestamp - last > GROUP_GAP_MS) starts.add(message);
+      author = key;
+      last = message.timestamp;
     }
     return starts;
   });
+
+  /** Who a message is from, as its group header shows them. */
+  function senderOf(message: AIChatMessage): { name: string; avatar: JSX.Element } {
+    if (message.role !== "user") {
+      const bot = props.bot ?? { name: "Assistant", avatar: null };
+      return {
+        name: bot.name,
+        avatar: <BotAvatar avatar={bot.avatar} class="h-10 w-10 rounded-full text-size-large" />,
+      };
+    }
+    const person = message.authorId ? props.authorOf?.(message.authorId) : undefined;
+    const name =
+      person?.name ?? (message.authorId === props.currentUserId ? "You" : "Someone");
+    return { name, avatar: <PersonAvatar name={name} image={person?.image} /> };
+  }
 
   function renderUserContent(message: AIChatMessage) {
     return (
@@ -451,38 +466,98 @@ export function AIChatMessages(props: Props) {
     );
   }
 
-  const isOwnPost = (message: AIChatMessage) =>
-    !message.authorId || message.authorId === props.currentUserId;
-
-  function renderThreadLink(message: AIChatMessage) {
+  /** The box under a thread's root message, as Discord shows a thread. */
+  function renderThreadChip(message: AIChatMessage) {
     const seq = message.seq;
     const open = props.onOpenThread;
-    if (seq === undefined || !open) return null;
-    const thread = () => props.threadOf?.(seq);
+    const thread = seq === undefined ? undefined : props.threadOf?.(seq);
+    // A thread opened but never replied to is not worth a box yet.
+    if (seq === undefined || !open || !thread?.messageCount) return null;
     return (
-      <Show
-        when={thread()}
-        fallback={
-          <button
-            type="button"
-            class="rounded px-1 text-neutral-400 text-size-extra-small transition-opacity hover:text-neutral-800 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100"
-            onClick={() => open(seq)}
-          >
-            Reply in thread
-          </button>
-        }
+      <button
+        type="button"
+        class="mt-1 flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-size-small transition-colors hover:border-neutral-300 hover:bg-neutral-100"
+        onClick={() => open(seq)}
       >
-        {(found) => (
-          <button
-            type="button"
-            class="flex items-center gap-1 rounded px-1 font-medium text-primary-600 text-size-extra-small hover:underline"
-            onClick={() => open(seq)}
+        <Icon class="h-3.5 w-3.5 text-neutral-500" name="comment" />
+        <span class="font-medium text-primary-700">
+          {thread.messageCount === 1 ? "1 reply" : `${thread.messageCount ?? 0} replies`}
+        </span>
+        <Icon class="h-3 w-3 text-neutral-400" name="chevron-right-small" />
+      </button>
+    );
+  }
+
+  /** The actions floating over a hovered message's top-right corner. */
+  function renderToolbar(message: AIChatMessage) {
+    const seq = message.seq;
+    const open = props.onOpenThread;
+    const copied = () => copiedAssistantMessageTimestamp() === message.timestamp;
+    return (
+      <div class="absolute top-1 right-2 z-10 flex items-center rounded-md bg-neutral-10 opacity-0 shadow-xs ring-1 ring-neutral-500/15 transition-opacity focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:hidden">
+        <IconButton
+          class="h-7 w-7 text-neutral-500 [&_.svg-icon]:h-3.5 [&_.svg-icon]:w-3.5"
+          icon={copied() ? "confirmation" : "copy"}
+          label={copied() ? "Copied!" : "Copy text"}
+          tooltipPos="top"
+          onClick={() => void copyAssistantMessage(message)}
+        />
+        <Show when={seq !== undefined && open}>
+          <IconButton
+            class="h-7 w-7 text-neutral-500 [&_.svg-icon]:h-3.5 [&_.svg-icon]:w-3.5"
+            icon="comment"
+            label={props.threadOf?.(seq as number) ? "Open thread" : "Reply in thread"}
+            tooltipPos="top"
+            onClick={() => open?.(seq as number)}
+          />
+        </Show>
+      </div>
+    );
+  }
+
+  /**
+   * One row of the timeline: the avatar and header at the start of a group,
+   * otherwise the time in the gutter on hover.
+   */
+  function renderRow(message: AIChatMessage, body: JSX.Element, actions: boolean) {
+    const start = () => groupStarts().has(message);
+    const sender = () => senderOf(message);
+    return (
+      <div
+        class="group/message relative mx-2 flex gap-4 rounded-lg px-2 py-0.5 transition-colors hover:bg-neutral-500/5"
+        classList={{ "mt-4": start() }}
+      >
+        <div class="w-10 shrink-0">
+          <Show
+            when={start()}
+            fallback={
+              <span class="block pt-1 text-right text-[0.65rem] text-neutral-400 opacity-0 group-hover/message:opacity-100">
+                {formatTime(message.timestamp, lang)}
+              </span>
+            }
           >
-            <Icon class="h-3 w-3" name="comment" />
-            {found().messageCount === 1 ? "1 reply" : `${found().messageCount ?? 0} replies`}
-          </button>
-        )}
-      </Show>
+            <div class="pt-0.5">{sender().avatar}</div>
+          </Show>
+        </div>
+        <div class="min-w-0 flex-1">
+          <Show when={start()}>
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-neutral-900 text-size-medium">{sender().name}</span>
+              <Show when={message.role !== "user"}>
+                <span class="rounded bg-primary-500/15 px-1 font-semibold text-[0.6rem] text-primary-700 uppercase">
+                  Bot
+                </span>
+              </Show>
+              <span class="text-neutral-400 text-size-extra-small">
+                {formatTime(message.timestamp, lang)}
+              </span>
+            </div>
+          </Show>
+          {body}
+          {renderThreadChip(message)}
+        </div>
+        <Show when={actions}>{renderToolbar(message)}</Show>
+      </div>
     );
   }
 
@@ -670,22 +745,17 @@ export function AIChatMessages(props: Props) {
 
   props.ref?.({ scrollToBottom, scrollToBottomIfFollowing, scrollThinkingToBottom });
 
-  const TypingDots = (): JSX.Element => (
-    <>
-      <span class="typing-dot" />
-      <span class="typing-dot" style={{ "animation-delay": "160ms" }} />
-      <span class="typing-dot" style={{ "animation-delay": "320ms" }} />
-    </>
-  );
-
   return (
     <div
       ref={messagesContainer}
-      class="messages-container flex-1 space-y-4 overflow-y-auto px-4 py-4"
+      class="messages-container flex-1 overflow-y-auto"
       onScroll={onMessagesScroll}
     >
+      {/* A readable column: lines spanning a wide screen are hard to follow. */}
+      {/* min-h-full with the padding inside: h-full plus padding always overflows by the padding. */}
+      <div class="mx-auto flex min-h-full w-full max-w-[56rem] flex-col pt-2 pb-4">
       <Show when={props.messages.length === 0 && !props.isGenerating}>
-        <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
+        <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
           <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-500/10">
             <Show
               when={props.bot?.avatar}
@@ -721,47 +791,47 @@ export function AIChatMessages(props: Props) {
       <For each={props.messages}>
         {(message) => (
           <Show when={isMessageShown(message)}>
-            <div
-              class="flex animate-message-slide-in"
-              classList={{
-                "justify-center": message.role === "system",
-                "justify-end": message.role === "user" && isOwnPost(message),
-              }}
-            >
+            <div class="animate-message-slide-in">
               <Show when={message.role === "system"}>
-                <div class="rounded-full bg-neutral-100 px-3 py-1 text-neutral-600 text-size-small">
+                <div class="my-2 text-center text-neutral-500 text-size-small">
                   {message.content}
                 </div>
               </Show>
 
               <Show when={message.role === "status"}>
-                <div class="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
-                  <div class="mb-1 font-medium text-neutral-500 text-size-extra-small">
-                    Agent log
-                  </div>
-                  <pre class="whitespace-pre-wrap font-mono text-neutral-700 text-size-extra-small leading-relaxed">
-                    {message.content}
-                  </pre>
-                </div>
+                {renderRow(
+                  message,
+                  <div class="my-1 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
+                    <div class="mb-1 font-medium text-neutral-500 text-size-extra-small">
+                      Agent log
+                    </div>
+                    <pre class="whitespace-pre-wrap font-mono text-neutral-700 text-size-extra-small leading-relaxed">
+                      {message.content}
+                    </pre>
+                  </div>,
+                  false,
+                )}
               </Show>
 
               <Show when={message.role === "thinking"}>
-                <div class="min-w-0 flex-1 border-neutral-200 border-l-2 pl-3">
-                  <div class="mb-1 flex items-center gap-1.5 font-medium text-neutral-500 text-size-small">
-                    <Icon class="h-3.5 w-3.5" name="thinking" />
-                    Thinking
-                  </div>
-                  <pre class="thinking-content max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-neutral-500 text-size-small leading-relaxed">
-                    {message.content}
-                  </pre>
-                </div>
+                {renderRow(
+                  message,
+                  <div class="my-1 border-neutral-200 border-l-2 pl-3">
+                    <div class="mb-1 flex items-center gap-1.5 font-medium text-neutral-500 text-size-small">
+                      <Icon class="h-3.5 w-3.5" name="thinking" />
+                      Thinking
+                    </div>
+                    <pre class="thinking-content max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-neutral-500 text-size-small leading-relaxed">
+                      {message.content}
+                    </pre>
+                  </div>,
+                  false,
+                )}
               </Show>
 
               <Show when={message.role === "assistant"}>
-                <div class="group min-w-0 flex-1">
-                  <Show when={props.bot && answerStarts().has(message) && props.bot}>
-                    {(bot) => <BotLabel bot={bot()} />}
-                  </Show>
+                {renderRow(
+                  message,
                   <div
                     class="markdown-content text-size-medium leading-relaxed"
                     classList={{
@@ -769,64 +839,21 @@ export function AIChatMessages(props: Props) {
                       "text-red-600": message.isError,
                     }}
                     innerHTML={renderMessageMarkdown(message.content)}
-                  />
-                  <div class="mt-1 -ml-1.5 flex items-center gap-1 text-neutral-400 text-size-extra-small pointer-fine:opacity-0 transition-opacity pointer-fine:focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
-                    <IconButton
-                      class="h-6 pointer-coarse:h-9 pointer-coarse:w-9 w-6 [&_.svg-icon]:h-3.5 [&_.svg-icon]:w-3.5"
-                      icon={
-                        copiedAssistantMessageTimestamp() === message.timestamp
-                          ? "confirmation"
-                          : "copy"
-                      }
-                      label={
-                        copiedAssistantMessageTimestamp() === message.timestamp
-                          ? "Copied!"
-                          : "Copy"
-                      }
-                      onClick={() => void copyAssistantMessage(message)}
-                    />
-                    {formatTime(message.timestamp, lang)}
-                  </div>
-                  {renderThreadLink(message)}
-                </div>
-              </Show>
-
-              <Show when={message.role === "tool" && toolRuns().get(message)}>
-                {(run) => (
-                  <div class="min-w-0 flex-1">
-                    <Show when={props.bot && answerStarts().has(message) && props.bot}>
-                      {(bot) => <BotLabel bot={bot()} />}
-                    </Show>
-                    {renderToolRun(run)}
-                  </div>
+                  />,
+                  true,
                 )}
               </Show>
 
-              <Show when={message.role === "user" && !isOwnPost(message)}>
-                <div class="group flex min-w-0 max-w-[85%] gap-2">
-                  <PersonAvatar
-                    name={props.authorOf?.(message.authorId as string)?.name ?? "Someone"}
-                    image={props.authorOf?.(message.authorId as string)?.image}
-                  />
-                  <div class="min-w-0">
-                    <div class="mb-0.5 font-medium text-neutral-600 text-size-small">
-                      {props.authorOf?.(message.authorId as string)?.name ?? "Someone"}
-                    </div>
-                    <div class="rounded-2xl rounded-tl-md bg-neutral-100 px-3.5 py-2 text-neutral-800">
-                      {renderUserContent(message)}
-                    </div>
-                    <div class="mt-0.5 flex items-center gap-1">{renderThreadLink(message)}</div>
-                  </div>
-                </div>
+              <Show when={message.role === "tool" && toolRuns().get(message)}>
+                {(run) => renderRow(message, renderToolRun(run), false)}
               </Show>
 
-              <Show when={message.role === "user" && isOwnPost(message)}>
-                <div class="group flex max-w-[85%] flex-col items-end">
-                  <div class="rounded-2xl rounded-br-md bg-neutral-100 px-3.5 py-2 text-neutral-800">
-                    {renderUserContent(message)}
-                  </div>
-                  <div class="mt-0.5 flex items-center gap-1">{renderThreadLink(message)}</div>
-                </div>
+              <Show when={message.role === "user"}>
+                {renderRow(
+                  message,
+                  <div class="text-neutral-800">{renderUserContent(message)}</div>,
+                  true,
+                )}
               </Show>
             </div>
           </Show>
@@ -838,7 +865,7 @@ export function AIChatMessages(props: Props) {
           const state = waitingState();
           if (state?.kind !== "tool_executing") return null;
           return (
-            <div class="flex min-w-0 animate-message-slide-in items-center gap-1.5 text-neutral-500 text-size-small">
+            <div class="flex min-w-0 animate-message-slide-in items-center gap-1.5 py-1 pr-4 pl-18 text-neutral-500 text-size-small">
               <Icon class="h-3.5 w-3.5 shrink-0 animate-spin" name="spinner" />
               <span class="shrink-0">Running</span>
               <span class="truncate font-medium">{state.tool.toolName}</span>
@@ -851,12 +878,7 @@ export function AIChatMessages(props: Props) {
           );
         }}
       </Show>
-
-      <Show when={waitingState()?.kind === "waiting"}>
-        <div class="flex h-6 animate-message-slide-in items-center gap-1 px-0.5">
-          <TypingDots />
-        </div>
-      </Show>
+      </div>
     </div>
   );
 }

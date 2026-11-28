@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import type { ChatSessionHandle } from "#composeables/useChatSession.ts";
 import { AIChatMessages } from "./AIChatMessages.tsx";
 import { Icon } from "./Icon.tsx";
@@ -19,8 +19,8 @@ interface Props {
   currentUserId?: string | null;
   threadOf?: (seq: number) => { messageCount?: number } | undefined;
   onOpenThread?: (seq: number) => void;
-  /** Shown above the composer, like where the bot runs. */
-  footer?: JSX.Element;
+  /** The bot's name while it answers, for the line under the composer. */
+  typing?: string;
 }
 
 type PinnedScreen = {
@@ -114,16 +114,16 @@ export function ChatConversation(props: Props) {
         onLoadOlder={chat().hasMore() ? () => void chat().loadOlder() : undefined}
       />
 
-      <div class="shrink-0 px-3 pb-3">
+      <div class="mx-auto w-full max-w-[56rem] shrink-0 px-4">
         <Show
           when={!props.readonlyReason}
           fallback={
-            <div class="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-neutral-500 text-size-small">
+            <div class="rounded-lg bg-neutral-100 px-4 py-3 text-center text-neutral-500 text-size-small">
               {props.readonlyReason}
             </div>
           }
         >
-          <div class="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-10 shadow-sm transition-colors focus-within:border-neutral-300">
+          <div class="overflow-hidden rounded-lg bg-neutral-100 transition-colors focus-within:bg-neutral-50 focus-within:ring-1 focus-within:ring-neutral-200">
             <div class="px-3 pt-2.5 pb-2">
               <MessageInput
                 ref={chat().setMessageInputEl}
@@ -173,13 +173,21 @@ export function ChatConversation(props: Props) {
                 }
               />
             </div>
-            <Show when={props.footer}>
-              <div class="flex items-center gap-2 border-neutral-100 border-t bg-neutral-50 px-3 py-2">
-                {props.footer}
-              </div>
-            </Show>
           </div>
         </Show>
+        {/* Reserved even when empty, so the composer does not jump. */}
+        <div class="flex h-6 items-center gap-1.5 text-neutral-500 text-size-extra-small">
+          <Show when={props.typing}>
+            <span class="flex items-center gap-0.5 [&>.typing-dot]:h-1 [&>.typing-dot]:w-1">
+              <span class="typing-dot" />
+              <span class="typing-dot" style={{ "animation-delay": "160ms" }} />
+              <span class="typing-dot" style={{ "animation-delay": "320ms" }} />
+            </span>
+            <span>
+              <span class="font-semibold">{props.typing}</span> is answering…
+            </span>
+          </Show>
+        </div>
       </div>
     </div>
   );
