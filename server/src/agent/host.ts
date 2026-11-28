@@ -4,7 +4,6 @@ import { reserveAITokens } from "#db/space/aiUsage.ts";
 import { getExtensionPackage } from "#db/space/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import type { Platform } from "#platform/platform.ts";
-import { createAgentRunnerHost } from "#runners/agents.ts";
 
 /** Job outputs are `{ type, value }` pairs; anything else is treated as absent. */
 function textOutput(outputs: Record<string, unknown>, key: string): string {
@@ -19,8 +18,6 @@ function textOutput(outputs: Record<string, unknown>, key: string): string {
 /** The agent's access to the space databases and the job scheduler, on the main thread. */
 export function createAgentHost(platform: Platform): AgentHost {
   return {
-    runners: createAgentRunnerHost(platform),
-
     async reserveAITokens(spaceId, inputTokens) {
       return reserveAITokens(await openSpaceStore(platform, spaceId), inputTokens);
     },

@@ -154,16 +154,6 @@ async function callHost(host: AgentHost, call: AgentHostCall): Promise<unknown> 
     }
     case "runIntegrationCommand":
       return host.runIntegrationCommand(...call.args);
-    case "runners.listRunners":
-      return host.runners?.listRunners(...call.args);
-    case "runners.startSession":
-      return host.runners?.startSession(...call.args);
-    case "runners.pollSession":
-      return host.runners?.pollSession(...call.args);
-    case "runners.sendToSession":
-      return host.runners?.sendToSession(...call.args);
-    case "runners.cancelSession":
-      return host.runners?.cancelSession(...call.args);
     case "integrationAccessToken": {
       const provider = turns.get(call.args[0])?.provider;
       if (provider?.provider !== "integration") {

@@ -115,7 +115,7 @@ Built fresh every turn. In channels, attached documents are visible to the model
 
 - A bot is created on a runner the creator may use (`agentRunners`: their own nodes, plus the space's HTTP runners when they own the space), with a pinned `nodeAgent`. `access` is forced to `editor`. A warning says space editors will run commands on that machine.
 - Threads copy `node` + `nodeAgent`. A missing node or agent fails the turn with an error row; nothing falls back silently.
-- Runner sessions are keyed by session (drop `userId` from `chatKey`) and opened with the owner's scope and the bot's token. Identity never changes between turns, so the mailbox and screen checks still hold, and only the owner sees the screen.
+- Runner sessions are keyed by session (drop `userId` from `chatKey`) and opened with the owner's scope and the bot's token. Identity never changes between turns, so the screen checks still hold, and only the owner sees the screen.
 - `promptChat` and `open` take the pinned agent instead of `agents[0]`.
 - Whenever `promptChat` reports `fresh` (first prompt, idle timeout, or the agent failed), send a preamble: role, memory, the root message for threads, and the last few `Name:`-prefixed rows. Remove the "does not remember earlier messages" status in `runners/chat.ts`.
 - Offline, at-capacity, and timeout show as error rows.

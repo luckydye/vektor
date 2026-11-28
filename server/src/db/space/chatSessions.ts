@@ -70,6 +70,8 @@ export type ChatMessageMetadata = {
   timeZone?: string;
   /** On an event row: where it came from, who posted it, and its payload. */
   event?: { source: string; sentBy: string; data?: unknown };
+  /** The channel of the bot that posted this row, when one bot messaged another. */
+  fromBot?: string;
   /** Read by the next round, but starts none and needs no answer of its own. */
   quiet?: boolean;
   /** On an editor's row applying the bot's role proposal made by this tool call. */
@@ -179,6 +181,28 @@ export async function getChatSession(
 ): Promise<StoredChatSession | null> {
   const [row] = await s.db.select().from(chatSession).where(eq(chatSession.id, sessionId));
   return row ? toStoredChatSession(s, row) : null;
+}
+
+/** How many bot messages one channel may take in a row before a person has to step in. */
+export const MAX_CONSECUTIVE_BOT_MESSAGES = 6;
+
+/** The newest answerable rows, counting back while each came from another bot. */
+export async function countConsecutiveBotMessages(
+  s: SpaceStore,
+  sessionId: string,
+): Promise<number> {
+  const rows = await s.db
+    .select({ metadata: chatMessage.metadata })
+    .from(chatMessage)
+    .where(and(eq(chatMessage.sessionId, sessionId), answerableRow()))
+    .orderBy(desc(chatMessage.seq))
+    .limit(MAX_CONSECUTIVE_BOT_MESSAGES);
+  let count = 0;
+  for (const row of rows) {
+    if (!(JSON.parse(row.metadata) as ChatMessageMetadata).fromBot) break;
+    count++;
+  }
+  return count;
 }
 
 /** Bot channels, newest activity first, with how many threads each has. */

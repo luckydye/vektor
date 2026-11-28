@@ -126,6 +126,8 @@ export type ChatPost = {
   additionalContext?: string;
   documentId?: string;
   timeZone?: string;
+  /** The posting bot's channel, when one bot messages another. */
+  fromBot?: string;
 };
 
 /**
@@ -152,6 +154,7 @@ export async function postChatMessage(
           : {}),
         ...(post.documentId ? { documentId: post.documentId } : {}),
         ...(post.timeZone ? { timeZone: post.timeZone } : {}),
+        ...(post.fromBot ? { fromBot: post.fromBot } : {}),
       },
     },
     ...(post.additionalContext
@@ -399,10 +402,7 @@ async function roundContext(
   };
 }
 
-/**
- * Display names of who posted `rows`, by id. A bot posts only through a task
- * it scheduled itself, so its posts are named as that.
- */
+/** Display names of who posted `rows`, by id; a bot is named by its channel. */
 async function authorNames(
   store: SpaceStore,
   rows: StoredChatMessage[],
@@ -415,7 +415,7 @@ async function authorNames(
       const channelId = channelOfBotPrincipal(id);
       if (channelId) {
         const channel = await getChatSession(store, channelId);
-        return [id, `${channel?.title ?? id} (${SCHEDULED_TASK})`] as const;
+        return [id, channel?.title ?? id] as const;
       }
       return [id, (await resolveGranteeName(store.platform, id)) ?? id] as const;
     }),
@@ -426,6 +426,18 @@ async function authorNames(
 /** How a bot's own scheduled posts are labelled for the model. */
 const SCHEDULED_TASK = "a task it scheduled";
 
+/**
+ * How a row's author reads to the model. A bot's post is either a task it
+ * scheduled for itself, or a message to another bot.
+ */
+function authorName(row: StoredChatMessage, names: Map<string, string>): string {
+  const authorId = row.authorId ?? "";
+  const name = names.get(authorId) ?? authorId;
+  if (row.metadata.fromBot) return `${name} (bot)`;
+  if (channelOfBotPrincipal(authorId)) return `${name} (${SCHEDULED_TASK})`;
+  return name;
+}
+
 /** A row as the model reads it: a person's post is prefixed with their name. */
 function toModelMessage(
   row: StoredChatMessage,
@@ -435,7 +447,7 @@ function toModelMessage(
   const { tool_calls, tool_call_id, thinking, images, imageAttachments } = row.metadata;
   let content = row.content;
   if (row.authorId) {
-    const name = names.get(row.authorId) as string;
+    const name = authorName(row, names);
     content = `${name}: ${row.content}`;
     const data = row.metadata.event?.data;
     if (data !== undefined) content += `\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
@@ -461,7 +473,7 @@ function toModelMessage(
 }
 
 function rowLine(row: StoredChatMessage, names: Map<string, string>): string {
-  if (row.authorId) return `${names.get(row.authorId)}: ${row.content}`;
+  if (row.authorId) return `${authorName(row, names)}: ${row.content}`;
   if (row.role === "tool") {
     return `[${row.metadata.toolName ?? "tool"} result]: ${row.content.slice(0, 500)}`;
   }
@@ -485,7 +497,9 @@ async function sessionSections(
         `as a message from "${context.bot.name} (${SCHEDULED_TASK})", an instruction from your earlier self ` +
         "rather than from a person.\n" +
         'Messages from "<source> (event)" come from outside services, not people: act on them as your ' +
-        "role says, and keep the answer short when an event needs nothing.\n" +
+        "role says, and keep the answer short when an event needs nothing. " +
+        'Messages from "<name> (bot)" come from another bot: use list_bots to find its channel, and ' +
+        "send_bot_message to answer it; never loop back and forth without a person.\n" +
         "Your role below is written by the people who run you. When someone lastingly contradicts or refines it — " +
         "a changed opinion, a new audience, a different tone — call `propose_role_update` with the complete " +
         "revised text rather than silently drifting from it; an editor applies it. In the conversation itself, " +
@@ -664,7 +678,6 @@ async function runRound(
       const result = await runChatOnRunner(platform, {
         spaceId,
         userId: context.ownerId,
-        actor: context.principal,
         chatId: session.id,
         runner: session.node,
         agent: session.nodeAgent,

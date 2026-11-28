@@ -14,7 +14,6 @@ import * as runCall from "./routes/runs/call.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
 import * as accessTokens from "./routes/spaces/access-tokens.ts";
-import * as agentSessionMessages from "./routes/spaces/agent-session-messages.ts";
 import * as agentTrigger from "./routes/spaces/agent-trigger.ts";
 import * as agentTriggers from "./routes/spaces/agent-triggers.ts";
 import * as chatSession from "./routes/spaces/chat-session.ts";
@@ -260,10 +259,6 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },
 
   { pattern: "/api/v1/spaces/[spaceId]/available-runners", module: availableRunners },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/agent-sessions/[sessionId]/messages",
-    module: agentSessionMessages,
-  },
 
   { pattern: "/api/v1/spaces/[spaceId]/agent-triggers", module: agentTriggers },
   {

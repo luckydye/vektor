@@ -8,7 +8,6 @@ import type {
   IntegrationAIProvider,
 } from "#api/provider/types.ts";
 import { createBunFetch } from "#platform/bun/fetch.ts";
-import type { AgentRunnerHost } from "#runners/agents.ts";
 import {
   type AgentEvent,
   type AgentHost,
@@ -65,13 +64,7 @@ export type AgentHostCall =
       method: "runIntegrationCommand";
       args: [Parameters<AgentHost["runIntegrationCommand"]>[0]];
     }
-  | { method: "integrationAccessToken"; args: [turnId: number] }
-  | {
-      [Method in keyof AgentRunnerHost]: {
-        method: `runners.${Method}`;
-        args: Parameters<AgentRunnerHost[Method]>;
-      };
-    }[keyof AgentRunnerHost];
+  | { method: "integrationAccessToken"; args: [turnId: number] };
 
 export type AgentWorkerRequest =
   | { type: "run"; turnId: number; request: AgentTurnRequest }
@@ -309,13 +302,6 @@ const workerHost: AgentHost = {
   },
   runIntegrationCommand(request) {
     return callHost({ method: "runIntegrationCommand", args: [request] });
-  },
-  runners: {
-    listRunners: (...args) => callHost({ method: "runners.listRunners", args }),
-    startSession: (...args) => callHost({ method: "runners.startSession", args }),
-    pollSession: (...args) => callHost({ method: "runners.pollSession", args }),
-    sendToSession: (...args) => callHost({ method: "runners.sendToSession", args }),
-    cancelSession: (...args) => callHost({ method: "runners.cancelSession", args }),
   },
 };
 

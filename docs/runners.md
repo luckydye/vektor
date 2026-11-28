@@ -1,6 +1,6 @@
 # Runners
 
-A runner runs a space's extension jobs and workflow scripts outside the Vektor server, and, if it offers them, agents: sub-agents and chats. With the integrated runner off (`VEKTOR_INTEGRATED_RUNNER=0`), runners are the only place job code runs, so none of it runs in our environment.
+A runner runs a space's extension jobs and workflow scripts outside the Vektor server, and, if it offers them, chat agents. With the integrated runner off (`VEKTOR_INTEGRATED_RUNNER=0`), runners are the only place job code runs, so none of it runs in our environment.
 
 There are two kinds, with one contract:
 
@@ -89,7 +89,7 @@ A runner that names agents when asked to `describe` runs them. The owner clicks 
   "prompt": "…",
   "mcp": {
     "url": "https://vektor.example.com/api/mcp",
-    "headers": { "X-Space-Id": "…", "X-Job-Token": "…", "X-Agent-Session": "…" }
+    "headers": { "X-Space-Id": "…", "X-Job-Token": "…" }
   },
   "host": { "url": "…/api/v1/runs/<runId>/call", "token": "…" }
 }
@@ -97,7 +97,7 @@ A runner that names agents when asked to `describe` runs them. The owner clicks 
 
 - **`sessionId`** stays the same across a chat's turns. A runner that keeps its agent session between turns keeps the conversation; one that starts fresh each turn simply has no memory of earlier ones. `agent.close` says the session is over.
 - **`agent`** is one of the names `describe` returned.
-- **`mcp`** is the Vektor tool surface as an MCP server over HTTP. Hand `url` and `headers` to the agent's MCP client. It acts as the session's user, with a short-lived token. Its `read_messages` and `send_message` tools carry messages between a sub-agent and its parent.
+- **`mcp`** is the Vektor tool surface as an MCP server over HTTP. Hand `url` and `headers` to the agent's MCP client. It acts as the session's user, with a short-lived token. A chat bot also gets `list_bots` and `send_bot_message` to talk to other bots. Sub-agents are the runner agent's own; Vektor does not start them or relay messages between devices.
 - **Updates** stream the agent's ACP `session/update` updates: `{ "name": "updates", "args": [[update, …]] }`. Send as many per call as have queued up.
 - **The result** ends the turn: `{ "name": "result", "args": [{ "stopReason": "end_turn" }] }`, with `"cancelled"`, or `"error"` and an `error` message.
 

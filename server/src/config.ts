@@ -186,8 +186,6 @@ export function config() {
       CLI_ACCESS_TOKEN: process.env.VEKTOR_ACCESS_TOKEN,
       /** A job token from the server, given to the MCP server of an agent a node runs. */
       CLI_JOB_TOKEN: process.env.VEKTOR_JOB_TOKEN,
-      /** The agent session an MCP server belongs to; gives its agent a mailbox. */
-      CLI_AGENT_SESSION: process.env.VEKTOR_AGENT_SESSION,
 
       /**
        * better-auth secret token

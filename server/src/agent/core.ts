@@ -9,8 +9,6 @@ import {
 } from "#agent/tools.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
-import type { AgentRunnerHost } from "#runners/agents.ts";
-import { runSubagentOnRunner } from "#runners/subagent.ts";
 import type { SafeFetch } from "#utils/ssrf.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
@@ -56,8 +54,6 @@ export interface AgentHost {
     userId: string | null;
     args: string[];
   }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
-  /** Where sub-agents can run besides here: nodes and runners; unset when this host has none. */
-  runners?: AgentRunnerHost;
 }
 
 export type AgentShellBootstrap = {
@@ -88,7 +84,7 @@ export type AgentEvent =
       content: string;
       isError: boolean;
     }
-  /** A remote sub-agent's screen the user can watch and drive. */
+  /** A remote agent's screen the user can watch and drive. */
   | { type: "screen"; sessionId: string; runner: string; task: string };
 
 function describeNow(timeZone: string): string {
@@ -417,7 +413,6 @@ export async function runAgentPrompt(options: {
   /** A sub-agent has no chat of its own, so its run is the conversation. */
   const runSessionId = crypto.randomUUID();
   const { host, fetch } = options;
-  const runners = host?.runners;
   const modelCaller =
     options.modelCaller ??
     ((
@@ -434,34 +429,18 @@ export async function runAgentPrompt(options: {
 
   const hub = options.link
     ? undefined
-    : createSubagentHub(
-        (task, subagentSignal, subagentLink, target) =>
-          target && runners && options.userId
-            ? runSubagentOnRunner({
-                runners,
-                spaceId,
-                userId: options.userId,
-                jobToken: options.jobToken,
-                task,
-                target,
-                signal: subagentSignal,
-                link: subagentLink,
-                onScreen: (screen) => void onEvent?.({ type: "screen", ...screen, task }),
-              })
-            : runAgentPrompt({
-                ...options,
-                messages: [{ role: "user", content: task }],
-                sessionSections: undefined,
-                bash: undefined,
-                onChunk: undefined,
-                onEvent: undefined,
-                onSetup: undefined,
-                signal: subagentSignal,
-                link: subagentLink,
-              }).then((result) => result.content),
-        runners && options.userId
-          ? () => runners.listRunners({ spaceId, userId: options.userId as string })
-          : undefined,
+    : createSubagentHub((task, subagentSignal, subagentLink) =>
+        runAgentPrompt({
+          ...options,
+          messages: [{ role: "user", content: task }],
+          sessionSections: undefined,
+          bash: undefined,
+          onChunk: undefined,
+          onEvent: undefined,
+          onSetup: undefined,
+          signal: subagentSignal,
+          link: subagentLink,
+        }).then((result) => result.content),
       );
   const link = (options.link ?? hub?.parent) as AgentLink;
 

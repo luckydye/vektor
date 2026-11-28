@@ -778,6 +778,8 @@ export interface ChatMessageRow {
     timeZone?: string;
     /** On an event an outside service posted. */
     event?: { source: string; sentBy: string; data?: unknown };
+    /** The channel of the bot that posted this row, when one bot messaged another. */
+    fromBot?: string;
     /** Read by the next round without starting one. */
     quiet?: boolean;
     /** On an editor's row applying the role proposal this tool call made. */

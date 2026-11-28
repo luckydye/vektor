@@ -50,8 +50,6 @@ export type VektorMcpConfig = {
   accessToken?: string;
   documentId?: string;
   connectedProviders?: string[];
-  /** Set when the agent runs on a runner, which gives it a mailbox through `send_message` and `read_messages`. */
-  agentSessionId?: string;
   /** Every space the agent works in, `spaceId` included; set only when there are several. */
   spaces?: AgentSpace[];
 };
@@ -215,11 +213,6 @@ function botChannelOf(config: VektorMcpConfig): string | null {
   const principal = config.jobToken?.split(".")[1];
   if (!principal || principal === "-") return null;
   return channelOfBotPrincipal(Buffer.from(principal, "base64url").toString("utf8"));
-}
-
-function remoteTaskMessagesPath(config: VektorMcpConfig): string {
-  if (!config.agentSessionId) throw new Error("This agent has no mailbox.");
-  return `/api/v1/spaces/${config.spaceId}/agent-sessions/${encodeURIComponent(config.agentSessionId)}/messages`;
 }
 
 export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
@@ -646,26 +639,25 @@ async function listSpaceTools(config: VektorMcpConfig): Promise<McpTool[]> {
               required: ["rolePrompt"],
             },
           },
-        ]
-      : []),
-    ...(config.agentSessionId
-      ? [
           {
-            name: "send_message",
+            name: "list_bots",
             description:
-              'Send a message to another agent in this task: "parent" or a sub-agent id. ' +
-              "It arrives before the recipient's next step; the recipient may be busy, so do not expect an instant reply.",
-            inputSchema: {
-              type: "object" as const,
-              properties: { to: { type: "string" }, message: { type: "string" } },
-              required: ["to", "message"],
-            },
+              "List this space's bots and their channels. Use a bot's id with read_chat and send_bot_message.",
+            inputSchema: { type: "object" as const, properties: {} },
           },
           {
-            name: "read_messages",
+            name: "send_bot_message",
             description:
-              "Take the messages other agents sent you since the last call. Check now and then during long work.",
-            inputSchema: { type: "object" as const, properties: {} },
+              "Send a message to another bot's channel. It starts that bot's next turn and this returns at once; " +
+              "use read_chat with the bot's id to read its reply. This is for bots, not people.",
+            inputSchema: {
+              type: "object" as const,
+              properties: {
+                botId: { type: "string", description: "The bot's channel id, from list_bots." },
+                message: { type: "string", description: "What to tell the bot." },
+              },
+              required: ["botId", "message"],
+            },
           },
         ]
       : []),
@@ -1280,6 +1272,33 @@ export async function callTool(
         note: "Shown in the channel with what changed; your role text changes once an editor applies it. Meanwhile do what was asked in this conversation, and do not dwell on the proposal.",
       };
     }
+    case "list_bots": {
+      const { sessions } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/chat/sessions`,
+      )) as { sessions: ChatSessionSummary[] };
+      return {
+        bots: sessions.map(({ id, title, access }) => ({ id, title, access })),
+      };
+    }
+    case "send_bot_message": {
+      const botId = expectString(args, "botId");
+      const message = expectString(args, "message");
+      const { seq } = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/chat/sessions/${encodeURIComponent(botId)}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: message }),
+        },
+      )) as { seq: number };
+      return {
+        botId,
+        seq,
+        note: "Delivered; it starts that bot's next turn. Use read_chat to read the reply.",
+      };
+    }
     case "read_chat": {
       const chatId = expectString(args, "chatId");
       const path = `/api/v1/spaces/${config.spaceId}/chat/sessions/${encodeURIComponent(chatId)}`;
@@ -1359,19 +1378,6 @@ export async function callTool(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
-    }
-    case "read_messages": {
-      return await apiRequest(config, remoteTaskMessagesPath(config));
-    }
-    case "send_message": {
-      return await apiRequest(config, remoteTaskMessagesPath(config), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: expectString(args, "to"),
-          message: expectString(args, "message"),
-        }),
       });
     }
     case "list_agent_triggers": {

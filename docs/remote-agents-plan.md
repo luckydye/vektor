@@ -1,6 +1,6 @@
 # Remote agents
 
-Sub-agents and chats can run on other devices, and inside disposable VMs. A remote agent is self-sufficient: it brings its own model, tools and credentials, and can be any ACP-speaking agent (OpenCode, Claude via an adapter, the built-in Vektor loop) rather than only ours.
+Chats can run on other devices, and inside disposable VMs. A remote agent is self-sufficient: it brings its own model, tools and credentials, and can be any ACP-speaking agent (OpenCode, Claude via an adapter, the built-in Vektor loop) rather than only ours.
 
 Agents run on runners, by the contract in [runners.md](runners.md): a node (`vektor agent serve`), or an HTTP runner that offers agents. This page covers what is particular to nodes.
 

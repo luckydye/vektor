@@ -101,7 +101,6 @@ function mcpLaunch(host: string, mcp: AgentRequest["mcp"]): McpLaunch {
     VEKTOR_HOST: host,
     VEKTOR_SPACE_ID: mcp.headers["X-Space-Id"] ?? "",
     VEKTOR_JOB_TOKEN: mcp.headers["X-Job-Token"] ?? "",
-    VEKTOR_AGENT_SESSION: mcp.headers["X-Agent-Session"] ?? "",
   };
   // Compiled, the binary is the CLI; from source, the script is.
   const compiled = import.meta.url.includes("$bunfs");

@@ -14,8 +14,6 @@ export async function runChatOnRunner(
     spaceId: string;
     /** The owner, whose runners the chat uses. */
     userId: string;
-    /** The principal `jobToken` carries. */
-    actor: string;
     chatId: string;
     runner: string;
     agent: string;

@@ -359,7 +359,6 @@ export async function commandMcp(): Promise<void> {
     spaceId,
     accessToken: token,
     ...(config().CLI_JOB_TOKEN ? { jobToken: config().CLI_JOB_TOKEN } : {}),
-    ...(config().CLI_AGENT_SESSION ? { agentSessionId: config().CLI_AGENT_SESSION } : {}),
     connectedProviders: [],
   };
 
