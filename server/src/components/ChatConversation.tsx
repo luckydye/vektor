@@ -104,7 +104,7 @@ export function ChatConversation(props: Props) {
             fallback={
               <>
                 <div
-                  class="relative rounded-xl bg-neutral-900 p-2 shadow-sm"
+                  class="relative rounded-xl bg-[#111111] p-2 shadow-sm"
                   style={{ height: `${screenHeight()}px` }}
                 >
                   <button
@@ -153,7 +153,7 @@ export function ChatConversation(props: Props) {
           >
             <button
               type="button"
-              class="flex w-full items-center gap-2 rounded-lg bg-neutral-900 px-3 py-2 text-left text-size-small text-white/70 transition-colors hover:bg-neutral-800 hover:text-white"
+              class="flex w-full items-center gap-2 rounded-lg bg-[#111111] px-3 py-2 text-left text-size-small text-white/70 transition-colors hover:bg-[#1d1d1d] hover:text-white"
               onClick={() => screensHidden.commit(false)}
             >
               <Icon class="h-3.5 w-3.5" name="chevron-right-small" />

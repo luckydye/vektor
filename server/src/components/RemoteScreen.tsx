@@ -44,8 +44,8 @@ export function RemoteScreen(props: {
     <div
       class="relative flex h-full min-h-0 min-w-0 overflow-hidden rounded-lg bg-black"
       classList={{
-        "ring-1 ring-white/10": !focused(),
-        "ring-2 ring-primary-500/50 ring-inset": focused(),
+        "ring-1 ring-neutral-500/20": !focused(),
+        "ring-1 ring-neutral-400/50 ring-inset": focused(),
       }}
     >
       <canvas
