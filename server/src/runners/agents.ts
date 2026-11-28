@@ -44,8 +44,8 @@ type AgentSession = {
   screen: boolean;
   /** The chat's key in {@link chats}; null for a session not tied to one. */
   chat: string | null;
-  /** The chat this session speaks for, without the space prefix. */
-  chatId: string | null;
+  /** The bot this session speaks for: its channel id, shared by its threads. */
+  environmentId: string | null;
   /** A chat's prompt in flight. */
   turn?: Turn;
   cancelTurn?: () => void;
@@ -91,7 +91,7 @@ async function open(
     runner?: string;
     agent?: string;
   },
-  chat: { key: string; id: string } | null,
+  chat: { key: string; environmentId: string } | null,
 ) {
   const runners = await agentRunners(platform, request);
   const runner = request.runner
@@ -129,7 +129,7 @@ async function open(
     output: "",
     screen: false,
     chat: chat?.key ?? null,
-    chatId: chat?.id ?? null,
+    environmentId: chat?.environmentId ?? null,
   };
   sessions.set(session.id, session);
   if (chat) chats.set(chat.key, session.id);
@@ -162,7 +162,7 @@ async function prompt(session: AgentSession, text: string): Promise<PromptResult
       kind: "agent",
       runId,
       sessionId: session.id,
-      chatId: session.chatId ?? undefined,
+      environmentId: session.environmentId ?? undefined,
       agent: session.agent,
       prompt: text,
       mcp: {
@@ -251,6 +251,8 @@ export async function promptChat(
   request: ChatScope & {
     /** The owner, whose runners the chat may use. */
     userId: string;
+    /** The bot's channel id, shared by the channel and all its threads. */
+    environmentId: string;
     runner: string;
     agent: string;
     jobToken: string;
@@ -263,7 +265,7 @@ export async function promptChat(
     existing ??
     (await open(platform, request, {
       key: chatKey(request),
-      id: request.chatId,
+      environmentId: request.environmentId,
     }));
   if (session.status !== "idle")
     throw new Error("A prompt is already running in this chat.");

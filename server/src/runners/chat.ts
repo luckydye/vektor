@@ -14,6 +14,8 @@ export async function runChatOnRunner(
     spaceId: string;
     /** The owner, whose runners the chat uses. */
     userId: string;
+    /** The bot's channel id, shared by the channel and all its threads. */
+    environmentId: string;
     chatId: string;
     runner: string;
     agent: string;

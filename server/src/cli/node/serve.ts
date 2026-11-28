@@ -247,7 +247,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     await call("result", [result]).catch(() => {});
   }
 
-  function openSession({ sessionId, chatId, agent, mcp }: AgentRequest) {
+  function openSession({ sessionId, environmentId, agent, mcp }: AgentRequest) {
     const adapter = adapters.get(agent);
     if (!adapter) throw new Error(`This node has no "${agent}" agent.`);
     if (sessions.size >= options.maxSessions) {
@@ -257,7 +257,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     }
     const opening = adapter.open({
       sessionId,
-      chatId,
+      environmentId,
       cwd: workdir,
       mcp: mcpLaunch(connection.host, mcp),
       policy,

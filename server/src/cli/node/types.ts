@@ -24,8 +24,8 @@ export type Policy = {
 
 export type SessionInit = {
   sessionId: string;
-  /** The chat this session speaks for; stable across sessions, so its environment can be too. */
-  chatId?: string;
+  /** The bot this session speaks for; stable across its channel and threads, so its environment can be too. */
+  environmentId?: string;
   cwd: string;
   /** Null when the agent has no way to reach the Vektor server's tools. */
   mcp: McpLaunch | null;

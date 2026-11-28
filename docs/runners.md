@@ -85,7 +85,7 @@ A runner that names agents when asked to `describe` runs them. The owner clicks 
   "kind": "agent",
   "runId": "…",
   "sessionId": "…",
-  "chatId": "…",
+  "environmentId": "…",
   "agent": "claude",
   "prompt": "…",
   "mcp": {
@@ -97,7 +97,7 @@ A runner that names agents when asked to `describe` runs them. The owner clicks 
 ```
 
 - **`sessionId`** stays the same across a chat's turns. A runner that keeps its agent session between turns keeps the conversation; one that starts fresh each turn simply has no memory of earlier ones. `agent.close` says the session is over.
-- **`chatId`** names the chat across sessions, so a managed environment can keep one stable name for it even after the agent session is replaced.
+- **`environmentId`** names the bot across sessions, shared by its channel and threads, so a managed environment can keep one stable name for it even after the agent session is replaced.
 - **`agent`** is one of the names `describe` returned.
 - **`mcp`** is the Vektor tool surface as an MCP server over HTTP. Hand `url` and `headers` to the agent's MCP client. It acts as the session's user, with a short-lived token. A chat bot also gets `list_bots` and `send_bot_message` to talk to other bots. Sub-agents are the runner agent's own; Vektor does not start them or relay messages between devices.
 - **Updates** stream the agent's ACP `session/update` updates: `{ "name": "updates", "args": [[update, …]] }`. Send as many per call as have queued up.

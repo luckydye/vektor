@@ -678,6 +678,7 @@ async function runRound(
       const result = await runChatOnRunner(platform, {
         spaceId,
         userId: context.ownerId,
+        environmentId: context.channel.id,
         chatId: session.id,
         runner: session.node,
         agent: session.nodeAgent,

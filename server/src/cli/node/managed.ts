@@ -17,10 +17,10 @@ import type { Adapter, ScreenSession } from "./types.ts";
  *   <manager> stream <id>                    optional, the screen as H.264 and Opus
  *   <manager> input <id>                     optional, mouse and keyboard as JSON lines
  *
- * `run`'s stdio is the ACP pipe. The environment lives as long as the task's
- * session and is stopped when it ends. It reaches the Vektor server only
- * through this node's proxy, which carries the task's job token and never the
- * node's own login.
+ * `run`'s stdio is the ACP pipe. A disposable environment lives as long as the
+ * task's session and is stopped when it ends; `persistent` ones stay for the
+ * next session. It reaches the Vektor server only through this node's proxy,
+ * which carries the task's job token and never the node's own login.
  */
 export type ManagedOptions = {
   /** The adapter name, so two managers do not share an environment. */
@@ -31,7 +31,7 @@ export type ManagedOptions = {
   runArgs: string[];
   /** Arguments for starting an environment that already exists; the first run's create-only flags fail on it. */
   resumeArgs: string[];
-  /** Reuse one named environment per chat across sessions. */
+  /** Reuse one named environment per bot across its channel and threads. */
   persistent: boolean;
   /** Variables set for the agent, e.g. an API key. */
   env: Record<string, string>;
@@ -48,9 +48,9 @@ export type ManagedOptions = {
 };
 
 /** A chat's stable environment name, short enough to read in `vm ls`. */
-function environmentName(name: string, spaceId: string, chatId: string): string {
+function environmentName(name: string, spaceId: string, environmentId: string): string {
   const digest = createHash("sha256")
-    .update(`${name}\0${spaceId}\0${chatId}`)
+    .update(`${name}\0${spaceId}\0${environmentId}`)
     .digest("hex");
   return `vektor-${digest.slice(0, 16)}`;
 }
@@ -65,12 +65,15 @@ function hasEnvironment(name: string): boolean {
 }
 
 /** Remembers that `name` was created, so its create-only flags are not retried on every start. */
-function rememberEnvironment(name: string, init: { spaceId: string; chatId?: string }): void {
+function rememberEnvironment(
+  name: string,
+  init: { spaceId: string; environmentId?: string },
+): void {
   const dir = environmentsDir();
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(
     join(dir, name),
-    `${JSON.stringify({ spaceId: init.spaceId, chatId: init.chatId })}\n`,
+    `${JSON.stringify({ spaceId: init.spaceId, environmentId: init.environmentId })}\n`,
     { mode: 0o600 },
   );
 }
@@ -184,39 +187,58 @@ function startProxy(host: string) {
 export function managedAdapter(options: ManagedOptions): Adapter {
   let proxy: ReturnType<typeof startProxy> | undefined;
   const { manager } = options;
+  /** Starts for one persistent environment, in order, so two threads cannot create it at once. */
+  const starts = new Map<string, Promise<string>>();
+
+  function startEnvironment(name: string, init: { spaceId: string; environmentId?: string }) {
+    const create = [...manager, "run", name, ...options.runArgs];
+    const previous = starts.get(name);
+    const next = (previous ? previous.catch(() => undefined) : Promise.resolve(undefined))
+      .then(async () => {
+        let id: string | undefined;
+        if (!hasEnvironment(name)) {
+          id = lastLine(await run(create));
+        } else {
+          try {
+            id = lastLine(await run([...manager, "run", name, ...options.resumeArgs]));
+          } catch (resumeError) {
+            // It was deleted or its disk went away; create it again.
+            try {
+              id = lastLine(await run(create));
+            } catch (createError) {
+              throw new Error(
+                `${errorMessage(createError)} (could not resume ${name}: ${errorMessage(resumeError)})`,
+              );
+            }
+          }
+        }
+        if (!id) throw new Error(`${manager[0]} run printed no environment id.`);
+        rememberEnvironment(name, init);
+        return id;
+      });
+    starts.set(name, next);
+    void next
+      .finally(() => {
+        if (starts.get(name) === next) starts.delete(name);
+      })
+      .catch(() => {});
+    return next;
+  }
 
   return {
     async open(init) {
       proxy ??= startProxy(options.host);
       const name =
-        options.persistent && init.chatId
-          ? environmentName(options.name, init.spaceId, init.chatId)
+        options.persistent && init.environmentId
+          ? environmentName(options.name, init.spaceId, init.environmentId)
           : undefined;
-      const create = [...manager, "run", ...(name ? [name] : []), ...options.runArgs];
-      let id: string | undefined;
-      if (!name) {
-        id = lastLine(await run(create));
-      } else if (!hasEnvironment(name)) {
-        id = lastLine(await run(create));
-      } else {
-        try {
-          id = lastLine(await run([...manager, "run", name, ...options.resumeArgs]));
-        } catch (resumeError) {
-          // The VM was deleted or its disk went away; create it again.
-          try {
-            id = lastLine(await run(create));
-          } catch (createError) {
-            throw new Error(
-              `${errorMessage(createError)} (could not resume ${name}: ${errorMessage(resumeError)})`,
-            );
-          }
-        }
-      }
+      const id = name
+        ? await startEnvironment(name, init)
+        : lastLine(await run([...manager, "run", ...options.runArgs]));
       if (!id) throw new Error(`${manager[0]} run printed no environment id.`);
       const stop = () => run([...manager, "stop", id]).catch(() => {});
 
       try {
-        if (name) rememberEnvironment(name, init);
         // The protocol's optional `address`; a manager without it falls back to the node's own.
         const address =
           (await run([...manager, "address", id]).catch(() => "")) ||
@@ -263,12 +285,17 @@ export function managedAdapter(options: ManagedOptions): Adapter {
           ...session,
           screen: () => openScreen(manager, id),
           async close() {
-            await session.close();
-            await stop();
+            try {
+              await session.close();
+            } finally {
+              // A persistent environment outlives its session; its manager may suspend it when idle.
+              if (!name) await stop();
+            }
           },
         };
       } catch (error) {
-        await stop();
+        // Keep a persistent environment for the next try; only a disposable one is cleaned up here.
+        if (!name) await stop();
         throw error;
       }
     },
