@@ -116,7 +116,6 @@ export function SpaceGeneralSettings(props: Props) {
           description="Personalize your space with settings and preferences."
         >
           <form
-            class="max-w-xl"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSave();
