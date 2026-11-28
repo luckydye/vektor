@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { openAcpSession, spawnTransport } from "./acpClient.ts";
@@ -21,10 +23,16 @@ import type { Adapter, ScreenSession } from "./types.ts";
  * node's own login.
  */
 export type ManagedOptions = {
+  /** The adapter name, so two managers do not share an environment. */
+  name: string;
   /** The manager command, e.g. `["vm"]` or `["mgr", "--host", "box"]`. */
   manager: string[];
   /** Extra arguments for `run`, e.g. `["--mount", ".:work"]`. */
   runArgs: string[];
+  /** Arguments for starting an environment that already exists; the first run's create-only flags fail on it. */
+  resumeArgs: string[];
+  /** Reuse one named environment per chat across sessions. */
+  persistent: boolean;
   /** Variables set for the agent, e.g. an API key. */
   env: Record<string, string>;
   /** Files copied into the environment before the agent starts, e.g. its login. */
@@ -38,6 +46,42 @@ export type ManagedOptions = {
   /** The session's directory inside the environment; default is the one `exec` starts in. */
   cwd?: string;
 };
+
+/** A chat's stable environment name, short enough to read in `vm ls`. */
+function environmentName(name: string, spaceId: string, chatId: string): string {
+  const digest = createHash("sha256")
+    .update(`${name}\0${spaceId}\0${chatId}`)
+    .digest("hex");
+  return `vektor-${digest.slice(0, 16)}`;
+}
+
+function environmentsDir(): string {
+  const base = process.env.XDG_CONFIG_HOME?.trim() || join(homedir(), ".config");
+  return join(base, "vektor", "environments");
+}
+
+function hasEnvironment(name: string): boolean {
+  return existsSync(join(environmentsDir(), name));
+}
+
+/** Remembers that `name` was created, so its create-only flags are not retried on every start. */
+function rememberEnvironment(name: string, init: { spaceId: string; chatId?: string }): void {
+  const dir = environmentsDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(dir, name),
+    `${JSON.stringify({ spaceId: init.spaceId, chatId: init.chatId })}\n`,
+    { mode: 0o600 },
+  );
+}
+
+function lastLine(output: string): string | undefined {
+  return output.split("\n").at(-1)?.trim();
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function run(argv: string[], stdin?: string): Promise<string> {
   const proc = Bun.spawn(argv, {
@@ -144,15 +188,35 @@ export function managedAdapter(options: ManagedOptions): Adapter {
   return {
     async open(init) {
       proxy ??= startProxy(options.host);
-      // The id is the last line `run` prints, whatever it logged before.
-      const id = (await run([...manager, "run", ...options.runArgs]))
-        .split("\n")
-        .at(-1)
-        ?.trim();
+      const name =
+        options.persistent && init.chatId
+          ? environmentName(options.name, init.spaceId, init.chatId)
+          : undefined;
+      const create = [...manager, "run", ...(name ? [name] : []), ...options.runArgs];
+      let id: string | undefined;
+      if (!name) {
+        id = lastLine(await run(create));
+      } else if (!hasEnvironment(name)) {
+        id = lastLine(await run(create));
+      } else {
+        try {
+          id = lastLine(await run([...manager, "run", name, ...options.resumeArgs]));
+        } catch (resumeError) {
+          // The VM was deleted or its disk went away; create it again.
+          try {
+            id = lastLine(await run(create));
+          } catch (createError) {
+            throw new Error(
+              `${errorMessage(createError)} (could not resume ${name}: ${errorMessage(resumeError)})`,
+            );
+          }
+        }
+      }
       if (!id) throw new Error(`${manager[0]} run printed no environment id.`);
       const stop = () => run([...manager, "stop", id]).catch(() => {});
 
       try {
+        if (name) rememberEnvironment(name, init);
         // The protocol's optional `address`; a manager without it falls back to the node's own.
         const address =
           (await run([...manager, "address", id]).catch(() => "")) ||

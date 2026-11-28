@@ -42,8 +42,10 @@ type AgentSession = {
   output: string;
   error?: string;
   screen: boolean;
-  /** The chat whose session this is, kept open between prompts. */
+  /** The chat's key in {@link chats}; null for a session not tied to one. */
   chat: string | null;
+  /** The chat this session speaks for, without the space prefix. */
+  chatId: string | null;
   /** A chat's prompt in flight. */
   turn?: Turn;
   cancelTurn?: () => void;
@@ -89,7 +91,7 @@ async function open(
     runner?: string;
     agent?: string;
   },
-  chat: string | null,
+  chat: { key: string; id: string } | null,
 ) {
   const runners = await agentRunners(platform, request);
   const runner = request.runner
@@ -126,10 +128,11 @@ async function open(
     status: "idle",
     output: "",
     screen: false,
-    chat,
+    chat: chat?.key ?? null,
+    chatId: chat?.id ?? null,
   };
   sessions.set(session.id, session);
-  if (chat) chats.set(chat, session.id);
+  if (chat) chats.set(chat.key, session.id);
   return session;
 }
 
@@ -159,6 +162,7 @@ async function prompt(session: AgentSession, text: string): Promise<PromptResult
       kind: "agent",
       runId,
       sessionId: session.id,
+      chatId: session.chatId ?? undefined,
       agent: session.agent,
       prompt: text,
       mcp: {
@@ -255,7 +259,12 @@ export async function promptChat(
   } & Turn,
 ): Promise<{ fresh: boolean; result: Promise<PromptResult> }> {
   const existing = chatSession(request);
-  const session = existing ?? (await open(platform, request, chatKey(request)));
+  const session =
+    existing ??
+    (await open(platform, request, {
+      key: chatKey(request),
+      id: request.chatId,
+    }));
   if (session.status !== "idle")
     throw new Error("A prompt is already running in this chat.");
   session.turn = { onUpdate: request.onUpdate, onScreen: request.onScreen };

@@ -3,7 +3,7 @@
 How a CLI lets `vektor agent serve` run agents in environments it manages (VMs, containers, remote boxes). The node is the only caller; the CLI needs nothing from Vektor. The verbs follow the shape of `vm`, so it works as it is.
 
 ```
-vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inner "<agent command>"]
+vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--resume-args "<args>"] [--persist-environments] [--inner "<agent command>"]
 ```
 
 `<command...>` is the manager's command prefix, one or more words. The node adds the subcommands below; one adapter named `<name>` is offered to the server per `--manager`.
@@ -14,7 +14,7 @@ vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inne
 |---|---|---|
 | `<mgr> run [args...]` | Create and start an environment | Prints its id as the last line of stdout and exits 0 once a command can run inside. `args` are whatever `--run-args` gave (image, mounts, …). |
 | `<mgr> run <id> -- <argv...>` | Run a command inside | stdin, stdout and stderr pass through unchanged (the ACP pipe: line-delimited JSON-RPC). Runs in the environment's default directory. Ends when the command ends or the process is killed. Without this form the environment is left running and nothing else is printed on stdout. |
-| `<mgr> stop <id>` | Dispose of the environment | The environment must not outlive it, so `run` has to make an ephemeral one. Idempotent; exit 0 if it is already gone. |
+| `<mgr> stop <id>` | Stop the environment | Without `--persist-environments` it must not outlive the session, so `run` has to make an ephemeral one. With it, the manager may keep the disk and start it again on the next `run`. Idempotent; exit 0 if it is already gone. |
 | `<mgr> address <id>` | *Optional.* Print the host the environment reaches the node at | One line on stdout. A non-zero exit means "not supported"; the node uses `--gateway`, else its own first non-loopback IPv4. |
 | `<mgr> stream <id>` | *Optional.* Stream the environment's screen and sound | Writes the media below to stdout until it is killed. Run once per viewer, so each starts with a keyframe. A non-zero exit means "not supported" or failed; its stderr is shown to the viewer. |
 | `<mgr> input <id>` | *Optional.* Drive the screen | Reads one JSON event per line from stdin until it closes. |
@@ -22,6 +22,25 @@ vektor agent serve --manager <name>="<command...>" [--run-args "<args>"] [--inne
 - Any non-zero exit from `run` fails the task with the CLI's stderr.
 - The node calls `stop` when the task ends, fails or is cancelled, and when anything after `run` fails.
 - The session's directory is `--env-workdir`, else the output of `run <id> -- pwd`.
+
+## Persistent environments
+
+`--persist-environments` gives every chat one stable environment name, derived from its space and chat id. The node remembers that a name was created, on the node under `~/.config/vektor/environments` (or `$XDG_CONFIG_HOME/vektor/environments`), so it does not retry create-only flags on every start:
+
+- The first open runs `<mgr> run <name> <--run-args>`.
+- Later opens run `<mgr> run <name> <--resume-args>`.
+- If the environment went away, the node falls back to the create form and remembers it again.
+- `stop` is still called when the session ends. A manager that keeps its environment across stops (for example `vm` with `--persist`) therefore stops it but keeps its disk; the next session starts it again.
+
+For `vm`, `--persist` and `--base` are create-only and fail on an existing VM, so put them in `--run-args` and only the start-safe flags in `--resume-args`:
+
+```
+vektor agent serve --manager opencode=vm \
+  --run-args "--persist --base vektor-agent --wait-network" \
+  --resume-args "--wait-network" \
+  --persist-environments \
+  --gateway <host-ip>
+```
 
 ## Screen
 

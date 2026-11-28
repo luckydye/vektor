@@ -57,7 +57,7 @@ export type ServeOptions = {
   /** Adapters that run agents in environments made by a CLI speaking the environment manager protocol: a name and its command. */
   managers: Record<string, string[]>;
   /** How those environments are used; each manager's own command and the server's host are added. */
-  managed: Omit<ManagedOptions, "manager" | "host">;
+  managed: Omit<ManagedOptions, "name" | "manager" | "host">;
   /** Runs jobs for anyone in the space, not only for the logged-in user. */
   shared: boolean;
 };
@@ -80,7 +80,7 @@ function buildAdapters(options: ServeOptions, connection: Connection) {
   for (const [name, manager] of Object.entries(options.managers)) {
     available.set(
       name,
-      managedAdapter({ ...options.managed, manager, host: connection.host }),
+      managedAdapter({ ...options.managed, name, manager, host: connection.host }),
     );
   }
   available.set("echo", echoAdapter);
@@ -247,7 +247,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     await call("result", [result]).catch(() => {});
   }
 
-  function openSession({ sessionId, agent, mcp }: AgentRequest) {
+  function openSession({ sessionId, chatId, agent, mcp }: AgentRequest) {
     const adapter = adapters.get(agent);
     if (!adapter) throw new Error(`This node has no "${agent}" agent.`);
     if (sessions.size >= options.maxSessions) {
@@ -257,6 +257,7 @@ export async function commandAgentServe(options: ServeOptions): Promise<void> {
     }
     const opening = adapter.open({
       sessionId,
+      chatId,
       cwd: workdir,
       mcp: mcpLaunch(connection.host, mcp),
       policy,

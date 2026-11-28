@@ -116,6 +116,7 @@ const SERVE_BOOLEAN_FLAGS = new Set([
   "auto-approve",
   "allow-shell",
   "shared",
+  "persist-environments",
 ]);
 
 function parseServeArgs(args: string[]): ServeOptions {
@@ -181,6 +182,8 @@ function parseServeArgs(args: string[]): ServeOptions {
       }),
       runArgs: one("run-args")?.split(/\s+/).filter(Boolean) ?? [],
       inner: (one("inner") ?? "opencode acp").split(/\s+/),
+      resumeArgs: one("resume-args")?.split(/\s+/).filter(Boolean) ?? [],
+      persistent: flags.has("persist-environments"),
       gateway: one("gateway"),
       cwd: one("env-workdir"),
     },
@@ -198,7 +201,7 @@ Commands:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor mcp
   vektor agent [prompt...] [--doc <slug|id>] [--once]
-  vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--manager <name=command>]... [--run-args <args>] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path>]...
+  vektor agent serve [--name <name>] [--workdir <dir>] [--max-sessions <n>] [--adapters <a,b>] [--cmd <name=command args>]... [--readonly] [--auto-approve] [--allow-shell] [--shared] [--manager <name=command>]... [--run-args <args>] [--resume-args <args>] [--persist-environments] [--inner <command>] [--env <NAME[=value]>]... [--copy-file <path>]...
   vektor workflow run <docId> [--input key=value ...] [--node <name>] [--json]
   vektor workflow logs <runId>
   vektor extension create <id>
